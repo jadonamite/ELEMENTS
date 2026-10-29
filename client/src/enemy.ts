@@ -16,14 +16,26 @@ type EnemyState = 'spawn' | 'chase' | 'circle' | 'attack' | 'stagger' | 'dead';
 /** Shared model and clips; each enemy clones the rig and binds its own mixer. */
 export interface EnemyTemplate { model: Group; clips: AnimationClip[] }
 
-/** Husks share the hero's rig, dressed as ash and dried hide so they never read as the hero. */
+/** Husks share the hero's rig, dressed in charred black ash and scorched hide with smoldering ember seams. */
 export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<EnemyTemplate> {
   const [body, moves] = await Promise.all([
     loader.loadAsync('/assets/characters/hero.glb'),
     loader.loadAsync('/assets/characters/enemy.glb'),
   ]);
-  const ash = new MeshStandardMaterial({ color: new Color(0x7d756b), roughness: 0.96, metalness: 0 });
-  const hide = new MeshStandardMaterial({ color: new Color(0x2a221c), roughness: 0.9, metalness: 0 });
+  const ash = new MeshStandardMaterial({
+    color: new Color(0x1c1815),
+    roughness: 0.92,
+    metalness: 0.1,
+    emissive: new Color(0x300800),
+    emissiveIntensity: 0.7,
+  });
+  const hide = new MeshStandardMaterial({
+    color: new Color(0x0e0c0a),
+    roughness: 0.96,
+    metalness: 0.05,
+    emissive: new Color(0x180300),
+    emissiveIntensity: 0.5,
+  });
   body.scene.traverse((node) => {
     if (!(node as Mesh).isMesh) return;
     const mesh = node as Mesh;
@@ -182,8 +194,19 @@ export class Enemy {
     this.model.position.copy(position);
     this.model.rotation.y = this.controller.facing;
     this.flash = Math.max(0, this.flash - delta);
-    const glow = this.flash > 0 ? this.flash / 0.12 * 0.6 : 0;
-    for (const material of this.materials) material.emissive.setScalar(glow);
+    const isTelegraphing = this.state === 'attack' && this.timer < this.length * 0.55;
+    for (const material of this.materials) {
+      if (this.flash > 0) {
+        material.emissive.setRGB(1, 1, 1);
+        material.emissiveIntensity = (this.flash / 0.12) * 1.5;
+      } else if (isTelegraphing) {
+        material.emissive.setRGB(1.0, 0.2, 0.02);
+        material.emissiveIntensity = 2.4;
+      } else {
+        material.emissive.setRGB(0.24, 0.05, 0.0);
+        material.emissiveIntensity = 0.6;
+      }
+    }
     this.anim.update(delta);
   }
 

@@ -229,7 +229,8 @@ async function main(): Promise<void> {
         attack(action);
         continue;
       }
-      if (!combat.press(action)) continue;
+      if (!fight.ready('dodge') || !combat.press(action)) continue;
+      fight.recordDodge();
       sound.playDodge();
       const roll = movementVelocity(input.read(), shoulderCamera.yaw);
       controller.facing = roll.lengthSq() > 0 ? Math.atan2(roll.x, roll.z) : shoulderCamera.yaw;
@@ -282,7 +283,13 @@ async function main(): Promise<void> {
     sword.update(animDelta);
     bending.update(delta);
     fight.draw(animDelta, alpha, controller.position);
-    fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight, isLit, sword.armed, lockedEnemy);
+    const cooldowns = [
+      { move: 'uppercut', remaining: fight.cooldownRemaining('uppercut'), total: fight.cooldownTotal('uppercut') },
+      { move: 'ground_pound', remaining: fight.cooldownRemaining('ground_pound'), total: fight.cooldownTotal('ground_pound') },
+      { move: 'dash_strike', remaining: fight.cooldownRemaining('dash_strike'), total: fight.cooldownTotal('dash_strike') },
+      { move: 'dodge', remaining: fight.cooldownRemaining('dodge'), total: fight.cooldownTotal('dodge') },
+    ];
+    fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight, isLit, sword.armed, lockedEnemy, cooldowns);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     fps?.tick();

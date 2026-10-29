@@ -54,12 +54,35 @@ export class Fight {
 
   /** Is the move off cooldown in the rules? The hero's combat asks before starting one. */
   ready(move: string): boolean {
-    if (move === 'dodge' || move === 'hit' || move === 'death') return true;
+    if (move === 'hit' || move === 'death') return true;
     try {
       return rules.cooldownRemaining(move as Parameters<typeof rules.cooldownRemaining>[0], this.heroState, this.clock) === 0;
     } catch {
       return true;
     }
+  }
+
+  /** Record a dodge roll, consuming its cooldown in shared rules. */
+  recordDodge(): boolean {
+    const res = rules.useDodge(this.heroState, this.clock);
+    if (!res.accepted) return false;
+    this.heroState = res.state;
+    return true;
+  }
+
+  /** Seconds remaining on cooldown for a given move. */
+  cooldownRemaining(move: string): number {
+    try {
+      return rules.cooldownRemaining(move as Parameters<typeof rules.cooldownRemaining>[0], this.heroState, this.clock);
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Total configured cooldown in seconds for a move. */
+  cooldownTotal(move: string): number {
+    const spec = (balance.combat.ignisStarterMoves as Record<string, { cooldownSeconds?: number }>)[move];
+    return spec?.cooldownSeconds ?? 1;
   }
 
   /** Nearest living husk in front of the hero within `range`, for aim assist. */

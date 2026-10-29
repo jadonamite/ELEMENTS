@@ -95,6 +95,66 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   color: #ff5522;
   box-shadow: 0 0 10px rgb(230 42 5 / 0.4);
 }
+.ability-tray {
+  position: absolute;
+  left: max(var(--space-8), env(safe-area-inset-left));
+  bottom: calc(max(var(--space-8), env(safe-area-inset-bottom)) + 46px);
+  display: flex;
+  gap: var(--space-2);
+}
+.ability-slot {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  background: rgb(16 13 11 / 0.75);
+  border: 1px solid rgb(214 170 110 / 0.4);
+  border-radius: var(--radius-xs);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
+  transition: border-color 150ms ease;
+}
+.ability-slot.on-cooldown {
+  border-color: rgb(214 170 110 / 0.2);
+  opacity: 0.8;
+}
+.ability-slot .cd-fill {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.65);
+  transform-origin: bottom center;
+  transform: scaleY(0);
+  pointer-events: none;
+}
+.ability-slot .slot-key {
+  position: relative;
+  z-index: 1;
+  font: var(--font-weight-bold) var(--font-size-xs)/1 var(--font-family-display);
+  color: rgb(246 238 226);
+  letter-spacing: var(--letter-spacing-wide);
+}
+.ability-slot .slot-name {
+  position: relative;
+  z-index: 1;
+  font: 9px/1 var(--font-family-body);
+  color: rgb(200 185 170 / 0.8);
+  margin-top: 3px;
+  text-transform: uppercase;
+}
+.ability-slot .slot-timer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  font: var(--font-weight-bold) var(--font-size-sm)/1 var(--font-family-display);
+  color: rgb(255 220 180);
+  text-shadow: 0 1px 4px rgb(0 0 0 / 0.9);
+}
 .lock-reticle {
   position: absolute;
   left: 0;
