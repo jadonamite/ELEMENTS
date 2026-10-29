@@ -10,7 +10,7 @@ import {
   EquirectangularReflectionMapping,
   Mesh,
   MeshStandardMaterial,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
   RepeatWrapping,
@@ -20,7 +20,7 @@ import {
   WebGLRenderer,
   type Texture,
 } from 'three';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 
 /* ---------- constants (1 unit = 1 metre) ---------- */
 
@@ -65,7 +65,7 @@ export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  renderer.shadowMap.type = PCFShadowMap;
 
   /* --- scene --- */
   const scene = new Scene();
@@ -76,8 +76,8 @@ export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
   camera.lookAt(0, 0, 0);
 
   /* --- HDRI environment (sky + diffuse light) --- */
-  const rgbeLoader = new RGBELoader();
-  rgbeLoader.load('/assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr', (hdr) => {
+  const hdrLoader = new HDRLoader();
+  hdrLoader.load('/assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr', (hdr) => {
     hdr.mapping = EquirectangularReflectionMapping;
     scene.background = hdr;
     scene.environment = hdr;

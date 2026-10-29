@@ -57,3 +57,11 @@ All arena textures and the HDRI sky are from [Poly Haven](https://polyhaven.com/
 - [stone_floor](https://polyhaven.com/a/stone_floor): arena floor diffuse, normal and ARM maps (1K JPG). `client/public/assets/textures/stone_floor_*.jpg`
 - [castle_brick_07](https://polyhaven.com/a/castle_brick_07): arena wall diffuse, normal and ARM maps (1K JPG). `client/public/assets/textures/castle_brick_*.jpg`
 - [kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky): outdoor HDRI sky panorama for environment lighting and background (1K HDR). `client/public/assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr`
+
+## Hero assets (Quaternius, CC0)
+
+Character and weapon models are from the [LowPoly Animated Knight](https://quaternius.com/packs/animated-knight.html) pack by Quaternius ([OpenGameArt release](https://opengameart.org/content/lowpoly-animated-knight)), released under the Creative Commons CC0 Public Domain dedication.
+
+- `client/public/assets/characters/hero.glb`: rigged humanoid knight model with dark iron armor and 12 animation clips (`idle`, `walk`, `run`, `attack_light`, `attack_heavy`, `dodge`, `jump`, `death`, and variants). Converted from the source FBX with [FBX2glTF](https://github.com/facebookincubator/FBX2glTF) (v0.9.7) and scaled to real size (1 unit = 1 metre, standing height 1.80 m).
+- `client/public/assets/characters/sword.glb`: medieval arming sword mesh, attached to the right hand bone (`PalmR`) so it follows every animation and swing.
+- `client/public/assets/characters/helmet.glb`: dark iron helmet mesh, attached to the head bone (`Head`).
