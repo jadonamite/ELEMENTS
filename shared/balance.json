@@ -85,7 +85,13 @@
     "wallTileMetres": 3,
     "bloomStrength": 0.15,
     "bloomThreshold": 1.6,
-    "vignette": 0.85
+    "vignette": 0.85,
+    "maxPixelRatio": 1.5,
+    "minPixelRatio": 1,
+    "pixelRatioStep": 0.25,
+    "msaaSamples": 4,
+    "slowFrameMs": 18,
+    "fastFrameMs": 11
   },
   "combat": {
     "fade": 0.08,

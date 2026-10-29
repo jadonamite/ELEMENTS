@@ -13,6 +13,7 @@ import {
   DoubleSide,
   EquirectangularReflectionMapping,
   FogExp2,
+  HalfFloatType,
   HemisphereLight,
   LatheGeometry,
   Material,
@@ -29,6 +30,7 @@ import {
   Vector2,
   Vector3,
   WebGLRenderer,
+  WebGLRenderTarget,
   type BufferGeometry,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -118,8 +120,8 @@ export interface ArenaObjects {
 }
 
 export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
-  const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Antialiasing lives in the composer's buffers, since every frame goes through them.
+  const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = look.exposure;
@@ -208,7 +210,8 @@ export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
   scene.add(wall);
 
   /* --- post: bloom kept for element glow, gentle vignette, then tone mapping --- */
-  const composer = new EffectComposer(renderer);
+  const composer = new EffectComposer(renderer,
+    new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: look.msaaSamples }));
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new Vector2(1, 1), look.bloomStrength, 0.4, look.bloomThreshold);
   composer.addPass(bloom);
@@ -218,14 +221,41 @@ export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
   composer.addPass(vignette);
   composer.addPass(new OutputPass());
 
+  /* --- resolution: capped for fill rate, lowered a step at a time when frames run slow --- */
+  let width = 1, height = 1, scale = 1, frames = 0, frameTime = 0, last = performance.now();
+  const applySize = (): void => {
+    const ratio = Math.max(look.minPixelRatio, Math.min(window.devicePixelRatio, look.maxPixelRatio) * scale);
+    renderer.setPixelRatio(ratio);
+    renderer.setSize(width, height, false);
+    composer.setPixelRatio(ratio);
+    composer.setSize(width, height);
+  };
+  const govern = (): void => {
+    const now = performance.now();
+    const delta = now - last;
+    last = now;
+    if (delta > 100) return; // tab switches and stalls are not render cost
+    frameTime += delta;
+    if (++frames < 60) return;
+    const average = frameTime / frames;
+    frames = 0;
+    frameTime = 0;
+    const ceiling = Math.min(window.devicePixelRatio, look.maxPixelRatio);
+    const ratio = renderer.getPixelRatio();
+    if (average > look.slowFrameMs && ratio > look.minPixelRatio) scale -= look.pixelRatioStep / ceiling;
+    else if (average < look.fastFrameMs && ratio < ceiling) scale = Math.min(1, scale + look.pixelRatioStep / ceiling);
+    else return;
+    applySize();
+  };
+
   return {
     scene, camera, renderer,
-    setSize(width, height) {
-      renderer.setSize(width, height, false);
-      composer.setPixelRatio(renderer.getPixelRatio());
-      composer.setSize(width, height);
+    setSize(w, h) {
+      width = w;
+      height = h;
+      applySize();
     },
-    render: () => composer.render(),
+    render: () => { govern(); composer.render(); },
     dispose: () => {
       disposed = true;
       sun.shadow.map?.dispose();

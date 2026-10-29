@@ -78,7 +78,6 @@ async function main(): Promise<void> {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   function resize(): void {
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     arena.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
