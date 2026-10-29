@@ -5,7 +5,7 @@ import { createArena, disposeObject, loadProps } from './scene.js';
 import { initPhysics } from './physics.js';
 import { FpsCounter } from './fps.js';
 import { loadHero, type HeroInstance } from './hero.js';
-import { FixedStepper, HeroController, locomotionForSpeed } from './controller.js';
+import { FixedStepper, HeroController, locomotionForSpeed, movementVelocity, turnToward } from './controller.js';
 import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
 import { Combat } from './combat.js';
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   cleanup.push(() => input.dispose());
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, shoulderCamera, input, get fight() { return fight; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, shoulderCamera, input, get fight() { return fight; }, get combat() { return combat; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -149,11 +149,23 @@ async function main(): Promise<void> {
           ? Math.atan2(mark.controller.position.x - controller.position.x, mark.controller.position.z - controller.position.z)
           : looking;
       }
-      if (combat.press(action) && action !== 'dodge') setArmed(true);
+      if (!combat.press(action)) continue;
+      if (action !== 'dodge') { setArmed(true); continue; }
+      // Roll the way the keys point, relative to the camera; with no keys held, roll back from the view.
+      const roll = movementVelocity(input.read(), shoulderCamera.yaw);
+      controller.facing = roll.lengthSq() > 0 ? Math.atan2(roll.x, roll.z) : shoulderCamera.yaw;
     }
     if (!alive) input.takeActions();
     combat.blocking = alive && input.blocking && !combat.current;
-    if (combat.blocking) setArmed(true);
+    if (combat.blocking) {
+      setArmed(true);
+      // The guard turns to meet the nearest husk, or the way the camera looks.
+      const threat = fight.nearestInFront(controller.position, controller.facing, balance.hero.guardTurnRange, Math.PI);
+      const toward = threat
+        ? Math.atan2(threat.controller.position.x - controller.position.x, threat.controller.position.z - controller.position.z)
+        : shoulderCamera.yaw + Math.PI;
+      controller.facing = turnToward(controller.facing, toward, delta);
+    }
     combat.update(delta);
     // Stay drawn while fighting or with a husk close by; sheathe after a quiet spell.
     if ((combat.current && combat.current !== 'dodge') || combat.blocking ||
@@ -172,7 +184,8 @@ async function main(): Promise<void> {
     const rooted = combat.current !== null || combat.blocking;
     const alpha = stepper.advance(delta, () => {
       // Lunges stop at sword range instead of carrying the hero into a husk.
-      const lunge = fight.nearestDistance(controller.position) < balance.combat.lungeStopDistance ? 0 : combat.lunge;
+      const stop = combat.current !== 'dodge' && fight.nearestDistance(controller.position) < balance.combat.lungeStopDistance;
+      const lunge = stop ? 0 : combat.lunge;
       controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge);
       fight.step(heroView, combat);
     });

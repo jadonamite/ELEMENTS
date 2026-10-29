@@ -62,13 +62,14 @@ export class Combat {
 
   press(action: CombatAction): boolean {
     if (this.move === 'death') return false;
-    // A dodge cancels a flinch; anything else waits it out.
-    if (this.move === 'hit') {
-      if (action !== 'dodge') return false;
+    // Dodge always answers at once: it cancels attacks, flinches and the guard.
+    if (action === 'dodge') {
+      if (this.move === 'dodge') return false;
+      this.blocking = false;
       this.start('dodge');
       return true;
     }
-    if (this.blocking) return false;
+    if (this.move === 'hit' || this.blocking) return false;
     if (!this.move) {
       if (!this.ready(opener[action])) return false;
       this.start(opener[action]);
@@ -79,8 +80,6 @@ export class Combat {
     const chains = (action === 'light' && this.move.startsWith('light')) ||
       (action === 'heavy' && this.move.startsWith('heavy'));
     if (chains && spec.next && inWindow) { this.queued = spec.next; return true; }
-    // Dodge cancels any attack's recovery.
-    if (action === 'dodge' && inWindow) { this.queued = 'dodge'; return true; }
     return false;
   }
 

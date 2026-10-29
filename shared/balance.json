@@ -249,7 +249,8 @@
   "hero": {
     "maxHealth": 120,
     "respawnSeconds": 3,
-    "blockDamageScale": 0.2,
+    "blockDamageScale": 0,
+    "guardTurnRange": 6,
     "blockAngle": 1.3
   },
   "stance": {
