@@ -141,6 +141,73 @@
         "lunge": 6.0,
         "speed": 1.5
       }
+    },
+    "rules": {
+      "placeholder": true,
+      "counterBonus": 0.25,
+      "armourScale": 100,
+      "damageWindowSeconds": 1,
+      "maxDamagePerSecond": 100,
+      "defaultMaxHealth": 100,
+      "defaultArmour": 0
+    },
+    "ignisStarterMoves": {
+      "light_1": {
+        "kind": "attack",
+        "damage": 12,
+        "reach": 2.5,
+        "cooldownSeconds": 0.45,
+        "slot": "light_1"
+      },
+      "light_2": {
+        "kind": "attack",
+        "damage": 15,
+        "reach": 2.5,
+        "cooldownSeconds": 0.5,
+        "slot": "light_2"
+      },
+      "light_3": {
+        "kind": "attack",
+        "damage": 20,
+        "reach": 3,
+        "cooldownSeconds": 0.65,
+        "slot": "light_3"
+      },
+      "heavy_1": {
+        "kind": "attack",
+        "damage": 32,
+        "reach": 3,
+        "cooldownSeconds": 1.2,
+        "slot": "heavy"
+      },
+      "dodge": {
+        "kind": "dodge",
+        "damage": 0,
+        "reach": 0,
+        "cooldownSeconds": 0.8,
+        "slot": "dodge"
+      },
+      "uppercut": {
+        "kind": "attack",
+        "damage": 35,
+        "reach": 3,
+        "cooldownSeconds": 6,
+        "slot": "ability_1"
+      },
+      "ground_pound": {
+        "kind": "attack",
+        "damage": 45,
+        "reach": 4,
+        "cooldownSeconds": 9,
+        "slot": "ability_2"
+      },
+      "dash_strike": {
+        "kind": "attack",
+        "damage": 80,
+        "reach": 8,
+        "cooldownSeconds": 30,
+        "slot": "ultimate"
+      }
     }
   }
 }
