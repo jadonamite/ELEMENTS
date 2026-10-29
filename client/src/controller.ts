@@ -29,6 +29,8 @@ export class HeroController {
   readonly body: RAPIER.RigidBody;
   readonly collider: RAPIER.Collider;
   readonly position = new Vector3();
+  /** Position before the latest physics step, for smooth drawing between steps. */
+  readonly previous = new Vector3();
   private readonly character: RAPIER.KinematicCharacterController;
   facing = Math.PI;
   speed = 0;
@@ -45,12 +47,16 @@ export class HeroController {
     this.character.setApplyImpulsesToDynamicBodies(false);
     world.step();
     this.sync();
+    this.previous.copy(this.position);
   }
 
-  step(input: MoveInput, yaw: number): void {
+  /** One physics step; a lunge (m/s) carries the hero along its facing instead of the input. */
+  step(input: MoveInput, yaw: number, lunge = 0): void {
     const dt = tuning.fixedStep;
-    const velocity = movementVelocity(input, yaw);
-    if (velocity.lengthSq() > 0) {
+    const velocity = lunge > 0
+      ? new Vector3(Math.sin(this.facing), 0, Math.cos(this.facing)).multiplyScalar(lunge)
+      : movementVelocity(input, yaw);
+    if (lunge === 0 && velocity.lengthSq() > 0) {
       this.facing = turnToward(this.facing, Math.atan2(velocity.x, velocity.z), dt);
     }
     velocity.multiplyScalar(dt);
@@ -75,6 +81,7 @@ export class HeroController {
     this.speed = Math.hypot(next.x - previous.x, next.z - previous.z) / dt;
     this.body.setNextKinematicTranslation(next);
     this.world.step();
+    this.previous.copy(this.position);
     this.sync();
   }
 
@@ -92,12 +99,14 @@ export class HeroController {
 /** Consume elapsed time at the same physics rate on fast and slow displays. */
 export class FixedStepper {
   private accumulated = 0;
-  advance(delta: number, step: () => void): void {
+  /** Runs whole steps and returns how far (0 to 1) time sits into the next one. */
+  advance(delta: number, step: () => void): number {
     this.accumulated += Math.max(0, Math.min(delta, tuning.maxFrameDelta));
     while (this.accumulated + Number.EPSILON >= tuning.fixedStep) {
       step();
       this.accumulated -= tuning.fixedStep;
     }
+    return Math.max(0, Math.min(1, this.accumulated / tuning.fixedStep));
   }
   reset(): void { this.accumulated = 0; }
 }

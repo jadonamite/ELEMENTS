@@ -33,7 +33,7 @@
     ]
   },
   "controller": {
-    "walkSpeed": 2.2,
+    "walkSpeed": 1.8,
     "runSpeed": 5.5,
     "turnRate": 14,
     "radius": 0.3,
@@ -45,7 +45,11 @@
     "idleSpeedThreshold": 0.08,
     "runSpeedThreshold": 3.5,
     "animationFade": 0.25,
-    "modelForwardYaw": 0
+    "modelForwardYaw": 0,
+    "clipSpeeds": {
+      "walk": 0.97,
+      "run": 5.36
+    }
   },
   "camera": {
     "distance": 2.7,
@@ -82,5 +86,61 @@
     "bloomStrength": 0.15,
     "bloomThreshold": 1.6,
     "vignette": 0.85
+  },
+  "combat": {
+    "fade": 0.08,
+    "comboWindow": 0.4,
+    "lungeFraction": 0.45,
+    "blockMoveScale": 0,
+    "moves": {
+      "light_1": {
+        "clip": "light_1",
+        "next": "light_2",
+        "lunge": 2.0,
+        "speed": 1.0
+      },
+      "light_2": {
+        "clip": "light_2",
+        "next": "light_3",
+        "lunge": 2.0,
+        "speed": 1.0
+      },
+      "light_3": {
+        "clip": "light_3",
+        "lunge": 2.5,
+        "speed": 1.0
+      },
+      "heavy_1": {
+        "clip": "heavy_1",
+        "next": "heavy_2",
+        "lunge": 1.5,
+        "speed": 0.9
+      },
+      "heavy_2": {
+        "clip": "heavy_2",
+        "lunge": 1.5,
+        "speed": 0.9
+      },
+      "uppercut": {
+        "clip": "uppercut",
+        "lunge": 1.5,
+        "speed": 1.0
+      },
+      "ground_pound": {
+        "clip": "ground_pound",
+        "lunge": 0,
+        "speed": 1.0
+      },
+      "dash_strike": {
+        "clip": "dash_strike",
+        "lunge": 8.0,
+        "speed": 1.2
+      },
+      "dodge": {
+        "clip": "dodge",
+        "lunge": 6.0,
+        "speed": 1.5
+      }
+    }
   }
 }

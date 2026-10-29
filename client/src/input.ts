@@ -1,6 +1,11 @@
 import type { MoveInput } from './controller.js';
+import type { CombatAction } from './combat.js';
 
-const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight']);
+const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyR']);
+/** Keys that trigger one move per press. */
+const actionKeys: Record<string, CombatAction> = {
+  KeyQ: 'uppercut', KeyE: 'ground_pound', KeyF: 'dash', Space: 'dodge',
+};
 
 export function isEditable(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable ||
@@ -9,6 +14,7 @@ export function isEditable(target: EventTarget | null): boolean {
 
 export class GameInput {
   private readonly keys = new Set<string>();
+  private readonly actions: CombatAction[] = [];
   private readonly events = new AbortController();
   private disposed = false;
 
@@ -39,6 +45,11 @@ export class GameInput {
         event.preventDefault();
         this.keys.add(event.code);
       }
+      const action = actionKeys[event.code];
+      if (action) {
+        event.preventDefault();
+        if (!event.repeat) this.actions.push(action);
+      }
     }, options);
     window.addEventListener('keyup', event => { this.keys.delete(event.code); }, options);
     window.addEventListener('blur', clear, options);
@@ -54,9 +65,25 @@ export class GameInput {
       clear();
       status('The mouse could not be captured. Select Enter the arena to try again.');
     }, options);
+    // Mouse buttons attack only while the mouse is captured; the first click captures it.
+    document.addEventListener('mousedown', event => {
+      if (document.pointerLockElement !== canvas) return;
+      if (event.button === 0) this.actions.push('light');
+      if (event.button === 2) this.actions.push('heavy');
+    }, options);
+    canvas.addEventListener('contextmenu', event => event.preventDefault(), options);
     document.addEventListener('mousemove', event => {
       if (document.pointerLockElement === canvas) orbit(event.movementX, event.movementY);
     }, options);
+  }
+
+  /** Move presses since the last call, oldest first. */
+  takeActions(): CombatAction[] {
+    return this.actions.splice(0);
+  }
+
+  get blocking(): boolean {
+    return this.keys.has('KeyR');
   }
 
   read(): MoveInput {

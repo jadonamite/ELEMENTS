@@ -16,9 +16,12 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { AnimationPlayer } from './anim/index.js';
 
-/** Sword placement in the hand bone's space. */
-const SWORD_OFFSET: [number, number, number] = [0, 0.08, 0.03];
-const SWORD_ROTATION: [number, number, number] = [0, 0, -Math.PI / 2];
+/**
+ * Sword placement in the hand bone's space, measured from the rig: the blade runs
+ * along the knuckle line toward the index finger, the handle centred in the fist.
+ */
+const SWORD_OFFSET: [number, number, number] = [-0.027, 0.094, -0.053];
+const SWORD_ROTATION: [number, number, number] = [1.402, 0.005, 0.006];
 const SWORD_SCALE = 0.23;
 
 export interface HeroInstance {
@@ -136,7 +139,9 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   holder.scale.setScalar(SWORD_SCALE);
   handBone.add(holder);
 
-  const anim = new AnimationPlayer(heroModel, heroGltf.animations, {
+  // Sword moves share the hero's skeleton and come in a separate animation-only file.
+  const combatClips = (await loader.loadAsync('/assets/characters/combat.glb')).animations;
+  const anim = new AnimationPlayer(heroModel, [...heroGltf.animations, ...combatClips], {
     defaultFadeDuration: 0.25,
   });
   anim.play('idle');

@@ -84,6 +84,25 @@ export class AnimationPlayer {
     return true;
   }
 
+  /** Play a clip once from the start, even when it is already the current clip. */
+  playOnce(name: string, fadeDuration = this.defaultFadeDuration): boolean {
+    if (this.currentClipName === name) {
+      this.actions.get(name)?.reset().play();
+      return true;
+    }
+    return this.play(name, fadeDuration, false);
+  }
+
+  /** Playback speed of a clip, where 1 is its authored speed. */
+  setSpeed(name: string, scale: number): void {
+    this.actions.get(name)?.setEffectiveTimeScale(scale);
+  }
+
+  /** Length of a clip in seconds at its authored speed, or 0 if it is missing. */
+  duration(name: string): number {
+    return this.actions.get(name)?.getClip().duration ?? 0;
+  }
+
   /**
    * Advance the animation mixer by delta seconds.
    */

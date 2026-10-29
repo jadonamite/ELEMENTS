@@ -8,6 +8,8 @@ import { loadHero, type HeroInstance } from './hero.js';
 import { FixedStepper, HeroController, locomotionForSpeed } from './controller.js';
 import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
+import { Combat } from './combat.js';
+import { Vector3 } from 'three';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -29,6 +31,8 @@ async function main(): Promise<void> {
   panel.setAttribute('aria-label', 'Arena controls');
   panel.innerHTML = '<button type="button" disabled>Loading</button>' +
     '<p class="hud-keys"><kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Mouse</kbd> look</p>' +
+    '<p class="hud-keys"><kbd>Left click</kbd> light combo <kbd>Right click</kbd> heavy <kbd>Q</kbd> uppercut ' +
+    '<kbd>E</kbd> ground pound <kbd>F</kbd> dash strike <kbd>R</kbd> block <kbd>Space</kbd> dodge</p>' +
     '<p id="control-status" class="hud-status" role="status">Loading the arena.</p>';
   document.body.appendChild(panel);
   cleanup.push(() => panel.remove());
@@ -93,17 +97,38 @@ async function main(): Promise<void> {
   });
   shoulderCamera.update(controller.position, 1, true);
 
+  const combat = new Combat(hero.anim);
+  const drawn = new Vector3();
+  const { clipSpeeds } = balance.controller;
   renderer.setAnimationLoop(() => {
     const now = performance.now();
     const delta = Math.min((now - lastTime) / 1000, balance.controller.maxFrameDelta);
     lastTime = now;
-    stepper.advance(delta, () => controller.step(input.read(), shoulderCamera.yaw));
-    hero.model.position.copy(controller.position);
+    for (const action of input.takeActions()) {
+      // Attacks and dodges go where the camera looks, as in most third-person fighters.
+      if (!combat.current && action !== 'dodge') controller.facing = shoulderCamera.yaw + Math.PI;
+      combat.press(action);
+    }
+    combat.blocking = input.blocking && !combat.current;
+    combat.update(delta);
+    const rooted = combat.current !== null || combat.blocking;
+    const alpha = stepper.advance(delta, () => controller.step(
+      rooted ? { forward: 0, right: 0, running: false } : input.read(),
+      shoulderCamera.yaw, combat.lunge));
+    // Draw between the last two physics steps so motion stays smooth on fast displays.
+    drawn.lerpVectors(controller.previous, controller.position, alpha);
+    hero.model.position.copy(drawn);
     hero.model.rotation.y = controller.facing + balance.controller.modelForwardYaw;
-    const clip = locomotionForSpeed(controller.speed);
-    hero.anim.play(clip, balance.controller.animationFade);
+    if (combat.blocking) {
+      hero.anim.play('block', balance.combat.fade);
+    } else if (!combat.current) {
+      const clip = locomotionForSpeed(controller.speed);
+      hero.anim.play(clip, balance.controller.animationFade);
+      // Match foot speed to ground speed so the feet don't slide or hop.
+      if (clip !== 'idle') hero.anim.setSpeed(clip, Math.max(0.5, controller.speed / clipSpeeds[clip]));
+    }
     hero.anim.update(delta);
-    shoulderCamera.update(controller.position, delta, reducedMotion.matches);
+    shoulderCamera.update(drawn, delta, reducedMotion.matches);
     // Hide the hero when a wall pushes the camera inside its body.
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     fps?.tick();
