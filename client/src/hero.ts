@@ -53,7 +53,7 @@ export interface HeroInstance {
   /** Sword in hand (true) or carried on the back (false). */
   arm(armed: boolean): void;
   /** Ignites or extinguishes elemental bending mode (Lit vs Unlit). */
-  setElemental(lit: boolean): void;
+  setElemental(lit: boolean, element?: string): void;
   readonly elemental: boolean;
 }
 
@@ -173,13 +173,22 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
     }
   });
 
+  const ELEMENT_EMISSIVE: Record<string, { color: number; intensity: number }> = {
+    IGNIS: { color: 0xe62a05, intensity: 2.4 },
+    AQUES: { color: 0x0088ff, intensity: 2.2 },
+    TERRA: { color: 0xd89524, intensity: 2.0 },
+    AURA: { color: 0xddeeff, intensity: 2.5 },
+    HUSH: { color: 0x9988cc, intensity: 1.0 },
+  };
+
   let elemental = false;
-  const setElemental = (lit: boolean): void => {
+  const setElemental = (lit: boolean, element: string = 'IGNIS'): void => {
     elemental = lit;
+    const spec = ELEMENT_EMISSIVE[element] ?? ELEMENT_EMISSIVE.IGNIS!;
     for (const mat of swordMaterials) {
       if (lit) {
-        mat.emissive.setHex(0xe62a05);
-        mat.emissiveIntensity = 2.4;
+        mat.emissive.setHex(spec.color);
+        mat.emissiveIntensity = spec.intensity;
       } else {
         mat.emissive.setHex(0x000000);
         mat.emissiveIntensity = 0;

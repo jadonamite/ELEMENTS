@@ -15,8 +15,9 @@ import { Fight } from './fight.js';
 import { FightHud } from './hud.js';
 import { SwordStance } from './sword.js';
 import { SoundManager } from './audio.js';
-import { BendingEffects } from './bending-fx.js';
-import { OpeningFlow } from './opening.js';
+import { BendingEffects, type BendingType } from './bending-fx.js';
+import { OpeningFlow, getStoredDrawing, type DrawingResult } from './opening.js';
+import { ConsentBanner } from './consent.js';
 import type { Enemy } from './enemy.js';
 import { Vector3 } from 'three';
 
@@ -84,11 +85,23 @@ async function main(): Promise<void> {
   cleanup.push(() => { document.removeEventListener('pointerlockchange', togglePlaying); document.body.classList.remove('playing'); });
   const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status);
   cleanup.push(() => input.dispose());
+  let heroElement: BendingType = 'IGNIS';
+  const applyDrawing = (res: DrawingResult | null): void => {
+    if (!res) return;
+    heroElement = res.role === 'Hush' ? 'HUSH' : (res.element ?? 'IGNIS');
+    if (isLit) hero.setElemental(true, heroElement);
+  };
+  applyDrawing(getStoredDrawing());
+
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
   if (!new URLSearchParams(window.location.search).has('skipIntro')) {
-    const opening = new OpeningFlow(() => {});
+    const opening = new OpeningFlow((res) => {
+      applyDrawing(res);
+    });
     cleanup.push(() => opening.dispose());
   }
+  const consent = new ConsentBanner();
+  cleanup.push(() => consent.dispose());
   // Debug builds expose the live objects for frame sampling.
   if (fps) Object.assign(window, { elements: { hero, controller, camera, shoulderCamera, input, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; } } });
   if (fps) cleanup.push(() => fps.dispose());
@@ -168,7 +181,7 @@ async function main(): Promise<void> {
 
   input.onBendingToggle = () => {
     isLit = !isLit;
-    hero.setElemental(isLit);
+    hero.setElemental(isLit, heroElement);
     if (isLit) sound.playFireBurst(0.35);
   };
 
@@ -192,13 +205,13 @@ async function main(): Promise<void> {
     sound.playSwing(1.0, action === 'heavy' || action === 'ground_pound');
     if (isLit) {
       if (action === 'ground_pound') {
-        bending.spawnGroundPound(controller.position);
+        bending.spawnGroundPound(controller.position, heroElement);
         sound.playGroundPound();
         shoulderCamera.shake(0.35);
       } else if (action === 'uppercut') {
         const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
         const pillarPos = controller.position.clone().addScaledVector(forward, 1.2);
-        bending.spawnUppercutPillar(pillarPos);
+        bending.spawnUppercutPillar(pillarPos, heroElement);
         sound.playFireBurst(0.35);
         shoulderCamera.shake(0.25);
       }
@@ -295,7 +308,7 @@ async function main(): Promise<void> {
       { move: 'dash_strike', remaining: fight.cooldownRemaining('dash_strike'), total: fight.cooldownTotal('dash_strike') },
       { move: 'dodge', remaining: fight.cooldownRemaining('dodge'), total: fight.cooldownTotal('dodge') },
     ];
-    fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight, isLit, sword.armed, lockedEnemy, cooldowns);
+    fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight, isLit, sword.armed, lockedEnemy, cooldowns, heroElement);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     fps?.tick();

@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  Color,
   CylinderGeometry,
   Group,
   Mesh,
@@ -8,6 +9,17 @@ import {
   type Scene,
   Vector3,
 } from 'three';
+import type { Element } from '../../shared/src/index.js';
+
+export type BendingType = Element | 'HUSH';
+
+const ELEMENT_COLORS: Record<BendingType, { shockwave: number; pillar: number }> = {
+  IGNIS: { shockwave: 0xff3b0a, pillar: 0xff4810 },
+  AQUES: { shockwave: 0x0088ff, pillar: 0x22bbff },
+  TERRA: { shockwave: 0xd89524, pillar: 0xa56818 },
+  AURA: { shockwave: 0xe2f0f8, pillar: 0xcce8ff },
+  HUSH: { shockwave: 0x8877aa, pillar: 0x9988cc },
+};
 
 interface Shockwave {
   mesh: Mesh;
@@ -24,8 +36,8 @@ interface FlamePillar {
 }
 
 /**
- * Visual effects for elemental bending: expanding fire rings on ground pound,
- * rising flame pillars on uppercuts, and ignition bursts.
+ * Visual effects for elemental bending across all four elements and Hush relics:
+ * expanding shockwave rings on ground pound and rising geysers/pillars on uppercuts.
  */
 export class BendingEffects {
   private readonly root = new Group();
@@ -37,12 +49,13 @@ export class BendingEffects {
     this.scene.add(this.root);
   }
 
-  /** Triggers an expanding crimson fire ring on the ground. */
-  spawnGroundPound(origin: Vector3): void {
+  /** Triggers an expanding shockwave ring on the ground. */
+  spawnGroundPound(origin: Vector3, element: BendingType = 'IGNIS'): void {
     const geo = new RingGeometry(0.2, 0.65, 32);
     geo.rotateX(-Math.PI / 2);
+    const colors = ELEMENT_COLORS[element] ?? ELEMENT_COLORS.IGNIS;
     const mat = new MeshBasicMaterial({
-      color: 0xff3b0a,
+      color: colors.shockwave,
       blending: AdditiveBlending,
       transparent: true,
       opacity: 0.95,
@@ -54,11 +67,12 @@ export class BendingEffects {
     this.shockwaves.push({ mesh, elapsed: 0, duration: 0.55, maxRadius: 4.8 });
   }
 
-  /** Triggers a rising vertical pillar of fire on an uppercut. */
-  spawnUppercutPillar(origin: Vector3): void {
+  /** Triggers a rising vertical pillar of elemental force on an uppercut. */
+  spawnUppercutPillar(origin: Vector3, element: BendingType = 'IGNIS'): void {
     const geo = new CylinderGeometry(0.35, 0.7, 3.2, 16, 1, true);
+    const colors = ELEMENT_COLORS[element] ?? ELEMENT_COLORS.IGNIS;
     const mat = new MeshBasicMaterial({
-      color: 0xff4810,
+      color: colors.pillar,
       blending: AdditiveBlending,
       transparent: true,
       opacity: 0.85,

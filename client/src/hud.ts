@@ -72,8 +72,12 @@ export class FightHud {
     isArmed = false,
     lockedEnemy: Enemy | null = null,
     cooldowns: CooldownItem[] = [],
+    element = 'IGNIS',
   ): void {
-    this.modeBadge.textContent = isLit ? 'IGNIS Lit (Bending)' : 'Physical (Unlit)';
+    const isHush = element === 'HUSH';
+    this.modeBadge.textContent = isLit
+      ? (isHush ? 'Hush Relic Overdrive' : `${element} Lit (Bending)`)
+      : (isHush ? 'Hush Relic (Physical)' : 'Physical (Unlit)');
     this.modeBadge.classList.toggle('lit', isLit);
     this.stanceBadge.textContent = isArmed ? 'Armed' : 'Barehanded';
 
