@@ -1,0 +1,507 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "NPC dialogue library for ELEMENTS. Lines are grouped by speaker then situation. Blanks: {player} player name, {nation} element/nation name, {item} item name, {price} numeric price, {coin} currency name.",
+    "banished_note": "Never use a banished element name in a dialogue line. In Collector lines the offending word appears only as [the banished word]."
+  },
+
+  "merchant_ignis": {
+    "_note": "Chromara merchant who trades in Crimson goods. Speaks in short, direct sentences. A little impatient.",
+
+    "greeting_local": [
+      "Back again. What do you need this time?",
+      "IGNIS business, is it? You've come to the right counter.",
+      "Good. A Crimson that actually shows up.",
+      "{player}. The rack's fresh this morning. Have a look.",
+      "Still breathing. That's more than I can say for some Crimsons I've seen this week."
+    ],
+
+    "greeting_outsider": [
+      "You're not from the Crimson quarter. Prices here reflect that.",
+      "Outsiders welcome, but don't expect a local's rate.",
+      "I know every Crimson in this city. Which means I know you aren't one.",
+      "Trade's trade. Tell me what you're after, {player}.",
+      "Step up. I don't turn away {nation} coin, whatever colour it runs."
+    ],
+
+    "prices_rising": [
+      "Demand's up. Price goes with it. That's the deal.",
+      "Everyone wants Crimson shards right now. Everyone pays for Crimson shards right now.",
+      "I don't set the world. I price to it. {item} is {price} {coin}, take it or leave it.",
+      "The boss shifted again. Half the city's after counter-element stock. You do the counting.",
+      "Supply's thin, {player}. Thin supply, honest price."
+    ],
+
+    "prices_falling": [
+      "Can't give this away today. Make me an offer.",
+      "Market's soft. {item} at {price} {coin}, and I'm not proud of it.",
+      "Take a look. Prices dropped this morning and they'll drop again tomorrow if this keeps up.",
+      "Nobody's buying Crimson right now. Your luck, my problem.",
+      "Stock piling up. {price} {coin} and it walks out the door."
+    ],
+
+    "out_of_stock": [
+      "Sold out. Come back when the caravans do.",
+      "Nothing left. You should have been here yesterday.",
+      "Rack's empty. I'm not hiding anything.",
+      "The last of the {item} went an hour ago. I'd say check back tomorrow, but I'm not sure tomorrow's better.",
+      "I wish I had it. I don't."
+    ],
+
+    "going_broke": [
+      "I'll be straight with you: coin is short. I'm buying, not selling.",
+      "Don't mistake a quiet counter for a wealthy one. I'm stretched.",
+      "If you've got {item} to sell, now is a good time. If you're here to buy, come back when the treasury's been kinder.",
+      "Lean month. Very lean month.",
+      "Trade's been rough. Make me a fair offer on what you're carrying and we'll both come out ahead."
+    ],
+
+    "sale_made": [
+      "Good doing business.",
+      "There. Fair exchange.",
+      "{price} {coin} and it's yours. Pleasure.",
+      "Done. Don't let it wear out too fast.",
+      "Smart pick. Crimson stock doesn't sit long."
+    ]
+  },
+
+  "merchant_aques": {
+    "_note": "Merchant dealing in Azure goods. Measured, patient, occasionally philosophical.",
+
+    "greeting_local": [
+      "Welcome back. The supply's been generous this week.",
+      "{player}. Come and see what came in.",
+      "You know where everything is. Help yourself to a look.",
+      "Good timing. I just restocked.",
+      "The shelf's different than yesterday. Worth a second look."
+    ],
+
+    "greeting_outsider": [
+      "You've come a distance. What brings you to the Azure quarter?",
+      "We trade with everyone here. You'll find the prices are fair, if not local.",
+      "I don't turn business away. Tell me what you need, {player}.",
+      "Outsider rates apply, but I'll tell you plainly what they are before you decide.",
+      "{player}, is it? From {nation}? You're a long way from home. Let's see what I can do for you."
+    ],
+
+    "prices_rising": [
+      "The demand's moved faster than the supply. I'm pricing to what I have.",
+      "Azure shards are short this week. I'm sorry. {item} is {price} {coin}.",
+      "The boss changed element two nights ago. Half the city wants what I carry now.",
+      "I'll be honest: the price is high. It's high for me too when I restock.",
+      "I'd rather charge less and have more to sell. I can only price to what the market gives me."
+    ],
+
+    "prices_falling": [
+      "Good news for buyers today. The price has come down.",
+      "{item} at {price} {coin}. Stock's full; I'd rather it moved.",
+      "Things are slow. If you're buying, you picked the right day.",
+      "The price dropped overnight. Stock up while it lasts.",
+      "Plenty of {item}. I'll take {price} {coin} and be glad to have it off the shelf."
+    ],
+
+    "out_of_stock": [
+      "Sorry, the {item} is gone. Next shipment is two days out.",
+      "Nothing left of that line. I'll have more by the end of the week.",
+      "Sold through. If you leave your name, I'll set some aside when the next lot arrives.",
+      "Empty. The demand's been relentless.",
+      "I don't have it right now. I wish I did."
+    ],
+
+    "going_broke": [
+      "Margins have been bad. I'm buying more than I'm selling this week.",
+      "I'll tell you honestly: I can't afford to restock well right now. What I have is what you see.",
+      "Lean times. If you're selling, I'm interested. If you're buying, the selection's limited.",
+      "The treasury's quiet and so is my register. I'm working through it.",
+      "A merchant who pretends to be fine when he's not is fooling no one. I'm stretched. Come back in a few days."
+    ],
+
+    "sale_made": [
+      "There. Good trade.",
+      "Pleasure doing business with you, {player}.",
+      "Done. Take care with that. It's worth the price.",
+      "{price} {coin}. Fair exchange.",
+      "Good. Come back when you need more."
+    ]
+  },
+
+  "merchant_terra": {
+    "_note": "Merchant dealing in Ochre goods. Slow to speak. Blunt. Values durability over elegance.",
+
+    "greeting_local": [
+      "You again. Good.",
+      "{player}. The heavy stock's in the back. Ask if you need it.",
+      "Ochre business? Right place.",
+      "Stand there. I'll get to you.",
+      "Come in. Don't touch anything you're not buying."
+    ],
+
+    "greeting_outsider": [
+      "Not from around here. Prices are different for outsiders. Fair, but different.",
+      "I see you. Come closer. What do you need?",
+      "Trade's open to everyone. Don't expect a discount just for asking.",
+      "{player}. From {nation}. Fine. What are you looking for?",
+      "You're not the first outsider today. Won't be the last. Come in."
+    ],
+
+    "prices_rising": [
+      "Price went up. Demand went up. That's how it works.",
+      "{item}: {price} {coin}. No argument.",
+      "Stock's low. Can't help that.",
+      "Everyone needs Ochre right now and there's only so much of it. Pay or wait.",
+      "The world's shifting. Prices shift with it. {price} {coin} and that's final."
+    ],
+
+    "prices_falling": [
+      "Not a busy week. Take it at {price} {coin}.",
+      "Price dropped. It happens.",
+      "{item} at {price} {coin}. Stock's high, buyer's market.",
+      "I'd rather sell at a lower price than not sell at all.",
+      "Come and look. Good prices today."
+    ],
+
+    "out_of_stock": [
+      "Gone.",
+      "Nothing left of that. Try again later.",
+      "I'd give it to you if I had it. I don't.",
+      "Sold out. Come back in three days.",
+      "Empty rack. No point standing there staring at it."
+    ],
+
+    "going_broke": [
+      "Slow month. Very slow.",
+      "I'm buying right now, not selling. You have anything worth trading?",
+      "Stock's thin and so is my coin. What are you carrying?",
+      "I'll be plain: times are hard. Selling to me is a better idea than buying from me this week.",
+      "Every merchant has bad seasons. This is one of mine."
+    ],
+
+    "sale_made": [
+      "Done.",
+      "Good trade.",
+      "{price} {coin}. Fair.",
+      "There. Don't waste it.",
+      "Pleasure."
+    ]
+  },
+
+  "merchant_aura": {
+    "_note": "Merchant dealing in Pale goods. Quick, light-footed speech. Reads the room and adapts. Enjoys the churn.",
+
+    "greeting_local": [
+      "There you are. I was starting to think you'd found another counter.",
+      "{player}. Good timing. New stock came in this morning.",
+      "Pale quarter's own. What do you need?",
+      "Always good to see a regular. Have a look. The shelf's changed.",
+      "You've got the eye. You'll spot what's new before I say a word."
+    ],
+
+    "greeting_outsider": [
+      "Outsider or local, it all spends the same in the end. What do you need?",
+      "Far from home. You've either got good taste or a good reason. Either's fine by me.",
+      "{player}, from {nation}? I've got things that'll work for you. Let me show you.",
+      "We price by distance from home here. Nothing personal. Just practical.",
+      "Welcome. I'll tell you the outsider rate upfront so we don't waste each other's time."
+    ],
+
+    "prices_rising": [
+      "The Pale stock's in demand again. Honestly, I'm not sorry.",
+      "Price is up on {item}. Supply's down and the boss didn't help matters.",
+      "The whole city's scrambling for counter-element gear. We just happen to have it. {price} {coin}.",
+      "I know it's steep. It won't last. The market always levels.",
+      "Demand set this price, not me. {price} {coin}, {player}."
+    ],
+
+    "prices_falling": [
+      "Slower this week. {item} at {price} {coin}. A fair deal, for once.",
+      "Price is down. I'm treating it as an opportunity, and you should too.",
+      "Not a crisis, just a soft market. {price} {coin} and I'll throw in a good word.",
+      "Everyone's selling Pale today. Which makes your buying very well timed.",
+      "Take it at {price} {coin}. When things swing back, and they will, you'll be glad you did."
+    ],
+
+    "out_of_stock": [
+      "That's the one thing I can't get for you today. Sorry.",
+      "Cleaned out. I'd tell you when it's back, but I genuinely don't know.",
+      "Nothing left of {item}. The demand came out of nowhere.",
+      "Would love to help. Don't have it.",
+      "Sold the last one an hour ago. Painful timing."
+    ],
+
+    "going_broke": [
+      "Rough stretch, I'll admit. If you're selling, I'm interested. If you're buying, pick carefully. The selection's what it is.",
+      "I've been in leaner spots. This is lean, though.",
+      "Coin's thin. If you've got surplus {item}, let's talk price.",
+      "Business goes in cycles. I'm in a trough. I'll climb out.",
+      "Not the week to be a merchant. What are you carrying?"
+    ],
+
+    "sale_made": [
+      "There we go. Pleasure.",
+      "Done. Come back before it runs out again.",
+      "{price} {coin}. Good pick.",
+      "Nice doing business. Genuinely.",
+      "Good deal for both of us. Safe travels, {player}."
+    ]
+  },
+
+  "merchant_chromara": {
+    "_note": "The central Chromara merchant. Trades across all nations, but deals in rarer mixed goods. Neutral accent; careful word choice; seen everything.",
+
+    "greeting_local": [
+      "Back in Chromara. What brings you to the centre this time?",
+      "{player}. The Chromara stock is different from what you'd find in the nations. Take a look.",
+      "A familiar face. The shelves have turned over since you were last here.",
+      "Good to see you're still on your feet. What do you need?",
+      "Come in, come in. Plenty to look at."
+    ],
+
+    "greeting_outsider": [
+      "First time in Chromara, is it? You'll find we deal in things the nation markets don't carry.",
+      "Welcome to the centre. Prices here are what they are. No local rate, but no gouging either.",
+      "Every nation comes through here eventually. What can I help you find?",
+      "{player}. From {nation}. You've made a good choice coming here.",
+      "This is the market where the nations meet. Anything you can't get at home, you'll find here."
+    ],
+
+    "prices_rising": [
+      "Cross-nation demand is up. That always moves the Chromara price.",
+      "When the nations are buying hard, this counter feels it first. {item} is {price} {coin}.",
+      "The boss has been unsettled. Everyone's stocking up. You understand the price.",
+      "I don't enjoy saying it, but the market is the market. {price} {coin}.",
+      "Shortages in the nations push buyers here. The price reflects that."
+    ],
+
+    "prices_falling": [
+      "Slow week across the board. Good time to buy if you have coin to spend.",
+      "Prices have softened. Take advantage while they have.",
+      "{item} at {price} {coin}. Stock's healthy and moving slowly.",
+      "The nations are well-supplied right now. Chromara prices reflect that.",
+      "A buyer's window. {price} {coin} for {item}."
+    ],
+
+    "out_of_stock": [
+      "Nothing left of that one. Supply chains run through all four nations. Takes time to restock.",
+      "Sold through. It could be a week before I see more.",
+      "I don't have it. I know who might. Ask the nation merchants directly.",
+      "The Chromara supply ran dry on {item}. Rare, but it happens.",
+      "Empty shelf, I'm afraid. Check back in a few days."
+    ],
+
+    "going_broke": [
+      "If you're selling, I'd rather be buying right now.",
+      "This market goes up and down. I'm in a down spell. The selection is thinner than I'd like.",
+      "Coin is tight at the centre right now. The imbalance events haven't helped.",
+      "I've seen worse. Not much worse, but worse. I'll be back on my feet.",
+      "Slow season. I'm more interested in what you're carrying than in what you need."
+    ],
+
+    "sale_made": [
+      "Done. Good dealing with you.",
+      "{price} {coin}. Pleasure.",
+      "That's settled. Come back when you need the next thing.",
+      "Good trade. Safe travelling.",
+      "The market's better for both of us. Thank you, {player}."
+    ],
+
+    "first_visit_chromara": [
+      "First time through the gates? Then let me tell you what this place is. Four nations, one city, one set of rules. The Edict holds here. Keep your old names to yourself.",
+      "You've made it to Chromara. It gets easier once you know where everything is. The merchants are arranged by nation stock. I deal in what none of them stock alone.",
+      "Not many come through those gates looking as uncertain as you do, {player}. You'll find your footing. This city rewards patience.",
+      "Welcome. The first thing to know: everything here runs on {coin}. The second thing: the Collectors are everywhere. Keep that in mind.",
+      "Chromara is the centre for a reason. Trade, training, the boss: it all passes through here eventually."
+    ]
+  },
+
+  "master_ignis": {
+    "_note": "IGNIS element master. Demanding, intense, unimpressed by effort alone. Respects results.",
+
+    "accept_student": [
+      "You want to learn. Let's see if that's true in a week. Show up, and show up ready.",
+      "Fine. I'll take you on. Don't make me regret it.",
+      "I've seen worse come through here. The fee is {price} {coin}. Pay it and we start.",
+      "You've got something to learn, and I'm willing to teach it. Don't waste the chance.",
+      "{player}. IGNIS Novice. I can work with that. The fee is {price} {coin}. First session starts now."
+    ],
+
+    "refuse_student": [
+      "Not today. Come back when you've earned the right to ask.",
+      "Your coin is short and so is your skill. Come back when both have grown.",
+      "I don't take students who aren't ready. You're not ready.",
+      "The fee is {price} {coin}. You don't have it. This conversation is over.",
+      "I teach IGNIS masters, not everyone who walks through the door. Prove yourself elsewhere first."
+    ],
+
+    "fee_rising": [
+      "Demand is up. My time costs more when half the Crimson quarter is queuing for it.",
+      "New rate: {price} {coin}. The Adepts can afford it. If you can't, train on your own until you can.",
+      "Everyone wants the advanced techniques right now. That changes the price.",
+      "I set the fee based on demand. Demand is high. {price} {coin}.",
+      "It went up. The training didn't get worse. There's just more competition for a seat."
+    ]
+  },
+
+  "master_aques": {
+    "_note": "AQUES element master. Calm, slow to judge, but clear about standards. Gives reasons.",
+
+    "accept_student": [
+      "You've come at a reasonable time and asked the right way. We'll begin.",
+      "I'll take you. The fee is {price} {coin}. The first thing we work on is patience.",
+      "{player}. You're ready enough to start. That's enough for me.",
+      "I've been watching students come through this door for a long time. You'll do. The fee is {price} {coin}.",
+      "Sit. We'll talk through what you want to learn, and I'll tell you what I can offer. Then we'll agree on the fee."
+    ],
+
+    "refuse_student": [
+      "I can't take you on right now. It's not a judgment on your potential. The timing is wrong.",
+      "The fee is {price} {coin}. I understand if that's not possible. Come back when it is.",
+      "You're not quite at the level this training requires. Come back after more practice in the field.",
+      "I could take your coin and teach you something. But the right thing is to send you back to the arena first.",
+      "Another time, {player}. The foundation has to be solid before we build on it."
+    ],
+
+    "fee_rising": [
+      "More students have been coming in, and my time is what it is. The fee has gone up.",
+      "New rate is {price} {coin}. I don't enjoy raising it, but I have to be honest about the demand.",
+      "When the boss shifts to a counter element, everyone wants AQUES techniques. The fee moves with the season.",
+      "{price} {coin}. I'll tell you plainly what changed and why, if you want to know.",
+      "It's gone up. I'm sorry. The rate is {price} {coin} now."
+    ]
+  },
+
+  "master_terra": {
+    "_note": "TERRA element master. Economy of words. Tests with actions before words.",
+
+    "accept_student": [
+      "Good. You start Monday.",
+      "I'll take you. {price} {coin}. Don't be late.",
+      "You're ready enough. The fee is {price} {coin}.",
+      "Show up. That's the first requirement. After that, we'll see.",
+      "Fine. Pay the fee, {price} {coin}, and don't waste my time."
+    ],
+
+    "refuse_student": [
+      "Not yet.",
+      "You're not ready. The foundation's wrong. Fix it, then come back.",
+      "The fee's {price} {coin}. Come back when you have it.",
+      "No.",
+      "You need more time in the zones before I can teach you anything that will stick."
+    ],
+
+    "fee_rising": [
+      "Fee went up. {price} {coin} now.",
+      "Demand's high. I set the price accordingly.",
+      "New rate. {price} {coin}. It's fair.",
+      "More students this month. The price reflects that.",
+      "{price} {coin}. Prices changed. That's it."
+    ]
+  },
+
+  "master_aura": {
+    "_note": "AURA element master. Quick wit but no nonsense beneath it. Reads students fast.",
+
+    "accept_student": [
+      "You're quick enough to keep up. Let's go. Fee is {price} {coin}.",
+      "I had you figured out before you finished your sentence. You'll do. {price} {coin}.",
+      "Good timing. I just finished with the last group. {price} {coin} and we start.",
+      "A bit rough at the edges, but the instincts are there. I can work with that. {price} {coin}.",
+      "{player}. Fine. You're in. Don't slow us down."
+    ],
+
+    "refuse_student": [
+      "You're not ready for this level. The footwork's wrong, and everything else depends on that.",
+      "I need students who can keep pace. Come back when you can.",
+      "Not the right fit right now. The fee is {price} {coin} when you are.",
+      "I've got a full group. Try again in a week.",
+      "You'd hold the others back. That's not a slight. It's just where you are. Build up, then come back."
+    ],
+
+    "fee_rising": [
+      "More people want AURA training when the boss is on a different element. Makes sense. Price went up.",
+      "New rate: {price} {coin}. I don't make apologies for pricing to demand.",
+      "Fee's up. Supply and demand, same as the merchants. {price} {coin}.",
+      "When everyone's scrambling for Pale techniques, my rate goes up. That's the deal.",
+      "{price} {coin} now. The training's worth it. You know that, or you wouldn't be here."
+    ]
+  },
+
+  "collector": {
+    "_note": "Lord's Collectors in Chromara. Enforce the Edict of Unnaming. Formal, measured, a little cold. They take no pleasure in the work. They do it anyway.",
+
+    "catching_edict_breaker": [
+      "You said [the banished word] in Chromara. The Edict applies. A fine of {price} {coin} is due to the treasury.",
+      "I heard it. [the banished word]. You're in Chromara, {player}. The Edict holds here. Pay {price} {coin}.",
+      "The word was [the banished word]. That word is banished by the Lord's decree. The fine is {price} {coin}.",
+      "I don't enjoy this part of my work. But you said [the banished word], and the Edict is clear. {price} {coin}, to the treasury.",
+      "Stop there. [the banished word] was spoken in this city. That costs {price} {coin}. Pay it now."
+    ],
+
+    "fine_paid": [
+      "Paid. The record is settled. Watch your words.",
+      "The treasury has received it. You're free to go.",
+      "That's done. Consider it a reminder. The Edict doesn't make exceptions.",
+      "Paid. Next time, mind what you say. In Chromara, the Lord's ears are everywhere.",
+      "Fine is cleared. {player}. Don't make this a habit."
+    ],
+
+    "warning_first": [
+      "Careful. That word is close to a banished term. In Chromara, close isn't close enough.",
+      "I'll note this as a warning. One more time and the fine stands.",
+      "I'll give you the benefit of the doubt this time. But I'm watching.",
+      "New to Chromara? The Edict banishes the old names. You'll want to learn the new ones.",
+      "A warning, not a fine. This once. The Edict is posted at every gate. Read it."
+    ]
+  },
+
+  "rival_guild": {
+    "_note": "AI agents in the rival guild. They fight the boss and race for the final blow. Speak like players: competitive, brief. Not friendly.",
+
+    "greeting_local": [
+      "Still alive, then. Good. We need someone to lose to.",
+      "Don't get in our way during the hunt.",
+      "You showed up. That's something, at least.",
+      "{player}. Seen you fight. You're not bad.",
+      "Don't mistake this for an alliance."
+    ],
+
+    "greeting_outsider": [
+      "{nation}? Long way from home. Come for the boss?",
+      "Outsider at the gate. The boss doesn't care where you're from. Neither do we.",
+      "You came all the way to Chromara for this? Good. It's worth it.",
+      "We don't turn away competition. Makes the final blow sweeter.",
+      "{player}. You've heard of us, then."
+    ],
+
+    "boss_changing_element": [
+      "The boss just shifted. Change your loadout or get behind us.",
+      "Element's changed. Half of you are holding the wrong gear right now.",
+      "New phase. The counter changes. Adjust.",
+      "The boss shifted to {nation} alignment. That changes the whole hunt.",
+      "New element, new edge. If you're not ready, step back."
+    ],
+
+    "competing_for_final_blow": [
+      "The kill is ours. Fall back.",
+      "Final blow goes to the guild. You had your shot.",
+      "You got close. Not close enough.",
+      "Don't push it. We've been on this boss since the last phase.",
+      "Backing off now would be the smart move, {player}."
+    ],
+
+    "after_final_blow_won": [
+      "There it is. Final blow, guild's bonus, treasury payout. Good fight.",
+      "That's what we came for.",
+      "Told you.",
+      "Strong work from our end. You put up a decent fight, {player}.",
+      "The boss is down. Count your damage and move on."
+    ],
+
+    "after_final_blow_lost": [
+      "You got it this time. We'll be faster next time.",
+      "Fine. Good shot. Don't get comfortable.",
+      "You beat us to it. We won't make that mistake again.",
+      "Enjoy the bonus. We've got the next one.",
+      "{player} got the kill. Note it. Learn from it. We won't be second twice."
+    ]
+  }
+}
