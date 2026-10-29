@@ -36,8 +36,8 @@ Four elemental nations surround the neutral city of Chromara, under a Lord whose
 **Places and money.**
 
 - **Chromara:** the neutral central city. Main market, the Edict, the Lord's treasury, the world boss.
-- **EAR:** the single currency. Lore: the Lord is always listening, every coin is stamped with an ear, and Edict fines are paid in EAR. Check the ticker isn't taken on NEAR before locking it.
-- **The Edict:** speaking a banished name in Chromara costs a fine in EAR, paid to the treasury. The game itself never uses the old franchise terms.
+- **CHROMA:** the single currency, minted by the Lord's treasury in Chromara. Lore: the Lord is always listening, every coin is stamped with an ear, and Edict fines are paid in CHROMA. The ticker is free on NEAR (checked 29 Oct).
+- **The Edict:** speaking a banished name in Chromara costs a fine in CHROMA, paid to the treasury. The game itself never uses the old franchise terms.
 
 ## Opening sequence
 
@@ -50,7 +50,7 @@ The first minute sells the game: a normal-looking purchase turns into being pull
 5. **The result:** "You have awakened as a Shaper of IGNIS", or "You are Hush". The draw uses NEAR's on-chain randomness and is recorded permanently, so anyone can verify it.
 6. **Sent to the home nation** the Drawing chose, and the game begins.
 
-**Open:** how to stop re-rolls. Free accounts let people redraw, and bots could farm Hush accounts for the 0.5% awakening. Options: one game copy per verified identity, permanent results, and awakening that needs playtime plus burned EAR.
+**Open:** how to stop re-rolls. Free accounts let people redraw, and bots could farm Hush accounts for the 0.5% awakening. Options: one game copy per verified identity, permanent results, and awakening that needs playtime plus burned CHROMA.
 
 ## Combat
 
@@ -85,9 +85,9 @@ Combat is the star of the game and gets most of the build time. It's player-vers
 
 ## Economy
 
-The economy is what this track scores: one currency (EAR) plus materials, with prices set by supply and demand and NPCs that can win or go broke. Value is in-game and tradable on-chain; there is no real-money wagering.
+The economy is what this track scores: one currency (CHROMA) plus materials, with prices set by supply and demand and NPCs that can win or go broke. Value is in-game and tradable on-chain; there is no real-money wagering.
 
-**Where EAR and materials come from:**
+**Where CHROMA and materials come from:**
 
 - Fights and zones drop **elemental shards**, tinted by colour.
 - The Hush craft shards into relics and gear and sell them.
@@ -99,8 +99,8 @@ The economy is what this track scores: one currency (EAR) plus materials, with p
 - **Edict fines** for speaking a banished name in Chromara
 - **Repairs:** gear wears down and the Hush repair it for a fee
 - **Training:** NPC masters charge to teach techniques
-- **Building upkeep** in EAR
-- **Awakening attempts** burn EAR
+- **Building upkeep** in CHROMA
+- **Awakening attempts** burn CHROMA
 - **Death:** you drop the materials you carry (never gear or your account), and part of them is destroyed
 
 **Crafting rules:**
@@ -115,7 +115,7 @@ The economy is what this track scores: one currency (EAR) plus materials, with p
 - **Imbalance events.** If one colour dominates too long, the world reacts on its own, e.g. a Crimson firestorm that closes an Ochre trade route.
 - **Interdependence.** 85% of players fight but can't craft; 15% craft. Every Shaper depends on the Hush.
 
-**Awakening (Hush to Vakna):** a 0.5% base chance that **shrinks as the population grows**, so Vaknas stay rare at any scale. Each attempt **burns EAR**.
+**Awakening (Hush to Vakna):** a 0.5% base chance that **shrinks as the population grows**, so Vaknas stay rare at any scale. Each attempt **burns CHROMA**.
 
 **Decided later:** who sets the treasury rules (fixed contract or player influence). To be settled as the build wraps up.
 
@@ -123,7 +123,7 @@ The economy is what this track scores: one currency (EAR) plus materials, with p
 
 Land is a real on-chain asset: plots are NEP-245 tokens players own and can sell to each other, in limited supply per nation.
 
-- **Plots** are bought with EAR in any nation. Your home nation is cheapest; owning land elsewhere costs a premium, which makes cross-nation trade plays possible.
+- **Plots** are bought with CHROMA in any nation. Your home nation is cheapest; owning land elsewhere costs a premium, which makes cross-nation trade plays possible.
 - **Structures** on a simple grid:
 
 | Structure | Who uses it | What it does |
@@ -134,8 +134,8 @@ Land is a real on-chain asset: plots are NEP-245 tokens players own and can sell
 | Shard mine | Owner | Produces the nation's shards over time |
 | Walls and defenses | Owner | Protect the plot |
 
-- **Upkeep:** every building costs EAR to maintain. Neglected buildings decay.
-- **Guilds (lite at launch):** players can share a plot, pool EAR, and race for the world boss's final blow. Guild halls, politics and territory wars come later.
+- **Upkeep:** every building costs CHROMA to maintain. Neglected buildings decay.
+- **Guilds (lite at launch):** players can share a plot, pool CHROMA, and race for the world boss's final blow. Guild halls, politics and territory wars come later.
 
 ## World boss and NPC agents
 
@@ -153,7 +153,7 @@ The launch raid is one shared world boss near Chromara; real-time co-op raids co
 
 | NPC | Count at launch | Behaviour |
 | --- | --- | --- |
-| Merchants | 5 (one per nation, one in Chromara) | Hold EAR and stock, price by supply and demand, can go broke |
+| Merchants | 5 (one per nation, one in Chromara) | Hold CHROMA and stock, price by supply and demand, can go broke |
 | Masters | 4 (one per element) | Train Shapers, raise fees when demand spikes |
 | The Lord's Collectors | A few in Chromara | Enforce the Edict and collect fines for the treasury |
 | Rival guild | 1 guild of AI agents | Fights the world boss and competes for the final-blow bonus |
@@ -163,7 +163,7 @@ The launch raid is one shared world boss near Chromara; real-time co-op raids co
 Shapers grow in combat power, the Hush grow in economic power, and the Allborn is a legend that hints the game is bigger than launch.
 
 - **Map:** the four nations surround Chromara. Each nation is a small zone; Chromara carries most of the content. The Drawing sets your home nation, but you can travel anywhere. Outsiders face higher prices and wary NPCs.
-- **Shapers:** mastery tiers in their element (e.g. Novice, Adept, Master), unlocked by fighting and by paying NPC masters in EAR. Each tier unlocks new techniques.
+- **Shapers:** mastery tiers in their element (e.g. Novice, Adept, Master), unlocked by fighting and by paying NPC masters in CHROMA. Each tier unlocks new techniques.
 - **The Hush:** craft tiers that unlock better relics and gear.
 - **Vaknas:** both paths at once, their rarity making them the most valuable players in the economy.
 - **The Allborn (the Prism):** not reachable at launch. Foreshadowed through legends in Chromara, a sealed statue and NPC whispers.
@@ -187,7 +187,7 @@ Everything real-time runs off-chain so the game stays light in the browser; NEAR
           ▼
 ┌─ NEAR (on-chain) ──────────────────────────────────────────────┐
 │  Game-copy token · The Drawing (randomness) ·                  │
-│  Items, relics, plots (NEP-245) · EAR, treasury, fines ·       │
+│  Items, relics, plots (NEP-245) · CHROMA, treasury, fines ·       │
 │  NPC agent accounts · Intents top-ups (optional)               │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -198,7 +198,7 @@ Fights run on the game server in real time. The client signs in through social l
 
 - **Client:** Three.js or Babylon.js for rendering, Rapier for physics, shader-based effects.
 - **Server:** Node with WebSockets for authoritative combat and world state.
-- **Chain:** NEAR contracts for the game copy, the Drawing, NEP-245 items and plots, EAR and the treasury, and NPC agent accounts.
+- **Chain:** NEAR contracts for the game copy, the Drawing, NEP-245 items and plots, CHROMA and the treasury, and NPC agent accounts.
 - **Assets:** Realistic pipeline: Megascans/Poly Haven scans, Hunyuan 3D characters, Mixamo/Rokoko animation, ElevenLabs audio and Marble/Scaniverse splats; see [docs/ASSETS.md](ASSETS.md) for verified rights, free-tier limits and unresolved blockers.
 
 ## Build plan and open questions
@@ -226,7 +226,7 @@ Code starts 1 Nov and combat comes first, because it decides the most work; ever
 
 - [ ] Ask the organizers in the NEAR Discord whether pre-1 Nov work is allowed if disclosed
 - [ ] Pick the asset packs and confirm each license
-- [ ] Check that the EAR ticker is free on NEAR
+- [x] Check that the CHROMA ticker is free on NEAR
 
 **Open questions:**
 
