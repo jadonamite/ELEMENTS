@@ -45,5 +45,7 @@ Direct dependencies are pinned in the workspace manifests. `package-lock.json` r
 - [concurrently](https://github.com/open-cli-tools/concurrently): starts and stops both development services.
 - [Node.js](https://nodejs.org/): server runtime and shared-test runner.
 - [Node.js types](https://www.npmjs.com/package/@types/node) and [Three.js types](https://www.npmjs.com/package/@types/three): TypeScript declarations from [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped).
+- [Cinzel](https://github.com/NDISCOVER/Cinzel): display serif typeface by Natanael Gama, self-hosted WOFF2, licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/).
+- [Inter](https://github.com/rsms/inter): interface typeface by Rasmus Andersson, self-hosted WOFF2, licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/).
 
-The client loads no art or fonts yet. Existing asset sources are recorded in [docs/ASSETS.md](docs/ASSETS.md).
+The client self-hosts its fonts locally under `client/public/fonts/`. Other asset sources are recorded in [docs/ASSETS.md](docs/ASSETS.md).

@@ -1,4 +1,5 @@
 import { Color, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+import './ui/tokens.css';
 import './style.css';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game');

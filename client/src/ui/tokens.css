@@ -1,0 +1,215 @@
+@font-face {
+  font-family: 'Cinzel';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/cinzel-bold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-regular.woff2') format('woff2');
+}
+
+:root {
+  /* Typography - Families */
+  --font-family-display: 'Cinzel', Georgia, serif;
+  --font-family-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Typography - Weights */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Typography - Type Scale */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-size-5xl: 3rem;
+
+  /* Typography - Line Heights */
+  --line-height-none: 1;
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.375;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.625;
+  --line-height-loose: 2;
+
+  /* Typography - Letter Spacings */
+  --letter-spacing-tight: -0.025em;
+  --letter-spacing-normal: 0em;
+  --letter-spacing-wide: 0.025em;
+  --letter-spacing-wider: 0.05em;
+  --letter-spacing-widest: 0.1em;
+
+  /* Spacing Scale */
+  --space-0: 0px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* Interactive Targets (Minimum 44px) */
+  --target-min-size: 44px;
+  --target-min-width: 44px;
+  --target-min-height: 44px;
+
+  /* Radii Scale */
+  --radius-none: 0px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* Motion - Durations */
+  --duration-instant: 0ms;
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-moderate: 300ms;
+  --duration-slow: 500ms;
+  --duration-deliberate: 800ms;
+
+  /* Motion - Easings */
+  --ease-linear: linear;
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Nation Colors - IGNIS (Crimson Glow, Blackened Iron, Ember-red cloth) */
+  --color-ignis-glow: #e63946;
+  --color-ignis-glow-bright: #ff5765;
+  --color-ignis-glow-dim: rgba(230, 57, 70, 0.2);
+  --color-ignis-crimson: #c92a2a;
+  --color-ignis-iron: #1a1616;
+  --color-ignis-ember: #8b1e1e;
+  --color-ignis-soot: #120e0e;
+  --color-ignis-leather: #3d231d;
+
+  /* Nation Colors - AQUES (Azure Glow, Pale Bronze, Deep Blue cloth) */
+  --color-aques-glow: #00a6fb;
+  --color-aques-glow-bright: #38bdf8;
+  --color-aques-glow-dim: rgba(0, 166, 251, 0.2);
+  --color-aques-azure: #0284c7;
+  --color-aques-bronze: #b89778;
+  --color-aques-deep-blue: #0c2340;
+  --color-aques-stone: #1a2634;
+  --color-aques-shell: #e2e8f0;
+
+  /* Nation Colors - TERRA (Ochre Glow, Earth Brown, Gold-Ochre trims) */
+  --color-terra-glow: #e09f3e;
+  --color-terra-glow-bright: #f59e0b;
+  --color-terra-glow-dim: rgba(224, 159, 62, 0.2);
+  --color-terra-ochre: #ca8a04;
+  --color-terra-earth: #5c4033;
+  --color-terra-gold: #c49a45;
+  --color-terra-clay: #38241b;
+  --color-terra-rough-stone: #292524;
+
+  /* Nation Colors - AURA (Pale White Glow, Silver-Grey, White cloth) */
+  --color-aura-glow: #f1f5f9;
+  --color-aura-glow-bright: #ffffff;
+  --color-aura-glow-dim: rgba(241, 245, 249, 0.25);
+  --color-aura-pale-white: #f8fafc;
+  --color-aura-silver: #cbd5e1;
+  --color-aura-steel: #64748b;
+  --color-aura-wind: #1e293b;
+
+  /* The Hush (Neutral, Undyed cloth, Work leather, Faint relic glow) */
+  --color-hush-relic-glow: #a8a29e;
+  --color-hush-relic-dim: rgba(168, 162, 158, 0.2);
+  --color-hush-undyed: #d6d3d1;
+  --color-hush-leather: #78716c;
+  --color-hush-iron: #44403c;
+  --color-hush-dark: #1c1917;
+
+  /* Neutrals - Dark Theme (Default) */
+  --color-bg-base: #0d0f12;
+  --color-bg-surface: #14181f;
+  --color-bg-raised: #1c222c;
+  --color-bg-overlay: #252d3a;
+  --color-bg-subtle: #181d24;
+
+  --color-text-primary: #f0f2f5;
+  --color-text-secondary: #9ba3af;
+  --color-text-muted: #636b77;
+  --color-text-inverse: #0d0f12;
+
+  --color-border-subtle: #222933;
+  --color-border-default: #323b49;
+  --color-border-strong: #475468;
+
+  --color-status-success: #10b981;
+  --color-status-warning: #f59e0b;
+  --color-status-error: #ef4444;
+  --color-status-info: #3b82f6;
+
+  /* Shadows - Dark Theme */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-glow-ignis: 0 0 16px rgba(230, 57, 70, 0.45);
+  --shadow-glow-aques: 0 0 16px rgba(0, 166, 251, 0.45);
+  --shadow-glow-terra: 0 0 16px rgba(224, 159, 62, 0.45);
+  --shadow-glow-aura: 0 0 16px rgba(241, 245, 249, 0.45);
+}
+
+/* Light Theme Set */
+[data-theme="light"],
+:root[data-theme="light"] {
+  --color-bg-base: #f8f9fa;
+  --color-bg-surface: #ffffff;
+  --color-bg-raised: #f1f3f5;
+  --color-bg-overlay: #e9ecef;
+  --color-bg-subtle: #f3f4f6;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #6b7280;
+  --color-text-inverse: #f9fafb;
+
+  --color-border-subtle: #e5e7eb;
+  --color-border-default: #d1d5db;
+  --color-border-strong: #9ca3af;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-glow-ignis: 0 0 16px rgba(230, 57, 70, 0.25);
+  --shadow-glow-aques: 0 0 16px rgba(0, 166, 251, 0.25);
+  --shadow-glow-terra: 0 0 16px rgba(224, 159, 62, 0.25);
+  --shadow-glow-aura: 0 0 16px rgba(100, 116, 139, 0.25);
+}
+
+/* Reduced Motion Rule */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-moderate: 0ms;
+    --duration-slow: 0ms;
+    --duration-deliberate: 0ms;
+  }
+}
