@@ -52,6 +52,9 @@ export interface HeroInstance {
   backSocket: Object3D;
   /** Sword in hand (true) or carried on the back (false). */
   arm(armed: boolean): void;
+  /** Ignites or extinguishes elemental bending mode (Lit vs Unlit). */
+  setElemental(lit: boolean): void;
+  readonly elemental: boolean;
 }
 
 /** Keep only part of the run clip's hip bounce, measured up from its lowest (planted) point. */
@@ -154,12 +157,36 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   } catch {
     swordMesh = createProceduralSword();
   }
+  const swordMaterials: MeshStandardMaterial[] = [];
   swordMesh.traverse((child) => {
     if ((child as Mesh).isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
+      const mesh = child as Mesh;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      if (Array.isArray(mesh.material)) {
+        mesh.material = (mesh.material as MeshStandardMaterial[]).map(m => m.clone());
+        swordMaterials.push(...(mesh.material as MeshStandardMaterial[]));
+      } else if (mesh.material) {
+        mesh.material = (mesh.material as MeshStandardMaterial).clone();
+        swordMaterials.push(mesh.material as MeshStandardMaterial);
+      }
     }
   });
+
+  let elemental = false;
+  const setElemental = (lit: boolean): void => {
+    elemental = lit;
+    for (const mat of swordMaterials) {
+      if (lit) {
+        mat.emissive.setHex(0xe62a05);
+        mat.emissiveIntensity = 2.4;
+      } else {
+        mat.emissive.setHex(0x000000);
+        mat.emissiveIntensity = 0;
+      }
+      mat.needsUpdate = true;
+    }
+  };
   // A holder keeps the asset's own transform; the blade runs along the holder's +Y.
   const holder = new Group();
   holder.name = 'SwordHolder';
@@ -211,5 +238,16 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   anim.play('idle_relaxed');
   arm(false);
 
-  return { model: heroModel, anim, sword: holder, handBone, bladeBase, bladeTip, backSocket, arm };
+  return {
+    model: heroModel,
+    anim,
+    sword: holder,
+    handBone,
+    bladeBase,
+    bladeTip,
+    backSocket,
+    arm,
+    setElemental,
+    get elemental(): boolean { return elemental; },
+  };
 }

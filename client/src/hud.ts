@@ -8,6 +8,9 @@ export class FightHud {
   private readonly heroFill: HTMLDivElement;
   private readonly heroTrail: HTMLDivElement;
   private readonly banner: HTMLParagraphElement;
+  private readonly modeBadge: HTMLSpanElement;
+  private readonly stanceBadge: HTMLSpanElement;
+  private readonly lockReticle: HTMLDivElement;
   private readonly bars = new Map<Enemy, HTMLDivElement>();
   private trail = 1;
   private readonly point = new Vector3();
@@ -16,19 +19,40 @@ export class FightHud {
     this.root = document.createElement('div');
     this.root.id = 'fight-hud';
     this.root.innerHTML =
+      '<div class="combat-status">' +
+      '<span class="mode-badge">Unlit</span>' +
+      '<span class="stance-badge">Barehanded</span>' +
+      '</div>' +
       '<div class="hero-health" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100">' +
       '<div class="trail"></div><div class="fill"></div></div>' +
+      '<div class="lock-reticle"></div>' +
       '<p class="fight-banner" role="status"></p>';
     document.body.appendChild(this.root);
     this.heroFill = this.root.querySelector('.fill')!;
     this.heroTrail = this.root.querySelector('.trail')!;
     this.banner = this.root.querySelector('.fight-banner')!;
+    this.modeBadge = this.root.querySelector('.mode-badge')!;
+    this.stanceBadge = this.root.querySelector('.stance-badge')!;
+    this.lockReticle = this.root.querySelector('.lock-reticle')!;
   }
 
   /** Large centred line such as "You fell", or empty to clear it. */
   say(text: string): void { this.banner.textContent = text; }
 
-  update(delta: number, hero: Health, enemies: readonly Enemy[], camera: Camera, barHeight: number): void {
+  update(
+    delta: number,
+    hero: Health,
+    enemies: readonly Enemy[],
+    camera: Camera,
+    barHeight: number,
+    isLit = false,
+    isArmed = false,
+    lockedEnemy: Enemy | null = null,
+  ): void {
+    this.modeBadge.textContent = isLit ? 'IGNIS Lit (Bending)' : 'Physical (Unlit)';
+    this.modeBadge.classList.toggle('lit', isLit);
+    this.stanceBadge.textContent = isArmed ? 'Armed' : 'Barehanded';
+
     const share = hero.current / hero.maximum;
     // The pale trail drains after the fill, so a hit reads as a loss.
     this.trail = Math.max(share, this.trail - delta * 0.6);
@@ -36,6 +60,20 @@ export class FightHud {
     this.heroTrail.style.transform = `scaleX(${this.trail})`;
     this.root.querySelector('.hero-health')!.setAttribute('aria-valuenow', String(Math.round(share * 100)));
     this.root.classList.toggle('low', share < 0.3);
+
+    // Lock reticle tracking
+    if (lockedEnemy && lockedEnemy.alive) {
+      this.point.copy(lockedEnemy.model.position).setY(lockedEnemy.model.position.y + 1.2).project(camera);
+      const visible = this.point.z < 1 && Math.abs(this.point.x) < 1.1 && Math.abs(this.point.y) < 1.1;
+      this.lockReticle.style.display = visible ? 'block' : 'none';
+      if (visible) {
+        const lx = (this.point.x + 1) / 2 * window.innerWidth;
+        const ly = (1 - this.point.y) / 2 * window.innerHeight;
+        this.lockReticle.style.transform = `translate(${lx}px, ${ly}px) translate(-50%, -50%)`;
+      }
+    } else {
+      this.lockReticle.style.display = 'none';
+    }
 
     for (const [enemy, bar] of this.bars) {
       if (enemies.includes(enemy) && enemy.alive) continue;

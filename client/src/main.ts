@@ -13,6 +13,9 @@ import { loadEnemyTemplate } from './enemy.js';
 import { Fight } from './fight.js';
 import { FightHud } from './hud.js';
 import { SwordStance } from './sword.js';
+import { SoundManager } from './audio.js';
+import { BendingEffects } from './bending-fx.js';
+import type { Enemy } from './enemy.js';
 import { Vector3 } from 'three';
 
 let disposed = false;
@@ -34,9 +37,10 @@ async function main(): Promise<void> {
   panel.id = 'hero-hud';
   panel.setAttribute('aria-label', 'Arena controls');
   panel.innerHTML = '<button type="button" disabled>Loading</button>' +
-    '<p class="hud-keys"><kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Mouse</kbd> look</p>' +
-    '<p class="hud-keys"><kbd>Left click</kbd> light combo <kbd>Right click</kbd> heavy <kbd>Q</kbd> uppercut ' +
-    '<kbd>E</kbd> ground pound <kbd>F</kbd> dash strike <kbd>R</kbd> block <kbd>Space</kbd> dodge</p>' +
+    '<p class="hud-keys"><kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Mouse</kbd> look <kbd>Tab</kbd> lock-on</p>' +
+    '<p class="hud-keys"><kbd>Left click</kbd> strike <kbd>Right click</kbd> heavy <kbd>Q</kbd> uppercut ' +
+    '<kbd>E</kbd> ground slam <kbd>F</kbd> dash <kbd>R</kbd> block <kbd>Space</kbd> dodge</p>' +
+    '<p class="hud-keys"><kbd>X</kbd> draw/sheathe sword <kbd>B</kbd> ignite bending (lit mode)</p>' +
     '<p id="control-status" class="hud-status" role="status">Loading the arena.</p>';
   document.body.appendChild(panel);
   cleanup.push(() => panel.remove());
@@ -103,84 +107,146 @@ async function main(): Promise<void> {
   });
   shoulderCamera.update(controller.position, 1, true);
 
+  const sound = new SoundManager();
+  cleanup.push(() => sound.dispose());
+  const bending = new BendingEffects(scene);
+  cleanup.push(() => bending.dispose());
+
   const fightHud = new FightHud();
   cleanup.push(() => fightHud.dispose());
   let hitStop = 0;
   let reviveIn = 0;
+  let slowMotion = 0;
+  let isLit = false;
+  let lockedEnemy: Enemy | null = null;
+
   const fight = new Fight(await husks, physics.world, scene, {
     heroHit(blocked) {
       hitStop = balance.combat.hitStop * (blocked ? 0.5 : 1);
-      // A hit only flinches the hero when it isn't mid-move or guarding.
+      shoulderCamera.shake(blocked ? 0.25 : 0.55);
+      sound.playImpact(false, blocked);
       if (!combat.current && !blocked) combat.react('hit');
     },
     heroDied() {
       combat.react('death');
       fightHud.say('You fell');
+      shoulderCamera.shake(0.6);
+      sound.playThump(50, 0.6, 0.7);
       reviveIn = balance.hero.respawnSeconds;
     },
-    enemyHit(_enemy, killed) { hitStop = balance.combat.hitStop * (killed ? 1.6 : 1); },
+    enemyHit(_enemy, killed) {
+      hitStop = balance.combat.hitStop * (killed ? 1.6 : 1);
+      shoulderCamera.shake(killed ? 0.45 : 0.2);
+      sound.playImpact(killed, false);
+      if (killed && fight.allDead) {
+        slowMotion = 1.2;
+      }
+    },
   });
   cleanup.push(() => fight.dispose());
   const combat = new Combat(hero.anim, (move) => fight.ready(move));
   const drawn = new Vector3();
   const { clipSpeeds } = balance.controller;
-  // Calm stance carries the sword on the back; fighting draws it, and the camera follows.
   const sword = new SwordStance(hero);
   let calmIn = 0;
-  /** An attack pressed while the sword was sheathed, thrown once it is drawn. */
-  let pending: CombatAction | null = null;
+
+  input.onLockToggle = () => {
+    lockedEnemy = fight.findLockTarget(controller.position, lockedEnemy);
+    shoulderCamera.lockTarget = lockedEnemy ? lockedEnemy.controller.position : null;
+  };
+
+  input.onStanceToggle = () => {
+    if (sword.armed) sword.sheathe();
+    else sword.draw(false);
+  };
+
+  input.onBendingToggle = () => {
+    isLit = !isLit;
+    hero.setElemental(isLit);
+    if (isLit) sound.playFireBurst(0.35);
+  };
+
   const attack = (action: CombatAction): void => {
     if (!combat.current) {
-      // Attacks go where the camera looks, turned onto a husk just off that line.
-      const looking = shoulderCamera.yaw + Math.PI;
-      const { aimAssistRange, aimAssistAngle } = balance.combat;
-      const mark = fight.nearestInFront(controller.position, looking, aimAssistRange, aimAssistAngle);
-      controller.facing = mark
-        ? Math.atan2(mark.controller.position.x - controller.position.x, mark.controller.position.z - controller.position.z)
-        : looking;
+      if (lockedEnemy && lockedEnemy.alive) {
+        const dx = lockedEnemy.controller.position.x - controller.position.x;
+        const dz = lockedEnemy.controller.position.z - controller.position.z;
+        controller.facing = Math.atan2(dx, dz);
+      } else {
+        const looking = shoulderCamera.yaw + Math.PI;
+        const { aimAssistRange, aimAssistAngle } = balance.combat;
+        const mark = fight.nearestInFront(controller.position, looking, aimAssistRange, aimAssistAngle);
+        controller.facing = mark
+          ? Math.atan2(mark.controller.position.x - controller.position.x, mark.controller.position.z - controller.position.z)
+          : looking;
+      }
     }
+
+    // Play attack whooshes and elemental bending effects
+    sound.playSwing(1.0, action === 'heavy' || action === 'ground_pound');
+    if (isLit) {
+      if (action === 'ground_pound') {
+        bending.spawnGroundPound(controller.position);
+        sound.playGroundPound();
+        shoulderCamera.shake(0.35);
+      } else if (action === 'uppercut') {
+        const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
+        const pillarPos = controller.position.clone().addScaledVector(forward, 1.2);
+        bending.spawnUppercutPillar(pillarPos);
+        sound.playFireBurst(0.35);
+        shoulderCamera.shake(0.25);
+      }
+    }
+
     combat.press(action);
   };
+
   const bladeBase = new Vector3();
   const bladeTip = new Vector3();
   const heroView = { position: controller.position, facing: 0, bladeBase, bladeTip };
+
   renderer.setAnimationLoop(() => {
     const now = performance.now();
-    const delta = Math.min((now - lastTime) / 1000, balance.controller.maxFrameDelta);
+    const rawDelta = Math.min((now - lastTime) / 1000, balance.controller.maxFrameDelta);
     lastTime = now;
+
+    let timeScale = 1.0;
+    if (slowMotion > 0) {
+      slowMotion = Math.max(0, slowMotion - rawDelta);
+      timeScale = 0.25;
+    }
+    const delta = rawDelta * timeScale;
+
+    // Validate lock-on target
+    if (lockedEnemy && !lockedEnemy.alive) {
+      lockedEnemy = fight.findLockTarget(controller.position, null);
+    }
+    shoulderCamera.lockTarget = lockedEnemy ? lockedEnemy.controller.position : null;
+
     const alive = fight.heroAlive;
     for (const action of alive ? input.takeActions() : []) {
       if (action !== 'dodge') {
-        if (sword.armed) attack(action);
-        else { sword.draw(true); pending = action; }
+        attack(action);
         continue;
       }
       if (!combat.press(action)) continue;
-      // Roll the way the keys point, relative to the camera; with no keys held, roll back from the view.
+      sound.playDodge();
       const roll = movementVelocity(input.read(), shoulderCamera.yaw);
       controller.facing = roll.lengthSq() > 0 ? Math.atan2(roll.x, roll.z) : shoulderCamera.yaw;
     }
-    if (!alive) { input.takeActions(); pending = null; }
-    if (pending && sword.armed) { attack(pending); pending = null; }
+    if (!alive) { input.takeActions(); }
     if (alive && input.blocking && !sword.engaged) sword.draw(true);
     combat.blocking = alive && input.blocking && sword.armed && !combat.current;
     if (combat.blocking) {
-      // The guard turns to meet the nearest husk, or the way the camera looks.
-      const threat = fight.nearestInFront(controller.position, controller.facing, balance.hero.guardTurnRange, Math.PI);
+      const threat = lockedEnemy ?? fight.nearestInFront(controller.position, controller.facing, balance.hero.guardTurnRange, Math.PI);
       const toward = threat
         ? Math.atan2(threat.controller.position.x - controller.position.x, threat.controller.position.z - controller.position.z)
         : shoulderCamera.yaw + Math.PI;
       controller.facing = turnToward(controller.facing, toward, delta);
     }
     combat.update(delta);
-    // Stay drawn while fighting or with a husk close by; sheathe after a quiet spell.
-    const threatened = fight.nearestDistance(controller.position) < balance.stance.engageRadius;
-    if ((combat.current && combat.current !== 'dodge') || combat.blocking || pending || threatened) {
-      calmIn = balance.stance.calmAfterSeconds;
-    }
-    if (threatened && alive) sword.draw(false);
-    calmIn = Math.max(0, calmIn - delta);
-    if (calmIn === 0 && !combat.current) sword.sheathe();
+
+    // Camera view stance
     shoulderCamera.fight = sword.engaged ? 1 : 0;
     if (reviveIn > 0 && (reviveIn -= delta) <= 0) {
       fight.reviveHero();
@@ -193,16 +259,14 @@ async function main(): Promise<void> {
     heroView.facing = controller.facing;
     const rooted = combat.current !== null || combat.blocking;
     const alpha = stepper.advance(delta, () => {
-      // Lunges stop at sword range instead of carrying the hero into a husk.
       const stop = combat.current !== 'dodge' && fight.nearestDistance(controller.position) < balance.combat.lungeStopDistance;
       const lunge = stop ? 0 : combat.lunge;
       controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge);
       fight.step(heroView, combat);
     });
-    // Hit-stop: a short near-freeze of every body on impact.
+
     const animDelta = hitStop > 0 ? delta * 0.08 : delta;
     hitStop = Math.max(0, hitStop - delta);
-    // Draw between the last two physics steps so motion stays smooth on fast displays.
     drawn.lerpVectors(controller.previous, controller.position, alpha);
     hero.model.position.copy(drawn);
     hero.model.rotation.y = controller.facing + balance.controller.modelForwardYaw;
@@ -212,16 +276,14 @@ async function main(): Promise<void> {
       const pace = locomotionForSpeed(controller.speed);
       const clip = pace === 'idle' && !sword.engaged ? 'idle_relaxed' : pace;
       hero.anim.play(clip, balance.controller.animationFade);
-      // Match foot speed to ground speed so the feet don't slide or hop.
       if (pace !== 'idle') hero.anim.setSpeed(pace, Math.max(0.5, controller.speed / clipSpeeds[pace]));
     }
     hero.anim.update(animDelta);
-    // The draw reach poses the arm on top of whatever the body is playing.
     sword.update(animDelta);
+    bending.update(delta);
     fight.draw(animDelta, alpha, controller.position);
-    fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight);
+    fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight, isLit, sword.armed, lockedEnemy);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
-    // Hide the hero when a wall pushes the camera inside its body.
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     fps?.tick();
     arena.render();

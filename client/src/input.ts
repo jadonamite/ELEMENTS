@@ -17,6 +17,9 @@ export class GameInput {
   private readonly actions: CombatAction[] = [];
   private readonly events = new AbortController();
   private disposed = false;
+  onLockToggle?: () => void;
+  onStanceToggle?: () => void;
+  onBendingToggle?: () => void;
 
   constructor(private readonly canvas: HTMLCanvasElement, button: HTMLButtonElement,
     orbit: (dx: number, dy: number) => void, status: (text: string) => void) {
@@ -41,6 +44,21 @@ export class GameInput {
     button.addEventListener('click', capture, options);
     window.addEventListener('keydown', event => {
       if (isEditable(event.target) || document.activeElement !== canvas) return;
+      if (event.code === 'Tab') {
+        event.preventDefault();
+        this.onLockToggle?.();
+        return;
+      }
+      if (event.code === 'KeyX' && !event.repeat) {
+        event.preventDefault();
+        this.onStanceToggle?.();
+        return;
+      }
+      if (event.code === 'KeyB' && !event.repeat) {
+        event.preventDefault();
+        this.onBendingToggle?.();
+        return;
+      }
       if (movementKeys.has(event.code)) {
         event.preventDefault();
         this.keys.add(event.code);

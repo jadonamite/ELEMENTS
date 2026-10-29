@@ -82,6 +82,31 @@ export class Fight {
     return this.enemies.reduce((d, e) => e.alive ? Math.min(d, e.controller.position.distanceTo(from)) : d, Infinity);
   }
 
+  /** Find the next or nearest living lock target. */
+  findLockTarget(from: Vector3, current?: Enemy | null): Enemy | null {
+    const alive = this.enemies.filter(e => e.alive);
+    if (alive.length === 0) return null;
+    if (current && alive.includes(current) && alive.length > 1) {
+      const nextIdx = (alive.indexOf(current) + 1) % alive.length;
+      return alive[nextIdx]!;
+    }
+    let closest: Enemy | null = null;
+    let minDistance = 18;
+    for (const enemy of alive) {
+      const dist = enemy.controller.position.distanceTo(from);
+      if (dist < minDistance) {
+        minDistance = dist;
+        closest = enemy;
+      }
+    }
+    return closest;
+  }
+
+  /** True when all spawned enemies are defeated. */
+  get allDead(): boolean {
+    return this.enemies.length > 0 && this.enemies.every(e => !e.alive);
+  }
+
   /** One physics step for every husk. */
   step(hero: HeroView, combat: Combat): void {
     const dt = balance.controller.fixedStep;

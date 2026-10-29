@@ -73,6 +73,40 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
 
 /* Fight HUD: quiet until something happens. */
 #fight-hud { position: fixed; inset: 0; pointer-events: none; }
+.combat-status {
+  position: absolute;
+  left: max(var(--space-8), env(safe-area-inset-left));
+  bottom: calc(max(var(--space-8), env(safe-area-inset-bottom)) + 18px);
+  display: flex;
+  gap: var(--space-2);
+  font: var(--font-size-xs)/1 var(--font-family-body);
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+}
+.mode-badge, .stance-badge {
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-xs);
+  background: rgb(16 14 12 / 0.7);
+  border: 1px solid rgb(214 170 110 / 0.35);
+  color: rgb(220 210 196);
+}
+.mode-badge.lit {
+  border-color: var(--color-ignis-glow);
+  color: #ff5522;
+  box-shadow: 0 0 10px rgb(230 42 5 / 0.4);
+}
+.lock-reticle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ff4411;
+  transform: translate(-50%, -50%) rotate(45deg);
+  box-shadow: 0 0 8px #ff4411;
+  pointer-events: none;
+  display: none;
+}
 .hero-health {
   position: absolute;
   left: max(var(--space-8), env(safe-area-inset-left));
