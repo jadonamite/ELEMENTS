@@ -1,7 +1,7 @@
 /**
- * Hero loading and setup: loads the hero GLB model at 1 unit = 1 metre, attaches
- * a sword to the right hand bone so it moves with the swing, attaches the dark iron
- * helmet to the head bone, enables shadows, and initializes the animation player.
+ * Hero loading and setup: loads the hero GLB model at 1 unit = 1 metre, dresses it
+ * in worn iron, attaches a sword to the right hand bone so it moves with the swing,
+ * enables shadows, and initializes the animation player.
  */
 
 import {
@@ -16,6 +16,11 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { AnimationPlayer } from './anim/index.js';
 
+/** Sword placement in the hand bone's space. */
+const SWORD_OFFSET: [number, number, number] = [0, 0.08, 0.03];
+const SWORD_ROTATION: [number, number, number] = [0, 0, -Math.PI / 2];
+const SWORD_SCALE = 0.23;
+
 export interface HeroInstance {
   /** Root 3D container added to the scene. */
   model: Group;
@@ -25,10 +30,6 @@ export interface HeroInstance {
   sword: Object3D;
   /** Right hand bone instance the sword is socketed to. */
   handBone: Bone;
-  /** Helmet mesh attached to head bone, if present. */
-  helmet?: Object3D | undefined;
-  /** Head bone instance the helmet is socketed to. */
-  headBone?: Bone | undefined;
 }
 
 /**
@@ -86,95 +87,59 @@ function createProceduralSword(): Group {
   return sword;
 }
 
+/** Dark worn iron for the body, oiled leather for the joints. */
+function dressHero(model: Object3D): void {
+  const iron = new MeshStandardMaterial({ color: 0x55504a, metalness: 0.75, roughness: 0.5 });
+  const leather = new MeshStandardMaterial({ color: 0x2b1e15, metalness: 0.05, roughness: 0.78 });
+  model.traverse((node) => {
+    if (!(node as Mesh).isMesh) return;
+    const mesh = node as Mesh;
+    const name = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material)?.name ?? '';
+    mesh.material = name.includes('Joints') ? leather : iron;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+  });
+}
+
 /**
- * Loads the hero character, attaches the sword and helmet to the skeleton,
+ * Loads the hero character, dresses it, attaches the sword to the right hand
  * and sets up the animation player.
  */
 export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance> {
   const heroGltf = await loader.loadAsync('/assets/characters/hero.glb');
   const heroModel = heroGltf.scene;
   heroModel.name = 'Hero';
+  dressHero(heroModel);
 
-  // Enable shadows on all character meshes
-  heroModel.traverse((node) => {
-    if ((node as Mesh).isMesh) {
-      node.castShadow = true;
-      node.receiveShadow = true;
-    }
-  });
+  const handBone = heroModel.getObjectByName('hand_r') as Bone | undefined;
+  if (!handBone) throw new Error('Right hand bone (hand_r) not found in hero rig.');
 
-  // Locate the right hand bone (PalmR or MiddleHandR)
-  const handBone = (heroModel.getObjectByName('PalmR') ??
-    heroModel.getObjectByName('MiddleHandR')) as Bone | undefined;
-
-  if (!handBone) {
-    throw new Error('Right hand bone (PalmR) not found in hero rig.');
-  }
-
-  // Load and attach the sword mesh to the right hand bone
   let swordMesh: Object3D;
   try {
     const swordGltf = await loader.loadAsync('/assets/characters/sword.glb');
-    const sourceSword = swordGltf.scene.getObjectByName('Sword');
-    if (sourceSword) {
-      swordMesh = sourceSword.clone();
-      // Scale matching 1.05m arming sword length inside local bone coordinates
-      swordMesh.scale.set(0.75, 0.75, 0.75);
-    } else {
-      swordMesh = createProceduralSword();
-    }
+    swordMesh = swordGltf.scene.getObjectByName('Sword')?.clone() ?? createProceduralSword();
   } catch {
     swordMesh = createProceduralSword();
   }
-
   swordMesh.traverse((child) => {
     if ((child as Mesh).isMesh) {
       child.castShadow = true;
       child.receiveShadow = true;
     }
   });
+  // A holder keeps the asset's own transform; the blade runs along the holder's +Y.
+  const holder = new Group();
+  holder.name = 'SwordHolder';
+  holder.add(swordMesh);
+  holder.position.set(...SWORD_OFFSET);
+  holder.rotation.set(...SWORD_ROTATION);
+  holder.scale.setScalar(SWORD_SCALE);
+  handBone.add(holder);
 
-  handBone.add(swordMesh);
-
-  // Load and attach dark iron helmet to the head bone
-  let helmetMesh: Object3D | undefined;
-  const headBone = heroModel.getObjectByName('Head') as Bone | undefined;
-  if (headBone) {
-    try {
-      const helmetGltf = await loader.loadAsync('/assets/characters/helmet.glb');
-      const sourceHelmet = helmetGltf.scene.getObjectByName('Helmet');
-      if (sourceHelmet) {
-        helmetMesh = sourceHelmet.clone();
-        helmetMesh.scale.set(0.92, 0.92, 0.92);
-        helmetMesh.position.set(0, 0.0085, 0);
-        helmetMesh.traverse((child) => {
-          if ((child as Mesh).isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-          }
-        });
-        headBone.add(helmetMesh);
-      }
-    } catch {
-      // Helmet asset is optional fallback
-    }
-  }
-
-  // Initialize the animation player with clips from the hero GLB
   const anim = new AnimationPlayer(heroModel, heroGltf.animations, {
     defaultFadeDuration: 0.25,
   });
-
-  // Default to idle clip
   anim.play('idle');
 
-  return {
-    model: heroModel,
-    anim,
-    sword: swordMesh,
-    handBone,
-    helmet: helmetMesh,
-    headBone,
-  };
+  return { model: heroModel, anim, sword: holder, handBone };
 }
-

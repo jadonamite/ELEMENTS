@@ -132,8 +132,8 @@ test('orbit clamps pitch and the hero feet point toward model +Z', async () => {
     const buffer = await readFile(new URL('../public/assets/characters/hero.glb', import.meta.url));
     const gltf = await new GLTFLoader().parseAsync(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength), '');
     gltf.scene.updateMatrixWorld(true);
-    const foot = gltf.scene.getObjectByName('FootL');
-    const toe = gltf.scene.getObjectByName('FootL_end');
+    const foot = gltf.scene.getObjectByName('foot_l');
+    const toe = gltf.scene.getObjectByName('ball_l');
     assert.ok(foot && toe);
     assert.ok(toe.getWorldPosition(new Vector3()).z > foot.getWorldPosition(new Vector3()).z);
   } finally { physics.dispose(); }

@@ -65,10 +65,12 @@ export class HeroController {
     // contact tolerances accumulate during prolonged corner pressure.
     const limit = balance.arena.size / 2 - tuning.radius - tuning.skin;
     const next = {
-      x: Math.max(-limit, Math.min(limit, previous.x + movement.x)),
+      x: previous.x + movement.x,
       y: Math.max(floorCenter, previous.y + movement.y),
-      z: Math.max(-limit, Math.min(limit, previous.z + movement.z)),
+      z: previous.z + movement.z,
     };
+    const reach = Math.hypot(next.x, next.z);
+    if (reach > limit) { next.x *= limit / reach; next.z *= limit / reach; }
     if (next.y === floorCenter) this.verticalVelocity = 0;
     this.speed = Math.hypot(next.x - previous.x, next.z - previous.z) / dt;
     this.body.setNextKinematicTranslation(next);

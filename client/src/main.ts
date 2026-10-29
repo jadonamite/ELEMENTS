@@ -1,7 +1,7 @@
 import './ui/tokens.css';
 import './style.css';
 import balance from '../../shared/balance.json';
-import { createArena, disposeObject } from './scene.js';
+import { createArena, disposeObject, loadProps } from './scene.js';
 import { initPhysics } from './physics.js';
 import { FpsCounter } from './fps.js';
 import { loadHero, type HeroInstance } from './hero.js';
@@ -27,14 +27,12 @@ async function main(): Promise<void> {
   const panel = document.createElement('section');
   panel.id = 'hero-hud';
   panel.setAttribute('aria-label', 'Arena controls');
-  panel.innerHTML = '<strong>ELEMENTS</strong><span id="hud-clip">Loading hero</span>' +
-    '<p>WASD to move · Shift to run · Mouse to look</p>' +
-    '<button type="button" disabled>Loading hero</button>' +
-    '<p id="control-status" role="status">Loading the arena and hero.</p>';
+  panel.innerHTML = '<button type="button" disabled>Loading</button>' +
+    '<p class="hud-keys"><kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Mouse</kbd> look</p>' +
+    '<p id="control-status" class="hud-status" role="status">Loading the arena.</p>';
   document.body.appendChild(panel);
   cleanup.push(() => panel.remove());
   const button = panel.querySelector('button')!;
-  const clipDisplay = panel.querySelector('#hud-clip')!;
   const status = (message: string): void => { panel.querySelector('#control-status')!.textContent = message; };
 
   const physics = await initPhysics();
@@ -42,6 +40,7 @@ async function main(): Promise<void> {
   cleanup.push(() => physics.dispose());
   const arena = createArena(canvas);
   const { scene, camera, renderer } = arena;
+  loadProps(scene).catch((error: unknown) => console.error('Arena props failed to load:', error));
   cleanup.push(() => { renderer.setAnimationLoop(null); arena.dispose(); });
   const controller = new HeroController(physics.world);
   cleanup.push(() => controller.dispose());
@@ -51,7 +50,6 @@ async function main(): Promise<void> {
     hero = await loadHero();
   } catch (error) {
     if (!disposed) {
-      clipDisplay.textContent = 'Hero unavailable';
       button.textContent = 'Reload to retry';
       button.disabled = false;
       button.addEventListener('click', () => window.location.reload(), { once: true });
@@ -63,17 +61,21 @@ async function main(): Promise<void> {
   scene.add(hero.model);
   cleanup.push(() => hero.anim.dispose());
   button.disabled = false;
-  button.textContent = 'Play';
-  status('Select Play or click the arena to capture the mouse.');
+  button.textContent = 'Enter the arena';
+  status('');
+  // The HUD fades out while the mouse is captured.
+  const togglePlaying = (): void => { document.body.classList.toggle('playing', document.pointerLockElement === canvas); };
+  document.addEventListener('pointerlockchange', togglePlaying);
+  cleanup.push(() => { document.removeEventListener('pointerlockchange', togglePlaying); document.body.classList.remove('playing'); });
   const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status);
   cleanup.push(() => input.dispose());
-  const fps = new FpsCounter();
-  cleanup.push(() => fps.dispose());
+  const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
+  if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   function resize(): void {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    arena.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
   }
@@ -101,10 +103,11 @@ async function main(): Promise<void> {
     const clip = locomotionForSpeed(controller.speed);
     hero.anim.play(clip, balance.controller.animationFade);
     hero.anim.update(delta);
-    clipDisplay.textContent = clip;
     shoulderCamera.update(controller.position, delta, reducedMotion.matches);
-    fps.tick();
-    renderer.render(scene, camera);
+    // Hide the hero when a wall pushes the camera inside its body.
+    hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
+    fps?.tick();
+    arena.render();
   });
 }
 

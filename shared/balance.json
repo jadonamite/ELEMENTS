@@ -1,5 +1,37 @@
 {
-  "arena": { "size": 30, "wallHeight": 2.5, "wallThickness": 0.6, "floorThickness": 0.1 },
+  "arena": {
+    "size": 30,
+    "wallHeight": 2.4,
+    "wallThickness": 0.9,
+    "floorThickness": 0.1,
+    "wallSegments": 48,
+    "obstacles": [
+      {
+        "file": "gothic_statue",
+        "x": 0,
+        "z": -12,
+        "scale": 2.4,
+        "yaw": 0,
+        "radius": 1.6
+      },
+      {
+        "file": "namaqualand_boulder_02",
+        "x": 8.5,
+        "z": 5.5,
+        "scale": 1.4,
+        "yaw": 0.7,
+        "radius": 1.5
+      },
+      {
+        "file": "namaqualand_boulder_02",
+        "x": -9,
+        "z": -3.5,
+        "scale": 1.1,
+        "yaw": 2.3,
+        "radius": 1.2
+      }
+    ]
+  },
   "controller": {
     "walkSpeed": 2.2,
     "runSpeed": 5.5,
@@ -16,18 +48,39 @@
     "modelForwardYaw": 0
   },
   "camera": {
-    "distance": 3.6,
-    "shoulder": 0.65,
-    "targetHeight": 1.35,
-    "initialPitch": 0.15,
+    "distance": 2.7,
+    "shoulder": 0.6,
+    "targetHeight": 1.55,
+    "initialPitch": 0.12,
     "minPitch": -0.65,
     "maxPitch": 1.15,
     "mouseSensitivity": 0.0025,
     "collisionRadius": 0.18,
     "collisionPadding": 0.025,
     "recoveryRate": 8,
-    "fov": 60,
+    "fov": 55,
     "near": 0.1,
-    "far": 500
+    "far": 500,
+    "hideHeroDistance": 0.6
+  },
+  "look": {
+    "exposure": 0.75,
+    "fogColor": [
+      0.45,
+      0.35,
+      0.28
+    ],
+    "fogDensity": 0.012,
+    "skyIntensity": 0.6,
+    "environmentIntensity": 0.45,
+    "sunElevationDeg": 22,
+    "sunIntensity": 3.2,
+    "fillIntensity": 0.5,
+    "floorRepeat": 6,
+    "dirtRepeat": 5,
+    "wallTileMetres": 3,
+    "bloomStrength": 0.15,
+    "bloomThreshold": 1.6,
+    "vignette": 0.85
   }
 }

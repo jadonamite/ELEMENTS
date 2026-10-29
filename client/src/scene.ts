@@ -1,170 +1,283 @@
 /**
- * Arena scene setup: 30x30m stone floor with low walls, HDRI sky lighting,
- * sun shadows, and PBR textures from Poly Haven (CC0).
+ * Arena scene: a round flagstone floor ringed by a dry-stone wall, crags and
+ * standing stones beyond it, a statue landmark, a low evening sky, fog,
+ * filmic tone mapping and a light bloom and vignette pass.
  */
 
 import {
-  AmbientLight,
-  BoxGeometry,
+  ACESFilmicToneMapping,
+  CanvasTexture,
+  CircleGeometry,
+  Color,
   DirectionalLight,
+  DoubleSide,
   EquirectangularReflectionMapping,
+  FogExp2,
+  HemisphereLight,
+  LatheGeometry,
+  Material,
   Mesh,
   MeshStandardMaterial,
+  Object3D,
   PCFShadowMap,
   PerspectiveCamera,
-  PlaneGeometry,
   RepeatWrapping,
   Scene,
   SRGBColorSpace,
-  TextureLoader,
-  WebGLRenderer,
   Texture,
-  Object3D,
-  Material,
+  TextureLoader,
+  Vector2,
+  Vector3,
+  WebGLRenderer,
+  type BufferGeometry,
 } from 'three';
-import balance from '../../shared/balance.json';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
+import balance from '../../shared/balance.json';
 
-/* ---------- constants (1 unit = 1 metre) ---------- */
-
-/** Arena floor size in metres. */
+/** Arena diameter in metres (1 unit = 1 metre). */
 export const ARENA_SIZE = balance.arena.size;
-/** Wall height in metres. */
-const WALL_HEIGHT = balance.arena.wallHeight;
-/** Wall thickness in metres. */
-const WALL_THICKNESS = balance.arena.wallThickness;
-/** How many times floor texture tiles across the arena. */
-const FLOOR_TILE_REPEAT = 8;
-/** How many times wall texture tiles along one wall. */
-const WALL_TILE_REPEAT_X = 6;
-const WALL_TILE_REPEAT_Y = 1;
-/** Shadow map resolution. */
-const SHADOW_MAP_SIZE = 2048;
+const RADIUS = ARENA_SIZE / 2;
+const look = balance.look;
 
-/* ---------- texture helpers ---------- */
+/** Sun position in the sky panorama, measured from the image (u across, elevation in degrees). */
+const SKY_SUN_U = 0.604;
+/** Where the sun should sit in the world, as a compass angle atan2(z, x) in radians. */
+const SUN_AZIMUTH = 2.6;
 
 const textureLoader = new TextureLoader();
 
-function loadTex(path: string, repeatX = 1, repeatY = 1, srgb = false): Texture {
+function loadTex(path: string, repeat: number, srgb = false): Texture {
   const tex = textureLoader.load(path);
   tex.wrapS = RepeatWrapping;
   tex.wrapT = RepeatWrapping;
-  tex.repeat.set(repeatX, repeatY);
+  tex.repeat.set(repeat, repeat);
+  tex.anisotropy = 8;
   if (srgb) tex.colorSpace = SRGBColorSpace;
   return tex;
 }
 
-/* ---------- public API ---------- */
+/** Poly Haven material set: colour, OpenGL normal and packed AO/roughness/metal maps. */
+function pbr(name: string, repeat: number | [number, number]): MeshStandardMaterial {
+  const [rx, ry] = typeof repeat === 'number' ? [repeat, repeat] : repeat;
+  const tex = (suffix: string, srgb = false): Texture => {
+    const t = loadTex(`/assets/textures/${name}_${suffix}_1k.webp`, 1, srgb);
+    t.repeat.set(rx, ry);
+    return t;
+  };
+  const arm = tex('arm');
+  return new MeshStandardMaterial({
+    map: tex('diff', true),
+    normalMap: tex('nor_gl'),
+    aoMap: arm,
+    roughnessMap: arm,
+    metalnessMap: arm,
+  });
+}
+
+/** Soft blotchy mask: white where dirt shows, heavier toward the wall. */
+function dirtMask(size = 512): CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const edge = ctx.createRadialGradient(size / 2, size / 2, size * 0.3, size / 2, size / 2, size / 2);
+  edge.addColorStop(0, 'rgba(255,255,255,0)');
+  edge.addColorStop(0.75, 'rgba(255,255,255,0.85)');
+  edge.addColorStop(1, 'rgba(255,255,255,1)');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, size, size);
+  // Seeded scatter so the floor looks the same every load.
+  let seed = 7;
+  const rand = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 140; i++) {
+    const x = rand() * size, y = rand() * size, r = size * (0.01 + rand() * 0.06);
+    const blob = ctx.createRadialGradient(x, y, 0, x, y, r);
+    blob.addColorStop(0, `rgba(255,255,255,${0.25 + rand() * 0.5})`);
+    blob.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = blob;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  return new CanvasTexture(canvas);
+}
 
 export interface ArenaObjects {
   scene: Scene;
   camera: PerspectiveCamera;
   renderer: WebGLRenderer;
+  setSize(width: number, height: number): void;
+  render(): void;
   dispose(): void;
 }
 
 export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
-  /* --- renderer --- */
-  const renderer = new WebGLRenderer({ canvas, antialias: true });
+  const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = SRGBColorSpace;
+  renderer.toneMapping = ACESFilmicToneMapping;
+  renderer.toneMappingExposure = look.exposure;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFShadowMap;
 
-  /* --- scene --- */
   const scene = new Scene();
+  const fogColor = new Color().setRGB(...(look.fogColor as [number, number, number]));
+  scene.fog = new FogExp2(fogColor, look.fogDensity);
 
-  /* --- camera --- */
   const camera = new PerspectiveCamera(balance.camera.fov, 1, balance.camera.near, balance.camera.far);
-  camera.position.set(0, 12, 20);
-  camera.lookAt(0, 0, 0);
+  camera.position.set(0, 3, 8);
 
-  /* --- HDRI environment (sky + diffuse light) --- */
+  /* --- sky: rotate the panorama so its sun sits at SUN_AZIMUTH --- */
+  const skyYaw = (SKY_SUN_U - 0.5) * Math.PI * 2 - SUN_AZIMUTH;
+  scene.backgroundRotation.set(0, skyYaw, 0);
+  scene.environmentRotation.set(0, skyYaw, 0);
+  scene.backgroundIntensity = look.skyIntensity;
+  scene.environmentIntensity = look.environmentIntensity;
   let disposed = false;
-  const hdrLoader = new HDRLoader();
-  hdrLoader.load('/assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr', (hdr) => {
+  new HDRLoader().load('/assets/hdri/belfast_sunset_puresky_1k.hdr', (hdr) => {
     if (disposed) { hdr.dispose(); return; }
     hdr.mapping = EquirectangularReflectionMapping;
     scene.background = hdr;
     scene.environment = hdr;
   });
 
-  /* --- directional (sun) light with shadows --- */
-  const sun = new DirectionalLight(0xfff5e0, 2.5);
-  sun.position.set(10, 20, 10);
+  /* --- key light at the sun's compass direction, raised so shadows stay readable --- */
+  const elevation = look.sunElevationDeg * Math.PI / 180;
+  const sunDir = new Vector3(Math.cos(SUN_AZIMUTH) * Math.cos(elevation), Math.sin(elevation),
+    Math.sin(SUN_AZIMUTH) * Math.cos(elevation));
+  const sun = new DirectionalLight(new Color().setRGB(1, 0.72, 0.48), look.sunIntensity);
+  sun.position.copy(sunDir).multiplyScalar(40);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
-  sun.shadow.camera.near = 0.5;
-  sun.shadow.camera.far = 60;
-  sun.shadow.camera.left = -20;
-  sun.shadow.camera.right = 20;
-  sun.shadow.camera.top = 20;
-  sun.shadow.camera.bottom = -20;
-  sun.shadow.bias = -0.0005;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 90;
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -RADIUS - 6;
+  sun.shadow.camera.right = sun.shadow.camera.top = RADIUS + 6;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.03;
+  sun.shadow.radius = 3;
   scene.add(sun);
+  // Cool sky fill from above, dark earth bounce from below.
+  scene.add(new HemisphereLight(new Color().setRGB(0.35, 0.4, 0.5), new Color().setRGB(0.12, 0.09, 0.07),
+    look.fillIntensity));
 
-  /* Subtle ambient fill so shadow regions aren't pitch black. */
-  const ambient = new AmbientLight(0x607080, 0.4);
-  scene.add(ambient);
-
-  /* --- floor --- */
-  const floorMat = new MeshStandardMaterial({
-    map: loadTex('/assets/textures/stone_floor_diff_1k.jpg', FLOOR_TILE_REPEAT, FLOOR_TILE_REPEAT, true),
-    normalMap: loadTex('/assets/textures/stone_floor_nor_gl_1k.jpg', FLOOR_TILE_REPEAT, FLOOR_TILE_REPEAT),
-    aoMap: loadTex('/assets/textures/stone_floor_arm_1k.jpg', FLOOR_TILE_REPEAT, FLOOR_TILE_REPEAT),
-    roughnessMap: loadTex('/assets/textures/stone_floor_arm_1k.jpg', FLOOR_TILE_REPEAT, FLOOR_TILE_REPEAT),
-    metalnessMap: loadTex('/assets/textures/stone_floor_arm_1k.jpg', FLOOR_TILE_REPEAT, FLOOR_TILE_REPEAT),
-    roughness: 1,
-    metalness: 0,
-  });
-
-  const floor = new Mesh(new PlaneGeometry(ARENA_SIZE, ARENA_SIZE), floorMat);
+  /* --- floor: flagstones with dirt worked in toward the wall --- */
+  const floorGeo = new CircleGeometry(RADIUS + 1, 96);
+  const floor = new Mesh(floorGeo, pbr('monastery_stone_floor', look.floorRepeat));
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   scene.add(floor);
+  const dirtMat = pbr('forest_ground_04', look.dirtRepeat);
+  dirtMat.alphaMap = dirtMask();
+  dirtMat.transparent = true;
+  dirtMat.depthWrite = false;
+  dirtMat.polygonOffset = true;
+  dirtMat.polygonOffsetFactor = -1;
+  const dirt = new Mesh(floorGeo, dirtMat);
+  dirt.rotation.x = -Math.PI / 2;
+  dirt.position.y = 0.002;
+  dirt.receiveShadow = true;
+  scene.add(dirt);
+  // Ground beyond the wall, so crags stand on earth instead of the sky.
+  const outerGround = new Mesh(new CircleGeometry(80, 64), pbr('forest_ground_04', 20));
+  outerGround.rotation.x = -Math.PI / 2;
+  outerGround.position.y = -0.02;
+  outerGround.receiveShadow = true;
+  scene.add(outerGround);
 
-  /* --- walls --- */
-  const wallMat = new MeshStandardMaterial({
-    map: loadTex('/assets/textures/castle_brick_diff_1k.jpg', WALL_TILE_REPEAT_X, WALL_TILE_REPEAT_Y, true),
-    normalMap: loadTex('/assets/textures/castle_brick_nor_gl_1k.jpg', WALL_TILE_REPEAT_X, WALL_TILE_REPEAT_Y),
-    aoMap: loadTex('/assets/textures/castle_brick_arm_1k.jpg', WALL_TILE_REPEAT_X, WALL_TILE_REPEAT_Y),
-    roughnessMap: loadTex('/assets/textures/castle_brick_arm_1k.jpg', WALL_TILE_REPEAT_X, WALL_TILE_REPEAT_Y),
-    metalnessMap: loadTex('/assets/textures/castle_brick_arm_1k.jpg', WALL_TILE_REPEAT_X, WALL_TILE_REPEAT_Y),
-    roughness: 1,
-    metalness: 0,
-  });
+  /* --- ring wall: battered dry-stone face, flat top, outer face --- */
+  const { wallHeight, wallThickness } = balance.arena;
+  const profile = [
+    new Vector2(RADIUS, 0),
+    new Vector2(RADIUS + 0.25, wallHeight),
+    new Vector2(RADIUS + wallThickness, wallHeight),
+    new Vector2(RADIUS + wallThickness + 0.3, 0),
+  ];
+  const circumference = Math.PI * 2 * RADIUS;
+  const wall = new Mesh(new LatheGeometry(profile, 128),
+    pbr('rock_wall_08', [circumference / look.wallTileMetres, (wallHeight * 2 + wallThickness) / look.wallTileMetres]));
+  (wall.material as MeshStandardMaterial).side = DoubleSide;
+  wall.castShadow = true;
+  wall.receiveShadow = true;
+  scene.add(wall);
 
-  const wallGeo = new BoxGeometry(ARENA_SIZE + WALL_THICKNESS, WALL_HEIGHT, WALL_THICKNESS);
-  const sideWallGeo = new BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, ARENA_SIZE + WALL_THICKNESS);
-  const half = ARENA_SIZE / 2 + WALL_THICKNESS / 2;
-  const wallY = WALL_HEIGHT / 2;
+  /* --- post: bloom kept for element glow, gentle vignette, then tone mapping --- */
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new Vector2(1, 1), look.bloomStrength, 0.4, look.bloomThreshold);
+  composer.addPass(bloom);
+  const vignette = new ShaderPass(VignetteShader);
+  vignette.uniforms['offset']!.value = 0.95;
+  vignette.uniforms['darkness']!.value = look.vignette;
+  composer.addPass(vignette);
+  composer.addPass(new OutputPass());
 
-  /** Create a wall mesh at the given position. */
-  function addWall(geo: BoxGeometry, x: number, z: number): void {
-    const wall = new Mesh(geo, wallMat);
-    wall.position.set(x, wallY, z);
-    wall.castShadow = true;
-    wall.receiveShadow = true;
-    scene.add(wall);
+  return {
+    scene, camera, renderer,
+    setSize(width, height) {
+      renderer.setSize(width, height, false);
+      composer.setPixelRatio(renderer.getPixelRatio());
+      composer.setSize(width, height);
+    },
+    render: () => composer.render(),
+    dispose: () => {
+      disposed = true;
+      sun.shadow.map?.dispose();
+      scene.environment?.dispose();
+      composer.dispose();
+      disposeObject(scene);
+      renderer.dispose();
+    },
+  };
+}
+
+interface PropPlacement { file: string; x: number; z: number; scale: number; yaw: number; y?: number }
+
+/** Statue landmark, boulders and the crags and standing stones beyond the wall. */
+export async function loadProps(scene: Scene, loader = new GLTFLoader()): Promise<void> {
+  const placements: PropPlacement[] = [
+    ...balance.arena.obstacles.map(o => ({ file: o.file, x: o.x, z: o.z, scale: o.scale, yaw: o.yaw })),
+  ];
+  // Crags ring the arena outside the wall, each turning its scanned face (+Z) to the centre.
+  const crags = ['rock_face_01', 'rock_face_02'];
+  for (let i = 0; i < 14; i++) {
+    const angle = (i / 14) * Math.PI * 2 + 0.2;
+    const distance = RADIUS + 7 + (i % 3) * 2.5;
+    placements.push({
+      file: crags[i % 2]!, x: Math.cos(angle) * distance, z: Math.sin(angle) * distance,
+      scale: 1.4 + (i % 4) * 0.3, yaw: Math.atan2(-Math.cos(angle), -Math.sin(angle)), y: -0.1,
+    });
   }
-
-  addWall(wallGeo, 0, -half);   // north
-  addWall(wallGeo, 0, half);    // south
-  addWall(sideWallGeo, -half, 0); // west
-  addWall(sideWallGeo, half, 0);  // east
-
-  return { scene, camera, renderer, dispose: () => {
-    disposed = true;
-    sun.shadow.map?.dispose();
-    scene.environment?.dispose();
-    disposeObject(scene);
-    renderer.dispose();
-  } };
+  for (const angle of [0.9, 2.6, 4.1, 5.5]) {
+    placements.push({ file: 'rock_moss_set_01', x: Math.cos(angle) * (RADIUS + 9),
+      z: Math.sin(angle) * (RADIUS + 9), scale: 1.3, yaw: angle, y: 0.5 });
+  }
+  const sources = new Map<string, Object3D>();
+  await Promise.all([...new Set(placements.map(p => p.file))].map(async file => {
+    const gltf = await loader.loadAsync(`/assets/props/${file}.glb`);
+    gltf.scene.traverse(node => {
+      if (node instanceof Mesh) { node.castShadow = true; node.receiveShadow = true; }
+    });
+    sources.set(file, gltf.scene);
+  }));
+  for (const p of placements) {
+    const prop = sources.get(p.file)!.clone();
+    prop.position.set(p.x, p.y ?? 0, p.z);
+    prop.rotation.y = p.yaw;
+    prop.scale.setScalar(p.scale);
+    scene.add(prop);
+  }
 }
 
 /** Release resources shared by meshes only once. */
 export function disposeObject(root: Object3D): void {
-  const geometries = new Set<BoxGeometry>();
+  const geometries = new Set<BufferGeometry>();
   const materials = new Set<Material>();
   const textures = new Set<Texture>();
   root.traverse(node => {

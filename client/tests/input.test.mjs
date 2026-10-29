@@ -88,12 +88,12 @@ test('capture errors have a retry message and capture can be requested by keyboa
     f.canvas.requestPointerLock = () => Promise.reject(new Error('denied'));
     dispatch(f.button, 'click');
     await Promise.resolve();
-    assert.match(f.messages.at(-1), /failed.*try again/);
+    assert.match(f.messages.at(-1), /could not be captured.*try again/);
     assert.equal(document.activeElement, f.canvas);
     f.canvas.requestPointerLock = undefined;
     dispatch(f.canvas, 'click');
     assert.match(f.messages.at(-1), /unavailable/);
     dispatch(document, 'pointerlockerror');
-    assert.match(f.messages.at(-1), /failed.*try again/);
+    assert.match(f.messages.at(-1), /could not be captured.*try again/);
   } finally { f.restore(); }
 });

@@ -1,6 +1,6 @@
 # ELEMENTS
 
-ELEMENTS is a browser action RPG about four elemental nations. The browser client has a playable knight in a stone arena, with camera-relative movement and collision. A Colyseus server runs alongside it; multiplayer comes in later tasks.
+ELEMENTS is a browser action RPG about four elemental nations. The browser client has a playable sword fighter in a round stone arena at dusk, with camera-relative movement and collision. A Colyseus server runs alongside it; multiplayer comes in later tasks.
 
 ## Run locally
 
@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173>. Select Play or click the arena to capture the mouse. Use WASD to move, Shift to run and the mouse to look around. Escape releases the mouse. You can also focus the arena with Tab and move using the keyboard. The knight turns toward movement and switches between idle, walk and run. The right-shoulder camera pulls in at walls and the floor. The game server listens on <http://127.0.0.1:2567> and registers an empty room named `empty`. Both services bind to this computer only. Press Ctrl+C to stop them.
+Open <http://127.0.0.1:5173>. Select Enter the arena or click the arena to capture the mouse. Use WASD to move, Shift to run and the mouse to look around. Escape releases the mouse. You can also focus the arena with Tab and move using the keyboard. The fighter turns toward movement and switches between idle, walk and run. The right-shoulder camera pulls in at walls and the floor. Add `?debug` to the address to show the frame rate. The game server listens on <http://127.0.0.1:2567> and registers an empty room named `empty`. Both services bind to this computer only. Press Ctrl+C to stop them.
 
 ```sh
 npm test          # Shared balance, animation, movement and camera tests
@@ -52,16 +52,18 @@ The client self-hosts its fonts locally under `client/public/fonts/`. Other asse
 
 ## Arena assets (Poly Haven, CC0)
 
-All arena textures and the HDRI sky are from [Poly Haven](https://polyhaven.com/), released under the CC0 public domain license. No attribution is required, but sources are listed here per project rules.
+All arena textures, models and the sky are from [Poly Haven](https://polyhaven.com/), released under the CC0 public domain license. Textures were converted to WebP and models packed to GLB with smaller textures and quantized meshes using [glTF-Transform](https://gltf-transform.dev/).
 
-- [stone_floor](https://polyhaven.com/a/stone_floor): arena floor diffuse, normal and ARM maps (1K JPG). `client/public/assets/textures/stone_floor_*.jpg`
-- [castle_brick_07](https://polyhaven.com/a/castle_brick_07): arena wall diffuse, normal and ARM maps (1K JPG). `client/public/assets/textures/castle_brick_*.jpg`
-- [kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky): outdoor HDRI sky panorama for environment lighting and background (1K HDR). `client/public/assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr`
+- [monastery_stone_floor](https://polyhaven.com/a/monastery_stone_floor): flagstone floor colour, normal and ARM maps (1K). `client/public/assets/textures/monastery_stone_floor_*.webp`
+- [forest_ground_04](https://polyhaven.com/a/forest_ground_04): dirt worked into the floor and the ground beyond the wall (1K). `client/public/assets/textures/forest_ground_04_*.webp`
+- [rock_wall_08](https://polyhaven.com/a/rock_wall_08): dry-stone ring wall (1K). `client/public/assets/textures/rock_wall_08_*.webp`
+- [belfast_sunset_puresky](https://polyhaven.com/a/belfast_sunset_puresky): evening sky for lighting and background (1K HDR). `client/public/assets/hdri/belfast_sunset_puresky_1k.hdr`
+- [gothic_statue](https://polyhaven.com/a/gothic_statue): the arena's statue landmark. `client/public/assets/props/gothic_statue.glb`
+- [rock_face_01](https://polyhaven.com/a/rock_face_01) and [rock_face_02](https://polyhaven.com/a/rock_face_02): crags beyond the wall. `client/public/assets/props/rock_face_0*.glb`
+- [rock_moss_set_01](https://polyhaven.com/a/rock_moss_set_01): standing stones beyond the wall. `client/public/assets/props/rock_moss_set_01.glb`
+- [namaqualand_boulder_02](https://polyhaven.com/a/namaqualand_boulder_02): boulders inside the arena. `client/public/assets/props/namaqualand_boulder_02.glb`
 
 ## Hero assets (Quaternius, CC0)
 
-Character and weapon models are from the [LowPoly Animated Knight](https://quaternius.com/packs/animated-knight.html) pack by Quaternius ([OpenGameArt release](https://opengameart.org/content/lowpoly-animated-knight)), released under the Creative Commons CC0 Public Domain dedication.
-
-- `client/public/assets/characters/hero.glb`: rigged humanoid knight model with dark iron armor and 12 animation clips (`idle`, `walk`, `run`, `attack_light`, `attack_heavy`, `dodge`, `jump`, `death`, and variants). Converted from the source FBX with [FBX2glTF](https://github.com/facebookincubator/FBX2glTF) (v0.9.7) and scaled to real size (1 unit = 1 metre, standing height 1.80 m).
-- `client/public/assets/characters/sword.glb`: medieval arming sword mesh, attached to the right hand bone (`PalmR`) so it follows every animation and swing.
-- `client/public/assets/characters/helmet.glb`: dark iron helmet mesh, attached to the head bone (`Head`).
+- `client/public/assets/characters/hero.glb`: the mannequin and animations from Quaternius's [Universal Animation Library](https://quaternius.com/packs/universalanimationlibrary.html) (CC0), a realistically proportioned humanoid on a standard skeleton. The unused clips were removed, the kept ones renamed for the game (`idle`, `walk`, `run`, `sprint`, `attack_light`, `attack_heavy`, `dodge`, `hit`, `death`, `jump`, `cast` and others), and the mesh quantized with glTF-Transform. It is a stand-in until the game's own hero models are ready.
+- `client/public/assets/characters/sword.glb`: arming sword from the [LowPoly Animated Knight](https://quaternius.com/packs/animated-knight.html) pack by Quaternius (CC0), attached to the right hand bone (`hand_r`) so it follows every animation.

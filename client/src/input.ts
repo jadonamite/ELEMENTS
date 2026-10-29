@@ -25,10 +25,10 @@ export class GameInput {
       try {
         const request = canvas.requestPointerLock();
         request?.catch(() => {
-          if (!this.disposed) status('Mouse capture failed. Select Play to try again.');
+          if (!this.disposed) status('The mouse could not be captured. Select Enter the arena to try again.');
         });
       } catch {
-        status('Mouse capture failed. Select Play to try again.');
+        status('The mouse could not be captured. Select Enter the arena to try again.');
       }
     };
     canvas.addEventListener('click', capture, options);
@@ -47,13 +47,12 @@ export class GameInput {
     document.addEventListener('pointerlockchange', () => {
       clear();
       const locked = document.pointerLockElement === canvas;
-      button.textContent = locked ? 'Mouse captured' : 'Play';
-      status(locked ? 'Move the mouse to look. Press Escape to release it.'
-        : 'Select Play or click the arena to capture the mouse.');
+      button.textContent = 'Enter the arena';
+      status(locked ? '' : 'Paused. Press Escape any time to release the mouse.');
     }, options);
     document.addEventListener('pointerlockerror', () => {
       clear();
-      status('Mouse capture failed. Select Play to try again.');
+      status('The mouse could not be captured. Select Enter the arena to try again.');
     }, options);
     document.addEventListener('mousemove', event => {
       if (document.pointerLockElement === canvas) orbit(event.movementX, event.movementY);

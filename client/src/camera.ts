@@ -18,6 +18,8 @@ export class ShoulderCamera {
   pitch = tuning.initialPitch;
   private distance = 0;
   private readonly anchor = new Vector3();
+  /** Point the camera orbits, at the hero's shoulder height. */
+  get target(): Vector3 { return this.anchor; }
   private readonly direction = new Vector3();
   private readonly look = new Vector3();
   private readonly probe = new RAPIER.Ball(tuning.collisionRadius);
@@ -36,9 +38,11 @@ export class ShoulderCamera {
     const limit = balance.arena.size / 2 - radius - tuning.collisionPadding;
     // The hero can stand closer to a wall than a wide near plane can. Start the
     // sweep from safe interior space so a penetrating origin cannot miss a wall.
-    this.anchor.set(clamp(heroPosition.x, -limit, limit),
+    const reach = Math.hypot(heroPosition.x, heroPosition.z);
+    const pull = reach > limit ? limit / reach : 1;
+    this.anchor.set(heroPosition.x * pull,
       Math.max(radius + tuning.collisionPadding, heroPosition.y + tuning.targetHeight),
-      clamp(heroPosition.z, -limit, limit));
+      heroPosition.z * pull);
     const cos = Math.cos(this.pitch);
     this.direction.set(
       Math.sin(this.yaw) * cos * tuning.distance + Math.cos(this.yaw) * tuning.shoulder,
