@@ -13,9 +13,18 @@ export function cameraCollisionRadius(camera: PerspectiveCamera): number {
     Math.hypot(camera.near, halfHeight, halfHeight * camera.aspect)) + tuning.collisionPadding;
 }
 
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+/**
+ * Two views blended by the stance: a high, angled world view for walking the
+ * world, and the close over-the-shoulder view for fights.
+ */
 export class ShoulderCamera {
   yaw = 0;
   pitch = tuning.initialPitch;
+  /** 1 for the fight view, 0 for the world view; the camera eases toward it. */
+  fight = 0;
+  private blend = 0;
   private distance = 0;
   private readonly anchor = new Vector3();
   /** Point the camera orbits, at the hero's shoulder height. */
@@ -33,6 +42,15 @@ export class ShoulderCamera {
   }
 
   update(heroPosition: Vector3, delta: number, reducedMotion = false): void {
+    this.blend = reducedMotion ? this.fight
+      : this.blend + (this.fight - this.blend) * (1 - Math.exp(-tuning.modeRate * delta));
+    const world = tuning.world;
+    const t = this.blend;
+    const fov = lerp(world.fov, tuning.fov, t);
+    if (Math.abs(this.camera.fov - fov) > 1e-3) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    const distance = lerp(world.distance, tuning.distance, t);
+    const shoulder = lerp(world.shoulder, tuning.shoulder, t);
+    const pitch = lerp(world.pitch, this.pitch, t);
     const radius = cameraCollisionRadius(this.camera);
     this.probe.radius = radius;
     const limit = balance.arena.size / 2 - radius - tuning.collisionPadding;
@@ -41,13 +59,13 @@ export class ShoulderCamera {
     const reach = Math.hypot(heroPosition.x, heroPosition.z);
     const pull = reach > limit ? limit / reach : 1;
     this.anchor.set(heroPosition.x * pull,
-      Math.max(radius + tuning.collisionPadding, heroPosition.y + tuning.targetHeight),
+      Math.max(radius + tuning.collisionPadding, heroPosition.y + lerp(world.targetHeight, tuning.targetHeight, t)),
       heroPosition.z * pull);
-    const cos = Math.cos(this.pitch);
+    const cos = Math.cos(pitch);
     this.direction.set(
-      Math.sin(this.yaw) * cos * tuning.distance + Math.cos(this.yaw) * tuning.shoulder,
-      Math.sin(this.pitch) * tuning.distance,
-      Math.cos(this.yaw) * cos * tuning.distance - Math.sin(this.yaw) * tuning.shoulder,
+      Math.sin(this.yaw) * cos * distance + Math.cos(this.yaw) * shoulder,
+      Math.sin(pitch) * distance,
+      Math.cos(this.yaw) * cos * distance - Math.sin(this.yaw) * shoulder,
     );
     const desiredDistance = this.direction.length();
     this.direction.normalize();
@@ -58,7 +76,7 @@ export class ShoulderCamera {
     this.distance = safeDistance < this.distance || reducedMotion ? safeDistance
       : this.distance + (safeDistance - this.distance) * (1 - Math.exp(-tuning.recoveryRate * delta));
     this.camera.position.copy(this.anchor).addScaledVector(this.direction, this.distance);
-    this.look.set(-Math.sin(this.yaw) * cos, -Math.sin(this.pitch), -Math.cos(this.yaw) * cos);
+    this.look.set(-Math.sin(this.yaw) * cos, -Math.sin(pitch), -Math.cos(this.yaw) * cos);
     this.camera.lookAt(this.look.add(this.camera.position));
   }
 }

@@ -81,7 +81,7 @@ Combat is the star of the game and gets most of the build time. It's player-vers
 - Shader-based elemental effects, cheap to render
 - Slow motion on finishers, and a camera that pulls in close during fights
 
-**Camera:** full 3D, high and angled like Hades for readability, pulling in close during fights.
+**Camera:** two views tied to the hero's stance. Walking the world (towns, NPCs, shops, stalls) uses a high, angled 2.5D view like Hades, so the street reads at a glance. Drawing the sword brings the camera down over the right shoulder for the fight, like God of War; sheathing it lifts the camera back.
 
 ## Economy
 

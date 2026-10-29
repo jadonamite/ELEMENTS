@@ -48,6 +48,8 @@ export interface HeroInstance {
   /** Blade ends in the sword holder's space, for contact checks. */
   bladeBase: Vector3;
   bladeTip: Vector3;
+  /** Where the sword rides on the back; its world position is the hilt the hand reaches for. */
+  backSocket: Object3D;
   /** Sword in hand (true) or carried on the back (false). */
   arm(armed: boolean): void;
 }
@@ -182,7 +184,10 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   const backInModel = new Matrix4().compose(BACK_POSITION,
     new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(side, BACK_BLADE, out)),
     new Vector3().setScalar(SWORD_SCALE));
-  const backLocal = toModel.invert().multiply(backInModel);
+  const backSocket = new Object3D();
+  backSocket.name = 'SwordBackSocket';
+  toModel.invert().multiply(backInModel).decompose(backSocket.position, backSocket.quaternion, backSocket.scale);
+  spine.add(backSocket);
   const arm = (armed: boolean): void => {
     if (armed) {
       handBone.add(holder);
@@ -190,8 +195,10 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
       holder.rotation.set(...SWORD_ROTATION);
       holder.scale.setScalar(SWORD_SCALE);
     } else {
-      spine.add(holder);
-      backLocal.decompose(holder.position, holder.quaternion, holder.scale);
+      backSocket.add(holder);
+      holder.position.set(0, 0, 0);
+      holder.quaternion.identity();
+      holder.scale.setScalar(1);
     }
   };
 
@@ -204,5 +211,5 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   anim.play('idle_relaxed');
   arm(false);
 
-  return { model: heroModel, anim, sword: holder, handBone, bladeBase, bladeTip, arm };
+  return { model: heroModel, anim, sword: holder, handBone, bladeBase, bladeTip, backSocket, arm };
 }
