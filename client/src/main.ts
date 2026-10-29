@@ -1,5 +1,6 @@
 import './ui/tokens.css';
 import './style.css';
+import './opening.css';
 import balance from '../../shared/balance.json';
 import { createArena, disposeObject, loadProps } from './scene.js';
 import { initPhysics } from './physics.js';
@@ -15,6 +16,7 @@ import { FightHud } from './hud.js';
 import { SwordStance } from './sword.js';
 import { SoundManager } from './audio.js';
 import { BendingEffects } from './bending-fx.js';
+import { OpeningFlow } from './opening.js';
 import type { Enemy } from './enemy.js';
 import { Vector3 } from 'three';
 
@@ -83,6 +85,10 @@ async function main(): Promise<void> {
   const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status);
   cleanup.push(() => input.dispose());
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
+  if (!new URLSearchParams(window.location.search).has('skipIntro')) {
+    const opening = new OpeningFlow(() => {});
+    cleanup.push(() => opening.dispose());
+  }
   // Debug builds expose the live objects for frame sampling.
   if (fps) Object.assign(window, { elements: { hero, controller, camera, shoulderCamera, input, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; } } });
   if (fps) cleanup.push(() => fps.dispose());
