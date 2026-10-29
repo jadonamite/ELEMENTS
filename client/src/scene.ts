@@ -18,18 +18,21 @@ import {
   SRGBColorSpace,
   TextureLoader,
   WebGLRenderer,
-  type Texture,
+  Texture,
+  Object3D,
+  Material,
 } from 'three';
+import balance from '../../shared/balance.json';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 
 /* ---------- constants (1 unit = 1 metre) ---------- */
 
 /** Arena floor size in metres. */
-export const ARENA_SIZE = 30;
+export const ARENA_SIZE = balance.arena.size;
 /** Wall height in metres. */
-const WALL_HEIGHT = 2.5;
+const WALL_HEIGHT = balance.arena.wallHeight;
 /** Wall thickness in metres. */
-const WALL_THICKNESS = 0.6;
+const WALL_THICKNESS = balance.arena.wallThickness;
 /** How many times floor texture tiles across the arena. */
 const FLOOR_TILE_REPEAT = 8;
 /** How many times wall texture tiles along one wall. */
@@ -57,6 +60,7 @@ export interface ArenaObjects {
   scene: Scene;
   camera: PerspectiveCamera;
   renderer: WebGLRenderer;
+  dispose(): void;
 }
 
 export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
@@ -71,13 +75,15 @@ export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
   const scene = new Scene();
 
   /* --- camera --- */
-  const camera = new PerspectiveCamera(60, 1, 0.1, 500);
+  const camera = new PerspectiveCamera(balance.camera.fov, 1, balance.camera.near, balance.camera.far);
   camera.position.set(0, 12, 20);
   camera.lookAt(0, 0, 0);
 
   /* --- HDRI environment (sky + diffuse light) --- */
+  let disposed = false;
   const hdrLoader = new HDRLoader();
   hdrLoader.load('/assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr', (hdr) => {
+    if (disposed) { hdr.dispose(); return; }
     hdr.mapping = EquirectangularReflectionMapping;
     scene.background = hdr;
     scene.environment = hdr;
@@ -147,5 +153,32 @@ export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
   addWall(sideWallGeo, -half, 0); // west
   addWall(sideWallGeo, half, 0);  // east
 
-  return { scene, camera, renderer };
+  return { scene, camera, renderer, dispose: () => {
+    disposed = true;
+    sun.shadow.map?.dispose();
+    scene.environment?.dispose();
+    disposeObject(scene);
+    renderer.dispose();
+  } };
+}
+
+/** Release resources shared by meshes only once. */
+export function disposeObject(root: Object3D): void {
+  const geometries = new Set<BoxGeometry>();
+  const materials = new Set<Material>();
+  const textures = new Set<Texture>();
+  root.traverse(node => {
+    if (!(node instanceof Mesh)) return;
+    geometries.add(node.geometry);
+    for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
+      materials.add(material);
+      for (const value of Object.values(material)) {
+        if (value instanceof Texture) textures.add(value);
+      }
+    }
+    if ('skeleton' in node) (node.skeleton as { dispose(): void }).dispose();
+  });
+  geometries.forEach(geometry => geometry.dispose());
+  materials.forEach(material => material.dispose());
+  textures.forEach(texture => texture.dispose());
 }

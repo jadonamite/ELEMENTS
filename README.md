@@ -1,6 +1,6 @@
 # ELEMENTS
 
-ELEMENTS is a browser action RPG about four elemental nations. This scaffold runs an empty Three.js scene and a Colyseus server; gameplay comes in later tasks.
+ELEMENTS is a browser action RPG about four elemental nations. The browser client has a playable knight in a stone arena, with camera-relative movement and collision. A Colyseus server runs alongside it; multiplayer comes in later tasks.
 
 ## Run locally
 
@@ -11,10 +11,10 @@ npm install
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173>. The page is a dark canvas. The game server listens on <http://127.0.0.1:2567> and registers an empty room named `empty`. Both services bind to this computer only. Press Ctrl+C to stop them.
+Open <http://127.0.0.1:5173>. Select Play or click the arena to capture the mouse. Use WASD to move, Shift to run and the mouse to look around. Escape releases the mouse. You can also focus the arena with Tab and move using the keyboard. The knight turns toward movement and switches between idle, walk and run. The right-shoulder camera pulls in at walls and the floor. The game server listens on <http://127.0.0.1:2567> and registers an empty room named `empty`. Both services bind to this computer only. Press Ctrl+C to stop them.
 
 ```sh
-npm test          # Shared balance-data test
+npm test          # Shared balance, animation, movement and camera tests
 npm run typecheck # Check all workspace TypeScript
 npm run build     # Build shared code, server and browser client
 npm start --workspace @elements/server # Run the built server
@@ -26,7 +26,7 @@ The client build is in `client/dist/`. The server build is in `server/dist/`.
 
 - `client/`: browser game, built with Vite and TypeScript.
 - `server/`: Node.js multiplayer server, using Colyseus.
-- `shared/`: shared rules and `balance.json`, currently empty.
+- `shared/`: shared rules and `balance.json` for arena dimensions, movement and camera tuning.
 - `contracts/`: reserved for NEAR contracts in Rust.
 - `art/game/`: finished assets for the game.
 - `docs/`: game design and asset records.
@@ -37,7 +37,7 @@ The client build is in `client/dist/`. The server build is in `server/dist/`.
 Direct dependencies are pinned in the workspace manifests. `package-lock.json` records the installed dependency tree.
 
 - [Three.js](https://threejs.org/): 3D rendering.
-- [Rapier](https://rapier.rs/): physics library, installed for the arena task.
+- [Rapier](https://rapier.rs/): arena collisions, kinematic character movement and camera shape sweeps.
 - [Colyseus core](https://docs.colyseus.io/server), [WebSocket transport](https://docs.colyseus.io/server/transport/ws) and [schema](https://docs.colyseus.io/state): multiplayer server and state serialization.
 - [Vite](https://vite.dev/): client development server and browser build.
 - [TypeScript](https://www.typescriptlang.org/): type checking and compilation.

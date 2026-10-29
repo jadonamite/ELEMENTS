@@ -178,20 +178,3 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   };
 }
 
-/**
- * Creates a 1m x 1m x 1m test box placed on the floor for direct height reference.
- */
-export function createTestBox(x = 1.5, z = 0): Mesh {
-  const geo = new BoxGeometry(1, 1, 1);
-  const mat = new MeshStandardMaterial({
-    color: 0x4a5568,
-    roughness: 0.6,
-    metalness: 0.2,
-  });
-  const box = new Mesh(geo, mat);
-  box.name = 'TestBox1m';
-  box.position.set(x, 0.5, z); // Center at Y=0.5 so base is at Y=0, top at Y=1.0m
-  box.castShadow = true;
-  box.receiveShadow = true;
-  return box;
-}

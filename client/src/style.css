@@ -12,3 +12,48 @@ body {
   width: 100%;
   height: 100%;
 }
+
+#game:focus-visible {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: -2px;
+}
+
+#hero-hud {
+  position: fixed;
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  left: max(var(--space-4), env(safe-area-inset-left));
+  right: max(var(--space-4), env(safe-area-inset-right));
+  width: fit-content;
+  max-width: calc(100% - var(--space-8));
+  box-sizing: border-box;
+  max-height: calc(100dvh - var(--space-8));
+  overflow: auto;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: var(--font-size-sm)/var(--line-height-normal) var(--font-family-body);
+}
+
+#hero-hud strong { font-family: var(--font-family-display); }
+#hud-clip { margin-left: var(--space-4); }
+#hero-hud p { margin: var(--space-2) 0; }
+#hero-hud button {
+  min-height: var(--target-min-height);
+  min-width: var(--target-min-width);
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+#hero-hud button:hover { background: var(--color-bg-overlay); }
+#hero-hud button:active { background: var(--color-bg-subtle); }
+#hero-hud button:disabled { color: var(--color-text-secondary); cursor: wait; }
+#hero-hud button:focus-visible {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
+}

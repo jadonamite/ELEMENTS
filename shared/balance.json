@@ -1,1 +1,33 @@
-{}
+{
+  "arena": { "size": 30, "wallHeight": 2.5, "wallThickness": 0.6, "floorThickness": 0.1 },
+  "controller": {
+    "walkSpeed": 2.2,
+    "runSpeed": 5.5,
+    "turnRate": 14,
+    "radius": 0.3,
+    "height": 1.8,
+    "skin": 0.02,
+    "gravity": 9.81,
+    "fixedStep": 0.016666666666666666,
+    "maxFrameDelta": 0.1,
+    "idleSpeedThreshold": 0.08,
+    "runSpeedThreshold": 3.5,
+    "animationFade": 0.25,
+    "modelForwardYaw": 0
+  },
+  "camera": {
+    "distance": 3.6,
+    "shoulder": 0.65,
+    "targetHeight": 1.35,
+    "initialPitch": 0.15,
+    "minPitch": -0.65,
+    "maxPitch": 1.15,
+    "mouseSensitivity": 0.0025,
+    "collisionRadius": 0.18,
+    "collisionPadding": 0.025,
+    "recoveryRate": 8,
+    "fov": 60,
+    "near": 0.1,
+    "far": 500
+  }
+}

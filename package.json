@@ -13,7 +13,7 @@
   },
   "scripts": {
     "dev": "concurrently --kill-others --names client,server \"npm run dev --workspace @elements/client\" \"npm run dev --workspace @elements/server\"",
-    "test": "npm test --workspace @elements/shared",
+    "test": "npm test --workspace @elements/shared && npm test --workspace @elements/client",
     "build": "npm run build --workspace @elements/shared && npm run build --workspace @elements/server && npm run build --workspace @elements/client",
     "typecheck": "npm run typecheck --workspaces"
   },
