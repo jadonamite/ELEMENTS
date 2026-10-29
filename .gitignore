@@ -1,0 +1,27 @@
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+*.log
+
+# Working material
+workbench/
+art/raw/
+art/reference/
+
+# Operating system files
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Test output
+test-results/
+playwright-report/
