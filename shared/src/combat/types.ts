@@ -1,6 +1,6 @@
 export const ELEMENTS = ['AQUES', 'IGNIS', 'AURA', 'TERRA'] as const;
 export type Element = typeof ELEMENTS[number];
-export const IGNIS_MOVE_IDS = ['light_1', 'light_2', 'light_3', 'heavy_1', 'dodge', 'uppercut', 'ground_pound', 'dash_strike'] as const;
+export const IGNIS_MOVE_IDS = ['light_1', 'light_2', 'light_3', 'heavy_1', 'heavy_2', 'dodge', 'uppercut', 'ground_pound', 'dash_strike'] as const;
 export type IgnisMoveId = typeof IGNIS_MOVE_IDS[number];
 export interface MoveDefinition {
   readonly kind: string;
@@ -41,6 +41,8 @@ export interface HitInput {
   readonly moveId: string;
   readonly now: number;
   readonly state: ActionState;
+  /** When this swing started. Every target one swing touches shares its single cooldown. */
+  readonly swingAt?: number;
 }
 export type HitResult = { readonly accepted: false; readonly reason: RejectionReason } | {
   readonly accepted: true;

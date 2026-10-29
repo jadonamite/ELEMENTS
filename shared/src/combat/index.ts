@@ -70,14 +70,16 @@ export function createCombatRules(balance: CombatBalance) {
     const last = state.cooldowns[moveId];
     return last === undefined ? ZERO : Math.max(ZERO, moves[moveId].cooldownSeconds - (now - last));
   }
-  function recordAction(state: ActionState, moveId: IgnisMoveId, now: number, damage?: number): ActionState {
+  function recordAction(state: ActionState, moveId: IgnisMoveId, now: number, damage?: number, startedAt = now): ActionState {
     const damageHistory = state.damageHistory.filter(hit => now - hit.at < rules.damageWindowSeconds);
     if (damage !== undefined) damageHistory.push({ at: now, damage });
-    return { lastActionAt: now, cooldowns: { ...state.cooldowns, [moveId]: now }, damageHistory };
+    return { lastActionAt: now, cooldowns: { ...state.cooldowns, [moveId]: startedAt }, damageHistory };
   }
   /** Commit target and state together, serially, in the server's attacker/target records. */
-  function checkHit({ attacker, target, moveId, now, state }: HitInput): HitResult {
-    if (!validCombatant(attacker) || !validCombatant(target) || !nonnegative(now) || !validState(state)) return { accepted: false, reason: 'invalid_input' };
+  function checkHit({ attacker, target, moveId, now, state, swingAt: named }: HitInput): HitResult {
+    const swingAt = named ?? now;
+    if (!validCombatant(attacker) || !validCombatant(target) || !nonnegative(now) || !validState(state) ||
+        !nonnegative(swingAt) || swingAt > now) return { accepted: false, reason: 'invalid_input' };
     if (!isMove(moveId)) return { accepted: false, reason: 'unknown_move' };
     const move = moves[moveId];
     if (move.kind !== 'attack') return { accepted: false, reason: 'not_attack' };
@@ -87,14 +89,16 @@ export function createCombatRules(balance: CombatBalance) {
     if (state.lastActionAt !== null && now < state.lastActionAt) return { accepted: false, reason: 'clock_reversed' };
     const distance = Math.hypot(attacker.position.x - target.position.x, attacker.position.y - target.position.y, attacker.position.z - target.position.z);
     if (distance > move.reach) return { accepted: false, reason: 'out_of_reach' };
-    if (cooldownRemaining(moveId, state, now) > ZERO) return { accepted: false, reason: 'cooldown' };
+    const lastUse = state.cooldowns[moveId];
+    const sameSwing = named !== undefined && lastUse === named;
+    if (!sameSwing && lastUse !== undefined && swingAt - lastUse < move.cooldownSeconds) return { accepted: false, reason: 'cooldown' };
     const grossDamage = move.damage * counterMultiplier(attacker.element, target.element);
     const spent = state.damageHistory.reduce((sum, hit) => now - hit.at < rules.damageWindowSeconds ? sum + hit.damage : sum, ZERO);
     if (!nonnegative(grossDamage) || !nonnegative(spent)) return { accepted: false, reason: 'invalid_input' };
     if (spent + grossDamage > rules.maxDamagePerSecond * rules.damageWindowSeconds) return { accepted: false, reason: 'damage_cap' };
     const health = applyDamage(target.health, calculateDamage(move.damage, attacker.element, target.element, target.armour));
     return { accepted: true, damage: target.health.current - health.current,
-      target: { ...target, health }, state: recordAction(state, moveId, now, grossDamage) };
+      target: { ...target, health }, state: recordAction(state, moveId, now, grossDamage, swingAt) };
   }
   /** Dodge only consumes its cooldown here; invulnerability belongs to the fight simulation. */
   function useDodge(state: ActionState, now: number): { accepted: true; state: ActionState } | { accepted: false; reason: 'invalid_input' | 'clock_reversed' | 'cooldown' } {

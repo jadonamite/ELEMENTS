@@ -5,7 +5,8 @@ import { createCombatRules, ELEMENTS } from '../src/index.js';
 import type { CombatBalance, Combatant, HitInput } from '../src/index.js';
 
 const balance: { combat: CombatBalance } = JSON.parse(await readFile(new URL('../balance.json', import.meta.url), 'utf8'));
-const combat = createCombatRules(balance.combat);
+// The cap is pinned here so the cap tests do not move with tuning.
+const combat = createCombatRules({ ...balance.combat, rules: { ...balance.combat.rules, maxDamagePerSecond: 100 } });
 const fighter = (element: Combatant['element'] = 'IGNIS'): Combatant => ({
   element, position: { x: 0, y: 0, z: 0 }, health: combat.createHealth(), armour: balance.combat.rules.defaultArmour,
 });
@@ -81,6 +82,7 @@ test('expired damage events are removed when the next accepted action records st
 test('a single oversized move is rejected using balance, never a damage claim', () => {
   const tuning = structuredClone(balance.combat);
   (tuning.ignisStarterMoves.light_1 as { damage: number }).damage = 1000;
+  (tuning.rules as { maxDamagePerSecond: number }).maxDamagePerSecond = 100;
   const result = createCombatRules(tuning).checkHit(input());
   assert.deepEqual(result, { accepted: false, reason: 'damage_cap' });
   const withClaim = { ...input(), claimedDamage: 1000000 };
@@ -88,7 +90,7 @@ test('a single oversized move is rejected using balance, never a damage claim', 
 });
 
 test('unknown moves, dodge hits and non-IGNIS attacks are rejected', () => {
-  rejects(input({ moveId: 'heavy_2' }), 'unknown_move');
+  rejects(input({ moveId: 'heavy_3' }), 'unknown_move');
   rejects(input({ moveId: 'toString' }), 'unknown_move');
   rejects(input({ moveId: 'dodge' }), 'not_attack');
   rejects(input({ attacker: fighter('AQUES') }), 'wrong_element');
@@ -148,4 +150,14 @@ test('invalid tuning throws on startup', () => {
   const badMove = structuredClone(balance.combat);
   (badMove.ignisStarterMoves.light_1 as { cooldownSeconds: number }).cooldownSeconds = Infinity;
   assert.throws(() => createCombatRules(badMove), RangeError);
+});
+
+test('one swing touching several targets is one action, a new swing waits for the cooldown', () => {
+  const first = accepted(input({ now: 0.2, swingAt: 0 }));
+  assert.equal(first.state.cooldowns.light_1, 0);
+  const second = accepted(input({ target: fighter('TERRA'), state: first.state, now: 0.25, swingAt: 0 }));
+  rejects(input({ state: second.state, now: 0.3, swingAt: 0.3 }), 'cooldown');
+  const cooldown = balance.combat.ignisStarterMoves.light_1.cooldownSeconds;
+  accepted(input({ state: second.state, now: cooldown + 0.1, swingAt: cooldown }));
+  rejects(input({ now: 1, swingAt: 2 }), 'invalid_input');
 });
