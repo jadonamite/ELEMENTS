@@ -6,14 +6,16 @@ const tuning = balance.controller;
 export interface MoveInput { forward: number; right: number; running: boolean }
 export type Locomotion = 'idle' | 'walk' | 'run';
 
-export function movementVelocity(input: MoveInput, yaw: number): Vector3 {
+export interface Speeds { walkSpeed: number; runSpeed: number }
+
+export function movementVelocity(input: MoveInput, yaw: number, speeds: Speeds = tuning): Vector3 {
   const direction = new Vector3(
     input.right * Math.cos(yaw) - input.forward * Math.sin(yaw),
     0,
     -input.right * Math.sin(yaw) - input.forward * Math.cos(yaw),
   );
   if (direction.lengthSq() > 1) direction.normalize();
-  return direction.multiplyScalar(input.running ? tuning.runSpeed : tuning.walkSpeed);
+  return direction.multiplyScalar(input.running ? speeds.runSpeed : speeds.walkSpeed);
 }
 
 export function locomotionForSpeed(speed: number): Locomotion {
@@ -36,9 +38,10 @@ export class HeroController {
   speed = 0;
   private verticalVelocity = 0;
 
-  constructor(private readonly world: RAPIER.World) {
+  /** Enemies pass their own spawn point and speeds; the hero starts at the centre. */
+  constructor(private readonly world: RAPIER.World, spawn = { x: 0, z: 0 }, private readonly speeds: Speeds = tuning) {
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased()
-      .setTranslation(0, tuning.height / 2 + tuning.skin, 0));
+      .setTranslation(spawn.x, tuning.height / 2 + tuning.skin, spawn.z));
     this.collider = world.createCollider(
       RAPIER.ColliderDesc.capsule(tuning.height / 2 - tuning.radius, tuning.radius), this.body,
     );
@@ -55,7 +58,7 @@ export class HeroController {
     const dt = tuning.fixedStep;
     const velocity = lunge > 0
       ? new Vector3(Math.sin(this.facing), 0, Math.cos(this.facing)).multiplyScalar(lunge)
-      : movementVelocity(input, yaw);
+      : movementVelocity(input, yaw, this.speeds);
     if (lunge === 0 && velocity.lengthSq() > 0) {
       this.facing = turnToward(this.facing, Math.atan2(velocity.x, velocity.z), dt);
     }

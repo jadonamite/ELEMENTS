@@ -48,8 +48,9 @@
     "modelForwardYaw": 0,
     "clipSpeeds": {
       "walk": 0.97,
-      "run": 5.36
-    }
+      "run": 5.0
+    },
+    "runBounceKeep": 0.45
   },
   "camera": {
     "distance": 2.7,
@@ -146,6 +147,16 @@
         "clip": "dodge",
         "lunge": 6.0,
         "speed": 1.5
+      },
+      "hit": {
+        "clip": "hit",
+        "lunge": 0,
+        "speed": 1.3
+      },
+      "death": {
+        "clip": "death",
+        "lunge": 0,
+        "speed": 1.0
       }
     },
     "rules": {
@@ -153,7 +164,7 @@
       "counterBonus": 0.25,
       "armourScale": 100,
       "damageWindowSeconds": 1,
-      "maxDamagePerSecond": 100,
+      "maxDamagePerSecond": 300,
       "defaultMaxHealth": 100,
       "defaultArmour": 0
     },
@@ -186,6 +197,13 @@
         "cooldownSeconds": 1.2,
         "slot": "heavy"
       },
+      "heavy_2": {
+        "kind": "attack",
+        "damage": 38,
+        "reach": 3,
+        "cooldownSeconds": 1.2,
+        "slot": "heavy"
+      },
       "dodge": {
         "kind": "dodge",
         "damage": 0,
@@ -214,6 +232,60 @@
         "cooldownSeconds": 30,
         "slot": "ultimate"
       }
-    }
+    },
+    "activeWindow": [
+      0.2,
+      0.75
+    ],
+    "dodgeInvulnerable": [
+      0.05,
+      0.6
+    ],
+    "hitStop": 0.07,
+    "aimAssistRange": 4.5,
+    "lungeStopDistance": 1.25,
+    "aimAssistAngle": 1.0
+  },
+  "hero": {
+    "maxHealth": 120,
+    "respawnSeconds": 3,
+    "blockDamageScale": 0.2,
+    "blockAngle": 1.3
+  },
+  "stance": {
+    "engageRadius": 9,
+    "calmAfterSeconds": 6
+  },
+  "enemy": {
+    "placeholder": true,
+    "count": 3,
+    "element": "TERRA",
+    "maxHealth": 90,
+    "armour": 0,
+    "walkSpeed": 1.1,
+    "runSpeed": 3.2,
+    "clipSpeeds": {
+      "walk": 1.0,
+      "run": 3.6
+    },
+    "attackRange": 1.7,
+    "attackDamage": 12,
+    "attackSpeed": 1.25,
+    "attackHitFraction": 0.42,
+    "attackAngle": 1.0,
+    "attackTrackFraction": 0.3,
+    "attackLunge": 1.6,
+    "attackStandOff": 1.3,
+    "attackCooldown": 1.6,
+    "groupAttackGap": 1.2,
+    "circleRadius": 3.4,
+    "circleSpeed": 0.45,
+    "staggerSpeed": 1.4,
+    "corpseSeconds": 4,
+    "sinkSeconds": 1.2,
+    "respawnSeconds": 5,
+    "spawnRadius": 11,
+    "minSpawnDistance": 7,
+    "healthBarHeight": 1.85
   }
 }

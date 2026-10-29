@@ -9,6 +9,9 @@ import { FixedStepper, HeroController, locomotionForSpeed } from './controller.j
 import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
 import { Combat } from './combat.js';
+import { loadEnemyTemplate } from './enemy.js';
+import { Fight } from './fight.js';
+import { FightHud } from './hud.js';
 import { Vector3 } from 'three';
 
 let disposed = false;
@@ -50,6 +53,7 @@ async function main(): Promise<void> {
   cleanup.push(() => controller.dispose());
   const shoulderCamera = new ShoulderCamera(camera, physics.world);
   let hero: HeroInstance;
+  const husks = loadEnemyTemplate();
   try {
     hero = await loadHero();
   } catch (error) {
@@ -74,6 +78,8 @@ async function main(): Promise<void> {
   const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status);
   cleanup.push(() => input.dispose());
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
+  // Debug builds expose the live objects for frame sampling.
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, shoulderCamera, input, get fight() { return fight; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -96,24 +102,83 @@ async function main(): Promise<void> {
   });
   shoulderCamera.update(controller.position, 1, true);
 
-  const combat = new Combat(hero.anim);
+  const fightHud = new FightHud();
+  cleanup.push(() => fightHud.dispose());
+  let hitStop = 0;
+  let reviveIn = 0;
+  const fight = new Fight(await husks, physics.world, scene, {
+    heroHit(blocked) {
+      hitStop = balance.combat.hitStop * (blocked ? 0.5 : 1);
+      // A hit only flinches the hero when it isn't mid-move or guarding.
+      if (!combat.current && !blocked) combat.react('hit');
+    },
+    heroDied() {
+      combat.react('death');
+      fightHud.say('You fell');
+      reviveIn = balance.hero.respawnSeconds;
+    },
+    enemyHit(_enemy, killed) { hitStop = balance.combat.hitStop * (killed ? 1.6 : 1); },
+  });
+  cleanup.push(() => fight.dispose());
+  const combat = new Combat(hero.anim, (move) => fight.ready(move));
   const drawn = new Vector3();
   const { clipSpeeds } = balance.controller;
+  // Calm stance carries the sword on the back; fighting draws it.
+  let armed = false;
+  let calmIn = 0;
+  const setArmed = (value: boolean): void => {
+    if (value === armed) return;
+    armed = value;
+    hero.arm(value);
+  };
+  const bladeBase = new Vector3();
+  const bladeTip = new Vector3();
+  const heroView = { position: controller.position, facing: 0, bladeBase, bladeTip };
   renderer.setAnimationLoop(() => {
     const now = performance.now();
     const delta = Math.min((now - lastTime) / 1000, balance.controller.maxFrameDelta);
     lastTime = now;
-    for (const action of input.takeActions()) {
-      // Attacks and dodges go where the camera looks, as in most third-person fighters.
-      if (!combat.current && action !== 'dodge') controller.facing = shoulderCamera.yaw + Math.PI;
-      combat.press(action);
+    const alive = fight.heroAlive;
+    for (const action of alive ? input.takeActions() : []) {
+      if (!combat.current && action !== 'dodge') {
+        // Attacks go where the camera looks, turned onto a husk just off that line.
+        const looking = shoulderCamera.yaw + Math.PI;
+        const { aimAssistRange, aimAssistAngle } = balance.combat;
+        const mark = fight.nearestInFront(controller.position, looking, aimAssistRange, aimAssistAngle);
+        controller.facing = mark
+          ? Math.atan2(mark.controller.position.x - controller.position.x, mark.controller.position.z - controller.position.z)
+          : looking;
+      }
+      if (combat.press(action) && action !== 'dodge') setArmed(true);
     }
-    combat.blocking = input.blocking && !combat.current;
+    if (!alive) input.takeActions();
+    combat.blocking = alive && input.blocking && !combat.current;
+    if (combat.blocking) setArmed(true);
     combat.update(delta);
+    // Stay drawn while fighting or with a husk close by; sheathe after a quiet spell.
+    if ((combat.current && combat.current !== 'dodge') || combat.blocking ||
+        fight.nearestDistance(controller.position) < balance.stance.engageRadius) calmIn = balance.stance.calmAfterSeconds;
+    calmIn = Math.max(0, calmIn - delta);
+    if (calmIn === 0 && !combat.current) setArmed(false);
+    if (reviveIn > 0 && (reviveIn -= delta) <= 0) {
+      fight.reviveHero();
+      combat.reset();
+      fightHud.say('');
+    }
+    hero.sword.updateMatrixWorld(true);
+    hero.sword.localToWorld(bladeBase.copy(hero.bladeBase));
+    hero.sword.localToWorld(bladeTip.copy(hero.bladeTip));
+    heroView.facing = controller.facing;
     const rooted = combat.current !== null || combat.blocking;
-    const alpha = stepper.advance(delta, () => controller.step(
-      rooted ? { forward: 0, right: 0, running: false } : input.read(),
-      shoulderCamera.yaw, combat.lunge));
+    const alpha = stepper.advance(delta, () => {
+      // Lunges stop at sword range instead of carrying the hero into a husk.
+      const lunge = fight.nearestDistance(controller.position) < balance.combat.lungeStopDistance ? 0 : combat.lunge;
+      controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge);
+      fight.step(heroView, combat);
+    });
+    // Hit-stop: a short near-freeze of every body on impact.
+    const animDelta = hitStop > 0 ? delta * 0.08 : delta;
+    hitStop = Math.max(0, hitStop - delta);
     // Draw between the last two physics steps so motion stays smooth on fast displays.
     drawn.lerpVectors(controller.previous, controller.position, alpha);
     hero.model.position.copy(drawn);
@@ -121,12 +186,15 @@ async function main(): Promise<void> {
     if (combat.blocking) {
       hero.anim.play('block', balance.combat.fade);
     } else if (!combat.current) {
-      const clip = locomotionForSpeed(controller.speed);
+      const pace = locomotionForSpeed(controller.speed);
+      const clip = pace === 'idle' && !armed ? 'idle_relaxed' : pace;
       hero.anim.play(clip, balance.controller.animationFade);
       // Match foot speed to ground speed so the feet don't slide or hop.
-      if (clip !== 'idle') hero.anim.setSpeed(clip, Math.max(0.5, controller.speed / clipSpeeds[clip]));
+      if (pace !== 'idle') hero.anim.setSpeed(pace, Math.max(0.5, controller.speed / clipSpeeds[pace]));
     }
-    hero.anim.update(delta);
+    hero.anim.update(animDelta);
+    fight.draw(animDelta, alpha, controller.position);
+    fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     // Hide the hero when a wall pushes the camera inside its body.
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
