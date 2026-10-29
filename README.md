@@ -49,3 +49,11 @@ Direct dependencies are pinned in the workspace manifests. `package-lock.json` r
 - [Inter](https://github.com/rsms/inter): interface typeface by Rasmus Andersson, self-hosted WOFF2, licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/).
 
 The client self-hosts its fonts locally under `client/public/fonts/`. Other asset sources are recorded in [docs/ASSETS.md](docs/ASSETS.md).
+
+## Arena assets (Poly Haven, CC0)
+
+All arena textures and the HDRI sky are from [Poly Haven](https://polyhaven.com/), released under the CC0 public domain license. No attribution is required, but sources are listed here per project rules.
+
+- [stone_floor](https://polyhaven.com/a/stone_floor): arena floor diffuse, normal and ARM maps (1K JPG). `client/public/assets/textures/stone_floor_*.jpg`
+- [castle_brick_07](https://polyhaven.com/a/castle_brick_07): arena wall diffuse, normal and ARM maps (1K JPG). `client/public/assets/textures/castle_brick_*.jpg`
+- [kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky): outdoor HDRI sky panorama for environment lighting and background (1K HDR). `client/public/assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr`
