@@ -184,7 +184,8 @@ export class FightHud {
         : 'Weapon: 1 weapon • 2 hands • 3 legs • B bending';
     }
 
-    // Update round tracker
+    // Update round tracker; open zones have no rounds.
+    this.roundTracker.style.display = roundInfo ? '' : 'none';
     if (roundInfo) {
       if (roundInfo.isVictory) {
         this.roundTracker.className = 'round-tracker victory';

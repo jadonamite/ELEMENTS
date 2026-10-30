@@ -38,8 +38,9 @@ export class HeroController {
   speed = 0;
   private verticalVelocity = 0;
 
-  /** Enemies pass their own spawn point and speeds; the hero starts at the centre. */
-  constructor(private readonly world: RAPIER.World, spawn = { x: 0, z: 0 }, private readonly speeds: Speeds = tuning) {
+  /** Enemies pass their own spawn point and speeds; the hero starts at the centre. Open zones pass bounded = false. */
+  constructor(private readonly world: RAPIER.World, spawn = { x: 0, z: 0 }, private readonly speeds: Speeds = tuning,
+    private readonly bounded = true) {
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased()
       .setTranslation(spawn.x, tuning.height / 2 + tuning.skin, spawn.z));
     this.collider = world.createCollider(
@@ -89,7 +90,7 @@ export class HeroController {
       z: previous.z + movement.z,
     };
     const reach = Math.hypot(next.x, next.z);
-    if (reach > limit) { next.x *= limit / reach; next.z *= limit / reach; }
+    if (this.bounded && reach > limit) { next.x *= limit / reach; next.z *= limit / reach; }
     if (next.y === floorCenter) this.verticalVelocity = 0;
     this.speed = Math.hypot(next.x - previous.x, next.z - previous.z) / dt;
     this.body.setNextKinematicTranslation(next);

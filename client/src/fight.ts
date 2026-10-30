@@ -87,6 +87,8 @@ export class Fight {
   private readonly counted = new WeakSet<Enemy>();
   private roundIntermission = 0;
   isVictory = false;
+  /** False in open zones: no rounds; enemies come from encounters instead. */
+  waves = true;
 
   constructor(
     private readonly template: EnemyTemplate,
@@ -170,6 +172,8 @@ export class Fight {
       return true;
     }
   }
+
+  stopWaves(): void { this.waves = false; this.respawnIn = []; }
 
   /** Set before pressing a bending move: its strength from the meter and tier, and whether it is a chain link. */
   setBend(scale: number, chained: boolean): void { this.bend = { scale, chained }; }
@@ -488,7 +492,7 @@ export class Fight {
       this.enemies.splice(i, 1);
     }
 
-    if (this.isVictory) return;
+    if (this.isVictory || !this.waves) return;
 
     // Handle round intermission countdown
     if (this.roundIntermission > 0) {

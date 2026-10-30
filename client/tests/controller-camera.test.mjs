@@ -112,6 +112,8 @@ test('camera sphere and near-plane corners stay clear at all walls, corners and 
     assert.equal(cases, 2592);
     rig.yaw = 0;
     rig.pitch = 0;
+    // Recovery is checked in the fight view, whose distance the assertions use.
+    rig.fight = 1;
     rig.update(new Vector3(0, 0, 14.68), 1 / 60, true);
     const closeDistance = camera.position.distanceTo(new Vector3(0, 1.35, 14.68));
     rig.update(new Vector3(), 1 / 60);

@@ -67,12 +67,12 @@
     "near": 0.1,
     "far": 500,
     "hideHeroDistance": 0.6,
-    "modeRate": 3.5,
+    "blendSeconds": 0.35,
     "world": {
-      "distance": 9,
-      "pitch": 0.64,
+      "distance": 11,
+      "pitch": 0.733,
       "shoulder": 0,
-      "targetHeight": 1.2,
+      "targetHeight": 2.4,
       "fov": 42
     }
   },

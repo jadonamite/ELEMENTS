@@ -3,6 +3,7 @@ import './style.css';
 import './opening.css';
 import balance from '../../shared/balance.json';
 import { createArena, disposeObject, loadProps } from './scene.js';
+import { createZone, SPAWN } from './world/zone.js';
 import { initPhysics } from './physics.js';
 import { FpsCounter } from './fps.js';
 import { loadHero, type HeroInstance } from './hero.js';
@@ -58,16 +59,21 @@ async function main(): Promise<void> {
   const changeFighter = panel.querySelector<HTMLButtonElement>('.hud-secondary')!;
   const status = (message: string): void => { panel.querySelector('#control-status')!.textContent = message; };
 
-  const physics = await initPhysics();
+  // ?town walks Sindr from the Shrine of Embers; without it the fight arena opens.
+  const inTown = new URLSearchParams(window.location.search).has('town');
+  const zone = inTown ? await createZone(canvas) : null;
+  const physics = zone ? zone.physics : await initPhysics();
   if (disposed) { physics.dispose(); return; }
   cleanup.push(() => physics.dispose());
-  const arena = createArena(canvas);
+  const arena = zone ?? createArena(canvas);
   const { scene, camera, renderer } = arena;
-  loadProps(scene).catch((error: unknown) => console.error('Arena props failed to load:', error));
+  if (!zone) loadProps(scene).catch((error: unknown) => console.error('Arena props failed to load:', error));
   cleanup.push(() => { renderer.setAnimationLoop(null); arena.dispose(); });
-  const controller = new HeroController(physics.world);
+  const controller = new HeroController(physics.world, zone ? SPAWN : undefined, undefined, !zone);
   cleanup.push(() => controller.dispose());
-  const shoulderCamera = new ShoulderCamera(camera, physics.world);
+  zone?.follow(controller.position);
+  const shoulderCamera = new ShoulderCamera(camera, physics.world, !zone);
+  if (zone) { controller.facing = SPAWN.facing; shoulderCamera.yaw = SPAWN.facing + Math.PI; }
   let hero: HeroInstance;
   const husks = loadEnemyTemplate();
   try {
@@ -85,7 +91,7 @@ async function main(): Promise<void> {
   scene.add(hero.model);
   cleanup.push(() => hero.anim.dispose());
   button.disabled = false;
-  button.textContent = 'Enter the arena';
+  button.textContent = zone ? 'Enter Sindr' : 'Enter the arena';
   status('');
   // The HUD fades out while the mouse is captured.
   const togglePlaying = (): void => { document.body.classList.toggle('playing', document.pointerLockElement === canvas); };
@@ -132,7 +138,7 @@ async function main(): Promise<void> {
   const consent = new ConsentBanner();
   cleanup.push(() => consent.dispose());
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, shoulderCamera, input, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -162,8 +168,10 @@ async function main(): Promise<void> {
   const elementFx = new ElementEffects(scene, new URLSearchParams(window.location.search).get('fxQuality') === 'low' ? 'low' : 'high');
   cleanup.push(() => elementFx.dispose());
   // Two stone basins give AQUES water to bend from in the arena.
-  elementFx.basin(new Vector3(-8.5, 0, 6.5));
-  elementFx.basin(new Vector3(9, 0, -6.5));
+  if (!zone) {
+    elementFx.basin(new Vector3(-8.5, 0, 6.5));
+    elementFx.basin(new Vector3(9, 0, -6.5));
+  }
   // A TERRA wall stops bodies for as long as it stands.
   elementFx.onWall = (center, facing, size, seconds) => {
     const collider = physics.world.createCollider(
@@ -186,12 +194,14 @@ async function main(): Promise<void> {
   const fightHud = new FightHud();
   cleanup.push(() => fightHud.dispose());
   let hitStop = 0;
+  let hurtAt = -Infinity;
   let reviveIn = 0;
   let slowMotion = 0;
   let lockedEnemy: Enemy | null = null;
 
   const fight = new Fight(await husks, physics.world, scene, {
     heroHit(blocked) {
+      hurtAt = performance.now();
       if (blocked) bend.gain('blocked');
       else mending.left = 0;
       shoulderCamera.shake(blocked ? 0.15 : 0.25);
@@ -249,6 +259,7 @@ async function main(): Promise<void> {
   // ?round=N starts the wave mode at round N, for testing later waves.
   const startRound = Number(new URLSearchParams(window.location.search).get('round'));
   if (startRound > 1) fight.setRound(startRound);
+  if (zone) { fight.stopWaves(); fightHud.say(''); }
   cleanup.push(() => fight.dispose());
   /** A bending move the meter paid for as a chain link: it starts even while on cooldown. */
   let chainPass: string | null = null;
@@ -618,7 +629,10 @@ async function main(): Promise<void> {
         sword.forceSheathe();
       }
     }
-    shoulderCamera.fight = (sword.engaged || fightingStyle !== 'weapon' || combat.current !== null) ? 1 : 0;
+    // The arena always fights; in the world the shoulder view comes with a drawn weapon, a move, a hit or a villain close by.
+    const hurtRecently = performance.now() - hurtAt < balance.stance.calmAfterSeconds * 1000;
+    const bareReady = fightingStyle !== 'weapon' && (!zone || fight.nearestDistance(controller.position) < balance.stance.engageRadius);
+    shoulderCamera.fight = (sword.engaged || bareReady || combat.current !== null || hurtRecently) ? 1 : 0;
     if (reviveIn > 0 && (reviveIn -= delta) <= 0) {
       fight.reviveHero();
       combat.reset();
@@ -703,7 +717,7 @@ async function main(): Promise<void> {
       lockedEnemy,
       cooldowns,
       heroElement,
-      roundInfo,
+      zone ? undefined : roundInfo,
       fightingStyle,
       isDim,
     );

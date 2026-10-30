@@ -38,7 +38,8 @@ export class ShoulderCamera {
   private readonly look = new Vector3();
   private readonly probe = new RAPIER.Ball(tuning.collisionRadius);
 
-  constructor(readonly camera: PerspectiveCamera, private readonly world: RAPIER.World) {}
+  /** The round arena keeps the camera inside its wall; an open zone has no such limit. */
+  constructor(readonly camera: PerspectiveCamera, private readonly world: RAPIER.World, private readonly bounded = true) {}
 
   /** Impulses camera trauma on heavy impact or receiving damage. */
   shake(amount: number): void {
@@ -70,15 +71,19 @@ export class ShoulderCamera {
       this.trauma = Math.max(0, this.trauma - delta * 2.2);
     }
 
+    // A fixed-length eased change between the two views.
+    const step = delta / tuning.blendSeconds;
     this.blend = reducedMotion ? this.fight
-      : this.blend + (this.fight - this.blend) * (1 - Math.exp(-tuning.modeRate * delta));
+      : this.fight > this.blend ? Math.min(this.fight, this.blend + step) : Math.max(this.fight, this.blend - step);
     const world = tuning.world;
-    const t = this.blend;
+    const t = this.blend * this.blend * (3 - 2 * this.blend);
     const fov = lerp(world.fov, tuning.fov, t);
     if (Math.abs(this.camera.fov - fov) > 1e-3) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     const distance = lerp(world.distance, tuning.distance, t);
     const shoulder = lerp(world.shoulder, tuning.shoulder, t);
-    const pitch = clamp(lerp(world.pitch, this.pitch, t) + shakePitch, tuning.minPitch, tuning.maxPitch);
+    // The world view keeps its high angle but the mouse can still tilt it to look up at the skyline.
+    const worldPitch = clamp(world.pitch + (this.pitch - tuning.initialPitch) * 0.8, 0.2, 1.1);
+    const pitch = clamp(lerp(worldPitch, this.pitch, t) + shakePitch, tuning.minPitch, tuning.maxPitch);
     const yaw = this.yaw + shakeYaw;
     const radius = cameraCollisionRadius(this.camera);
     this.probe.radius = radius;
@@ -86,7 +91,7 @@ export class ShoulderCamera {
     // The hero can stand closer to a wall than a wide near plane can. Start the
     // sweep from safe interior space so a penetrating origin cannot miss a wall.
     const reach = Math.hypot(heroPosition.x, heroPosition.z);
-    const pull = reach > limit ? limit / reach : 1;
+    const pull = this.bounded && reach > limit ? limit / reach : 1;
     this.anchor.set(heroPosition.x * pull,
       Math.max(radius + tuning.collisionPadding, heroPosition.y + lerp(world.targetHeight, tuning.targetHeight, t)),
       heroPosition.z * pull);
