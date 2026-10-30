@@ -17,6 +17,15 @@ The target is grounded realism with a God of War feel: heavy, worn armour, scann
 - Light is natural (sun, sky, fog). Elemental light is the exception and the focal point.
 - Arenas are small and detailed; distance is carried by panoramas.
 
+**Environments (30 Oct): hyper-realism at the level of Ghost of Tsushima's open world, without ever giving up smooth play on the target devices** (60 fps on a mid-range laptop now, phones later through the quality levels). Precise lighting, rich detail and deliberate colour in every scene. Use every technique that buys realism cheaply: compressed high-resolution scanned materials, baked and screen-space ambient occlusion, cascaded soft shadows, light shafts, height fog, colour grading, instanced wind-driven foliage, and anti-aliasing; scale each one down through `?fxQuality=low` rather than dropping the look. The co-op game *After the Wind* is a second reference for how finished a world feels when every part of it shares one look.
+
+- **One colour story per place.** Each zone has a dominant colour and an accent (IGNIS: black basalt and ash under ember orange; the dusk sky carries the warmth). Scanned surfaces get graded into that story, never left at their raw photo colour.
+- **Light tells the time of day.** One strong key light (low sun, forge glow at night), long shadows, light shafts through smoke and dust, and rim light on silhouettes so fighters read against the ground.
+- **Depth in layers.** Near ground detail, a mid layer of foliage, ruins or rocks, and far silhouettes fading into fog and haze. The arena wall should never be the horizon.
+- **Everything moves a little.** Grass and ash-grass bend in the wind, embers, leaves and ash drift, smoke rises, banners flap. A still scene reads as a test level.
+- **Ground matches bodies.** If the characters are stylised, the floor, rocks and props are graded and detailed to the same level. Realistic scans next to stylised models clash.
+- **Check before done.** Screenshot every scene at day, dusk and night and compare it against the reference board before calling it finished.
+
 **Colour rules per element:**
 
 | Element | Glow colour | Armour palette | Materials |
@@ -41,7 +50,7 @@ The target is grounded realism with a God of War feel: heavy, worn armour, scann
 | Hush outfits | 4 | Hunyuan 3D | World and UX | Oct 31 | Not started |
 | Element masters | 4 | Hunyuan 3D | World and UX | Oct 31 | Not started |
 | The Lord | 1 | Hunyuan 3D | World and UX | Oct 31 | Not started |
-| Lord's Collectors | 1 | Hunyuan 3D | World and UX | Oct 31 | Not started |
+| Lord's Sentries | 1 | Hunyuan 3D | World and UX | Oct 31 | Not started |
 | Merchants | 5 | Hunyuan 3D | World and UX | Oct 31 | Not started |
 | Rival guild members | 2 | Hunyuan 3D | World and UX | Oct 31 | Not started |
 | World boss | 1 | Hunyuan 3D, Blender | World and UX | Nov 10 | Not started |
@@ -95,7 +104,7 @@ The game opens on a small first load and streams the rest, so every asset has a 
 | --- | --- | --- | --- |
 | Player Shaper or Hush | 30–50k | 2K, KTX2 | ≤ 4 MB with moves |
 | Masters, the Lord | 25–40k | 2K, KTX2 | ≤ 3 MB |
-| Merchants, Collectors, rival guild | 10–20k | 1K, KTX2 | ≤ 1.5 MB |
+| Merchants, Sentries, rival guild | 10–20k | 1K, KTX2 | ≤ 1.5 MB |
 | World boss | 60–80k | 2K, KTX2 | ≤ 6 MB |
 | Weapon or relic | 3–8k | 1K, KTX2 | ≤ 0.5 MB |
 | One arena (dressed) | — | 1–2K, KTX2 | ≤ 15 MB |
@@ -139,7 +148,7 @@ Gate: code starts 1 Nov with the first IGNIS hero ready to animate.
 | Day | Hunyuan 3D generations | Also |
 | --- | --- | --- |
 | 29 Oct | IGNIS Shaper (3 variants), other Shapers (9), Hush outfits (8) | Reference boards for all four nations |
-| 30 Oct | Masters (8), the Lord (2), Collectors (2), merchants (8) | Film the 4 signature ultimates |
+| 30 Oct | Masters (8), the Lord (2), Sentries (2), merchants (8) | Film the 4 signature ultimates |
 | 31 Oct | Rival guild (4), weapons and relics (12), world boss (4) | Scaniverse scans, pick Megascans per arena |
 
 Main characters get two variants each and the first hero gets three; merchants and weapons get one or two, since they're seen less closely. Unused quota on any day goes to the world boss, the hardest model.

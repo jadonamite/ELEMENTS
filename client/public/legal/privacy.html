@@ -4,30 +4,161 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Privacy Policy - ELEMENTS</title>
-  <link rel="stylesheet" href="/src/ui/tokens.css" />
   <style>
-    body {
-      background: #0e0c0b;
-      color: #ede2d4;
-      font-family: var(--font-family-body);
-      line-height: var(--line-height-relaxed);
-      max-width: 800px;
-      margin: 0 auto;
-      padding: var(--space-8) var(--space-4);
-    }
-    h1, h2, h3 {
-      font-family: var(--font-family-display);
-      color: #f7ede0;
-      letter-spacing: var(--letter-spacing-wide);
-    }
-    h1 { border-bottom: 1px solid rgba(214, 170, 110, 0.3); padding-bottom: var(--space-3); }
+    @font-face { font-family: 'Cinzel'; src: url('/fonts/cinzel-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+    @font-face { font-family: 'Inter'; src: url('/fonts/inter-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+    body { background: #0e0c0b; color: #ede2d4; font: 16px/1.65 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 760px; margin: 0 auto; padding: 48px 20px 96px; }
+    h1, h2, h3 { font-family: 'Cinzel', Georgia, serif; color: #f7ede0; letter-spacing: 0.02em; line-height: 1.25; }
+    h1 { font-size: 32px; border-bottom: 1px solid rgba(214, 170, 110, 0.3); padding-bottom: 12px; }
+    h2 { font-size: 21px; margin-top: 40px; }
     a { color: #d6aa6e; }
     a:hover { color: #f7ede0; }
-    .back { display: inline-block; margin-bottom: var(--space-6); font-size: var(--font-size-sm); }
+    strong { color: #f7ede0; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 15px; }
+    th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid rgba(214, 170, 110, 0.18); }
+    th { color: #d6aa6e; font-weight: 400; }
+    li { margin: 6px 0; }
+    .back { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; }
   </style>
 </head>
 <body>
   <a href="/" class="back">&larr; Return to ELEMENTS</a>
-  <h1>Privacy policy</h1>\n<p>*Draft for legal review only. This document has not been reviewed or approved by qualified legal counsel.*</p>\n<p>**ELEMENTS** is operated by {company} ({address}, {email}).</p>\n<p>Last updated: {date}</p>\n<p>This policy applies to players in the EU, the UK, and everywhere else ELEMENTS is accessible. Where it mentions GDPR, it covers both the EU General Data Protection Regulation (Regulation (EU) 2016/679) and the UK GDPR (as retained in UK law by the Data Protection Act 2018), unless a difference between the two is noted.</p>\n<h2>1. Who is the controller</h2>\n<p>{company} is the data controller for personal data collected through ELEMENTS. Contact: {email}.</p>\n<p>**[LAWYER]** If {company} appoints a Data Protection Officer (required if it processes personal data at scale or processes special-category data), confirm the name and contact address for the DPO here.</p>\n<h2>2. What we collect and why</h2>\n<p>| Data | Why we collect it | Legal basis |</p>\n<p>| --- | --- | --- |</p>\n<p>| Login identity (name, email, or social-login token) provided through Privy | To create and identify your account | Performance of a contract (playing ELEMENTS requires an account) |</p>\n<p>| Age band ("13 or over" or "under 13") | To block players under 13; to comply with age-of-consent rules | Legal obligation |</p>\n<p>| Game state (element, mastery tier, inventory, progress, plot ownership, transaction history) | To run the game and restore your progress across sessions | Performance of a contract |</p>\n<p>| NEAR testnet account ID | To record in-game actions on NEAR testnet and link them to your account | Performance of a contract |</p>\n<p>| Zone and room presence (who is in which zone, current position) | To show other players in the same zone | Performance of a contract |</p>\n<p>| Chat messages sent in zones | To deliver them to other players and to enforce the Edict filter | Performance of a contract; legitimate interest (game integrity) |</p>\n<p>We do not collect your full date of birth. We store only the over/under-13 result.</p>\n<p>We do not run analytics or session-replay software unless {company} decides otherwise and updates this policy.</p>\n<p>**[LAWYER]** Review each legal basis above. "Performance of a contract" is appropriate where processing is strictly necessary to provide the service the player signed up for. Where we rely on legitimate interest, a balancing test is required. Confirm whether any basis should be changed to consent.</p>\n<h2>3. Privy</h2>\n<p>Login is handled by Privy (Privy Technologies, Inc.). When you log in with Google, Apple, or email, Privy authenticates you and creates a NEAR wallet on your behalf. Privy's own privacy policy governs what Privy collects during authentication. We receive from Privy only the account identifier and the NEAR account ID it creates.</p>\n<p>**[LAWYER]** A data-processing agreement with Privy is required under Article 28 GDPR. Confirm whether one is in place or needs to be put in place.</p>\n<h2>4. NEAR testnet</h2>\n<p>Game actions (the Drawing result, trades, item ownership, fines) are recorded on NEAR testnet, a public distributed ledger operated by NEAR Protocol. Data written to a public blockchain cannot be deleted. Before any game actions are written to NEAR testnet, players should be told this.</p>\n<p>**[LAWYER]** The interaction between GDPR deletion rights (Article 17) and immutable blockchain records is unsettled in EU law. Please advise on:</p>\n<p>1. Whether writing a player's NEAR account ID and transaction history to a public ledger constitutes processing of personal data.</p>\n<p>2. How to reconcile the right to erasure with the immutability of blockchain records (for example, whether off-chain pseudonymisation and on-chain hashed identifiers would be sufficient).</p>\n<p>3. Whether a DPIA (Data Protection Impact Assessment) is required before NEAR mainnet is used.</p>\n<h2>5. EU consent age and children</h2>\n<p>ELEMENTS requires players to be 13 or over. In the EU, the age at which a child may consent to personal data processing (specifically: accessing information-society services) is set by each member state:</p>\n<p>| Member state | Age of digital consent |</p>\n<p>| --- | --- |</p>\n<p>| Germany | 16 |</p>\n<p>| Ireland | 16 |</p>\n<p>| Netherlands | 16 |</p>\n<p>| France | 15 |</p>\n<p>| Italy | 14 |</p>\n<p>| Most other EU states | 14 or 16 |</p>\n<p>| UK | 13 |</p>\n<p>A player aged 13 to 15 in a member state with a higher consent age cannot validly consent to their own data processing without a parent or guardian's authorisation.</p>\n<p>**[LAWYER]** Advise whether {company} must:</p>\n<p>1. Detect the player's member state at sign-up and apply the correct consent age.</p>\n<p>2. Obtain and verify parental consent for players below that state's threshold.</p>\n<p>3. If parental consent is required, what mechanism is sufficient (a checkbox ticked by a parent, email verification of a parent address, or an alternative verification step).</p>\n<h2>6. Where data is processed</h2>\n<p>Game state and account data are held on the game server. The server's location is {server-location}.</p>\n<p>**[LAWYER]** If the server is outside the EU or UK, confirm whether a transfer mechanism is required (standard contractual clauses, adequacy decision) and put it in place before any EU or UK player data is transferred.</p>\n<h2>7. Retention</h2>\n<p>| Data | Retention period |</p>\n<p>| --- | --- |</p>\n<p>| Account data and game state | Held for as long as the account is active, plus 90 days after deletion |</p>\n<p>| Age band result | Held for as long as the account is active, plus 90 days after deletion |</p>\n<p>| Chat messages | 30 days, then deleted |</p>\n<p>| NEAR testnet records | Cannot be deleted; governed by NEAR Protocol |</p>\n<p>**[LAWYER]** Confirm that these retention periods are appropriate and not longer than necessary for the stated purpose.</p>\n<h2>8. Your rights under GDPR and UK GDPR</h2>\n<p>If you are in the EU or UK, you have the right to:</p>\n<ul>\n<li>**Access** the personal data we hold about you.</li>\n<li>**Rectification** of inaccurate data.</li>\n<li>**Erasure** of your data where we have no lawful reason to keep it. Note that data written to the NEAR testnet blockchain cannot be deleted; see section 4.</li>\n<li>**Restriction** of processing while a dispute is resolved.</li>\n<li>**Portability** of data you provided to us in a structured, machine-readable format.</li>\n<li>**Object** to processing based on legitimate interest.</li>\n<li>**Withdraw consent** at any time where processing is based on consent. Withdrawal does not affect lawfulness of processing before withdrawal.</li>\n<li>**Lodge a complaint** with a supervisory authority. In the UK this is the ICO (ico.org.uk). In the EU it is the supervisory authority in your member state.</li>\n</ul>\n<p>To exercise any of these rights, contact {email}. We will respond within 30 days.</p>\n<p>**[LAWYER]** Confirm whether any rights listed above need to be qualified for this specific processing (for example, portability applies only to automated processing based on consent or contract).</p>\n<h2>9. Security</h2>\n<p>We use industry-standard security measures to protect personal data. No system is completely secure. If you believe your account has been compromised, contact {email} immediately.</p>\n<p>**[LAWYER]** If there is a personal data breach, Article 33 GDPR requires notification to the supervisory authority within 72 hours if there is a risk to individuals. Article 34 requires notification to affected individuals if the risk is high. Confirm that {company} has an incident-response procedure in place.</p>\n<h2>10. Changes to this policy</h2>\n<p>If we change how we process personal data in a material way, we will update this policy and notify affected players by email or in-game notification at least 14 days before the change takes effect.</p>\n<h2>11. Contact</h2>\n<p>{company}</p>\n<p>{address}</p>\n<p>{email}</p>
+<h1>Privacy policy</h1>
+<p><strong>ELEMENTS</strong> is operated by {company} ({address}, {email}).</p>
+<p>Last updated: 2026-10-29</p>
+<p>This policy applies to players in the EU, the UK, and everywhere else ELEMENTS is accessible. Where it mentions GDPR, it covers both the EU General Data Protection Regulation (Regulation (EU) 2016/679) and the UK GDPR (as retained in UK law by the Data Protection Act 2018), unless a difference between the two is noted.</p>
+<h2>1. Who is the controller</h2>
+<p>{company} is the data controller for personal data collected through ELEMENTS. Contact: {email}.</p>
+<h2>2. What we collect and why</h2>
+<table>
+<thead>
+<tr>
+<th>Data</th>
+<th>Why we collect it</th>
+<th>Legal basis</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Login identity (name, email, or social-login token) provided through Privy</td>
+<td>To create and identify your account</td>
+<td>Performance of a contract (playing ELEMENTS requires an account)</td>
+</tr>
+<tr>
+<td>Age band (&quot;13 or over&quot; or &quot;under 13&quot;)</td>
+<td>To block players under 13; to comply with age-of-consent rules</td>
+<td>Legal obligation</td>
+</tr>
+<tr>
+<td>Game state (element, mastery tier, inventory, progress, plot ownership, transaction history)</td>
+<td>To run the game and restore your progress across sessions</td>
+<td>Performance of a contract</td>
+</tr>
+<tr>
+<td>NEAR testnet account ID</td>
+<td>To record in-game actions on NEAR testnet and link them to your account</td>
+<td>Performance of a contract</td>
+</tr>
+<tr>
+<td>Zone and room presence (who is in which zone, current position)</td>
+<td>To show other players in the same zone</td>
+<td>Performance of a contract</td>
+</tr>
+<tr>
+<td>Chat messages sent in zones</td>
+<td>To deliver them to other players and to enforce the Edict filter</td>
+<td>Performance of a contract; legitimate interest (game integrity)</td>
+</tr>
+</tbody></table>
+<p>We do not collect your full date of birth. We store only the over/under-13 result.</p>
+<p>We do not run analytics or session-replay software unless {company} decides otherwise and updates this policy.</p>
+<h2>3. Privy</h2>
+<p>Login is handled by Privy (Privy Technologies, Inc.). When you log in with Google, Apple, or email, Privy authenticates you and creates a NEAR wallet on your behalf. Privy&#39;s own privacy policy governs what Privy collects during authentication. We receive from Privy only the account identifier and the NEAR account ID it creates.</p>
+<h2>4. NEAR testnet</h2>
+<p>Game actions (the Drawing result, trades, item ownership, fines) are recorded on NEAR testnet, a public distributed ledger operated by NEAR Protocol. Data written to a public blockchain cannot be deleted. Before any game actions are written to NEAR testnet, players should be told this.</p>
+<h2>5. EU consent age and children</h2>
+<p>ELEMENTS requires players to be 13 or over. In the EU, the age at which a child may consent to personal data processing (specifically: accessing information-society services) is set by each member state:</p>
+<table>
+<thead>
+<tr>
+<th>Member state</th>
+<th>Age of digital consent</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Germany</td>
+<td>16</td>
+</tr>
+<tr>
+<td>Ireland</td>
+<td>16</td>
+</tr>
+<tr>
+<td>Netherlands</td>
+<td>16</td>
+</tr>
+<tr>
+<td>France</td>
+<td>15</td>
+</tr>
+<tr>
+<td>Italy</td>
+<td>14</td>
+</tr>
+<tr>
+<td>Most other EU states</td>
+<td>14 or 16</td>
+</tr>
+<tr>
+<td>UK</td>
+<td>13</td>
+</tr>
+</tbody></table>
+<p>A player aged 13 to 15 in a member state with a higher consent age cannot validly consent to their own data processing without a parent or guardian&#39;s authorisation.</p>
+<h2>6. Where data is processed</h2>
+<p>Game state and account data are held on the game server. The server&#39;s location is {server-location}.</p>
+<h2>7. Retention</h2>
+<table>
+<thead>
+<tr>
+<th>Data</th>
+<th>Retention period</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Account data and game state</td>
+<td>Held for as long as the account is active, plus 90 days after deletion</td>
+</tr>
+<tr>
+<td>Age band result</td>
+<td>Held for as long as the account is active, plus 90 days after deletion</td>
+</tr>
+<tr>
+<td>Chat messages</td>
+<td>30 days, then deleted</td>
+</tr>
+<tr>
+<td>NEAR testnet records</td>
+<td>Cannot be deleted; governed by NEAR Protocol</td>
+</tr>
+</tbody></table>
+<h2>8. Your rights under GDPR and UK GDPR</h2>
+<p>If you are in the EU or UK, you have the right to:</p>
+<ul>
+<li><strong>Access</strong> the personal data we hold about you.</li>
+<li><strong>Rectification</strong> of inaccurate data.</li>
+<li><strong>Erasure</strong> of your data where we have no lawful reason to keep it. Note that data written to the NEAR testnet blockchain cannot be deleted; see section 4.</li>
+<li><strong>Restriction</strong> of processing while a dispute is resolved.</li>
+<li><strong>Portability</strong> of data you provided to us in a structured, machine-readable format.</li>
+<li><strong>Object</strong> to processing based on legitimate interest.</li>
+<li><strong>Withdraw consent</strong> at any time where processing is based on consent. Withdrawal does not affect lawfulness of processing before withdrawal.</li>
+<li><strong>Lodge a complaint</strong> with a supervisory authority. In the UK this is the ICO (ico.org.uk). In the EU it is the supervisory authority in your member state.</li>
+</ul>
+<p>To exercise any of these rights, contact {email}. We will respond within 30 days.</p>
+<h2>9. Security</h2>
+<p>We use industry-standard security measures to protect personal data. No system is completely secure. If you believe your account has been compromised, contact {email} immediately.</p>
+<h2>10. Changes to this policy</h2>
+<p>If we change how we process personal data in a material way, we will update this policy and notify affected players by email or in-game notification at least 14 days before the change takes effect.</p>
+<h2>11. Contact</h2>
+<p>{company}<br>{address}<br>{email}</p>
 </body>
 </html>

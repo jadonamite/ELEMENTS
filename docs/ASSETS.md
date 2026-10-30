@@ -108,3 +108,43 @@ These source-code licenses permit commercial software under their conditions, wi
 - Select exact free Fab assets and record their Fab Standard entitlements and formats.
 - Replace or separately fund blocked audio/splat steps; preserve the $0 constraint until the team changes it.
 - Check licenses inside downloaded packs and capture actual export settings. This research pass generated, purchased and downloaded no game assets.
+
+## IGNIS environment kit (acquired 2026-10-30)
+
+Production asset set for the nation of IGNIS (Sindr, Gorge Road, Slag Barrens, East Border Fort). All assets are dedicated to the public domain under CC0 1.0 Universal, color-graded to a unified volcanic palette (deep charcoal basalt `#1a1614`, soot/ash `#2d2724`, warm ember rust `#5a2a18`, neutral mortar `#3a3532`), packed into glTF/KTX2/WebP with meshopt compression, and supplied in paired High (2K / high-poly) and Low (1K / low-poly) LODs. Total kit size: 39.8 MB High (budget < 40 MB), 10.02 MB Low (budget < 12 MB).
+
+### Scanned PBR Materials (8)
+
+| Material ID | Name | Category | Source and ID | License | Acquisition Date | Recolored to IGNIS Palette |
+| --- | --- | --- | --- | --- | --- | --- |
+| `basalt_cobblestone` | Black Basalt Cobblestone | Ground / Architecture | [Poly Haven: cobblestone_floor_08](https://polyhaven.com/a/cobblestone_floor_08) | CC0 | 2026-10-30 | Yes (graded from neutral grey to dark volcanic basalt, warm ember mortar) |
+| `basalt_rock_face` | Rough Basalt Rock Face | Terrain / Cliffs | [Poly Haven: rock_face_03](https://polyhaven.com/a/rock_face_03) | CC0 | 2026-10-30 | Yes (cleared raw green/brown lichen tones to fractured soot basalt) |
+| `ash_cinder_ground` | Ash and Cinder Ground | Ground / Barrens | [Poly Haven: burned_ground_01](https://polyhaven.com/a/burned_ground_01) | CC0 | 2026-10-30 | Yes (carbonized cinder with subtle warm ash tones) |
+| `cooled_lava_crust` | Cooled Lava Crust | Terrain / Volcanic | [ambientCG: Lava004](https://ambientcg.com/view?id=Lava004) | CC0 | 2026-10-30 | Yes (dark charcoal crust with high-roughness micro-fissures) |
+| `ashlar_stone_blocks` | Ashlar Stone Blocks | Architecture / Fort | [Poly Haven: stone_block_wall](https://polyhaven.com/a/stone_block_wall) | CC0 | 2026-10-30 | Yes (soot-stained fortified blocks with dark mortar) |
+| `charred_timber_beams` | Charred Timber Beams | Architecture / Props | [Poly Haven: beam_wall_01](https://polyhaven.com/a/beam_wall_01) | CC0 | 2026-10-30 | Yes (scorched dark timber with carbonized grain) |
+| `blackened_rusted_iron` | Blackened Forge Iron | Metal / Weapons / Props | [Poly Haven: rusty_metal_02](https://polyhaven.com/a/rusty_metal_02) | CC0 | 2026-10-30 | Yes (heavy forge iron with warm ember oxide pits) |
+| `packed_dirt_road` | Packed Dirt Road | Ground / Paths | [Poly Haven: stony_dirt_path](https://polyhaven.com/a/stony_dirt_path) | CC0 | 2026-10-30 | Yes (graded to dark volcanic ash road with volcanic gravel) |
+
+### Models and Foliage (17)
+
+| Model ID | Name | Category | Source and ID | License | Acquisition Date | Recolored to IGNIS Palette |
+| --- | --- | --- | --- | --- | --- | --- |
+| `boulder_small` | Basalt Boulder (Small) | Rocks | [Poly Haven: namaqualand_boulder_04](https://polyhaven.com/a/namaqualand_boulder_04) | CC0 | 2026-10-30 | Yes (graded to basalt/soot palette) |
+| `boulder_medium_a` | Basalt Boulder (Medium A) | Rocks | [Poly Haven: namaqualand_boulder_02](https://polyhaven.com/a/namaqualand_boulder_02) | CC0 | 2026-10-30 | Yes (graded to basalt/soot palette) |
+| `boulder_medium_b` | Basalt Boulder (Medium B) | Rocks | [Poly Haven: namaqualand_boulder_05](https://polyhaven.com/a/namaqualand_boulder_05) | CC0 | 2026-10-30 | Yes (graded to basalt/soot palette) |
+| `boulder_large` | Basalt Boulder (Large) | Rocks | [Poly Haven: namaqualand_boulder_03](https://polyhaven.com/a/namaqualand_boulder_03) | CC0 | 2026-10-30 | Yes (graded to basalt/soot palette) |
+| `boulder_huge` | Basalt Boulder (Huge) | Rocks | [Poly Haven: namaqualand_boulder_01](https://polyhaven.com/a/namaqualand_boulder_01) | CC0 | 2026-10-30 | Yes (graded to basalt/soot palette) |
+| `rock_cluster_a` | Basalt Rock Cluster A | Rocks | [Poly Haven: namaqualand_rocks_01](https://polyhaven.com/a/namaqualand_rocks_01) | CC0 | 2026-10-30 | Yes (graded to basalt/soot palette) |
+| `rock_cluster_b` | Basalt Rock Cluster B | Rocks | [Poly Haven: namaqualand_rocks_01](https://polyhaven.com/a/namaqualand_rocks_01) | CC0 | 2026-10-30 | Yes (graded to basalt/soot palette) |
+| `cliff_chunk` | Basalt Cliff Chunk | Cliffs | [Poly Haven: cliff_side](https://polyhaven.com/a/cliff_side) | CC0 | 2026-10-30 | Yes (graded to basalt cliff palette) |
+| `dead_tree_trunk` | Charred Tree Trunk | Foliage | [Poly Haven: dry_tree_trunk](https://polyhaven.com/a/dry_tree_trunk) | CC0 | 2026-10-30 | Yes (carbonized charred bark) |
+| `dead_burnt_tree` | Burnt Timber Tree | Foliage | [Poly Haven: dead_tree_01](https://polyhaven.com/a/dead_tree_01) | CC0 | 2026-10-30 | Yes (blackened burnt branches) |
+| `barrel` | Scorched Barrel | Props | [Poly Haven: wooden_barrel_01](https://polyhaven.com/a/wooden_barrel_01) | CC0 | 2026-10-30 | Yes (dark charred wood, blackened hoops) |
+| `crate` | Scorched Crate | Props | [Poly Haven: wooden_crate_01](https://polyhaven.com/a/wooden_crate_01) | CC0 | 2026-10-30 | Yes (dark charred wood slats) |
+| `wooden_cart` | Transport Cart | Props | [Kenney: cart.glb](https://kenney.nl/) | CC0 | 2026-10-30 | Yes (charred wood and blackened iron) |
+| `stone_pillar` | Carved Basalt Pillar | Architecture | [Kenney: pillarStone.glb](https://kenney.nl/) | CC0 | 2026-10-30 | Yes (basalt stone material palette) |
+| `anvil` | Blacksmith Anvil | Props | Procedural mesh | CC0 | 2026-10-30 | Authored in blackened forge iron |
+| `iron_brazier` | Iron Brazier | Props | Procedural mesh | CC0 | 2026-10-30 | Authored in blackened iron and glowing core |
+| `stone_wall_low` | Low Stone Wall Segment | Architecture | Procedural mesh | CC0 | 2026-10-30 | Authored in ashlar stone blocks |
+

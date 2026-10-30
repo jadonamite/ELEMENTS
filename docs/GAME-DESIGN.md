@@ -155,7 +155,7 @@ The launch raid is one shared world boss near Chromara; real-time co-op raids co
 | --- | --- | --- |
 | Merchants | 5 (one per nation, one in Chromara) | Hold CHROMA and stock, price by supply and demand, can go broke |
 | Masters | 4 (one per element) | Train Shapers, raise fees when demand spikes |
-| The Lord's Collectors | A few in Chromara | Enforce the Edict and collect fines for the treasury |
+| The Lord's Sentries | A few in Chromara | Enforce the Edict and collect fines for the treasury |
 | Rival guild | 1 guild of AI agents | Fights the world boss and competes for the final-blow bonus |
 
 ## Progression and the Allborn path
