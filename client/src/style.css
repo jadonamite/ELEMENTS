@@ -73,6 +73,45 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
 
 /* Fight HUD: quiet until something happens. */
 #fight-hud { position: fixed; inset: 0; pointer-events: none; }
+.round-tracker {
+  position: absolute;
+  top: max(var(--space-6), env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: rgb(14 12 10 / 0.85);
+  border: 1px solid rgb(214 170 110 / 0.45);
+  border-radius: var(--radius-sm);
+  padding: 8px 24px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 0.7);
+  backdrop-filter: blur(4px);
+  text-align: center;
+}
+.round-tracker.intermission {
+  border-color: #ffd040;
+  box-shadow: 0 0 16px rgb(255 208 64 / 0.35);
+}
+.round-tracker.victory {
+  border-color: #22ee88;
+  box-shadow: 0 0 24px rgb(34 238 136 / 0.4);
+}
+.round-title {
+  font: var(--font-weight-bold) var(--font-size-base)/1 var(--font-family-display);
+  letter-spacing: var(--letter-spacing-widest);
+  color: rgb(246 238 226);
+  text-transform: uppercase;
+}
+.round-tracker.intermission .round-title { color: #ffd040; }
+.round-tracker.victory .round-title { color: #22ee88; }
+.round-sub {
+  font: var(--font-size-xs)/1 var(--font-family-body);
+  letter-spacing: var(--letter-spacing-wide);
+  color: rgb(200 185 170);
+  text-transform: uppercase;
+}
 .combat-status {
   position: absolute;
   left: max(var(--space-8), env(safe-area-inset-left));
@@ -82,8 +121,9 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   font: var(--font-size-xs)/1 var(--font-family-body);
   letter-spacing: var(--letter-spacing-wide);
   text-transform: uppercase;
+  align-items: center;
 }
-.mode-badge, .stance-badge {
+.mode-badge, .stance-badge, .perk-badge {
   padding: 3px var(--space-2);
   border-radius: var(--radius-xs);
   background: rgb(16 14 12 / 0.7);
@@ -95,6 +135,17 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   color: #ff5522;
   box-shadow: 0 0 10px rgb(230 42 5 / 0.4);
 }
+.perk-badge {
+  color: rgb(160 150 140);
+  font-size: 10px;
+}
+.perk-badge.lit {
+  border-color: #ffaa22;
+  color: #ffbb44;
+  background: rgb(40 18 8 / 0.85);
+  box-shadow: 0 0 12px rgb(255 170 34 / 0.35);
+  font-weight: 600;
+}
 .ability-tray {
   position: absolute;
   left: max(var(--space-8), env(safe-area-inset-left));
@@ -104,7 +155,7 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
 }
 .ability-slot {
   position: relative;
-  width: 44px;
+  width: 64px;
   height: 44px;
   background: rgb(16 13 11 / 0.75);
   border: 1px solid rgb(214 170 110 / 0.4);
@@ -139,7 +190,8 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
 .ability-slot .slot-name {
   position: relative;
   z-index: 1;
-  font: 9px/1 var(--font-family-body);
+  font: 10px/1 var(--font-family-body);
+  letter-spacing: 0.02em;
   color: rgb(200 185 170 / 0.8);
   margin-top: 3px;
   text-transform: uppercase;
@@ -184,6 +236,46 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   transform-origin: left center;
 }
 .hero-health .trail { background: rgb(240 220 190 / 0.35); }
+.hero-meter {
+  position: absolute;
+  left: max(var(--space-8), env(safe-area-inset-left));
+  bottom: calc(max(var(--space-8), env(safe-area-inset-bottom)) + 14px);
+  width: min(280px, 40vw);
+  height: 5px;
+  background: rgb(12 10 8 / 0.6);
+  border: 1px solid rgb(214 170 110 / 0.25);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+.hero-meter .meter-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform: scaleX(0);
+  background: var(--meter-colour, rgb(240 214 160));
+  transition: transform var(--duration-fast, 120ms) linear;
+}
+.hero-meter.weak .meter-fill { opacity: 0.55; }
+.hero-meter .meter-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgb(246 238 226 / 0.6);
+}
+#fight-hud[data-element="ignis"] { --meter-colour: var(--color-ignis-glow); }
+#fight-hud[data-element="aques"] { --meter-colour: var(--color-aques-glow-bright); }
+#fight-hud[data-element="terra"] { --meter-colour: var(--color-terra-glow); }
+#fight-hud[data-element="aura"] { --meter-colour: var(--color-aura-glow, rgb(232 236 240)); }
+.hero-supply {
+  position: absolute;
+  left: calc(max(var(--space-8), env(safe-area-inset-left)) + min(280px, 40vw) + var(--space-3));
+  bottom: calc(max(var(--space-8), env(safe-area-inset-bottom)) + 8px);
+  font: 12px/1 var(--font-family-body);
+  color: rgb(230 214 190 / 0.85);
+  letter-spacing: 0.02em;
+}
+@media (prefers-reduced-motion: reduce) { .hero-meter .meter-fill { transition: none; } }
 .hero-health .fill { background: linear-gradient(90deg, var(--color-ignis-ember), var(--color-ignis-crimson)); }
 #fight-hud.low .hero-health { border-color: var(--color-ignis-glow); }
 .enemy-health {
@@ -213,13 +305,13 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
 
 #consent-banner {
   position: fixed;
-  bottom: 0;
+  top: 0;
   left: 0;
   right: 0;
   z-index: 999;
   background: rgb(14 12 10 / 0.95);
-  border-top: 1px solid rgb(214 170 110 / 0.4);
-  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid rgb(214 170 110 / 0.4);
+  padding: var(--space-2) var(--space-6);
   font: var(--font-size-xs)/var(--line-height-normal) var(--font-family-body);
   color: rgb(220 205 190);
   backdrop-filter: blur(8px);
@@ -244,6 +336,9 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   gap: var(--space-3);
 }
 .consent-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: rgb(214 170 110);
   text-decoration: none;
 }
@@ -252,6 +347,7 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   text-decoration: underline;
 }
 .consent-btn {
+  min-height: 44px;
   padding: var(--space-1) var(--space-4);
   background: rgb(35 28 22 / 0.8);
   border: 1px solid rgb(214 170 110 / 0.6);
