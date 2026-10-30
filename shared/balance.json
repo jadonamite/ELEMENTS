@@ -165,81 +165,85 @@
         "clip": "death",
         "lunge": 0,
         "speed": 1.0
+      },
+      "bare_light_1": {
+        "clip": "bare_punch_1",
+        "next": "bare_light_2",
+        "lunge": 3.0,
+        "speed": 1.1
+      },
+      "bare_light_2": {
+        "clip": "bare_punch_2",
+        "next": "bare_light_3",
+        "lunge": 4.0,
+        "speed": 1.1
+      },
+      "bare_light_3": {
+        "clip": "bare_kick",
+        "lunge": 4.5,
+        "speed": 1.0
+      },
+      "bare_heavy_1": {
+        "clip": "bare_heavy_1",
+        "lunge": 4.0,
+        "speed": 0.95
+      },
+      "bend_palm": {
+        "clip": "cast",
+        "lunge": 0.4,
+        "speed": 1.2
+      },
+      "bend_sweep": {
+        "clip": "ground_pound",
+        "lunge": 0.8,
+        "speed": 1.0
+      },
+      "leg_light_1": {
+        "clip": "leg_kick_1",
+        "next": "leg_light_2",
+        "lunge": 2.5,
+        "speed": 1.5
+      },
+      "leg_light_2": {
+        "clip": "leg_kick_2",
+        "next": "leg_heavy_1",
+        "lunge": 2.5,
+        "speed": 1.5
+      },
+      "leg_heavy_1": {
+        "clip": "leg_kick_heavy",
+        "lunge": 4.0,
+        "speed": 1.1
+      },
+      "ultimate": {
+        "clip": "ground_pound",
+        "lunge": 0,
+        "speed": 0.85
+      },
+      "shard_spark": {
+        "clip": "cast_shoot",
+        "lunge": 0.3,
+        "speed": 1.2
       }
+    },
+    "burn": {
+      "damagePerSecond": 16,
+      "tickSeconds": 0.25,
+      "patchDurationMin": 2.2,
+      "patchDurationMax": 3.8,
+      "patchRadius": 1.25,
+      "maxPatches": 16,
+      "huskBurnDuration": 2.5
     },
     "rules": {
       "placeholder": true,
-      "counterBonus": 0.25,
       "armourScale": 100,
       "damageWindowSeconds": 1,
       "maxDamagePerSecond": 300,
       "defaultMaxHealth": 100,
-      "defaultArmour": 0
-    },
-    "ignisStarterMoves": {
-      "light_1": {
-        "kind": "attack",
-        "damage": 12,
-        "reach": 2.5,
-        "cooldownSeconds": 0.45,
-        "slot": "light_1"
-      },
-      "light_2": {
-        "kind": "attack",
-        "damage": 15,
-        "reach": 2.5,
-        "cooldownSeconds": 0.5,
-        "slot": "light_2"
-      },
-      "light_3": {
-        "kind": "attack",
-        "damage": 20,
-        "reach": 3,
-        "cooldownSeconds": 0.65,
-        "slot": "light_3"
-      },
-      "heavy_1": {
-        "kind": "attack",
-        "damage": 32,
-        "reach": 3,
-        "cooldownSeconds": 1.2,
-        "slot": "heavy"
-      },
-      "heavy_2": {
-        "kind": "attack",
-        "damage": 38,
-        "reach": 3,
-        "cooldownSeconds": 1.2,
-        "slot": "heavy"
-      },
-      "dodge": {
-        "kind": "dodge",
-        "damage": 0,
-        "reach": 0,
-        "cooldownSeconds": 0.8,
-        "slot": "dodge"
-      },
-      "uppercut": {
-        "kind": "attack",
-        "damage": 35,
-        "reach": 3,
-        "cooldownSeconds": 6,
-        "slot": "ability_1"
-      },
-      "ground_pound": {
-        "kind": "attack",
-        "damage": 45,
-        "reach": 4,
-        "cooldownSeconds": 9,
-        "slot": "ability_2"
-      },
-      "dash_strike": {
-        "kind": "attack",
-        "damage": 80,
-        "reach": 8,
-        "cooldownSeconds": 30,
-        "slot": "ultimate"
-      }
+      "defaultArmour": 0,
+      "litDamageMultiplier": 1.6,
+      "litCooldownMultiplier": 0.7
     },
     "activeWindow": [
       0.2,
@@ -252,7 +256,510 @@
     "hitStop": 0.07,
     "aimAssistRange": 4.5,
     "lungeStopDistance": 1.25,
-    "aimAssistAngle": 1.0
+    "aimAssistAngle": 1.0,
+    "bareLungeStopDistance": 0.85,
+    "starterMoves": {
+      "dodge": {
+        "kind": "dodge",
+        "damage": 0,
+        "reach": 0,
+        "cooldownSeconds": 0.8
+      },
+      "bare_light_1": {
+        "kind": "attack",
+        "damage": 9,
+        "reach": 1.5,
+        "cooldownSeconds": 0.35
+      },
+      "bare_light_2": {
+        "kind": "attack",
+        "damage": 12,
+        "reach": 1.5,
+        "cooldownSeconds": 0.4
+      },
+      "bare_light_3": {
+        "kind": "attack",
+        "damage": 18,
+        "reach": 1.8,
+        "cooldownSeconds": 0.55
+      },
+      "bare_heavy_1": {
+        "kind": "attack",
+        "damage": 26,
+        "reach": 1.8,
+        "cooldownSeconds": 1.0
+      },
+      "leg_light_1": {
+        "kind": "attack",
+        "damage": 16,
+        "reach": 2.2,
+        "cooldownSeconds": 0.5
+      },
+      "leg_light_2": {
+        "kind": "attack",
+        "damage": 20,
+        "reach": 2.2,
+        "cooldownSeconds": 0.55
+      },
+      "leg_heavy_1": {
+        "kind": "attack",
+        "damage": 34,
+        "reach": 2.5,
+        "cooldownSeconds": 0.85
+      },
+      "shard_spark": {
+        "kind": "attack",
+        "damage": 8,
+        "reach": 7,
+        "cooldownSeconds": 4
+      }
+    },
+    "weapons": {
+      "sword": {
+        "light_1": {
+          "kind": "attack",
+          "damage": 12,
+          "reach": 2.5,
+          "cooldownSeconds": 0.45
+        },
+        "light_2": {
+          "kind": "attack",
+          "damage": 15,
+          "reach": 2.5,
+          "cooldownSeconds": 0.5
+        },
+        "light_3": {
+          "kind": "attack",
+          "damage": 20,
+          "reach": 3,
+          "cooldownSeconds": 0.65
+        },
+        "heavy_1": {
+          "kind": "attack",
+          "damage": 32,
+          "reach": 3,
+          "cooldownSeconds": 1.2
+        },
+        "heavy_2": {
+          "kind": "attack",
+          "damage": 38,
+          "reach": 3,
+          "cooldownSeconds": 1.2
+        }
+      },
+      "spear": {
+        "light_1": {
+          "kind": "attack",
+          "damage": 10,
+          "reach": 3.4,
+          "cooldownSeconds": 0.5
+        },
+        "light_2": {
+          "kind": "attack",
+          "damage": 13,
+          "reach": 3.4,
+          "cooldownSeconds": 0.55
+        },
+        "light_3": {
+          "kind": "attack",
+          "damage": 17,
+          "reach": 3.8,
+          "cooldownSeconds": 0.7
+        },
+        "heavy_1": {
+          "kind": "attack",
+          "damage": 30,
+          "reach": 4,
+          "cooldownSeconds": 1.3
+        },
+        "heavy_2": {
+          "kind": "attack",
+          "damage": 36,
+          "reach": 4,
+          "cooldownSeconds": 1.3
+        }
+      },
+      "axe": {
+        "light_1": {
+          "kind": "attack",
+          "damage": 15,
+          "reach": 2.6,
+          "cooldownSeconds": 0.6
+        },
+        "light_2": {
+          "kind": "attack",
+          "damage": 18,
+          "reach": 2.6,
+          "cooldownSeconds": 0.65
+        },
+        "light_3": {
+          "kind": "attack",
+          "damage": 24,
+          "reach": 3,
+          "cooldownSeconds": 0.8
+        },
+        "heavy_1": {
+          "kind": "attack",
+          "damage": 40,
+          "reach": 3.2,
+          "cooldownSeconds": 1.6
+        },
+        "heavy_2": {
+          "kind": "attack",
+          "damage": 48,
+          "reach": 3.2,
+          "cooldownSeconds": 1.6
+        }
+      },
+      "twin": {
+        "light_1": {
+          "kind": "attack",
+          "damage": 8,
+          "reach": 2.1,
+          "cooldownSeconds": 0.32
+        },
+        "light_2": {
+          "kind": "attack",
+          "damage": 10,
+          "reach": 2.1,
+          "cooldownSeconds": 0.36
+        },
+        "light_3": {
+          "kind": "attack",
+          "damage": 13,
+          "reach": 2.4,
+          "cooldownSeconds": 0.45
+        },
+        "heavy_1": {
+          "kind": "attack",
+          "damage": 26,
+          "reach": 2.6,
+          "cooldownSeconds": 0.95
+        },
+        "heavy_2": {
+          "kind": "attack",
+          "damage": 30,
+          "reach": 2.6,
+          "cooldownSeconds": 0.95
+        }
+      },
+      "staff": {
+        "light_1": {
+          "kind": "attack",
+          "damage": 10,
+          "reach": 2.8,
+          "cooldownSeconds": 0.38
+        },
+        "light_2": {
+          "kind": "attack",
+          "damage": 13,
+          "reach": 2.8,
+          "cooldownSeconds": 0.42
+        },
+        "light_3": {
+          "kind": "attack",
+          "damage": 17,
+          "reach": 3.2,
+          "cooldownSeconds": 0.55
+        },
+        "heavy_1": {
+          "kind": "attack",
+          "damage": 28,
+          "reach": 3.2,
+          "cooldownSeconds": 1.05
+        },
+        "heavy_2": {
+          "kind": "attack",
+          "damage": 34,
+          "reach": 3.2,
+          "cooldownSeconds": 1.05
+        }
+      }
+    },
+    "nationWeapon": {
+      "IGNIS": "sword",
+      "AQUES": "spear",
+      "TERRA": "axe",
+      "AURA": "staff"
+    },
+    "bendWithWeapon": { "IGNIS": "any", "AQUES": [], "TERRA": [], "AURA": ["staff", "war_fans", "glider"] },
+    "elements": {
+      "IGNIS": {
+        "bend_palm": {
+          "kind": "attack",
+          "damage": 20,
+          "reach": 7,
+          "cooldownSeconds": 0.8,
+          "name": "Cinder"
+        },
+        "bend_sweep": {
+          "kind": "attack",
+          "damage": 30,
+          "reach": 4.5,
+          "cooldownSeconds": 1.5,
+          "name": "Flame Sweep"
+        },
+        "uppercut": {
+          "kind": "attack",
+          "damage": 35,
+          "reach": 3,
+          "cooldownSeconds": 6,
+          "name": "Pyre"
+        },
+        "ground_pound": {
+          "kind": "attack",
+          "damage": 45,
+          "reach": 4,
+          "cooldownSeconds": 9,
+          "name": "Fire Slam"
+        },
+        "dash_strike": {
+          "kind": "attack",
+          "damage": 30,
+          "reach": 8,
+          "cooldownSeconds": 5,
+          "name": "Blaze Dash"
+        },
+        "ultimate": {
+          "kind": "attack",
+          "damage": 90,
+          "reach": 8,
+          "cooldownSeconds": 45,
+          "name": "Wildfire",
+          "overSeconds": 3
+        }
+      },
+      "AQUES": {
+        "bend_palm": {
+          "kind": "attack",
+          "damage": 16,
+          "reach": 6,
+          "cooldownSeconds": 0.8,
+          "name": "Lash",
+          "pull": 1.5
+        },
+        "bend_sweep": {
+          "kind": "attack",
+          "damage": 26,
+          "reach": 4.5,
+          "cooldownSeconds": 1.5,
+          "name": "Tide Sweep",
+          "slow": 0.3,
+          "slowSeconds": 3
+        },
+        "uppercut": {
+          "kind": "attack",
+          "damage": 32,
+          "reach": 3,
+          "cooldownSeconds": 6,
+          "name": "Geyser"
+        },
+        "ground_pound": {
+          "kind": "attack",
+          "damage": 25,
+          "reach": 4,
+          "cooldownSeconds": 10,
+          "name": "Freeze",
+          "slow": 0.5,
+          "slowSeconds": 2
+        },
+        "dash_strike": {
+          "kind": "heal",
+          "damage": 0,
+          "reach": 0,
+          "cooldownSeconds": 14,
+          "name": "Mend",
+          "heal": 24,
+          "overSeconds": 2,
+          "inWaterBonus": 0.5
+        },
+        "ultimate": {
+          "kind": "attack",
+          "damage": 85,
+          "reach": 8,
+          "cooldownSeconds": 45,
+          "name": "Deluge",
+          "floodSeconds": 6
+        }
+      },
+      "TERRA": {
+        "bend_palm": {
+          "kind": "attack",
+          "damage": 24,
+          "reach": 8,
+          "cooldownSeconds": 1.0,
+          "name": "Stone Shot"
+        },
+        "bend_sweep": {
+          "kind": "attack",
+          "damage": 32,
+          "reach": 5,
+          "cooldownSeconds": 1.8,
+          "name": "Rock Wave"
+        },
+        "uppercut": {
+          "kind": "attack",
+          "damage": 38,
+          "reach": 3,
+          "cooldownSeconds": 6,
+          "name": "Spire"
+        },
+        "ground_pound": {
+          "kind": "attack",
+          "damage": 15,
+          "reach": 3,
+          "cooldownSeconds": 10,
+          "name": "Wall",
+          "wallSeconds": 5,
+          "wallWidth": 3
+        },
+        "dash_strike": {
+          "kind": "attack",
+          "damage": 30,
+          "reach": 5,
+          "cooldownSeconds": 6,
+          "name": "Shoulder"
+        },
+        "ultimate": {
+          "kind": "attack",
+          "damage": 110,
+          "reach": 5,
+          "cooldownSeconds": 45,
+          "name": "Landfall",
+          "stunSeconds": 1
+        }
+      },
+      "AURA": {
+        "bend_palm": {
+          "kind": "attack",
+          "damage": 16,
+          "reach": 10,
+          "cooldownSeconds": 0.6,
+          "name": "Air Blade",
+          "pierce": true
+        },
+        "bend_sweep": {
+          "kind": "attack",
+          "damage": 18,
+          "reach": 5,
+          "cooldownSeconds": 1.2,
+          "name": "Gust",
+          "push": 4
+        },
+        "uppercut": {
+          "kind": "attack",
+          "damage": 30,
+          "reach": 3,
+          "cooldownSeconds": 6,
+          "name": "Updraft",
+          "hangSeconds": 0.6
+        },
+        "ground_pound": {
+          "kind": "attack",
+          "damage": 15,
+          "reach": 3,
+          "cooldownSeconds": 10,
+          "name": "Cyclone",
+          "overSeconds": 1.5
+        },
+        "dash_strike": {
+          "kind": "dodge",
+          "damage": 0,
+          "reach": 9,
+          "cooldownSeconds": 3,
+          "name": "Wind Step",
+          "charges": 2
+        },
+        "ultimate": {
+          "kind": "attack",
+          "damage": 96,
+          "reach": 7,
+          "cooldownSeconds": 45,
+          "name": "Tempest",
+          "overSeconds": 4
+        }
+      }
+    },
+    "meter": {
+      "max": 100,
+      "gainHit": 8,
+      "gainParry": 15,
+      "gainBlocked": 4,
+      "drainDelay": 6,
+      "drainPerSecond": 10,
+      "chainCost": 25,
+      "weakBelow": 25,
+      "weakScale": 0.6,
+      "chainBonus": 0.15,
+      "costs": {
+        "bend_palm": 0,
+        "bend_sweep": 10,
+        "dash_strike": 15,
+        "uppercut": 25,
+        "ground_pound": 25,
+        "ultimate": 0
+      }
+    },
+    "parry": {
+      "window": 0.15,
+      "stagger": 0.8,
+      "hushWindow": 0.25,
+      "hushStagger": 1.2
+    },
+    "shardSpark": {
+      "damageScale": 0.4,
+      "cooldownSeconds": 4,
+      "testShards": 5
+    },
+    "waterskin": {
+      "charges": 5,
+      "refillSeconds": 1,
+      "sourceRadius": 8
+    },
+    "edges": {
+      "windSpreadDistance": 3,
+      "windSpreadGrow": 1.4,
+      "stonePushScale": 0.5,
+      "iceShatterBonus": 0.3
+    },
+    "tiers": {
+      "names": [
+        "Tiro",
+        "Ictus",
+        "Armiger",
+        "Nexus",
+        "Signum",
+        "Profundus",
+        "Primus"
+      ],
+      "required": {
+        "light_1": 1,
+        "light_2": 1,
+        "bare_light_1": 1,
+        "bare_light_2": 1,
+        "leg_light_1": 1,
+        "dodge": 1,
+        "bend_palm": 1,
+        "shard_spark": 1,
+        "heavy_1": 2,
+        "bare_heavy_1": 2,
+        "leg_heavy_1": 2,
+        "bend_sweep": 2,
+        "uppercut": 2,
+        "ground_pound": 2,
+        "dash_strike": 2,
+        "light_3": 4,
+        "heavy_2": 4,
+        "bare_light_3": 4,
+        "leg_light_2": 4,
+        "chain": 4,
+        "ultimate": 5
+      },
+      "bendScale": {
+        "6": 1.25,
+        "7": 1.5
+      }
+    }
   },
   "hero": {
     "maxHealth": 120,
@@ -299,6 +806,125 @@
     "respawnSeconds": 5,
     "spawnRadius": 11,
     "minSpawnDistance": 7,
-    "healthBarHeight": 1.85
+    "healthBarHeight": 1.85,
+    "kinds": {
+      "brawler": {
+        "attacks": [
+          "punch_jab",
+          "punch_cross",
+          "punch_hook",
+          "knee"
+        ],
+        "attackDamage": 9,
+        "attackRange": 1.5,
+        "attackSpeed": 1.15,
+        "attackHitFraction": 0.45,
+        "attackCooldown": 1.3,
+        "walkSpeed": 1.3,
+        "runSpeed": 4.4,
+        "clipSpeeds": {
+          "walk": 0.97,
+          "run": 5.36
+        }
+      },
+      "armed": {
+        "attacks": [
+          "light_1",
+          "light_2",
+          "heavy_1"
+        ],
+        "attackDamage": 13,
+        "attackRange": 2.1,
+        "attackSpeed": 1.05,
+        "attackHitFraction": 0.45,
+        "attackCooldown": 1.6,
+        "walkSpeed": 1.2,
+        "runSpeed": 4.2,
+        "clipSpeeds": {
+          "walk": 0.97,
+          "run": 5.36
+        },
+        "weapons": [
+          "sword",
+          "club"
+        ]
+      },
+      "bender": {
+        "attacks": [
+          "punch_jab",
+          "punch_cross"
+        ],
+        "attackDamage": 8,
+        "attackRange": 1.5,
+        "attackSpeed": 1.15,
+        "attackHitFraction": 0.45,
+        "attackCooldown": 1.4,
+        "walkSpeed": 1.2,
+        "runSpeed": 4.0,
+        "clipSpeeds": {
+          "walk": 0.97,
+          "run": 5.36
+        },
+        "element": "IGNIS",
+        "cast": "cast_shoot",
+        "castSpeed": 1.0,
+        "castHitFraction": 0.5,
+        "castRange": 7.5,
+        "castMin": 3.5,
+        "castDamage": 14,
+        "castCooldown": 3.2,
+        "boltSpeed": 14,
+        "boltHitRadius": 1.3,
+        "keepDistance": 6.5
+      },
+      "husk": {
+        "attacks": [
+          "husk_attack",
+          "husk_attack_bite"
+        ],
+        "attackDamage": 12,
+        "attackRange": 1.7,
+        "attackSpeed": 1.25,
+        "attackHitFraction": 0.42,
+        "attackCooldown": 1.6,
+        "walkSpeed": 1.1,
+        "runSpeed": 3.2,
+        "clipSpeeds": {
+          "walk": 1.0,
+          "run": 3.6
+        }
+      }
+    },
+    "waves": [
+      {
+        "fromRound": 1,
+        "mix": {
+          "brawler": 1
+        }
+      },
+      {
+        "fromRound": 2,
+        "mix": {
+          "brawler": 0.5,
+          "armed": 0.5
+        }
+      },
+      {
+        "fromRound": 3,
+        "mix": {
+          "brawler": 0.35,
+          "armed": 0.4,
+          "bender": 0.25
+        }
+      },
+      {
+        "fromRound": 6,
+        "mix": {
+          "brawler": 0.25,
+          "armed": 0.45,
+          "bender": 0.3
+        }
+      }
+    ]
   }
 }
