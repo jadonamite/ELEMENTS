@@ -9,6 +9,8 @@
     "types": [
       "node"
     ],
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
     "rootDir": "src",
     "outDir": "dist"
   },

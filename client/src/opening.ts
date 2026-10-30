@@ -1,6 +1,23 @@
+import {
+  BODY_PRESET_OPTIONS,
+  CreatorView,
+  getStoredCharacter,
+  HAIR_COLOR_PRESETS,
+  HAIR_STYLE_OPTIONS,
+  SKIN_TONE_PRESETS,
+} from './creator/index.js';
+import {
+  getStoredAuthToken,
+  isOfflineMode,
+  mountLoginIsland,
+  postRising,
+  postSession,
+} from './auth/index.js';
+
 /**
- * Opening sequence: Age verification gate, fake storefront purchase, reality glitch,
- * and the Drawing raffle ceremony (85% Shaper across the four elements, 15% Hush).
+ * Opening sequence: Age verification gate, character creation studio,
+ * fake storefront purchase, reality glitch, and the Drawing raffle ceremony
+ * (85% Shaper across the four elements, 15% Hush).
  */
 
 export type DrawingResult =
@@ -44,6 +61,11 @@ export function calculateAge(dobString: string, referenceDate = new Date()): num
 export class OpeningFlow {
   private readonly container: HTMLDivElement;
   private readonly onComplete: (result: DrawingResult) => void;
+  private activeCreatorView: CreatorView | null = null;
+  private activeLoginIsland: { unmount: () => void } | null = null;
+  private authToken: string | null = null;
+  private accountId: string | null = null;
+  private isOffline = false;
 
   constructor(onComplete: (result: DrawingResult) => void) {
     this.onComplete = onComplete;
@@ -54,8 +76,18 @@ export class OpeningFlow {
     this.start();
   }
 
+  private cleanupSubviews(): void {
+    if (this.activeCreatorView) {
+      this.activeCreatorView.dispose();
+      this.activeCreatorView = null;
+    }
+    if (this.activeLoginIsland) {
+      this.activeLoginIsland.unmount();
+      this.activeLoginIsland = null;
+    }
+  }
+
   private start(): void {
-    // If player already completed age gate and drawing, immediately finish
     const saved = getStoredDrawing();
     const ageState = localStorage.getItem(STORAGE_AGE_KEY);
 
@@ -71,12 +103,42 @@ export class OpeningFlow {
 
     if (ageState !== 'over') {
       this.renderAgeGate();
-    } else {
-      this.renderStorefront();
+      return;
+    }
+
+    if (isOfflineMode()) {
+      this.isOffline = true;
+      this.proceedAfterLogin();
+      return;
+    }
+
+    const token = getStoredAuthToken();
+    if (token) {
+      void this.attemptSessionResume(token);
+      return;
+    }
+
+    this.renderLoginStep();
+  }
+
+  private async attemptSessionResume(token: string): Promise<void> {
+    try {
+      const session = await postSession(token);
+      this.authToken = token;
+      this.accountId = session.accountId;
+      if (session.rising) {
+        localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(session.rising));
+        this.close(session.rising);
+        return;
+      }
+      this.proceedAfterLogin();
+    } catch {
+      this.renderLoginStep();
     }
   }
 
   private renderAgeGate(): void {
+    this.cleanupSubviews();
     this.container.innerHTML = `
       <div class="opening-modal age-gate">
         <h2>Welcome to ELEMENTS</h2>
@@ -90,9 +152,9 @@ export class OpeningFlow {
           <p id="age-error" class="opening-error" role="alert"></p>
         </form>
         <div class="opening-footer">
-          <a href="/legal/terms" target="_blank">Terms</a>
-          <a href="/legal/privacy" target="_blank">Privacy</a>
-          <a href="/legal/cookies" target="_blank">Cookies</a>
+          <a href="/legal/terms.html" target="_blank">Terms</a>
+          <a href="/legal/privacy.html" target="_blank">Privacy</a>
+          <a href="/legal/cookies.html" target="_blank">Cookies</a>
         </div>
       </div>
     `;
@@ -115,12 +177,62 @@ export class OpeningFlow {
         this.renderAgeBlocked();
       } else {
         localStorage.setItem(STORAGE_AGE_KEY, 'over');
-        this.renderStorefront();
+        if (isOfflineMode()) {
+          this.isOffline = true;
+          this.proceedAfterLogin();
+        } else {
+          this.renderLoginStep();
+        }
       }
     });
   }
 
+  private renderLoginStep(): void {
+    this.cleanupSubviews();
+    this.container.innerHTML = `<div id="login-island-host"></div>`;
+    const host = this.container.querySelector<HTMLDivElement>('#login-island-host')!;
+
+    this.activeLoginIsland = mountLoginIsland(host, {
+      onSuccess: (payload) => {
+        this.cleanupSubviews();
+        this.authToken = payload.token;
+        this.accountId = payload.accountId;
+
+        if (payload.rising) {
+          localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(payload.rising));
+          this.close(payload.rising);
+          return;
+        }
+
+        this.proceedAfterLogin();
+      },
+      onOffline: () => {
+        this.cleanupSubviews();
+        this.isOffline = true;
+        this.proceedAfterLogin();
+      },
+    });
+  }
+
+  private proceedAfterLogin(): void {
+    const char = getStoredCharacter();
+    if (!char) {
+      this.renderCharacterCreator();
+    } else {
+      this.renderStorefront();
+    }
+  }
+
+  private renderCharacterCreator(): void {
+    this.cleanupSubviews();
+    this.activeCreatorView = new CreatorView(this.container, () => {
+      this.activeCreatorView = null;
+      this.renderStorefront();
+    });
+  }
+
   private renderAgeBlocked(): void {
+    this.cleanupSubviews();
     this.container.innerHTML = `
       <div class="opening-modal age-blocked">
         <h2>Access Restricted</h2>
@@ -131,25 +243,26 @@ export class OpeningFlow {
   }
 
   private renderStorefront(): void {
+    this.cleanupSubviews();
     this.container.innerHTML = `
       <div class="opening-modal storefront">
-        <div class="store-badge">NEAR Testnet Release</div>
+        <div class="store-badge">New release</div>
         <h1 class="store-title">ELEMENTS</h1>
-        <p class="store-tagline">A tactical on-chain ARPG of Shapers, relics, and sovereign economy.</p>
+        <p class="store-tagline">Four nations, four elements, and a world that decides which one is yours.</p>
         <div class="store-details">
           <div class="store-card">
-            <div class="store-edition">Standard Edition</div>
-            <div class="store-price">$0.00 <span>(Free for Hackathon Review)</span></div>
+            <div class="store-edition">Standard edition</div>
+            <div class="store-price">$0.00 <span>Free while in early access</span></div>
             <ul class="store-perks">
-              <li>Full arena access & IGNIS combat</li>
-              <li>Permanent on-chain Drawing raffle entry</li>
-              <li>Zero-friction embedded NEAR testnet account</li>
+              <li>Fight with fire, water, earth or air</li>
+              <li>Four nations to cross, each with its own masters</li>
+              <li>Plays in your browser, nothing to install</li>
             </ul>
-            <button type="button" id="buy-button" class="opening-button primary">Claim Game Copy</button>
+            <button type="button" id="buy-button" class="opening-button primary">Get the game</button>
           </div>
         </div>
         <div class="opening-footer">
-          <span>By claiming you agree to the <a href="/legal/terms" target="_blank">Terms</a> and <a href="/legal/privacy" target="_blank">Privacy Policy</a>.</span>
+          <span>By getting the game you agree to the <a href="/legal/terms.html" target="_blank">Terms</a> and <a href="/legal/privacy.html" target="_blank">Privacy Policy</a>.</span>
         </div>
       </div>
     `;
@@ -161,6 +274,7 @@ export class OpeningFlow {
   }
 
   private triggerGlitchTransition(): void {
+    this.cleanupSubviews();
     this.container.innerHTML = `
       <div class="glitch-screen">
         <div class="glitch-layer"></div>
@@ -169,26 +283,84 @@ export class OpeningFlow {
     `;
 
     setTimeout(() => {
-      this.renderDrawingCeremony();
+      void this.renderDrawingCeremony();
     }, 1200);
   }
 
-  private renderDrawingCeremony(): void {
-    const result = performDrawingRoll();
+  private async renderDrawingCeremony(): Promise<void> {
+    this.cleanupSubviews();
+    this.container.innerHTML = `
+      <div class="opening-modal drawing-ceremony">
+        <div class="ceremony-badge">The Lord's Drawing</div>
+        <h2>Awakening...</h2>
+        <p class="opening-subtitle">Connecting to the realm ledger to determine your rising.</p>
+        <div class="login-loading-spinner"></div>
+      </div>
+    `;
+
+    let result: DrawingResult;
+    let isOfflineNotice = false;
+
+    if (this.isOffline || isOfflineMode()) {
+      result = performDrawingRoll();
+      isOfflineNotice = true;
+    } else {
+      try {
+        const token = this.authToken ?? getStoredAuthToken();
+        result = await postRising(token ?? undefined);
+        isOfflineNotice = false;
+      } catch {
+        // Fallback when server cannot be reached
+        result = performDrawingRoll();
+        isOfflineNotice = true;
+      }
+    }
+
     localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(result));
+    this.displayDrawingResult(result, isOfflineNotice);
+  }
 
-    const title = result.role === 'Shaper'
-      ? `You have awakened as a Shaper of ${result.element}`
-      : 'You are Hush';
+  private displayDrawingResult(result: DrawingResult, isOfflineNotice: boolean): void {
+    const title =
+      result.role === 'Shaper'
+        ? `You have awakened as a Shaper of ${result.element}`
+        : 'You are Hush';
 
-    const desc = result.role === 'Shaper'
-      ? `Born with the innate gift of ${result.element}. Channel your elemental bending in armed combat and martial arts katas.`
-      : 'Born without an element. Forge masterworks and relics from the shards of fallen beasts to arm the Lit.';
+    const desc =
+      result.role === 'Shaper'
+        ? `Born with the innate gift of ${result.element}. Channel your elemental bending in armed combat and martial arts katas.`
+        : 'Born without an element. Forge masterworks and relics from the shards of fallen beasts to arm the Lit.';
+
+    const char = getStoredCharacter();
+    const skinPreset = SKIN_TONE_PRESETS.find((p) => p.id === char?.skinToneId);
+    const skinName = skinPreset?.name ?? 'Warm Bronze';
+    const skinHex = skinPreset?.hex ?? '#956344';
+    const hairStyle =
+      HAIR_STYLE_OPTIONS.find((h) => h.id === char?.hairStyleId)?.name ?? 'Parted';
+    const hairColor =
+      HAIR_COLOR_PRESETS.find((c) => c.id === char?.hairColorId)?.name ??
+      'Espresso Brown';
+    const bodyPreset =
+      BODY_PRESET_OPTIONS.find((b) => b.id === char?.bodyPreset)?.name ?? 'Average';
 
     this.container.innerHTML = `
       <div class="opening-modal drawing-ceremony">
         <div class="ceremony-badge">The Lord's Drawing</div>
-        <h2 class="ceremony-result ${result.role === 'Shaper' ? (result.element?.toLowerCase() ?? '') : 'hush'}">${title}</h2>
+        ${
+          isOfflineNotice
+            ? '<p class="ceremony-offline-note">offline: progress is not saved</p>'
+            : ''
+        }
+        <div class="drawing-character-card">
+          <div class="drawing-char-avatar" style="border-color: ${skinHex};">
+            <span class="drawing-avatar-sex">${char?.sex === 'female' ? 'Female' : 'Male'}</span>
+          </div>
+          <div class="drawing-char-meta">
+            <div class="drawing-char-archetype">${char?.sex === 'female' ? 'Female' : 'Male'} Hero · ${bodyPreset} Build</div>
+            <div class="drawing-char-traits">${skinName} · ${hairStyle} · ${hairColor}</div>
+          </div>
+        </div>
+        <h2 class="ceremony-result ${result.role === 'Shaper' ? result.element.toLowerCase() : 'hush'}">${title}</h2>
         <p class="ceremony-desc">${desc}</p>
         <button type="button" id="enter-arena-button" class="opening-button primary">Enter the Arena</button>
       </div>
@@ -201,6 +373,7 @@ export class OpeningFlow {
   }
 
   private close(result: DrawingResult): void {
+    this.cleanupSubviews();
     this.container.classList.add('fade-out');
     setTimeout(() => {
       this.container.remove();
@@ -209,6 +382,7 @@ export class OpeningFlow {
   }
 
   dispose(): void {
+    this.cleanupSubviews();
     this.container.remove();
   }
 }

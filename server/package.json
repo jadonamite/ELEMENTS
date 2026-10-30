@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "test": "tsx --test tests/*.test.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js"
@@ -12,6 +13,11 @@
   "dependencies": {
     "@colyseus/core": "0.18.23",
     "@colyseus/schema": "5.0.42",
-    "@colyseus/ws-transport": "0.18.4"
+    "@colyseus/ws-transport": "0.18.4",
+    "@elements/shared": "*",
+    "@privy-io/server-auth": "^1.32.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6"
   }
 }
