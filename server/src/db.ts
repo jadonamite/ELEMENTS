@@ -1,7 +1,15 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { randomInt } from 'node:crypto';
-import { roll, type Element, type RisingRole } from '@elements/shared';
+import {
+  roll,
+  type Element,
+  type RisingRole,
+  createGenesisEntries,
+  MERCHANT_ACCOUNT_IDS,
+  INITIAL_BALANCES,
+  MERCHANT_CONFIG,
+} from '@elements/shared';
 
 export interface AccountRecord {
   id: string;
@@ -70,6 +78,129 @@ export function migrateDatabase(database: DatabaseSync): void {
     INSERT OR IGNORE INTO risings (account_id, role, element, created_at)
       SELECT id, role, element, created_at FROM accounts WHERE role IN ('Shaper', 'Hush');
   `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS ledger_entries (
+      id TEXT PRIMARY KEY,
+      sender TEXT NOT NULL,
+      receiver TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      ref_id TEXT,
+      metadata TEXT,
+      timestamp INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ledger_sender ON ledger_entries(sender);
+    CREATE INDEX IF NOT EXISTS idx_ledger_receiver ON ledger_entries(receiver);
+    CREATE INDEX IF NOT EXISTS idx_ledger_reason ON ledger_entries(reason);
+    CREATE INDEX IF NOT EXISTS idx_ledger_timestamp ON ledger_entries(timestamp);
+
+    CREATE TABLE IF NOT EXISTS merchant_states (
+      id TEXT PRIMARY KEY,
+      nation TEXT NOT NULL,
+      balance INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      days_broke INTEGER NOT NULL DEFAULT 0,
+      inventory TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS counting_house_notes (
+      note_id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      issued_at INTEGER NOT NULL,
+      issued_by TEXT NOT NULL,
+      status TEXT NOT NULL,
+      redeemed_at INTEGER,
+      redeemed_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_notes_account ON counting_house_notes(account_id);
+
+    CREATE TABLE IF NOT EXISTS red_flags (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      issued_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE INDEX IF NOT EXISTS idx_red_flags_account ON red_flags(account_id);
+
+    CREATE TABLE IF NOT EXISTS bounties (
+      id TEXT PRIMARY KEY,
+      target_account_id TEXT NOT NULL,
+      reward_chroma INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      issuer_id TEXT NOT NULL,
+      issued_at INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      claimed_by TEXT,
+      claimed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_bounties_target ON bounties(target_account_id);
+    CREATE INDEX IF NOT EXISTS idx_bounties_status ON bounties(status);
+
+    CREATE TABLE IF NOT EXISTS npc_memories (
+      npc_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      score INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (npc_id, account_id)
+    );
+  `);
+
+  const ledgerCount = database
+    .prepare('SELECT count(*) as count FROM ledger_entries')
+    .get() as { count: number };
+
+  if (ledgerCount.count === 0) {
+    const genesis = createGenesisEntries();
+    const insertLedger = database.prepare(
+      'INSERT INTO ledger_entries (id, sender, receiver, amount, reason, ref_id, metadata, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    for (const entry of genesis) {
+      insertLedger.run(
+        entry.id,
+        entry.from,
+        entry.to,
+        entry.amount,
+        entry.reason,
+        entry.refId ?? null,
+        entry.metadata ? JSON.stringify(entry.metadata) : null,
+        entry.timestamp,
+      );
+    }
+
+    const insertMerchant = database.prepare(
+      'INSERT OR IGNORE INTO merchant_states (id, nation, balance, status, days_broke, inventory, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    );
+
+    const defaultInventory = JSON.stringify({
+      shard: {
+        stock: MERCHANT_CONFIG.defaultMaxStock.shard,
+        maxStock: MERCHANT_CONFIG.defaultMaxStock.shard,
+        basePrice: MERCHANT_CONFIG.basePrices.shard,
+      },
+      potion: {
+        stock: MERCHANT_CONFIG.defaultMaxStock.potion,
+        maxStock: MERCHANT_CONFIG.defaultMaxStock.potion,
+        basePrice: MERCHANT_CONFIG.basePrices.potion,
+      },
+      item: {
+        stock: MERCHANT_CONFIG.defaultMaxStock.item,
+        maxStock: MERCHANT_CONFIG.defaultMaxStock.item,
+        basePrice: MERCHANT_CONFIG.basePrices.item,
+      },
+    });
+
+    const now = Date.now();
+    insertMerchant.run('merchant_ignis', 'IGNIS', INITIAL_BALANCES.merchantPerStore, 'open', 0, defaultInventory, now);
+    insertMerchant.run('merchant_aques', 'AQUES', INITIAL_BALANCES.merchantPerStore, 'open', 0, defaultInventory, now);
+    insertMerchant.run('merchant_terra', 'TERRA', INITIAL_BALANCES.merchantPerStore, 'open', 0, defaultInventory, now);
+    insertMerchant.run('merchant_aura', 'AURA', INITIAL_BALANCES.merchantPerStore, 'open', 0, defaultInventory, now);
+    insertMerchant.run('merchant_chromara', 'CHROMARA', INITIAL_BALANCES.merchantPerStore, 'open', 0, defaultInventory, now);
+  }
 }
 
 export function createDatabase(dbPath?: string): DatabaseSync {
