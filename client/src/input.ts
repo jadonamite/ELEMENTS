@@ -1,10 +1,10 @@
 import type { MoveInput } from './controller.js';
-import type { CombatAction } from './combat.js';
+import type { CombatAction, FightingStyle } from './combat.js';
 
 const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyR']);
 /** Keys that trigger one move per press. */
 const actionKeys: Record<string, CombatAction> = {
-  KeyQ: 'uppercut', KeyE: 'ground_pound', KeyF: 'dash', Space: 'dodge',
+  KeyQ: 'uppercut', KeyE: 'ground_pound', KeyF: 'dash', KeyG: 'ultimate', Space: 'dodge',
 };
 
 export function isEditable(target: EventTarget | null): boolean {
@@ -20,6 +20,7 @@ export class GameInput {
   onLockToggle?: () => void;
   onStanceToggle?: () => void;
   onBendingToggle?: () => void;
+  onStyleSelect?: (style: FightingStyle) => void;
 
   constructor(private readonly canvas: HTMLCanvasElement, button: HTMLButtonElement,
     orbit: (dx: number, dy: number) => void, status: (text: string) => void) {
@@ -47,6 +48,21 @@ export class GameInput {
       if (event.code === 'Tab') {
         event.preventDefault();
         this.onLockToggle?.();
+        return;
+      }
+      if (event.code === 'Digit1' || event.code === 'Numpad1') {
+        event.preventDefault();
+        this.onStyleSelect?.('weapon');
+        return;
+      }
+      if (event.code === 'Digit2' || event.code === 'Numpad2') {
+        event.preventDefault();
+        this.onStyleSelect?.('bare_hands');
+        return;
+      }
+      if (event.code === 'Digit3' || event.code === 'Numpad3') {
+        event.preventDefault();
+        this.onStyleSelect?.('legs');
         return;
       }
       if (event.code === 'KeyX' && !event.repeat) {

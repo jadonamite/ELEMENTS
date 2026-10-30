@@ -35,6 +35,28 @@ export function bladeTouches(base: Point, tip: Point, feet: Point, height: numbe
   return segmentDistance(base, tip, bottom, top) <= radius;
 }
 
+/** Does a fist or foot limb touch an upright capsule standing on `feet`? */
+export function limbTouchesCapsule(
+  limb: Point,
+  limbRadius: number,
+  feet: Point,
+  height: number,
+  capsuleRadius: number,
+  limbEnd?: Point,
+): boolean {
+  const bottom = { x: feet.x, y: feet.y + capsuleRadius, z: feet.z };
+  const top = { x: feet.x, y: feet.y + height - capsuleRadius, z: feet.z };
+  if (limbEnd) {
+    return segmentDistance(limb, limbEnd, bottom, top) <= capsuleRadius + limbRadius;
+  }
+  const clampedY = Math.max(bottom.y, Math.min(top.y, limb.y));
+  const dx = limb.x - feet.x;
+  const dy = limb.y - clampedY;
+  const dz = limb.z - feet.z;
+  const total = limbRadius + capsuleRadius;
+  return (dx * dx + dy * dy + dz * dz) <= total * total;
+}
+
 /** Is `target` inside a cone of half-angle `halfAngle` around `facing` (yaw, +Z forward)? */
 export function inFront(from: Point, facing: number, target: Point, halfAngle: number): boolean {
   const angle = Math.atan2(target.x - from.x, target.z - from.z);

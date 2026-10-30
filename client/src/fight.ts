@@ -1,14 +1,29 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { type Object3D, type Scene, Vector3 } from 'three';
 import balance from '../../shared/balance.json';
-import { createCombatRules, type ActionState, type CombatBalance, type Combatant, type Element, type Health } from '../../shared/src/index.js';
+import { createCombatRules, isBendMove, type ActionState, type CombatBalance, type Combatant, type Element, type Health, type Kit, type MoveId } from '../../shared/src/index.js';
 import type { Combat } from './combat.js';
-import { Enemy, type EnemyTemplate } from './enemy.js';
-import { bladeTouches, inFront } from './hits.js';
+import { Enemy, type EnemyTemplate, type VillainCast, type VillainKind } from './enemy.js';
+import { bladeTouches, inFront, limbTouchesCapsule } from './hits.js';
+import { afflictionFor, bendArc } from './element-moves.js';
+import type { WeaponSlotData } from './weapon.js';
 
 const rules = createCombatRules(balance.combat as unknown as CombatBalance);
 const tuning = balance.enemy;
-const HERO_ELEMENT: Element = 'IGNIS';
+
+/** Round sequence: 1-3-5-7 up till 15 and then stop. */
+export const ZOMBIE_ROUNDS = [1, 3, 5, 7, 9, 11, 13, 15] as const;
+
+/** A patch of burning ground on the arena stone floor. */
+export interface BurnPatch {
+  readonly id: number;
+  position: Vector3;
+  radius: number;
+  duration: number;
+  elapsed: number;
+  active: boolean;
+  element: Element;
+}
 
 /** What the fight reads from the hero each frame. */
 export interface HeroView {
@@ -17,23 +32,47 @@ export interface HeroView {
   /** World-space blade ends this frame. */
   bladeBase: Vector3;
   bladeTip: Vector3;
+  handR?: Vector3;
+  handL?: Vector3;
+  footR?: Vector3;
+  footL?: Vector3;
+  kneeR?: Vector3;
+  kneeL?: Vector3;
+  weaponReach?: number;
+  weaponSlot?: WeaponSlotData;
 }
 
 export interface FightEvents {
   /** The hero was hit; `blocked` when the guard took most of it. */
   heroHit(blocked: boolean): void;
   heroDied(): void;
+  /** A bender threw fire; the scene draws it. */
+  villainCast?(cast: VillainCast): void;
   /** A hero swing connected; `killed` on the final blow. */
   enemyHit(enemy: Enemy, killed: boolean): void;
+  /** The hero blocked just as a hit landed: the attacker staggers. */
+  heroParried?(enemy: Enemy): void;
+  /** Triggered when a new round begins. */
+  roundStarted?(roundNumber: number, zombieCount: number): void;
+  /** Triggered when all zombies in a round are defeated. */
+  roundCleared?(roundNumber: number, nextRoundZombieCount: number): void;
+  /** Triggered when the final round (15 zombies) is completed. */
+  victory?(): void;
 }
 
 /**
- * Runs the arena fight: keeps husks spawned, lets one attack at a time,
- * checks blade contact and applies every hit through the shared rules.
+ * Runs the arena fight: spawns zombies in rounds of 1, 3, 5, 7 up till 15,
+ * enforces group attack discipline, checks blade contact, and applies combat perks.
  */
 export class Fight {
   readonly enemies: Enemy[] = [];
+  readonly burnPatches: BurnPatch[] = [];
+  private readonly huskBurns = new Map<Enemy, { burnRemaining: number; tickAccumulator: number }>();
   heroHealth: Health = rules.createHealth(balance.hero.maxHealth);
+  /** The hero's element and weapon; moves take their numbers from it. */
+  kit: Kit = { element: 'IGNIS', weapon: 'sword' };
+  /** Strength of the bending move about to start, and whether the meter chained it. */
+  private bend = { scale: 1, chained: false };
   private heroState: ActionState = rules.createActionState();
   private attacker: Enemy | null = null;
   /** Seconds before the next husk may start an attack. */
@@ -41,48 +80,189 @@ export class Fight {
   private respawnIn: number[] = [];
   private clock = 0;
 
+  // Round tracking
+  private currentRoundIndex = 0;
+  private spawnedInRound = 0;
+  private killedInRound = 0;
+  private readonly counted = new WeakSet<Enemy>();
+  private roundIntermission = 0;
+  isVictory = false;
+
   constructor(
     private readonly template: EnemyTemplate,
     private readonly world: RAPIER.World,
     private readonly scene: Scene,
     private readonly events: FightEvents,
+    private readonly createEnemy: (template: EnemyTemplate, world: RAPIER.World, point: { x: number; z: number }, maxHealth: number, kind: VillainKind) => Enemy =
+      (t, w, p, m, k) => new Enemy(t, w, p, m, k),
   ) {
-    for (let i = 0; i < tuning.count; i++) this.respawnIn.push(0.6 + i * 0.9);
+    // Initial spawn for Round 1 (1 zombie)
+    this.respawnIn.push(0.6);
+    this.events.roundStarted?.(1, ZOMBIE_ROUNDS[0]!);
+
+    // Pre-allocate 16 pooled burn patches for living fire
+    for (let i = 0; i < 16; i++) {
+      this.burnPatches.push({
+        id: i,
+        position: new Vector3(),
+        radius: balance.combat.burn?.patchRadius ?? 1.25,
+        duration: 3.0,
+        elapsed: 0,
+        active: false,
+        element: 'IGNIS',
+      });
+    }
   }
 
   get heroAlive(): boolean { return this.heroHealth.current > 0; }
 
+  get currentRoundNumber(): number { return this.currentRoundIndex + 1; }
+  get totalRounds(): number { return ZOMBIE_ROUNDS.length; }
+  get roundZombieTarget(): number { return ZOMBIE_ROUNDS[this.currentRoundIndex] ?? 15; }
+  get nextRoundZombieTarget(): number { return ZOMBIE_ROUNDS[this.currentRoundIndex + 1] ?? 15; }
+  get zombiesRemaining(): number { return Math.max(0, this.roundZombieTarget - this.killedInRound); }
+  get zombiesKilledInRound(): number { return this.killedInRound; }
+  get intermissionRemaining(): number { return this.roundIntermission; }
+  get livingCount(): number { return this.enemies.filter(e => e.alive).length; }
+
+  get activeBurnPatches(): readonly BurnPatch[] {
+    return this.burnPatches.filter(p => p.active);
+  }
+
+  get burningHusks(): Array<{ position: Vector3; alive: boolean }> {
+    const list: Array<{ position: Vector3; alive: boolean }> = [];
+    for (const [enemy, burn] of this.huskBurns) {
+      if (enemy.alive && burn.burnRemaining > 0) {
+        list.push({ position: enemy.controller.position, alive: true });
+      }
+    }
+    return list;
+  }
+
+  /** Spawns a burning patch of ground that damages husks walking into it. */
+  spawnBurnPatch(pos: Vector3, radius?: number, duration?: number, element: Element = 'IGNIS'): BurnPatch {
+    let target = this.burnPatches.find(p => !p.active);
+    if (!target) {
+      let maxElapsed = -1;
+      for (const p of this.burnPatches) {
+        if (p.elapsed > maxElapsed) {
+          maxElapsed = p.elapsed;
+          target = p;
+        }
+      }
+    }
+    const patch = target ?? this.burnPatches[0]!;
+    patch.position.copy(pos).setY(0.02);
+    patch.radius = radius ?? balance.combat.burn?.patchRadius ?? 1.25;
+    patch.duration = duration ?? (2.4 + Math.random() * 1.2);
+    patch.elapsed = 0;
+    patch.active = true;
+    patch.element = element;
+    return patch;
+  }
+
   /** Is the move off cooldown in the rules? The hero's combat asks before starting one. */
-  ready(move: string): boolean {
+  ready(move: string, isLit = false): boolean {
     if (move === 'hit' || move === 'death') return true;
     try {
-      return rules.cooldownRemaining(move as Parameters<typeof rules.cooldownRemaining>[0], this.heroState, this.clock) === 0;
+      return rules.cooldownRemaining(move as MoveId, this.heroState, this.clock, isLit, this.kit) === 0;
     } catch {
       return true;
     }
   }
 
+  /** Set before pressing a bending move: its strength from the meter and tier, and whether it is a chain link. */
+  setBend(scale: number, chained: boolean): void { this.bend = { scale, chained }; }
+
+  /** Restores hero health, never above the maximum. */
+  healHero(amount: number): void { if (this.heroAlive) this.heroHealth = rules.heal(this.heroHealth, amount); }
+
+  /** Starts a move and begins its cooldown immediately when accepted. */
+  startMove(move: string, swingAt: number = this.clock, isLit = false): boolean {
+    if (move === 'hit' || move === 'death') return true;
+    try {
+      const res = rules.startMove(this.heroState, move as MoveId, swingAt, isLit, this.kit, isBendMove(move) && this.bend.chained);
+      if (!res.accepted) return false;
+      this.heroState = res.state;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Record a dodge roll, consuming its cooldown in shared rules. */
-  recordDodge(): boolean {
-    const res = rules.useDodge(this.heroState, this.clock);
-    if (!res.accepted) return false;
-    this.heroState = res.state;
-    return true;
+  recordDodge(isLit = false): boolean {
+    return this.startMove('dodge', this.clock, isLit);
   }
 
   /** Seconds remaining on cooldown for a given move. */
-  cooldownRemaining(move: string): number {
+  cooldownRemaining(move: string, isLit = false): number {
     try {
-      return rules.cooldownRemaining(move as Parameters<typeof rules.cooldownRemaining>[0], this.heroState, this.clock);
+      return rules.cooldownRemaining(move as MoveId, this.heroState, this.clock, isLit, this.kit);
     } catch {
       return 0;
     }
   }
 
   /** Total configured cooldown in seconds for a move. */
-  cooldownTotal(move: string): number {
-    const spec = (balance.combat.ignisStarterMoves as Record<string, { cooldownSeconds?: number }>)[move];
-    return spec?.cooldownSeconds ?? 1;
+  cooldownTotal(move: string, isLit = false): number {
+    let total = 1;
+    try { total = rules.moveFor(move as MoveId, this.kit).cooldownSeconds; } catch { /* hit, death */ }
+    return isLit ? total * rules.litCooldownMultiplier : total;
+  }
+
+  /** Jump directly to a round for testing or debug. */
+  setRound(roundNumber: number): void {
+    this.currentRoundIndex = Math.max(0, Math.min(ZOMBIE_ROUNDS.length - 1, roundNumber - 1));
+    for (const enemy of this.enemies) enemy.dispose();
+    this.enemies.length = 0;
+    this.huskBurns.clear();
+    for (const p of this.burnPatches) p.active = false;
+    this.spawnedInRound = 0;
+    this.killedInRound = 0;
+    this.roundIntermission = 0;
+    this.isVictory = false;
+    this.respawnIn = [0.5];
+    this.events.roundStarted?.(this.currentRoundNumber, this.roundZombieTarget);
+  }
+
+  /** Records an enemy's defeat, updates round kill counts, queues respawns and checks victory / intermission. */
+  private handleEnemyDefeated(enemy: Enemy): void {
+    // Each death counts once, whatever killed it.
+    if (this.counted.has(enemy)) return;
+    this.counted.add(enemy);
+    this.huskBurns.delete(enemy);
+    this.killedInRound++;
+    if (this.spawnedInRound < this.roundZombieTarget && this.respawnIn.length === 0) {
+      this.respawnIn.push(0.7);
+    }
+    if (this.killedInRound >= this.roundZombieTarget) {
+      if (this.currentRoundIndex >= ZOMBIE_ROUNDS.length - 1) {
+        // Victory after completing round 15!
+        this.isVictory = true;
+        this.events.victory?.();
+      } else {
+        // Intermission before next round
+        this.roundIntermission = 3.0;
+        const nextTarget = ZOMBIE_ROUNDS[this.currentRoundIndex + 1]!;
+        this.events.roundCleared?.(this.currentRoundNumber, nextTarget);
+      }
+    }
+    if (enemy === this.attacker) this.release();
+    this.events.enemyHit(enemy, true);
+  }
+
+  /** Defeats an enemy directly (e.g. fatal damage or test execution). */
+  defeatEnemy(enemy: Enemy): void {
+    if (!enemy.alive && enemy.health.current <= 0) {
+      this.handleEnemyDefeated(enemy);
+      return;
+    }
+    if (!enemy.alive) return;
+    const killed = enemy.hurt({ current: 0, maximum: enemy.health.maximum });
+    if (killed) {
+      this.handleEnemyDefeated(enemy);
+    }
   }
 
   /** Nearest living husk in front of the hero within `range`, for aim assist. */
@@ -130,73 +310,239 @@ export class Fight {
     return this.enemies.length > 0 && this.enemies.every(e => !e.alive);
   }
 
-  /** One physics step for every husk. */
-  step(hero: HeroView, combat: Combat): void {
+  /** One physics step for every husk. Cooldowns advance at normal speed; perks come from rules. */
+  step(hero: HeroView, combat: Combat, isLit = false): void {
     const dt = balance.controller.fixedStep;
     this.clock += dt;
+
     if (this.attacker && !this.attacker.attacking) this.release();
     this.gap = Math.max(0, this.gap - dt);
     const quarry = { position: hero.position, alive: this.heroAlive };
     for (const enemy of this.enemies) {
       const may = this.attacker === enemy || (this.attacker === null && this.gap === 0);
-      if (!enemy.step(quarry, may)) {
+      const landed = enemy.step(quarry, may);
+      const cast = enemy.takeCast?.();
+      if (cast) this.events.villainCast?.(cast);
+      if (!landed) {
         if (enemy.attacking && !this.attacker) this.attacker = enemy;
         continue;
       }
       if (combat.invulnerable) continue;
       const guarded = combat.blocking && inFront(hero.position, hero.facing, enemy.controller.position, balance.hero.blockAngle);
-      const damage = rules.calculateDamage(tuning.attackDamage, tuning.element as Element, HERO_ELEMENT) *
+      // A guard raised just before the hit is a parry: no damage, and the attacker staggers open.
+      if (guarded && combat.blockAge <= rules.parryWindow(this.kit.hush)) {
+        enemy.afflict({ parried: true, stunSeconds: rules.parryStagger(this.kit.hush) });
+        this.events.heroParried?.(enemy);
+        continue;
+      }
+      const damage = rules.calculateDamage(enemy.attackDamage || tuning.attackDamage) *
         (guarded ? balance.hero.blockDamageScale : 1);
       this.heroHealth = rules.applyDamage(this.heroHealth, damage);
       if (rules.isDead(this.heroHealth)) this.events.heroDied();
       else this.events.heroHit(guarded);
     }
-    this.strike(hero, combat);
+
+    // Advance fire patches
+    for (const patch of this.burnPatches) {
+      if (!patch.active) continue;
+      patch.elapsed += dt;
+      if (patch.elapsed >= patch.duration) patch.active = false;
+    }
+
+    // Apply burning ground and burn damage ticks to husks
+    const burnConfig = balance.combat.burn ?? {
+      damagePerSecond: 16,
+      tickSeconds: 0.25,
+      huskBurnDuration: 2.5,
+    };
+
+    for (const enemy of this.enemies) {
+      if (!enemy.alive) {
+        this.huskBurns.delete(enemy);
+        continue;
+      }
+      const inFire = this.burnPatches.some(p => {
+        if (!p.active) return false;
+        const dx = p.position.x - enemy.controller.position.x;
+        const dz = p.position.z - enemy.controller.position.z;
+        const maxDist = p.radius + enemy.body.radius;
+        return (dx * dx + dz * dz) <= maxDist * maxDist;
+      });
+
+      let burn = this.huskBurns.get(enemy);
+      if (inFire) {
+        if (!burn) {
+          burn = { burnRemaining: burnConfig.huskBurnDuration, tickAccumulator: 0 };
+          this.huskBurns.set(enemy, burn);
+        } else {
+          burn.burnRemaining = Math.max(burn.burnRemaining, 1.8);
+        }
+      }
+
+      if (burn && burn.burnRemaining > 0) {
+        if (!inFire) burn.burnRemaining -= dt;
+        burn.tickAccumulator += dt;
+        if (burn.tickAccumulator >= burnConfig.tickSeconds) {
+          burn.tickAccumulator -= burnConfig.tickSeconds;
+          const res = rules.applyBurnTick(enemy.health, burnConfig.tickSeconds, tuning.armour);
+          const killed = enemy.hurt(res.health);
+          if (killed) {
+            this.handleEnemyDefeated(enemy);
+          }
+        }
+        if (burn.burnRemaining <= 0) {
+          this.huskBurns.delete(enemy);
+        }
+      }
+    }
+
+    this.strike(hero, combat, isLit);
+    // Catch deaths from any source that skipped the bookkeeping above.
+    for (const enemy of this.enemies) if (!enemy.alive) this.handleEnemyDefeated(enemy);
   }
 
-  /** Test the blade against every husk while the swing is live. */
-  private strike(hero: HeroView, combat: Combat): void {
+  /** Test the blade, limb, or projectile against every husk while the swing is live. */
+  private strike(hero: HeroView, combat: Combat, isLit = false): void {
     const move = combat.current;
     if (!move || !combat.striking || !this.heroAlive) return;
+    const limb = combat.strikingLimb;
+    const weaponReach = hero.weaponReach ?? hero.weaponSlot?.reach ?? combat.weaponReach ?? 2.5;
+
     for (const enemy of this.enemies) {
       if (!enemy.hittable || enemy.lastSwing === combat.swing) continue;
       const body = enemy.body;
-      if (!bladeTouches(hero.bladeBase, hero.bladeTip, body.feet, body.height, body.radius)) continue;
+      let connects = false;
+
+      // In bare hands style, the weapon is sheathed. All strikes MUST use fists or feet, never the blade.
+      if (combat.fightingStyle === 'bare_hands' || combat.fightingStyle === 'legs') {
+        if (limb === 'blade') {
+          continue;
+        }
+        // A punch lands with whichever fist reaches; a kick strikes along the active kicking shin while in the air.
+        const fists = [hero.handR, hero.handL];
+        if (limb === 'hand_r' || limb === 'hand_l') {
+          connects = fists.some(p => p && limbTouchesCapsule(p, 0.20, body.feet, body.height, body.radius));
+        } else if (limb === 'foot_r' || limb === 'foot_l') {
+          // Striking leg: right leg kicks test right shin/foot, left tests left.
+          // Support foot planted on the floor must never trigger a hit before the kick extends.
+          const isRight = limb === 'foot_r';
+          const knee = isRight ? hero.kneeR : hero.kneeL;
+          const foot = isRight ? hero.footR : hero.footL;
+          const elevated = (foot?.y ?? 0.5) > 0.18;
+          connects = elevated && !!knee && !!foot && limbTouchesCapsule(knee, 0.24, body.feet, body.height, body.radius, foot);
+        } else if (limb === 'area') {
+          const distance = hero.position.distanceTo(enemy.controller.position);
+          connects = distance <= 2.5 && inFront(hero.position, hero.facing, enemy.controller.position, 1.5);
+        }
+      } else if (limb === 'blade') {
+        const dist = hero.position.distanceTo(enemy.controller.position);
+        connects = dist <= weaponReach + body.radius && bladeTouches(hero.bladeBase, hero.bladeTip, body.feet, body.height, body.radius);
+      } else if (limb === 'hand_r') {
+        const handPos = hero.handR ?? hero.position;
+        connects = limbTouchesCapsule(handPos, 0.20, body.feet, body.height, body.radius);
+      } else if (limb === 'hand_l') {
+        const handPos = hero.handL ?? hero.position;
+        connects = limbTouchesCapsule(handPos, 0.20, body.feet, body.height, body.radius);
+      } else if (limb === 'foot_r') {
+        const footPos = hero.footR ?? hero.position;
+        connects = limbTouchesCapsule(footPos, 0.22, body.feet, body.height, body.radius);
+      } else if (limb === 'foot_l') {
+        const footPos = hero.footL ?? hero.position;
+        connects = limbTouchesCapsule(footPos, 0.22, body.feet, body.height, body.radius);
+      } else if (limb === 'projectile' || limb === 'area') {
+        const distance = hero.position.distanceTo(enemy.controller.position);
+        let maxReach = 5.0;
+        try { maxReach = rules.moveFor(move as MoveId, this.kit).reach; } catch { /* not a rules move */ }
+        connects = distance <= maxReach + body.radius && inFront(hero.position, hero.facing, enemy.controller.position, bendArc(move));
+      }
+      if (!connects) continue;
       enemy.lastSwing = combat.swing;
       const result = rules.checkHit({
-        attacker: this.combatant(HERO_ELEMENT, hero.position, this.heroHealth, 0),
+        attacker: { ...this.combatant(this.kit.element, hero.position, this.heroHealth, 0), weapon: this.kit.weapon },
         target: this.combatant(tuning.element as Element, enemy.controller.position, enemy.health, tuning.armour),
         moveId: move, now: this.clock, state: this.heroState, swingAt: Math.min(combat.swingAt, this.clock),
+        isLit, bendScale: this.bend.scale, chained: this.bend.chained,
       });
       if (!result.accepted) continue;
       this.heroState = result.state;
-      const killed = enemy.hurt(result.target.health);
-      if (enemy === this.attacker) this.release();
-      this.events.enemyHit(enemy, killed);
+      const effect = isBendMove(move) ? afflictionFor(this.kit.element, move, hero.position, enemy.controller.position, Math.min(1, this.bend.scale)) : null;
+      if (effect && result.target.health.current > 0) enemy.afflict(effect);
+
+      const killed = enemy.hurt(result.target.health, move, hero.position, isLit);
+      if (killed) {
+        this.handleEnemyDefeated(enemy);
+      } else {
+        if (enemy === this.attacker) this.release();
+        this.events.enemyHit(enemy, false);
+      }
     }
   }
 
-  /** Per drawn frame: animate husks, clear the fallen, bring in new ones. */
+  /** Per drawn frame: animate husks, clear the fallen, advance rounds and spawn waves. */
   draw(delta: number, alpha: number, heroPosition: Vector3): void {
     for (const enemy of this.enemies) enemy.draw(delta, alpha);
+
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       if (!this.enemies[i]!.gone) continue;
       this.enemies[i]!.dispose();
       this.enemies.splice(i, 1);
-      this.respawnIn.push(tuning.respawnSeconds);
     }
+
+    if (this.isVictory) return;
+
+    // Handle round intermission countdown
+    if (this.roundIntermission > 0) {
+      this.roundIntermission -= delta;
+      if (this.roundIntermission <= 0) {
+        this.currentRoundIndex++;
+        this.spawnedInRound = 0;
+        this.killedInRound = 0;
+        this.respawnIn = [0.8];
+        this.events.roundStarted?.(this.currentRoundNumber, this.roundZombieTarget);
+      }
+      return;
+    }
+
+    // Active wave spawning: keep up to 6 alive zombies concurrently on the field
     this.respawnIn = this.respawnIn.map(t => t - delta);
-    while (this.respawnIn.length && this.respawnIn[0]! <= 0 && this.enemies.length < tuning.count) {
+    const maxActive = Math.min(this.roundZombieTarget, 6);
+
+    while (
+      this.spawnedInRound < this.roundZombieTarget &&
+      this.livingCount < maxActive &&
+      this.respawnIn.length &&
+      this.respawnIn[0]! <= 0
+    ) {
       this.respawnIn.shift();
       this.spawn(heroPosition);
+      this.spawnedInRound++;
+    }
+
+    if (
+      this.spawnedInRound < this.roundZombieTarget &&
+      this.livingCount < maxActive &&
+      this.respawnIn.length === 0
+    ) {
+      this.respawnIn.push(0.7);
     }
   }
 
-  /** Bring the hero back at full health; husks keep their places. */
+  /** Bring the hero back at full health and restart the current round cleanly. */
   reviveHero(): void {
     this.heroHealth = rules.createHealth(balance.hero.maxHealth);
     this.heroState = rules.createActionState();
     this.attacker = null;
+
+    // Restart the current round attempt
+    for (const enemy of this.enemies) enemy.dispose();
+    this.enemies.length = 0;
+    this.huskBurns.clear();
+    for (const p of this.burnPatches) p.active = false;
+    this.spawnedInRound = 0;
+    this.killedInRound = 0;
+    this.roundIntermission = 0;
+    this.respawnIn = [0.8];
+    this.events.roundStarted?.(this.currentRoundNumber, this.roundZombieTarget);
   }
 
   /** The attacking husk is done; the others wait a beat before taking a turn. */
@@ -208,10 +554,11 @@ export class Fight {
   dispose(): void {
     for (const enemy of this.enemies) enemy.dispose();
     this.enemies.length = 0;
+    this.huskBurns.clear();
+    for (const p of this.burnPatches) p.active = false;
   }
 
   private spawn(heroPosition: Vector3): void {
-    // A point on the spawn ring, far enough from the hero not to appear on top of them.
     let point = { x: 0, z: tuning.spawnRadius };
     for (let attempt = 0; attempt < 12; attempt++) {
       const angle = Math.random() * Math.PI * 2;
@@ -221,9 +568,22 @@ export class Fight {
       const clearOfOthers = this.enemies.every(e => Math.hypot(point.x - e.controller.position.x, point.z - e.controller.position.z) > 2);
       if (clearOfHero && clearOfRocks && clearOfOthers) break;
     }
-    const enemy = new Enemy(this.template, this.world, point, tuning.maxHealth);
+    const enemy = this.createEnemy(this.template, this.world, point, tuning.maxHealth, this.pickKind());
     this.scene.add(enemy.model as Object3D);
     this.enemies.push(enemy);
+  }
+
+  /** Rolls the next villain's kind from the current round's mix in balance.json. */
+  private pickKind(): VillainKind {
+    const round = this.currentRoundNumber;
+    const wave = [...tuning.waves].reverse().find(w => round >= w.fromRound) ?? tuning.waves[0]!;
+    const mix = Object.entries(wave.mix) as Array<[VillainKind, number]>;
+    let roll = Math.random() * mix.reduce((sum, [, weight]) => sum + weight, 0);
+    for (const [kind, weight] of mix) {
+      roll -= weight;
+      if (roll <= 0) return kind;
+    }
+    return mix[0]![0];
   }
 
   private combatant(element: Element, position: Vector3, health: Health, armour: number): Combatant {

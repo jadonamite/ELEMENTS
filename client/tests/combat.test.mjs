@@ -9,6 +9,7 @@ function fakeAnim() {
     playOnce(name) { played.push(name); return true; },
     setSpeed() {},
     duration() { return 1; },
+    hasClip() { return true; },
   };
 }
 

@@ -1,20 +1,60 @@
 import balance from '../../shared/balance.json';
 import type { AnimationPlayer } from './anim/index.js';
+import { SWORD_WEAPON, type WeaponSlotData } from './weapon.js';
+import { ELEMENT_CLIPS } from './element-moves.js';
+import type { Element } from '../../shared/src/index.js';
 
-/** What the player asked for this frame. */
-export type CombatAction = 'light' | 'heavy' | 'uppercut' | 'ground_pound' | 'dash' | 'dodge';
-
-interface MoveSpec { clip: string; next?: string; lunge: number; speed: number }
-const tuning = balance.combat;
-const moves = tuning.moves as Record<string, MoveSpec>;
-const opener: Record<CombatAction, string> = {
-  light: 'light_1', heavy: 'heavy_1', uppercut: 'uppercut',
-  ground_pound: 'ground_pound', dash: 'dash_strike', dodge: 'dodge',
+/** Moves every style maps the same way: bending slots, the ultimate and the Hush spark. */
+const sharedOpeners: Partial<Record<CombatAction, string>> = {
+  uppercut: 'uppercut', ground_pound: 'ground_pound', dash: 'dash_strike', ultimate: 'ultimate', spark: 'shard_spark',
 };
 
+/** What the player asked for this frame. */
+export type CombatAction = 'light' | 'heavy' | 'uppercut' | 'ground_pound' | 'dash' | 'ultimate' | 'spark' | 'dodge';
+export type FightingStyle = 'weapon' | 'bare_hands' | 'legs' | 'bending';
+export type StrikingLimb = 'blade' | 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'projectile' | 'area';
+
+export function getStrikingLimb(move: string | null, style: FightingStyle = 'weapon'): StrikingLimb {
+  if (!move) return style === 'weapon' ? 'blade' : 'hand_r';
+  if (move === 'ultimate') return 'area';
+  if (move === 'shard_spark') return 'projectile';
+  if (style === 'bare_hands') {
+    if (move === 'bare_light_1' || move === 'bare_heavy_1' || move === 'uppercut' || move === 'dash_strike') return 'hand_r';
+    if (move === 'bare_light_2') return 'hand_l';
+    if (move === 'bare_light_3') return 'foot_r';
+    if (move === 'ground_pound') return 'area';
+    return 'hand_r';
+  }
+  if (style === 'legs') {
+    if (move === 'ground_pound') return 'area';
+    if (move === 'uppercut' || move === 'dash_strike') return 'hand_r';
+    return 'foot_r';
+  }
+  if (style === 'bending') {
+    if (move === 'bend_palm') return 'projectile';
+    if (move === 'bend_sweep' || move === 'ground_pound' || move === 'uppercut') return 'area';
+    if (move === 'dash_strike') return 'projectile';
+    return 'area';
+  }
+  // weapon style
+  if (move === 'bare_light_1' || move === 'bare_heavy_1') return 'hand_r';
+  if (move === 'bare_light_2') return 'hand_l';
+  if (move === 'bare_light_3') return 'foot_r';
+  if (move === 'bend_palm') return 'projectile';
+  if (move === 'bend_sweep' || move === 'ground_pound') return 'area';
+  return 'blade';
+}
+
+interface MoveSpec { clip: string; next?: string; lunge: number; speed: number }
+/** Unarmed clips for the moves both styles share. */
+const bareClips: Record<string, string> = { uppercut: 'punch_uppercut', dash_strike: 'punch_combo', ground_pound: 'ground_pound' };
+const tuning = balance.combat;
+const moves = tuning.moves as Record<string, MoveSpec>;
+
 /**
- * Sword move state: one move at a time, light and heavy presses chain into
+ * Move state: one move at a time, light and heavy presses chain into
  * combos inside a window near the end of the current move, and block is held.
+ * Weapon moves and combo sequences are completely data-driven by the equipped WeaponSlotData.
  */
 export class Combat {
   private move: string | null = null;
@@ -22,14 +62,47 @@ export class Combat {
   private length = 0;
   private queued: string | null = null;
   private clock = 0;
-  blocking = false;
+  private style: FightingStyle = 'weapon';
+  private weapon: WeaponSlotData = SWORD_WEAPON;
+  /** Picks the element's own clips for its bending moves. */
+  element: Element = 'IGNIS';
+  private guarding = false;
+  private guardSince = 0;
   /** Counts swings, so each one can strike a given target at most once. */
   swing = 0;
   /** Game time in seconds when the current swing started. */
   swingAt = 0;
 
-  /** `ready` says whether a move is off cooldown; moves that are not ready don't start. */
-  constructor(private readonly anim: AnimationPlayer, private readonly ready: (move: string) => boolean = () => true) {}
+  /** `ready` says whether a move is off cooldown; `onStart` records its cooldown immediately. */
+  constructor(
+    private readonly anim: AnimationPlayer,
+    private readonly ready: (move: string) => boolean = () => true,
+    private readonly onStart?: (move: string, swingAt: number) => void,
+    weapon: WeaponSlotData = SWORD_WEAPON,
+  ) {
+    this.weapon = weapon;
+  }
+
+  /** Held block; raising it starts the parry timer. */
+  get blocking(): boolean { return this.guarding; }
+  set blocking(on: boolean) {
+    if (on && !this.guarding) this.guardSince = this.clock;
+    this.guarding = on;
+  }
+  /** Seconds the guard has been up, or Infinity when it is down. */
+  get blockAge(): number { return this.guarding ? this.clock - this.guardSince : Infinity; }
+
+  /** The active fighting style: weapon, bare_hands, or bending. */
+  get fightingStyle(): FightingStyle { return this.style; }
+  setStyle(style: FightingStyle): void { this.style = style; }
+
+  /** Active weapon slot data and reach. */
+  get weaponData(): WeaponSlotData { return this.weapon; }
+  get weaponReach(): number { return this.weapon.reach; }
+  setWeapon(weapon: WeaponSlotData): void { this.weapon = weapon; }
+
+  /** The limb or projectile responsible for the current move's impact. */
+  get strikingLimb(): StrikingLimb { return getStrikingLimb(this.move, this.style); }
 
   /** The move playing now, or null while the hero is free to walk. */
   get current(): string | null { return this.move; }
@@ -37,7 +110,7 @@ export class Combat {
   /** How far through the current move, 0 to 1. */
   get progress(): number { return this.move && this.length > 0 ? this.elapsed / this.length : 0; }
 
-  /** True while the blade can connect. */
+  /** True while the blade or limb can connect. */
   get striking(): boolean {
     if (!this.move || this.move === 'dodge' || this.move === 'hit' || this.move === 'death') return false;
     const [start, end] = tuning.activeWindow as [number, number];
@@ -47,6 +120,8 @@ export class Combat {
   /** True during the dodge roll's invulnerable frames. */
   get invulnerable(): boolean {
     const [start, end] = tuning.dodgeInvulnerable as [number, number];
+    // AURA's Wind Step is a dash with no opening at all.
+    if (this.move === 'dash_strike' && this.element === 'AURA') return true;
     return this.move === 'dodge' && this.progress >= start && this.progress <= end;
   }
 
@@ -71,15 +146,86 @@ export class Combat {
     }
     if (this.move === 'hit' || this.blocking) return false;
     if (!this.move) {
-      if (!this.ready(opener[action])) return false;
-      this.start(opener[action]);
+      let openerMove: string | undefined = action === 'ultimate' || action === 'spark' || action === 'dash' ? sharedOpeners[action] : undefined;
+      if (openerMove) { /* same in every style */ } else if (this.style === 'weapon') {
+        if (action === 'light') openerMove = this.weapon.moves.light[0] ?? 'light_1';
+        else if (action === 'heavy') openerMove = this.weapon.moves.heavy[0] ?? 'heavy_1';
+        else if (action === 'uppercut') openerMove = this.weapon.moves.uppercut ?? 'uppercut';
+        else if (action === 'ground_pound') openerMove = this.weapon.moves.ground_pound ?? 'ground_pound';
+        else if (action === 'dash') openerMove = this.weapon.moves.dash ?? 'dash_strike';
+      } else if (this.style === 'bare_hands') {
+        if (action === 'light') openerMove = 'bare_light_1';
+        else if (action === 'heavy') openerMove = 'bare_heavy_1';
+        else if (action === 'uppercut') openerMove = 'uppercut';
+        else if (action === 'ground_pound') openerMove = 'ground_pound';
+        else if (action === 'dash') openerMove = 'dash_strike';
+      } else if (this.style === 'legs') {
+        if (action === 'light') openerMove = 'leg_light_1';
+        else if (action === 'heavy') openerMove = 'leg_heavy_1';
+        else if (action === 'uppercut') openerMove = 'uppercut';
+        else if (action === 'ground_pound') openerMove = 'ground_pound';
+        else if (action === 'dash') openerMove = 'dash_strike';
+      } else if (this.style === 'bending') {
+        if (action === 'light') openerMove = 'bend_palm';
+        else if (action === 'heavy') openerMove = 'bend_sweep';
+        else if (action === 'uppercut') openerMove = 'uppercut';
+        else if (action === 'ground_pound') openerMove = 'ground_pound';
+        else if (action === 'dash') openerMove = 'dash_strike';
+      }
+      if (!openerMove || !this.ready(openerMove)) return false;
+      this.start(openerMove);
       return true;
     }
     const spec = moves[this.move]!;
     const inWindow = this.elapsed >= this.length * (1 - tuning.comboWindow);
-    const chains = (action === 'light' && this.move.startsWith('light')) ||
-      (action === 'heavy' && this.move.startsWith('heavy'));
-    if (chains && spec.next && inWindow) { this.queued = spec.next; return true; }
+    if (inWindow) {
+      if (this.style === 'weapon') {
+        if (action === 'light') {
+          const list = this.weapon.moves.light;
+          const idx = list.indexOf(this.move);
+          if (idx >= 0 && idx + 1 < list.length) {
+            this.queued = list[idx + 1]!;
+            return true;
+          }
+        } else if (action === 'heavy') {
+          const list = this.weapon.moves.heavy;
+          const idx = list.indexOf(this.move);
+          if (idx >= 0 && idx + 1 < list.length) {
+            this.queued = list[idx + 1]!;
+            return true;
+          }
+        }
+      } else if (this.style === 'bare_hands') {
+        const bareLight = ['bare_light_1', 'bare_light_2', 'bare_light_3'];
+        if (action === 'light') {
+          const idx = bareLight.indexOf(this.move);
+          if (idx >= 0 && idx + 1 < bareLight.length) {
+            this.queued = bareLight[idx + 1]!;
+            return true;
+          }
+        }
+      } else if (this.style === 'legs') {
+        const legLight = ['leg_light_1', 'leg_light_2'];
+        if (action === 'light') {
+          const idx = legLight.indexOf(this.move);
+          if (idx >= 0 && idx + 1 < legLight.length) {
+            this.queued = legLight[idx + 1]!;
+            return true;
+          } else if (this.move === 'leg_light_2') {
+            this.queued = 'leg_heavy_1';
+            return true;
+          }
+        } else if (action === 'heavy') {
+          if (this.move === 'leg_light_1' || this.move === 'leg_light_2') {
+            this.queued = 'leg_heavy_1';
+            return true;
+          }
+        }
+      }
+      const chains = (action === 'light' && this.move.includes('light')) ||
+        (action === 'heavy' && this.move.includes('heavy'));
+      if (chains && spec.next) { this.queued = spec.next; return true; }
+    }
     return false;
   }
 
@@ -102,13 +248,19 @@ export class Combat {
 
   private start(name: string): void {
     const spec = moves[name]!;
+    // Bending moves play the element's own clips; without a weapon the shared moves use unarmed ones.
+    const own = name.startsWith('bend_') || name === 'dash_strike' || name === 'ultimate' || this.style !== 'weapon'
+      ? ELEMENT_CLIPS[this.element][name] : undefined;
+    const wanted = own ?? (this.style !== 'weapon' ? (bareClips[name] ?? spec.clip) : spec.clip);
+    const clip = this.anim.hasClip(wanted) ? wanted : spec.clip;
     this.move = name;
     this.elapsed = 0;
     this.queued = null;
     this.swing++;
     this.swingAt = this.clock;
-    this.length = this.anim.duration(spec.clip) / spec.speed;
-    this.anim.playOnce(spec.clip, tuning.fade);
-    this.anim.setSpeed(spec.clip, spec.speed);
+    this.length = this.anim.duration(clip) / spec.speed;
+    this.anim.playOnce(clip, tuning.fade);
+    this.anim.setSpeed(clip, spec.speed);
+    this.onStart?.(name, this.swingAt);
   }
 }

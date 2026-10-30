@@ -54,17 +54,27 @@ export class HeroController {
   }
 
   /** One physics step; a lunge (m/s) carries the hero along its facing instead of the input. */
-  step(input: MoveInput, yaw: number, lunge = 0): void {
+  step(input: MoveInput, yaw: number, lunge = 0, speedMultiplier = 1.0, impulse?: Vector3): void {
     const dt = tuning.fixedStep;
+    const effectiveSpeeds = speedMultiplier === 1.0
+      ? this.speeds
+      : { walkSpeed: this.speeds.walkSpeed * speedMultiplier, runSpeed: this.speeds.runSpeed * speedMultiplier };
     const velocity = lunge > 0
       ? new Vector3(Math.sin(this.facing), 0, Math.cos(this.facing)).multiplyScalar(lunge)
-      : movementVelocity(input, yaw, this.speeds);
-    if (lunge === 0 && velocity.lengthSq() > 0) {
+      : movementVelocity(input, yaw, effectiveSpeeds);
+    if (impulse) {
+      velocity.add(new Vector3(impulse.x, 0, impulse.z));
+    }
+    if (lunge === 0 && velocity.lengthSq() > 0 && !impulse) {
       this.facing = turnToward(this.facing, Math.atan2(velocity.x, velocity.z), dt);
     }
     velocity.multiplyScalar(dt);
     const previous = this.body.translation();
     const floorCenter = tuning.height / 2 + tuning.skin;
+    // A launched body follows its own airborne velocity, falling as well as rising.
+    if (impulse && impulse.y !== 0) {
+      this.verticalVelocity = impulse.y;
+    }
     this.verticalVelocity -= tuning.gravity * dt;
     velocity.y = Math.max(floorCenter - previous.y, this.verticalVelocity * dt);
     this.character.computeColliderMovement(this.collider, velocity);
