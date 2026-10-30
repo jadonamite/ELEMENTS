@@ -926,5 +926,43 @@
         }
       }
     ]
+  },
+  "economy": {
+    "totalSupply": 10000000,
+    "startingPurse": 100,
+    "treasuryBaseline": 7000000,
+    "initialBalances": {
+      "treasury": 7000000,
+      "merchants": 300000,
+      "masters": 250000,
+      "rivalGuild": 500000
+    },
+    "merchant": {
+      "brokeThreshold": 1000,
+      "closureDays": 3,
+      "bailoutGrant": 100000,
+      "outsiderBuySurcharge": 0.2,
+      "outsiderSellDiscount": 0.1,
+      "basePrices": {
+        "shard": 10,
+        "potion": 20,
+        "item": 150
+      }
+    },
+    "taxes": {
+      "dimTradeTaxRate": 0.05,
+      "litToLitTaxRate": 0.2,
+      "merchantSalesTaxRate": 0.05
+    },
+    "crime": {
+      "redFlagDurationMs": 1800000,
+      "flagsToBounty": 3,
+      "jailSeizureRate": 0.4,
+      "jailBaseFine": 50,
+      "baseRobberyFlag": true
+    },
+    "death": {
+      "carriedShardLossRate": 0.25
+    }
   }
 }
