@@ -168,6 +168,28 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
   transition: border-color 150ms ease;
 }
+.ability-slot.basic-slot {
+  border-color: rgb(214 170 110 / 0.25);
+  background: rgb(12 10 9 / 0.7);
+}
+.damage-number {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  font: var(--font-weight-bold) 22px/1 var(--font-family-display);
+  color: #ffcc33;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 10px rgba(255, 120, 20, 0.5);
+  transform: translate(-50%, -50%);
+  user-select: none;
+  z-index: 100;
+  letter-spacing: 0.04em;
+}
+.damage-number.crit {
+  font-size: 28px;
+  color: #ff3a10;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95), 0 0 16px rgba(255, 60, 0, 0.9);
+}
 .ability-slot.on-cooldown {
   border-color: rgb(214 170 110 / 0.2);
   opacity: 0.8;

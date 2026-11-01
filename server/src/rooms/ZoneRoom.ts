@@ -61,7 +61,7 @@ export class ZoneRoom extends Room<{ state: ZoneState }> {
       const angle = (i * Math.PI * 2) / 3;
       const radius = 7.5;
       const monster = new MonsterState();
-      monster.id = `husk_${i}`;
+      monster.id = `villain_${i}`;
       monster.x = Math.cos(angle) * radius;
       monster.y = 0;
       monster.z = Math.sin(angle) * radius;
@@ -176,7 +176,7 @@ export class ZoneRoom extends Room<{ state: ZoneState }> {
           violation: true,
         });
         this.broadcast('chat_announcement', {
-          text: `The Collector: ${client.sessionId} has violated the Edict of Unnaming. A fine of 10 CHROMA is levied to the Treasury.`,
+          text: `A Sentry: ${client.sessionId} has violated the Edict of Unnaming. A fine of 10 CHROMA is levied to the Treasury.`,
         });
       } else {
         this.broadcast('chat', {

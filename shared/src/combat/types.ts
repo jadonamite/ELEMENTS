@@ -34,7 +34,7 @@ export interface BurnConfig {
   readonly patchDurationMax: number;
   readonly patchRadius: number;
   readonly maxPatches: number;
-  readonly huskBurnDuration: number;
+  readonly villainBurnDuration: number;
 }
 export interface MeterConfig {
   readonly max: number;
@@ -48,6 +48,23 @@ export interface MeterConfig {
   readonly weakScale: number;
   readonly chainBonus: number;
   readonly costs: Readonly<Record<BendMoveId, number>>;
+}
+export interface SituationalCounterRule {
+  readonly advantageOver: Element;
+  readonly terrains?: readonly string[];
+  readonly weathers?: readonly string[];
+}
+export interface SituationalCountersConfig {
+  readonly enabled: boolean;
+  readonly edgeMultiplier: number;
+  readonly situations: Readonly<Record<Element, SituationalCounterRule>>;
+}
+export type CombatTerrain = 'neutral' | 'wet' | 'river' | 'coastal' | 'volcanic' | 'scorched' | 'slag' | 'elevated' | 'cliff' | 'rooftop' | 'rocky' | 'canyon' | 'bedrock';
+export type CombatWeather = 'neutral' | 'clear' | 'rain' | 'storm' | 'ash' | 'heatwave' | 'gale' | 'high_winds' | 'drought' | 'sandstorm';
+export interface CombatSituation {
+  readonly terrain?: CombatTerrain | string;
+  readonly weather?: CombatWeather | string;
+  readonly moveModifier?: number;
 }
 export interface TierConfig {
   readonly names: readonly string[];
@@ -76,6 +93,7 @@ export interface CombatBalance {
   readonly parry: { readonly window: number; readonly stagger: number; readonly hushWindow: number; readonly hushStagger: number };
   readonly shardSpark: { readonly damageScale: number; readonly cooldownSeconds: number; readonly testShards: number };
   readonly tiers: TierConfig;
+  readonly situationalCounters?: SituationalCountersConfig;
 }
 /** What a fighter carries into a fight: the moves are looked up through it. */
 export interface Kit {
@@ -115,6 +133,8 @@ export interface HitInput {
   readonly bendScale?: number;
   /** A bending move chained from another with the meter; it skips the cooldown. */
   readonly chained?: boolean;
+  /** Situational conditions (terrain, weather, move modifiers) for situational counters. */
+  readonly situation?: CombatSituation;
 }
 export type MoveStartResult = { readonly accepted: true; readonly state: ActionState } | { readonly accepted: false; readonly reason: RejectionReason };
 export type HitResult = { readonly accepted: false; readonly reason: RejectionReason } | {

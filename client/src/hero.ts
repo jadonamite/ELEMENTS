@@ -229,11 +229,11 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   collectMaterials(swordMesh);
 
   const ELEMENT_EMISSIVE: Record<string, { color: number; intensity: number }> = {
-    IGNIS: { color: 0xe62a05, intensity: 2.4 },
-    AQUES: { color: 0x0088ff, intensity: 2.2 },
-    TERRA: { color: 0xd89524, intensity: 2.0 },
-    AURA: { color: 0xddeeff, intensity: 2.5 },
-    HUSH: { color: 0x9988cc, intensity: 1.0 },
+    IGNIS: { color: 0xff3700, intensity: 1.8 },
+    AQUES: { color: 0x0088ff, intensity: 1.6 },
+    TERRA: { color: 0xd89524, intensity: 1.5 },
+    AURA: { color: 0xddeeff, intensity: 1.8 },
+    HUSH: { color: 0x000000, intensity: 0.0 },
   };
 
   let elemental = false;
@@ -241,7 +241,9 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
     elemental = lit;
     const spec = ELEMENT_EMISSIVE[element] ?? ELEMENT_EMISSIVE.IGNIS!;
     for (const mat of swordMaterials) {
-      if (lit && weaponSlot.type !== 'staff') {
+      // Only the metallic blade carries the elemental glow; hilt, guard and leather stay grounded.
+      const isBlade = mat.name.toLowerCase().includes('metal') || mat.name.toLowerCase().includes('blade');
+      if (lit && isBlade && weaponSlot.type !== 'staff' && element !== 'HUSH') {
         mat.emissive.setHex(spec.color);
         mat.emissiveIntensity = spec.intensity;
       } else {

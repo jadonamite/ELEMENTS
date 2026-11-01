@@ -3,7 +3,7 @@ import test from 'node:test';
 import { Group, Scene, Vector3 } from 'three';
 import balance from '../../shared/balance.json' with { type: 'json' };
 import { Combat } from '../src/combat.ts';
-import { Fight, ZOMBIE_ROUNDS } from '../src/fight.ts';
+import { Fight, VILLAIN_ROUNDS } from '../src/fight.ts';
 
 function fakeAnim() {
   const played = [];
@@ -44,7 +44,7 @@ function createMockEnemy(spawnPoint, maxHealth = 90) {
   };
 }
 
-test('round 4 spawns and clears its full count of 7 husks (capping at 6 active)', () => {
+test('round 4 spawns and clears its full count of 7 villains (capping at 6 active)', () => {
   const scene = new Scene();
   let roundClearedNum = 0;
   let nextRoundCount = 0;
@@ -68,38 +68,38 @@ test('round 4 spawns and clears its full count of 7 husks (capping at 6 active)'
   // Jump to Round 4
   fight.setRound(4);
   assert.equal(fight.currentRoundNumber, 4);
-  assert.equal(fight.roundZombieTarget, 7);
-  assert.equal(ZOMBIE_ROUNDS[3], 7);
+  assert.equal(fight.roundVillainTarget, 7);
+  assert.equal(VILLAIN_ROUNDS[3], 7);
 
   const heroPos = new Vector3(0, 0, 0);
 
-  // Step through time to spawn the first wave of 6 husks
+  // Step through time to spawn the first wave of 6 villains
   for (let frame = 0; frame < 100; frame++) {
     fight.draw(0.1, 1, heroPos);
-    assert.ok(fight.livingCount <= 6, `At most 6 husks alive at once (was ${fight.livingCount})`);
+    assert.ok(fight.livingCount <= 6, `At most 6 villains alive at once (was ${fight.livingCount})`);
   }
 
-  // Exactly 6 husks are alive on the field (the cap)
+  // Exactly 6 villains are alive on the field (the cap)
   assert.equal(fight.livingCount, 6);
-  assert.equal(fight.zombiesRemaining, 7);
+  assert.equal(fight.villainsRemaining, 7);
 
-  // Kill the first husk to free a slot
+  // Kill the first villain to free a slot
   const firstEnemy = fight.enemies.find(e => e.alive);
   assert.ok(firstEnemy);
   fight.defeatEnemy(firstEnemy);
   firstEnemy.dispose();
 
-  // Run frames to let the 7th husk spawn
+  // Run frames to let the 7th villain spawn
   for (let frame = 0; frame < 30; frame++) {
     fight.draw(0.1, 1, heroPos);
     assert.ok(fight.livingCount <= 6);
   }
 
-  // Now the 7th husk has spawned!
+  // Now the 7th villain has spawned!
   const living = fight.enemies.filter(e => e.alive);
-  assert.equal(living.length, 6, '6 remaining alive husks (1 was killed, 1 new spawned = 7 total spawned)');
+  assert.equal(living.length, 6, '6 remaining alive villains (1 was killed, 1 new spawned = 7 total spawned)');
 
-  // Kill the remaining 6 husks one by one
+  // Kill the remaining 6 villains one by one
   for (const enemy of living) {
     fight.defeatEnemy(enemy);
     enemy.dispose();
@@ -108,13 +108,13 @@ test('round 4 spawns and clears its full count of 7 husks (capping at 6 active)'
   // Draw one frame to process the clears
   fight.draw(0.1, 1, heroPos);
 
-  assert.equal(fight.zombiesKilledInRound, 7, 'All 7 husks in round 4 defeated');
-  assert.equal(fight.zombiesRemaining, 0);
+  assert.equal(fight.villainsKilledInRound, 7, 'All 7 villains in round 4 defeated');
+  assert.equal(fight.villainsRemaining, 0);
   assert.equal(roundClearedNum, 4, 'Round 4 cleared');
   assert.equal(nextRoundCount, 9, 'Next round target is 9');
 });
 
-test('round 8 spawns and clears its full count of 15 husks to victory', () => {
+test('round 8 spawns and clears its full count of 15 villains to victory', () => {
   const scene = new Scene();
   let victoryCalled = false;
 
@@ -135,8 +135,8 @@ test('round 8 spawns and clears its full count of 15 husks to victory', () => {
 
   fight.setRound(8);
   assert.equal(fight.currentRoundNumber, 8);
-  assert.equal(fight.roundZombieTarget, 15);
-  assert.equal(ZOMBIE_ROUNDS[7], 15);
+  assert.equal(fight.roundVillainTarget, 15);
+  assert.equal(VILLAIN_ROUNDS[7], 15);
 
   const heroPos = new Vector3(0, 0, 0);
 
@@ -144,9 +144,9 @@ test('round 8 spawns and clears its full count of 15 husks to victory', () => {
   // Simulate fight loop until all 15 are spawned and killed
   for (let step = 0; step < 500 && killedTotal < 15; step++) {
     fight.draw(0.1, 1, heroPos);
-    assert.ok(fight.livingCount <= 6, `At most 6 husks alive at once (was ${fight.livingCount})`);
+    assert.ok(fight.livingCount <= 6, `At most 6 villains alive at once (was ${fight.livingCount})`);
 
-    // Kill one living husk every few steps
+    // Kill one living villain every few steps
     if (step % 5 === 0) {
       const target = fight.enemies.find(e => e.alive);
       if (target) {
@@ -159,7 +159,7 @@ test('round 8 spawns and clears its full count of 15 husks to victory', () => {
 
   fight.draw(0.1, 1, heroPos);
 
-  assert.equal(fight.zombiesKilledInRound, 15, 'All 15 husks in round 8 defeated');
+  assert.equal(fight.villainsKilledInRound, 15, 'All 15 villains in round 8 defeated');
   assert.equal(fight.isVictory, true, 'Victory reached');
   assert.equal(victoryCalled, true, 'Victory event fired');
 });

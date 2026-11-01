@@ -1,5 +1,5 @@
 import { BEND_MOVE_IDS, ELEMENTS, MOVE_IDS, STARTER_MOVE_IDS, WEAPONS, WEAPON_MOVE_IDS } from './types.js';
-import type { ActionState, BendMoveId, CombatBalance, Combatant, Element, Health, HitInput, HitResult, Kit, MoveDefinition, MoveId, MoveStartResult, Position, RejectionReason, Weapon, WeaponMoveId } from './types.js';
+import type { ActionState, BendMoveId, CombatBalance, CombatSituation, Combatant, Element, Health, HitInput, HitResult, Kit, MoveDefinition, MoveId, MoveStartResult, Position, RejectionReason, Weapon, WeaponMoveId } from './types.js';
 export * from './types.js';
 
 // Mathematical identities, not adjustable combat tuning.
@@ -38,12 +38,12 @@ export function createCombatRules(balance: CombatBalance) {
     patchDurationMax: 3.8,
     patchRadius: 1.25,
     maxPatches: 16,
-    huskBurnDuration: 2.5,
+    villainBurnDuration: 2.5,
   };
   if (!positive(burnConfig.damagePerSecond) || !positive(burnConfig.tickSeconds) ||
       !positive(burnConfig.patchDurationMin) || !positive(burnConfig.patchDurationMax) ||
       !positive(burnConfig.patchRadius) || !positive(burnConfig.maxPatches) ||
-      !positive(burnConfig.huskBurnDuration)) invalid();
+      !positive(burnConfig.villainBurnDuration)) invalid();
   const copy = <K extends string>(ids: readonly K[], table: Readonly<Record<K, MoveDefinition>>): Record<K, MoveDefinition> =>
     Object.fromEntries(ids.map((id) => {
       const move = { ...table[id] };
@@ -59,6 +59,7 @@ export function createCombatRules(balance: CombatBalance) {
   const spark = { ...balance.shardSpark };
   const tiers = { names: [...balance.tiers.names], required: { ...balance.tiers.required }, bendScale: { ...balance.tiers.bendScale } };
   const bendWithWeapon = balance.bendWithWeapon ? { ...balance.bendWithWeapon } : undefined;
+  const situationalCounters = balance.situationalCounters ? { ...balance.situationalCounters } : undefined;
   if (!ELEMENTS.every(e => isWeapon(nationWeapon[e])) || !positive(meter.max) || !nonnegative(meter.chainCost) ||
       !positive(meter.weakScale) || !nonnegative(meter.chainBonus) || !positive(parry.window) || !positive(parry.hushWindow) ||
       !positive(spark.damageScale) || !positive(spark.cooldownSeconds) || tiers.names.length === ZERO) invalid();
@@ -142,7 +143,7 @@ export function createCombatRules(balance: CombatBalance) {
     return { accepted: true, state: recordAction(state, moveId, now, undefined, now) };
   }
   /** Commit target and state together, serially, in the server's attacker/target records. */
-  function checkHit({ attacker, target, moveId, now, state, swingAt: named, isLit = false, bendScale: scale = ONE, chained = false }: HitInput): HitResult {
+  function checkHit({ attacker, target, moveId, now, state, swingAt: named, isLit = false, bendScale: scale = ONE, chained = false, situation }: HitInput): HitResult {
     const swingAt = named ?? now;
     if (!validCombatant(attacker) || !validCombatant(target) || !nonnegative(now) || !validState(state) ||
         !nonnegative(swingAt) || swingAt > now || !positive(scale)) return { accepted: false, reason: 'invalid_input' };
@@ -160,7 +161,8 @@ export function createCombatRules(balance: CombatBalance) {
     const sameSwing = named !== undefined && lastUse === named;
     const cooldownDuration = move.cooldownSeconds * (isLit ? litCooldownMultiplier : ONE);
     if (!sameSwing && !(chained && isBendMove(moveId)) && lastUse !== undefined && swingAt - lastUse < cooldownDuration) return { accepted: false, reason: 'cooldown' };
-    const grossDamage = move.damage * (isLit ? litDamageMultiplier : ONE) * (isBendMove(moveId) ? scale : ONE);
+    const situationMult = calculateSituationalMultiplier(attacker.element, target.element, situation);
+    const grossDamage = move.damage * (isLit ? litDamageMultiplier : ONE) * (isBendMove(moveId) ? scale : ONE) * situationMult;
     const spent = state.damageHistory.reduce((sum, hit) => now - hit.at < rules.damageWindowSeconds ? sum + hit.damage : sum, ZERO);
     if (!nonnegative(grossDamage) || !nonnegative(spent)) return { accepted: false, reason: 'invalid_input' };
     if (spent + grossDamage > rules.maxDamagePerSecond * rules.damageWindowSeconds) return { accepted: false, reason: 'damage_cap' };
@@ -181,6 +183,26 @@ export function createCombatRules(balance: CombatBalance) {
     const dmg = calculateBurnDamage(duration, armour);
     const health = applyDamage(targetHealth, dmg);
     return { health, damage: targetHealth.current - health.current };
+  }
+
+  function calculateSituationalMultiplier(
+    attackerElement: Element,
+    targetElement: Element,
+    situation?: CombatSituation
+  ): number {
+    if (!situationalCounters || !situationalCounters.enabled || !situation) return ONE;
+    const rule = situationalCounters.situations[attackerElement];
+    if (!rule || rule.advantageOver !== targetElement) return ONE;
+
+    let hasEdge = false;
+    if (situation.terrain && rule.terrains && rule.terrains.includes(situation.terrain)) {
+      hasEdge = true;
+    }
+    if (situation.weather && rule.weathers && rule.weathers.includes(situation.weather)) {
+      hasEdge = true;
+    }
+    const moveMod = situation.moveModifier ?? ONE;
+    return (hasEdge ? situationalCounters.edgeMultiplier : ONE) * moveMod;
   }
 
   /** Tier gates: moves exist from the start, the tier decides what may be used. */
@@ -262,5 +284,7 @@ export function createCombatRules(balance: CombatBalance) {
     parryStagger,
     litDamageMultiplier,
     litCooldownMultiplier,
+    calculateSituationalMultiplier,
+    situationalCounters,
   };
 }

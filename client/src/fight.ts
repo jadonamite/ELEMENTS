@@ -12,7 +12,7 @@ const rules = createCombatRules(balance.combat as unknown as CombatBalance);
 const tuning = balance.enemy;
 
 /** Round sequence: 1-3-5-7 up till 15 and then stop. */
-export const ZOMBIE_ROUNDS = [1, 3, 5, 7, 9, 11, 13, 15] as const;
+export const VILLAIN_ROUNDS = [1, 3, 5, 7, 9, 11, 13, 15] as const;
 
 /** A patch of burning ground on the arena stone floor. */
 export interface BurnPatch {
@@ -49,25 +49,25 @@ export interface FightEvents {
   /** A bender threw fire; the scene draws it. */
   villainCast?(cast: VillainCast): void;
   /** A hero swing connected; `killed` on the final blow. */
-  enemyHit(enemy: Enemy, killed: boolean): void;
+  enemyHit(enemy: Enemy, killed: boolean, damage?: number, hitPos?: Vector3, isCrit?: boolean): void;
   /** The hero blocked just as a hit landed: the attacker staggers. */
   heroParried?(enemy: Enemy): void;
   /** Triggered when a new round begins. */
-  roundStarted?(roundNumber: number, zombieCount: number): void;
-  /** Triggered when all zombies in a round are defeated. */
-  roundCleared?(roundNumber: number, nextRoundZombieCount: number): void;
-  /** Triggered when the final round (15 zombies) is completed. */
+  roundStarted?(roundNumber: number, villainCount: number): void;
+  /** Triggered when all villains in a round are defeated. */
+  roundCleared?(roundNumber: number, nextRoundVillainCount: number): void;
+  /** Triggered when the final round (15 villains) is completed. */
   victory?(): void;
 }
 
 /**
- * Runs the arena fight: spawns zombies in rounds of 1, 3, 5, 7 up till 15,
+ * Runs the arena fight: spawns villains in rounds of 1, 3, 5, 7 up till 15,
  * enforces group attack discipline, checks blade contact, and applies combat perks.
  */
 export class Fight {
   readonly enemies: Enemy[] = [];
   readonly burnPatches: BurnPatch[] = [];
-  private readonly huskBurns = new Map<Enemy, { burnRemaining: number; tickAccumulator: number }>();
+  private readonly villainBurns = new Map<Enemy, { burnRemaining: number; tickAccumulator: number }>();
   heroHealth: Health = rules.createHealth(balance.hero.maxHealth);
   /** The hero's element and weapon; moves take their numbers from it. */
   kit: Kit = { element: 'IGNIS', weapon: 'sword' };
@@ -75,7 +75,7 @@ export class Fight {
   private bend = { scale: 1, chained: false };
   private heroState: ActionState = rules.createActionState();
   private attacker: Enemy | null = null;
-  /** Seconds before the next husk may start an attack. */
+  /** Seconds before the next villain may start an attack. */
   private gap = 0;
   private respawnIn: number[] = [];
   private clock = 0;
@@ -98,9 +98,9 @@ export class Fight {
     private readonly createEnemy: (template: EnemyTemplate, world: RAPIER.World, point: { x: number; z: number }, maxHealth: number, kind: VillainKind) => Enemy =
       (t, w, p, m, k) => new Enemy(t, w, p, m, k),
   ) {
-    // Initial spawn for Round 1 (1 zombie)
+    // Initial spawn for Round 1 (1 villain)
     this.respawnIn.push(0.6);
-    this.events.roundStarted?.(1, ZOMBIE_ROUNDS[0]!);
+    this.events.roundStarted?.(1, VILLAIN_ROUNDS[0]!);
 
     // Pre-allocate 16 pooled burn patches for living fire
     for (let i = 0; i < 16; i++) {
@@ -119,11 +119,11 @@ export class Fight {
   get heroAlive(): boolean { return this.heroHealth.current > 0; }
 
   get currentRoundNumber(): number { return this.currentRoundIndex + 1; }
-  get totalRounds(): number { return ZOMBIE_ROUNDS.length; }
-  get roundZombieTarget(): number { return ZOMBIE_ROUNDS[this.currentRoundIndex] ?? 15; }
-  get nextRoundZombieTarget(): number { return ZOMBIE_ROUNDS[this.currentRoundIndex + 1] ?? 15; }
-  get zombiesRemaining(): number { return Math.max(0, this.roundZombieTarget - this.killedInRound); }
-  get zombiesKilledInRound(): number { return this.killedInRound; }
+  get totalRounds(): number { return VILLAIN_ROUNDS.length; }
+  get roundVillainTarget(): number { return VILLAIN_ROUNDS[this.currentRoundIndex] ?? 15; }
+  get nextRoundVillainTarget(): number { return VILLAIN_ROUNDS[this.currentRoundIndex + 1] ?? 15; }
+  get villainsRemaining(): number { return Math.max(0, this.roundVillainTarget - this.killedInRound); }
+  get villainsKilledInRound(): number { return this.killedInRound; }
   get intermissionRemaining(): number { return this.roundIntermission; }
   get livingCount(): number { return this.enemies.filter(e => e.alive).length; }
 
@@ -131,9 +131,9 @@ export class Fight {
     return this.burnPatches.filter(p => p.active);
   }
 
-  get burningHusks(): Array<{ position: Vector3; alive: boolean }> {
+  get burningVillains(): Array<{ position: Vector3; alive: boolean }> {
     const list: Array<{ position: Vector3; alive: boolean }> = [];
-    for (const [enemy, burn] of this.huskBurns) {
+    for (const [enemy, burn] of this.villainBurns) {
       if (enemy.alive && burn.burnRemaining > 0) {
         list.push({ position: enemy.controller.position, alive: true });
       }
@@ -141,7 +141,7 @@ export class Fight {
     return list;
   }
 
-  /** Spawns a burning patch of ground that damages husks walking into it. */
+  /** Spawns a burning patch of ground that damages villains walking into it. */
   spawnBurnPatch(pos: Vector3, radius?: number, duration?: number, element: Element = 'IGNIS'): BurnPatch {
     let target = this.burnPatches.find(p => !p.active);
     if (!target) {
@@ -174,6 +174,14 @@ export class Fight {
   }
 
   stopWaves(): void { this.waves = false; this.respawnIn = []; }
+
+  /** Spawns a specific villain at a world coordinate (used for road ambushes and world encounters). */
+  spawnVillain(point: { x: number; z: number }, kind: VillainKind = 'armed', maxHealth?: number): Enemy {
+    const health = maxHealth ?? balance.enemy.maxHealth ?? 100;
+    const enemy = this.createEnemy(this.template, this.world, point, health, kind);
+    this.enemies.push(enemy);
+    return enemy;
+  }
 
   /** Set before pressing a bending move: its strength from the meter and tier, and whether it is a chain link. */
   setBend(scale: number, chained: boolean): void { this.bend = { scale, chained }; }
@@ -217,17 +225,17 @@ export class Fight {
 
   /** Jump directly to a round for testing or debug. */
   setRound(roundNumber: number): void {
-    this.currentRoundIndex = Math.max(0, Math.min(ZOMBIE_ROUNDS.length - 1, roundNumber - 1));
+    this.currentRoundIndex = Math.max(0, Math.min(VILLAIN_ROUNDS.length - 1, roundNumber - 1));
     for (const enemy of this.enemies) enemy.dispose();
     this.enemies.length = 0;
-    this.huskBurns.clear();
+    this.villainBurns.clear();
     for (const p of this.burnPatches) p.active = false;
     this.spawnedInRound = 0;
     this.killedInRound = 0;
     this.roundIntermission = 0;
     this.isVictory = false;
     this.respawnIn = [0.5];
-    this.events.roundStarted?.(this.currentRoundNumber, this.roundZombieTarget);
+    this.events.roundStarted?.(this.currentRoundNumber, this.roundVillainTarget);
   }
 
   /** Records an enemy's defeat, updates round kill counts, queues respawns and checks victory / intermission. */
@@ -235,20 +243,20 @@ export class Fight {
     // Each death counts once, whatever killed it.
     if (this.counted.has(enemy)) return;
     this.counted.add(enemy);
-    this.huskBurns.delete(enemy);
+    this.villainBurns.delete(enemy);
     this.killedInRound++;
-    if (this.spawnedInRound < this.roundZombieTarget && this.respawnIn.length === 0) {
+    if (this.spawnedInRound < this.roundVillainTarget && this.respawnIn.length === 0) {
       this.respawnIn.push(0.7);
     }
-    if (this.killedInRound >= this.roundZombieTarget) {
-      if (this.currentRoundIndex >= ZOMBIE_ROUNDS.length - 1) {
+    if (this.killedInRound >= this.roundVillainTarget) {
+      if (this.currentRoundIndex >= VILLAIN_ROUNDS.length - 1) {
         // Victory after completing round 15!
         this.isVictory = true;
         this.events.victory?.();
       } else {
         // Intermission before next round
         this.roundIntermission = 3.0;
-        const nextTarget = ZOMBIE_ROUNDS[this.currentRoundIndex + 1]!;
+        const nextTarget = VILLAIN_ROUNDS[this.currentRoundIndex + 1]!;
         this.events.roundCleared?.(this.currentRoundNumber, nextTarget);
       }
     }
@@ -269,7 +277,7 @@ export class Fight {
     }
   }
 
-  /** Nearest living husk in front of the hero within `range`, for aim assist. */
+  /** Nearest living villain in front of the hero within `range`, for aim assist. */
   nearestInFront(from: Vector3, facing: number, range: number, angle: number): Enemy | null {
     let best: Enemy | null = null;
     let bestDistance = range;
@@ -284,17 +292,19 @@ export class Fight {
     return best;
   }
 
-  /** Distance to the closest living husk, for the stance. */
+  /** Distance to the closest living villain, for the stance. */
   nearestDistance(from: Vector3): number {
     return this.enemies.reduce((d, e) => e.alive ? Math.min(d, e.controller.position.distanceTo(from)) : d, Infinity);
   }
 
-  /** Find the next or nearest living lock target. */
+  /** Find the next or nearest living lock target. Cycles through targets and toggles off when done. */
   findLockTarget(from: Vector3, current?: Enemy | null): Enemy | null {
     const alive = this.enemies.filter(e => e.alive);
     if (alive.length === 0) return null;
-    if (current && alive.includes(current) && alive.length > 1) {
-      const nextIdx = (alive.indexOf(current) + 1) % alive.length;
+    if (current && alive.includes(current)) {
+      if (alive.length === 1) return null;
+      const nextIdx = alive.indexOf(current) + 1;
+      if (nextIdx >= alive.length) return null;
       return alive[nextIdx]!;
     }
     let closest: Enemy | null = null;
@@ -314,7 +324,7 @@ export class Fight {
     return this.enemies.length > 0 && this.enemies.every(e => !e.alive);
   }
 
-  /** One physics step for every husk. Cooldowns advance at normal speed; perks come from rules. */
+  /** One physics step for every villain. Cooldowns advance at normal speed; perks come from rules. */
   step(hero: HeroView, combat: Combat, isLit = false): void {
     const dt = balance.controller.fixedStep;
     this.clock += dt;
@@ -353,16 +363,16 @@ export class Fight {
       if (patch.elapsed >= patch.duration) patch.active = false;
     }
 
-    // Apply burning ground and burn damage ticks to husks
+    // Apply burning ground and burn damage ticks to villains
     const burnConfig = balance.combat.burn ?? {
       damagePerSecond: 16,
       tickSeconds: 0.25,
-      huskBurnDuration: 2.5,
+      villainBurnDuration: 2.5,
     };
 
     for (const enemy of this.enemies) {
       if (!enemy.alive) {
-        this.huskBurns.delete(enemy);
+        this.villainBurns.delete(enemy);
         continue;
       }
       const inFire = this.burnPatches.some(p => {
@@ -373,11 +383,11 @@ export class Fight {
         return (dx * dx + dz * dz) <= maxDist * maxDist;
       });
 
-      let burn = this.huskBurns.get(enemy);
+      let burn = this.villainBurns.get(enemy);
       if (inFire) {
         if (!burn) {
-          burn = { burnRemaining: burnConfig.huskBurnDuration, tickAccumulator: 0 };
-          this.huskBurns.set(enemy, burn);
+          burn = { burnRemaining: burnConfig.villainBurnDuration, tickAccumulator: 0 };
+          this.villainBurns.set(enemy, burn);
         } else {
           burn.burnRemaining = Math.max(burn.burnRemaining, 1.8);
         }
@@ -395,7 +405,7 @@ export class Fight {
           }
         }
         if (burn.burnRemaining <= 0) {
-          this.huskBurns.delete(enemy);
+          this.villainBurns.delete(enemy);
         }
       }
     }
@@ -405,7 +415,7 @@ export class Fight {
     for (const enemy of this.enemies) if (!enemy.alive) this.handleEnemyDefeated(enemy);
   }
 
-  /** Test the blade, limb, or projectile against every husk while the swing is live. */
+  /** Test the blade, limb, or projectile against every villain while the swing is live. */
   private strike(hero: HeroView, combat: Combat, isLit = false): void {
     const move = combat.current;
     if (!move || !combat.striking || !this.heroAlive) return;
@@ -424,35 +434,38 @@ export class Fight {
         }
         // A punch lands with whichever fist reaches; a kick strikes along the active kicking shin while in the air.
         const fists = [hero.handR, hero.handL];
+        const dist = hero.position.distanceTo(enemy.controller.position);
         if (limb === 'hand_r' || limb === 'hand_l') {
-          connects = fists.some(p => p && limbTouchesCapsule(p, 0.20, body.feet, body.height, body.radius));
+          connects = fists.some(p => p && limbTouchesCapsule(p, 0.26, body.feet, body.height, body.radius))
+            || (dist <= 2.2 && inFront(hero.position, hero.facing, enemy.controller.position, 1.4));
         } else if (limb === 'foot_r' || limb === 'foot_l') {
-          // Striking leg: right leg kicks test right shin/foot, left tests left.
-          // Support foot planted on the floor must never trigger a hit before the kick extends.
           const isRight = limb === 'foot_r';
           const knee = isRight ? hero.kneeR : hero.kneeL;
           const foot = isRight ? hero.footR : hero.footL;
           const elevated = (foot?.y ?? 0.5) > 0.18;
-          connects = elevated && !!knee && !!foot && limbTouchesCapsule(knee, 0.24, body.feet, body.height, body.radius, foot);
+          const isHeavyKick = move === 'leg_heavy_1';
+          const kickReach = isHeavyKick ? 2.85 : 2.5;
+          const kickAngle = isHeavyKick ? 1.5 : 1.4;
+          connects = (elevated && !!knee && !!foot && limbTouchesCapsule(knee, isHeavyKick ? 0.35 : 0.28, body.feet, body.height, body.radius, foot))
+            || (dist <= kickReach + body.radius && inFront(hero.position, hero.facing, enemy.controller.position, kickAngle));
         } else if (limb === 'area') {
-          const distance = hero.position.distanceTo(enemy.controller.position);
-          connects = distance <= 2.5 && inFront(hero.position, hero.facing, enemy.controller.position, 1.5);
+          connects = dist <= 2.8 && inFront(hero.position, hero.facing, enemy.controller.position, 1.6);
         }
       } else if (limb === 'blade') {
         const dist = hero.position.distanceTo(enemy.controller.position);
-        connects = dist <= weaponReach + body.radius && bladeTouches(hero.bladeBase, hero.bladeTip, body.feet, body.height, body.radius);
-      } else if (limb === 'hand_r') {
-        const handPos = hero.handR ?? hero.position;
-        connects = limbTouchesCapsule(handPos, 0.20, body.feet, body.height, body.radius);
-      } else if (limb === 'hand_l') {
-        const handPos = hero.handL ?? hero.position;
-        connects = limbTouchesCapsule(handPos, 0.20, body.feet, body.height, body.radius);
-      } else if (limb === 'foot_r') {
-        const footPos = hero.footR ?? hero.position;
-        connects = limbTouchesCapsule(footPos, 0.22, body.feet, body.height, body.radius);
-      } else if (limb === 'foot_l') {
-        const footPos = hero.footL ?? hero.position;
-        connects = limbTouchesCapsule(footPos, 0.22, body.feet, body.height, body.radius);
+        connects = dist <= weaponReach + body.radius && (bladeTouches(hero.bladeBase, hero.bladeTip, body.feet, body.height, body.radius)
+          || inFront(hero.position, hero.facing, enemy.controller.position, 1.4));
+      } else if (limb === 'hand_r' || limb === 'hand_l') {
+        const handPos = (limb === 'hand_r' ? hero.handR : hero.handL) ?? hero.position;
+        connects = limbTouchesCapsule(handPos, 0.26, body.feet, body.height, body.radius)
+          || (hero.position.distanceTo(enemy.controller.position) <= 2.2 && inFront(hero.position, hero.facing, enemy.controller.position, 1.4));
+      } else if (limb === 'foot_r' || limb === 'foot_l') {
+        const footPos = (limb === 'foot_r' ? hero.footR : hero.footL) ?? hero.position;
+        const isHeavyKick = move === 'leg_heavy_1';
+        const kickReach = isHeavyKick ? 2.85 : 2.4;
+        const kickAngle = isHeavyKick ? 1.5 : 1.4;
+        connects = limbTouchesCapsule(footPos, isHeavyKick ? 0.35 : 0.26, body.feet, body.height, body.radius)
+          || (hero.position.distanceTo(enemy.controller.position) <= kickReach + body.radius && inFront(hero.position, hero.facing, enemy.controller.position, kickAngle));
       } else if (limb === 'projectile' || limb === 'area') {
         const distance = hero.position.distanceTo(enemy.controller.position);
         let maxReach = 5.0;
@@ -472,17 +485,21 @@ export class Fight {
       const effect = isBendMove(move) ? afflictionFor(this.kit.element, move, hero.position, enemy.controller.position, Math.min(1, this.bend.scale)) : null;
       if (effect && result.target.health.current > 0) enemy.afflict(effect);
 
+      const prevHp = enemy.health.current;
       const killed = enemy.hurt(result.target.health, move, hero.position, isLit);
+      const damageDealt = Math.max(1, Math.round(prevHp - result.target.health.current));
+      const isCrit = isLit || move.startsWith('heavy') || move === 'uppercut' || move === 'ground_pound' || move === 'ultimate';
       if (killed) {
         this.handleEnemyDefeated(enemy);
+        this.events.enemyHit(enemy, true, damageDealt, enemy.controller.position, isCrit);
       } else {
         if (enemy === this.attacker) this.release();
-        this.events.enemyHit(enemy, false);
+        this.events.enemyHit(enemy, false, damageDealt, enemy.controller.position, isCrit);
       }
     }
   }
 
-  /** Per drawn frame: animate husks, clear the fallen, advance rounds and spawn waves. */
+  /** Per drawn frame: animate villains, clear the fallen, advance rounds and spawn waves. */
   draw(delta: number, alpha: number, heroPosition: Vector3): void {
     for (const enemy of this.enemies) enemy.draw(delta, alpha);
 
@@ -502,17 +519,17 @@ export class Fight {
         this.spawnedInRound = 0;
         this.killedInRound = 0;
         this.respawnIn = [0.8];
-        this.events.roundStarted?.(this.currentRoundNumber, this.roundZombieTarget);
+        this.events.roundStarted?.(this.currentRoundNumber, this.roundVillainTarget);
       }
       return;
     }
 
-    // Active wave spawning: keep up to 6 alive zombies concurrently on the field
+    // Active wave spawning: keep up to 6 alive villains concurrently on the field
     this.respawnIn = this.respawnIn.map(t => t - delta);
-    const maxActive = Math.min(this.roundZombieTarget, 6);
+    const maxActive = Math.min(this.roundVillainTarget, 6);
 
     while (
-      this.spawnedInRound < this.roundZombieTarget &&
+      this.spawnedInRound < this.roundVillainTarget &&
       this.livingCount < maxActive &&
       this.respawnIn.length &&
       this.respawnIn[0]! <= 0
@@ -523,7 +540,7 @@ export class Fight {
     }
 
     if (
-      this.spawnedInRound < this.roundZombieTarget &&
+      this.spawnedInRound < this.roundVillainTarget &&
       this.livingCount < maxActive &&
       this.respawnIn.length === 0
     ) {
@@ -540,16 +557,16 @@ export class Fight {
     // Restart the current round attempt
     for (const enemy of this.enemies) enemy.dispose();
     this.enemies.length = 0;
-    this.huskBurns.clear();
+    this.villainBurns.clear();
     for (const p of this.burnPatches) p.active = false;
     this.spawnedInRound = 0;
     this.killedInRound = 0;
     this.roundIntermission = 0;
     this.respawnIn = [0.8];
-    this.events.roundStarted?.(this.currentRoundNumber, this.roundZombieTarget);
+    this.events.roundStarted?.(this.currentRoundNumber, this.roundVillainTarget);
   }
 
-  /** The attacking husk is done; the others wait a beat before taking a turn. */
+  /** The attacking villain is done; the others wait a beat before taking a turn. */
   private release(): void {
     this.attacker = null;
     this.gap = tuning.groupAttackGap;
@@ -558,7 +575,7 @@ export class Fight {
   dispose(): void {
     for (const enemy of this.enemies) enemy.dispose();
     this.enemies.length = 0;
-    this.huskBurns.clear();
+    this.villainBurns.clear();
     for (const p of this.burnPatches) p.active = false;
   }
 

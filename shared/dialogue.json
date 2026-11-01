@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0.0",
     "description": "NPC dialogue library for ELEMENTS. Lines are grouped by speaker then situation. Blanks: {player} player name, {nation} element/nation name, {item} item name, {price} numeric price, {coin} currency name.",
-    "banished_note": "Never use a banished element name in a dialogue line. In Collector lines the offending word appears only as [the banished word]."
+    "banished_note": "Never use a banished element name in a dialogue line. In Sentry lines the offending word appears only as [the banished word]."
   },
 
   "merchant_ignis": {
@@ -308,7 +308,7 @@
       "First time through the gates? Then let me tell you what this place is. Four nations, one city, one set of rules. The Edict holds here. Keep your old names to yourself.",
       "You've made it to Chromara. It gets easier once you know where everything is. The merchants are arranged by nation stock. I deal in what none of them stock alone.",
       "Not many come through those gates looking as uncertain as you do, {player}. You'll find your footing. This city rewards patience.",
-      "Welcome. The first thing to know: everything here runs on {coin}. The second thing: the Collectors are everywhere. Keep that in mind.",
+      "Welcome. The first thing to know: everything here runs on {coin}. The second thing: the Sentries are everywhere. Keep that in mind.",
       "Chromara is the centre for a reason. Trade, training, the boss: it all passes through here eventually."
     ]
   },
@@ -425,8 +425,8 @@
     ]
   },
 
-  "collector": {
-    "_note": "Lord's Collectors in Chromara. Enforce the Edict of Unnaming. Formal, measured, a little cold. They take no pleasure in the work. They do it anyway.",
+  "sentry": {
+    "_note": "Lord's Sentries in Chromara. Enforce the Edict of Unnaming. Formal, measured, a little cold. They take no pleasure in the work. They do it anyway.",
 
     "catching_edict_breaker": [
       "You said [the banished word] in Chromara. The Edict applies. A fine of {price} {coin} is due to the treasury.",

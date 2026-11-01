@@ -27,6 +27,68 @@ test('no fixed counter cycle: every element takes the same damage from a move', 
   assert.equal(combat.calculateDamage(100, 0), 100);
 });
 
+test('situational counters: off by default and yields neutral 1.0 multiplier', () => {
+  // By default, situationalCounters.enabled is false in balance.json
+  assert.equal(combat.situationalCounters?.enabled, false);
+  const aquesKit = combat.defaultKit('AQUES');
+  const aquesDamage = combat.moveFor('light_1', aquesKit).damage;
+  const wetHit = accepted(input({
+    attacker: fighter('AQUES'),
+    target: fighter('IGNIS'),
+    situation: { terrain: 'wet', weather: 'rain' },
+  }));
+  assert.equal(wetHit.damage, aquesDamage);
+  assert.equal(combat.calculateSituationalMultiplier('AQUES', 'IGNIS', { terrain: 'wet' }), 1);
+});
+
+test('situational counters: edge applies when enabled and conditions match, and no element always beats another', () => {
+  const enabledCombat = createCombatRules({
+    ...balance.combat,
+    rules: { ...balance.combat.rules, maxDamagePerSecond: 100 },
+    situationalCounters: {
+      ...balance.combat.situationalCounters!,
+      enabled: true,
+    },
+  });
+
+  // 1. AQUES gets edge over IGNIS in wet terrain / rain
+  assert.equal(enabledCombat.calculateSituationalMultiplier('AQUES', 'IGNIS', { terrain: 'wet' }), 1.15);
+  assert.equal(enabledCombat.calculateSituationalMultiplier('AQUES', 'IGNIS', { weather: 'rain' }), 1.15);
+  // Without wet/rain, AQUES has no edge over IGNIS
+  assert.equal(enabledCombat.calculateSituationalMultiplier('AQUES', 'IGNIS', { terrain: 'volcanic' }), 1);
+
+  // 2. IGNIS gets edge over AURA in volcanic / ash
+  assert.equal(enabledCombat.calculateSituationalMultiplier('IGNIS', 'AURA', { terrain: 'volcanic' }), 1.15);
+  assert.equal(enabledCombat.calculateSituationalMultiplier('IGNIS', 'AURA', { weather: 'ash' }), 1.15);
+  assert.equal(enabledCombat.calculateSituationalMultiplier('IGNIS', 'AURA', { terrain: 'wet' }), 1);
+
+  // 3. AURA gets edge over TERRA in elevated / gale
+  assert.equal(enabledCombat.calculateSituationalMultiplier('AURA', 'TERRA', { terrain: 'elevated' }), 1.15);
+  assert.equal(enabledCombat.calculateSituationalMultiplier('AURA', 'TERRA', { weather: 'gale' }), 1.15);
+  assert.equal(enabledCombat.calculateSituationalMultiplier('AURA', 'TERRA', { terrain: 'rocky' }), 1);
+
+  // 4. TERRA gets edge over AQUES in rocky / drought
+  assert.equal(enabledCombat.calculateSituationalMultiplier('TERRA', 'AQUES', { terrain: 'rocky' }), 1.15);
+  assert.equal(enabledCombat.calculateSituationalMultiplier('TERRA', 'AQUES', { weather: 'drought' }), 1.15);
+  assert.equal(enabledCombat.calculateSituationalMultiplier('TERRA', 'AQUES', { terrain: 'wet' }), 1);
+
+  // 5. Check hit application: damage increases by edgeMultiplier
+  const aquesKit = enabledCombat.defaultKit('AQUES');
+  const baseDmg = enabledCombat.moveFor('light_1', aquesKit).damage;
+  const hitRes = enabledCombat.checkHit({
+    attacker: fighter('AQUES'),
+    target: fighter('IGNIS'),
+    moveId: 'light_1',
+    now: 0,
+    state: enabledCombat.createActionState(),
+    situation: { terrain: 'wet' },
+  });
+  assert.equal(hitRes.accepted, true);
+  if (hitRes.accepted) {
+    assert.equal(hitRes.damage, baseDmg * 1.15);
+  }
+});
+
 test('armour reduces damage and lethal damage clamps health to zero without mutation', () => {
   assert.equal(combat.calculateDamage(100, balance.combat.rules.armourScale), 50);
   const target = { ...fighter(), health: { current: 1, maximum: 100 } };

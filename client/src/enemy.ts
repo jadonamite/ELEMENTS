@@ -53,7 +53,7 @@ export interface EnemyTemplate {
   weapons: Record<string, Object3D>;
 }
 
-/** The zombie set from enemy.glb, renamed so it never collides with the human clips. */
+/** The husk set from enemy.glb, renamed so it never collides with the human clips. */
 function huskClips(clips: AnimationClip[]): AnimationClip[] {
   return clips.map((clip) => {
     const copy = clip.clone();
@@ -77,7 +77,7 @@ function createClub(): Object3D {
 
 /** Villains are built from the creator's male and female bodies, each a rolled look in worn rags. */
 export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<EnemyTemplate> {
-  const [body, zombie, mixamo, combat, unarmedA, unarmedB, sword] = await Promise.all([
+  const [body, huskSet, mixamo, combat, unarmedA, unarmedB, sword] = await Promise.all([
     loader.loadAsync('/assets/characters/hero.glb'),
     loader.loadAsync('/assets/characters/enemy.glb'),
     loader.loadAsync('/assets/characters/mixamo.glb').catch(() => null),
@@ -90,7 +90,7 @@ export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<Enem
   const own = body.animations.filter(c => ['idle', 'walk', 'run', 'hit', 'death', 'cast'].includes(c.name));
   const clips = [
     ...own, ...combat.animations, ...unarmedA.animations, ...unarmedB.animations,
-    ...huskClips(zombie.animations), ...(mixamo?.animations ?? []),
+    ...huskClips(huskSet.animations), ...(mixamo?.animations ?? []),
   ];
 
   const kit = new BodyKit(loader);

@@ -17,6 +17,14 @@ export interface RoundHudInfo {
   intermission: number;
 }
 
+interface DamagePopup {
+  el: HTMLDivElement;
+  pos: Vector3;
+  elapsed: number;
+  duration: number;
+  vy: number;
+}
+
 /** Hero health, round status, bending perks, abilities tray, and enemy overhead health bars. */
 export class FightHud {
   private readonly root: HTMLDivElement;
@@ -32,6 +40,7 @@ export class FightHud {
   private readonly lockReticle: HTMLDivElement;
   private readonly abilitySlots = new Map<string, { fill: HTMLDivElement; timer: HTMLSpanElement; root: HTMLDivElement }>();
   private readonly bars = new Map<Enemy, HTMLDivElement>();
+  private damagePopups: DamagePopup[] = [];
   private readonly meter: HTMLDivElement;
   private readonly meterFill: HTMLDivElement;
   private readonly meterLine: HTMLDivElement;
@@ -59,12 +68,15 @@ export class FightHud {
       '<div class="hero-meter" role="meter" aria-label="Combo meter" aria-valuemin="0" aria-valuemax="100">' +
       '<div class="meter-fill"></div><div class="meter-line"></div></div>' +
       '<span class="hero-supply" aria-live="polite"></span>' +
-      '<div class="ability-tray" aria-label="Abilities">' +
+      '<div class="ability-tray" aria-label="Combat Actions">' +
+      '<div class="ability-slot basic-slot" data-slot="light"><span class="slot-key">L-Click</span><span class="slot-name">Attack</span></div>' +
+      '<div class="ability-slot basic-slot" data-slot="heavy"><span class="slot-key">R-Click</span><span class="slot-name">Heavy</span></div>' +
+      '<div class="ability-slot" data-slot="dodge"><div class="cd-fill"></div><span class="slot-key">Space</span><span class="slot-name">Dodge</span><span class="slot-timer"></span></div>' +
+      '<div class="ability-slot basic-slot" data-slot="block"><span class="slot-key">R</span><span class="slot-name">Guard</span></div>' +
       '<div class="ability-slot" data-slot="uppercut"><div class="cd-fill"></div><span class="slot-key">Q</span><span class="slot-name">Uppercut</span><span class="slot-timer"></span></div>' +
       '<div class="ability-slot" data-slot="ground_pound"><div class="cd-fill"></div><span class="slot-key">E</span><span class="slot-name">Slam</span><span class="slot-timer"></span></div>' +
       '<div class="ability-slot" data-slot="dash_strike"><div class="cd-fill"></div><span class="slot-key">F</span><span class="slot-name">Dash</span><span class="slot-timer"></span></div>' +
       '<div class="ability-slot" data-slot="ultimate"><div class="cd-fill"></div><span class="slot-key">G</span><span class="slot-name">Ultimate</span><span class="slot-timer"></span></div>' +
-      '<div class="ability-slot" data-slot="dodge"><div class="cd-fill"></div><span class="slot-key">Space</span><span class="slot-name">Dodge</span><span class="slot-timer"></span></div>' +
       '</div>' +
       '<div class="lock-reticle"></div>' +
       '<p class="fight-banner" role="status"></p>';
@@ -88,11 +100,15 @@ export class FightHud {
     for (const slot of this.root.querySelectorAll<HTMLDivElement>('.ability-slot')) {
       const name = slot.dataset.slot;
       if (!name) continue;
-      this.abilitySlots.set(name, {
-        root: slot,
-        fill: slot.querySelector('.cd-fill')!,
-        timer: slot.querySelector('.slot-timer')!,
-      });
+      const fill = slot.querySelector<HTMLDivElement>('.cd-fill');
+      const timer = slot.querySelector<HTMLSpanElement>('.slot-timer');
+      if (fill && timer) {
+        this.abilitySlots.set(name, {
+          root: slot,
+          fill,
+          timer,
+        });
+      }
     }
   }
 
@@ -165,23 +181,23 @@ export class FightHud {
     // Update combat perk display
     if (isDim) {
       this.perkBadge.className = 'perk-badge dim';
-      this.perkBadge.textContent = 'Dim: 1 weapon • 2 hands • 3 legs • Q shard spark • wider parry';
+      this.perkBadge.textContent = 'Dim: 1 weapon • 2 hands • 3 kicks • Q shard spark • wider parry';
     } else if (fightingStyle === 'bending') {
       this.perkBadge.className = 'perk-badge lit';
       this.perkBadge.textContent = `Bending: ${this.throwName} (left click) • ${this.sweepName} (right click)`;
     } else if (fightingStyle === 'legs') {
       this.perkBadge.className = isLit ? 'perk-badge lit' : 'perk-badge';
-      this.perkBadge.textContent = 'Legs: snap and side kick (left click) • roundhouse (right click)';
+      this.perkBadge.textContent = 'Kicks: snap and side kick (left click) • roundhouse (right click)';
     } else if (fightingStyle === 'bare_hands') {
       this.perkBadge.className = isLit ? 'perk-badge lit' : 'perk-badge';
       this.perkBadge.textContent = isLit
         ? `Hands, bending: ${this.throwName} (left click) • ${this.sweepName} (right click)`
-        : 'Bare hands: jab, cross, knee (left click) • hook (right click)';
+        : 'Bare hands: jab, cross, kick (left click) • hook (right click)';
     } else {
       this.perkBadge.className = isLit ? 'perk-badge lit' : 'perk-badge';
       this.perkBadge.textContent = isLit
         ? 'Weapon, bending: +60% damage • Q, E, F and G bend'
-        : 'Weapon: 1 weapon • 2 hands • 3 legs • B bending';
+        : 'Weapon: 1 weapon • 2 hands • 3 kicks • B bending';
     }
 
     // Update round tracker; open zones have no rounds.
@@ -260,9 +276,51 @@ export class FightHud {
       bar.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
       (bar.firstChild as HTMLDivElement).style.transform = `scaleX(${enemy.health.current / enemy.health.maximum})`;
     }
+
+    // Update floating damage numbers
+    for (let i = this.damagePopups.length - 1; i >= 0; i--) {
+      const p = this.damagePopups[i]!;
+      p.elapsed += delta;
+      p.pos.y += p.vy * delta;
+      p.vy = Math.max(0.1, p.vy - delta * 1.6);
+      if (p.elapsed >= p.duration) {
+        p.el.remove();
+        this.damagePopups.splice(i, 1);
+        continue;
+      }
+      this.point.copy(p.pos).project(camera);
+      const visible = this.point.z < 1 && Math.abs(this.point.x) < 1.15 && Math.abs(this.point.y) < 1.15;
+      p.el.style.display = visible ? '' : 'none';
+      if (visible) {
+        const x = (this.point.x + 1) / 2 * window.innerWidth;
+        const y = (1 - this.point.y) / 2 * window.innerHeight;
+        const progress = p.elapsed / p.duration;
+        const opacity = progress > 0.65 ? Math.max(0, 1 - (progress - 0.65) / 0.35) : 1;
+        const scale = progress < 0.12 ? 0.7 + (progress / 0.12) * 0.45 : 1.15 - (progress - 0.12) * 0.2;
+        p.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${scale})`;
+        p.el.style.opacity = String(opacity);
+      }
+    }
+  }
+
+  /** Spawns a floating damage number in 3D world space that rises and pops. */
+  showDamage(worldPos: Vector3, damage: number, isCrit = false, label?: string): void {
+    const el = document.createElement('div');
+    el.className = isCrit ? 'damage-number crit' : 'damage-number';
+    el.textContent = label ?? `-${Math.round(damage)}${isCrit ? ' CRIT' : ''}`;
+    this.root.appendChild(el);
+    this.damagePopups.push({
+      el,
+      pos: worldPos.clone().add(new Vector3((Math.random() - 0.5) * 0.5, 1.25 + Math.random() * 0.35, (Math.random() - 0.5) * 0.5)),
+      elapsed: 0,
+      duration: 0.85,
+      vy: 1.35,
+    });
   }
 
   dispose(): void {
+    for (const p of this.damagePopups) p.el.remove();
+    this.damagePopups = [];
     this.root.remove();
     this.bars.clear();
     this.abilitySlots.clear();

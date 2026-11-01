@@ -201,7 +201,7 @@ export interface ActiveFirePatch {
   readonly element?: BendingType;
 }
 
-export interface BurningHuskInfo {
+export interface BurningVillainInfo {
   readonly position: Vector3;
   readonly alive: boolean;
 }
@@ -286,9 +286,9 @@ export class BendingEffects {
   private flashIntensity = 0;
   private flashFlicker = false;
 
-  // Living fire patches & burning husks
+  // Living fire patches & burning villains
   private activePatches: ActiveFirePatch[] = [];
-  private burningHusks: BurningHuskInfo[] = [];
+  private burningVillains: BurningVillainInfo[] = [];
   private readonly patchLights: PointLight[] = [];
   private readonly fireballs: FireballProjectile[] = [];
   private patchSmokeClock = 0;
@@ -580,10 +580,10 @@ export class BendingEffects {
   }
 
   /**
-   * Updates list of husks currently on fire.
+   * Updates list of villains currently on fire.
    */
-  setBurningHusks(husks: readonly BurningHuskInfo[]): void {
-    this.burningHusks = husks.filter(h => h.alive);
+  setBurningVillains(villains: readonly BurningVillainInfo[]): void {
+    this.burningVillains = villains.filter(h => h.alive);
   }
 
   /**
@@ -998,9 +998,9 @@ export class BendingEffects {
 
   /** Enemies on fire: tongues standing on the body, smoke and embers off it. */
   private updateBurningBodies(): void {
-    for (let i = 0; i < this.burningHusks.length; i++) {
-      const husk = this.burningHusks[i]!;
-      const p = husk.position;
+    for (let i = 0; i < this.burningVillains.length; i++) {
+      const villain = this.burningVillains[i]!;
+      const p = villain.position;
       for (let k = 0; k < 3; k++) {
         const a = k * 2.1 + i;
         this.field.draw(p.x + Math.cos(a) * 0.18, p.y + 0.35 + k * 0.3, p.z + Math.sin(a) * 0.18, 0.45, 0.8 - k * 0.12, 0.32, ((i * 7 + k) % 23) / 23, 0.9, FxMode.FIRE);
