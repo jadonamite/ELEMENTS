@@ -1,14 +1,20 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   ACESFilmicToneMapping,
+  BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
   CircleGeometry,
   Color,
   DirectionalLight,
+  EdgesGeometry,
   FogExp2,
   Group,
   HalfFloatType,
   HemisphereLight,
   InstancedMesh,
+  LineBasicMaterial,
+  LineSegments,
   Matrix4,
   Mesh,
   PCFShadowMap,
@@ -37,10 +43,16 @@ import balance from '../../../shared/balance.json';
 import { SANITIZE_SHADER } from '../env/postprocessing.js';
 import type { PhysicsWorld } from '../physics.js';
 import { WorldBuilder, type Bucket } from './builder.js';
+import { skyUniforms, WorldClock } from './clock.js';
 import { createEmbers, createFires, createForgeMaterial, createLavaMaterial, createSmoke, createWindowMaterial, LightPool, nightness, worldTime } from './effects.js';
 import { createSky, fieldMesh, heightAt, sampleField, slopeBlend } from './landscape.js';
-import { SurfaceLibrary, type Surface } from './materials.js';
+import { LOOKS, SurfaceLibrary, worldUv, type Surface } from './materials.js';
 import { buildSindr, PEAKS, WALKABLE } from './sindr.js';
+import { buildGorge } from './gorge.js';
+import { buildBarrens } from './barrens.js';
+import { buildFort } from './fort.js';
+import { buildRoofTestRow } from './roof-test.js';
+import { buildTerraceTest, terraceTestAreas } from './terrace-test.js';
 
 export { SPAWN } from './sindr.js';
 
@@ -49,6 +61,7 @@ export interface Zone {
   camera: PerspectiveCamera;
   renderer: WebGLRenderer;
   physics: PhysicsWorld;
+  clock: WorldClock;
   /** The point the shadows and the nearest lights follow, usually the hero. */
   follow(point: Vector3): void;
   setSize(width: number, height: number): void;
@@ -67,7 +80,7 @@ const GRADE_SHADER = {
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-      vec3 shadowTint = vec3(0.92, 0.96, 1.06);
+      vec3 shadowTint = vec3(0.9, 0.96, 1.1);
       vec3 highTint = vec3(1.06, 1.0, 0.92);
       c.rgb *= mix(shadowTint, highTint, smoothstep(0.05, 0.6, l));
       c.rgb = mix(vec3(l), c.rgb, 1.08);
@@ -78,7 +91,9 @@ const GRADE_SHADER = {
 };
 
 export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
-  const low = new URLSearchParams(window.location.search).get('fxQuality') === 'low';
+  const params = new URLSearchParams(window.location.search);
+  const low = params.get('fxQuality') === 'low';
+  const clock = new WorldClock(params);
   const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -90,8 +105,8 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   win.elements = { ...(win.elements ?? {}), renderer };
 
   const scene = new Scene();
-  const fogColor = new Color(0x2a1f1c);
-  scene.fog = new FogExp2(fogColor, 0.0042);
+  const fog = new FogExp2(0x2e2a32, 0.0042);
+  scene.fog = fog;
   const camera = new PerspectiveCamera(balance.camera.fov, 1, balance.camera.near, 2600);
 
   // Sky first: it also lights the town through a prefiltered environment map.
@@ -99,17 +114,25 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   scene.add(sky);
   const pmrem = new PMREMGenerator(renderer);
   const skyScene = new Scene();
-  const skyCopy = createSky();
-  skyScene.add(skyCopy);
-  const envTarget = pmrem.fromScene(skyScene, 0, 0.1, 2000);
+  skyScene.add(createSky());
+  // The environment is re-baked from the sky whenever the hour has moved enough to show;
+  // 64 px is plenty for rough stone and keeps each bake under a frame.
+  let envTarget = pmrem.fromScene(skyScene, 0, 0.1, 2000, { size: 64 });
   scene.environment = envTarget.texture;
-  scene.environmentIntensity = 1.0;
-  skyCopy.geometry.dispose();
-  pmrem.dispose();
+  const baked = { night: nightness.value, dusk: skyUniforms.uDusk.value, sun: skyUniforms.uSunDir.value.clone() };
+  const rebakeEnv = (): void => {
+    const sunNow = skyUniforms.uSunDir.value;
+    if (Math.abs(baked.night - nightness.value) < 0.04 && Math.abs(baked.dusk - skyUniforms.uDusk.value) < 0.06
+      && baked.sun.angleTo(sunNow) < 0.12) return;
+    baked.night = nightness.value; baked.dusk = skyUniforms.uDusk.value; baked.sun.copy(sunNow);
+    const next = pmrem.fromScene(skyScene, 0, 0.1, 2000, { size: 64 });
+    scene.environment = next.texture;
+    envTarget.dispose();
+    envTarget = next;
+  };
 
-  // Low sun in the west under the soot deck; the town's fires do the rest.
-  const sun = new DirectionalLight(0xff9a5a, 2.6);
-  const sunDir = new Vector3(-0.82, 0.3, 0.48).normalize();
+  // Sun by day, moon by night (one light, so one shadow map); the town's fires do the rest.
+  const sun = new DirectionalLight(0xffffff, 0);
   sun.castShadow = true;
   sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
   const s = sun.shadow.camera;
@@ -118,8 +141,26 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
   scene.add(sun, sun.target);
-  const hemi = new HemisphereLight(0x6a5a62, 0x2a1a12, 0.9);
+  // Cool sky fill against warm fires: shadowed stone reads slate, firelit stone reads amber.
+  const hemi = new HemisphereLight(0xffffff, 0xffffff, 1);
   scene.add(hemi);
+  const look = {
+    daySky: new Color(0xb6c4dc), duskSky: new Color(0xc89a80), nightSky: new Color(0x8496c4),
+    dayGround: new Color(0x6e5644), nightGround: new Color(0x2e1c12),
+    dayFog: new Color(0x8e9098), duskFog: new Color(0x7a5444), nightFog: new Color(0x161822),
+  };
+  const applyHour = (): void => {
+    const night = nightness.value, dusk = skyUniforms.uDusk.value * (1 - night);
+    sun.color.copy(clock.light.color);
+    sun.intensity = clock.light.intensity;
+    hemi.color.copy(look.daySky).lerp(look.duskSky, dusk * 0.6).lerp(look.nightSky, night);
+    hemi.groundColor.copy(look.dayGround).lerp(look.nightGround, night);
+    hemi.intensity = 1.1 + 0.4 * night;
+    fog.color.copy(look.dayFog).lerp(look.duskFog, dusk).lerp(look.nightFog, night);
+    fog.density = 0.0028 + 0.0016 * night;
+    scene.environmentIntensity = 0.8 - 0.2 * night;
+    renderer.toneMappingExposure = 0.9 + 0.7 * night;
+  };
 
   // Physics: a floor under everything, then the land and the town's solids.
   await RAPIER.init();
@@ -128,10 +169,12 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   world.createCollider(RAPIER.ColliderDesc.cuboid(2000, 0.05, 2000).setTranslation(0, -0.05, 0));
 
   const lib = new SurfaceLibrary(renderer, low ? '1k' : '2k');
-  const ground = (x: number, z: number): number => heightAt(x, z, WALKABLE, PEAKS);
+  const terraceTest = params.has('terraceTest');
+  const walkable = terraceTest ? WALKABLE.with(terraceTestAreas()) : WALKABLE;
+  const ground = (x: number, z: number): number => heightAt(x, z, walkable, PEAKS);
 
-  // Near land: walkable flats, banks and hills, matched by a physics heightfield.
-  const near = sampleField(110, -40, 560, 480, low ? 3 : 2, ground);
+  // Near land: walkable flats, banks and hills, matched by a physics heightfield spanning the entire nation.
+  const near = sampleField(340, -10, 1020, 500, low ? 4 : 3, ground);
   const terrainMat = slopeBlend(lib.get('ash_cinder_ground'), lib.get('basalt_rock_face'));
   const terrain = fieldMesh(near, terrainMat);
   terrain.name = 'terrain';
@@ -141,8 +184,8 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   // Far ranges and the volcano, coarse and lost in the haze.
   const volcano = { x: 380, z: -720, radius: 260, height: 330 };
-  const far = sampleField(110, -40, 3200, 3200, low ? 40 : 25, (x, z) => {
-    const inner = Math.max(Math.abs(x - 110) / 260, Math.abs(z + 40) / 220);
+  const far = sampleField(340, -10, 3600, 3600, low ? 45 : 30, (x, z) => {
+    const inner = Math.max(Math.abs(x - 340) / 480, Math.abs(z + 10) / 230);
     const edge = Math.min(1, Math.max(0, (inner - 1) / 0.6));
     const range = edge * (60 + 120 * Math.pow(Math.max(0, Math.sin(x * 0.004 + 1.3) * Math.cos(z * 0.003)), 2))
       * (0.5 + heightAt(x * 0.7 + 900, z * 0.7 + 900, { distance: () => 80 }, []) / 50);
@@ -158,13 +201,21 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   // The town.
   const builder = new WorldBuilder();
   buildSindr(builder, ground);
+  buildGorge(builder);
+  buildBarrens(builder);
+  buildFort(builder);
+  if (new URLSearchParams(window.location.search).has('roofTest')) {
+    buildRoofTestRow(builder);
+  }
+  if (terraceTest) buildTerraceTest(builder);
   const glows: Record<string, Material> = { window: createWindowMaterial(), forge: createForgeMaterial(), lava: createLavaMaterial() };
   const town = builder.build((bucket: Bucket) => glows[bucket] ?? lib.get(bucket as Surface));
   scene.add(town);
   for (const c of builder.colliders) {
     world.createCollider(RAPIER.ColliderDesc.cuboid(c.hx, c.hy, c.hz).setTranslation(c.x, c.y, c.z)
-      .setRotation({ x: 0, y: Math.sin(c.yaw / 2), z: 0, w: Math.cos(c.yaw / 2) }));
+      .setRotation(c.q ?? { x: 0, y: Math.sin(c.yaw / 2), z: 0, w: Math.cos(c.yaw / 2) }));
   }
+  if (params.has('debug') && params.has('showColliders')) scene.add(colliderLines(builder.colliders));
   world.step();
 
   // The volcano's crater glow and plume.
@@ -207,7 +258,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   let followed: Vector3 | null = null;
 
   return {
-    scene, camera, renderer,
+    scene, camera, renderer, clock,
     physics: { world, step: () => world.step(), dispose: () => world.free() },
     follow(point) { followed = point; },
     setSize(w, h) {
@@ -219,17 +270,20 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     render() {
       renderer.info.reset();
       const now = performance.now();
-      worldTime.value += Math.min(0.1, (now - last) / 1000);
+      const dt = Math.min(0.1, (now - last) / 1000);
+      worldTime.value += dt;
       last = now;
+      clock.update(dt);
+      applyHour();
+      rebakeEnv();
       if (followed) focus.copy(followed);
       // The shadow box follows the hero, snapped to texels so edges do not crawl.
       const texel = 90 / sun.shadow.mapSize.x;
       const fx = Math.round(focus.x / texel) * texel, fz = Math.round(focus.z / texel) * texel;
       sun.target.position.set(fx, 0, fz);
-      sun.position.set(fx, 0, fz).addScaledVector(sunDir, 120);
+      sun.position.set(fx, 0, fz).addScaledVector(clock.light.direction, 120);
       pool.update(focus, worldTime.value, camera);
       sky.position.copy(camera.position);
-      hemi.intensity = 1.0 - 0.4 * nightness.value;
       composer.render();
     },
     dispose() {
@@ -237,6 +291,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       composer.dispose();
       lib.dispose();
       envTarget.dispose();
+      pmrem.dispose();
       scene.traverse((o) => {
         const m = o as Mesh;
         m.geometry?.dispose();
@@ -262,11 +317,13 @@ async function loadProps(renderer: WebGLRenderer, placements: WorldBuilder['prop
         if (!mesh.isMesh) return;
         // The procedural iron pieces export without textures; they take the scanned blackened iron.
         const forged = id === 'iron_brazier' || id === 'anvil';
-        const inst = new InstancedMesh(mesh.geometry, forged ? iron : mesh.material, list.length);
+        const geometry = forged ? bakeIronUv(mesh.geometry, mesh.matrixWorld) : mesh.geometry;
+        const local = forged ? new Matrix4() : mesh.matrixWorld;
+        const inst = new InstancedMesh(geometry, forged ? iron : mesh.material, list.length);
         const m = new Matrix4();
         list.forEach((p, i) => {
           m.compose(new Vector3(p.x, p.y, p.z), new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), p.yaw), new Vector3(p.scale, p.scale, p.scale));
-          inst.setMatrixAt(i, m.multiply(mesh.matrixWorld));
+          inst.setMatrixAt(i, m.multiply(local));
         });
         inst.castShadow = true;
         inst.receiveShadow = true;
@@ -282,4 +339,38 @@ async function loadProps(renderer: WebGLRenderer, placements: WorldBuilder['prop
     }
   }));
   ktx2.dispose();
+}
+
+/** The procedural iron pieces have collapsed UVs: unpack them to floats in metres and project the iron scan on. */
+function bakeIronUv(source: BufferGeometry, matrix: Matrix4): BufferGeometry {
+  const g = new BufferGeometry();
+  const v = new Vector3();
+  for (const name of ['position', 'normal']) {
+    const a = source.getAttribute(name);
+    const f = new Float32Array(a.count * 3);
+    for (let i = 0; i < a.count; i++) v.fromBufferAttribute(a, i).toArray(f, i * 3);
+    g.setAttribute(name, new BufferAttribute(f, 3));
+  }
+  g.setIndex(source.index);
+  g.applyMatrix4(matrix);
+  return worldUv(g, LOOKS.blackened_rusted_iron.tile);
+}
+
+/** Every town collider as a wireframe box, for checking them against what is drawn (?debug&showColliders). */
+function colliderLines(colliders: WorldBuilder['colliders']): LineSegments {
+  const edges = new EdgesGeometry(new BoxGeometry(2, 2, 2));
+  const unit = edges.getAttribute('position');
+  const out = new Float32Array(unit.count * 3 * colliders.length);
+  const m = new Matrix4(), v = new Vector3(), q = new Quaternion();
+  colliders.forEach((c, i) => {
+    if (c.q) q.set(c.q.x, c.q.y, c.q.z, c.q.w); else q.setFromAxisAngle(new Vector3(0, 1, 0), c.yaw);
+    m.compose(new Vector3(c.x, c.y, c.z), q, new Vector3(c.hx, c.hy, c.hz));
+    for (let k = 0; k < unit.count; k++) v.fromBufferAttribute(unit, k).applyMatrix4(m).toArray(out, (i * unit.count + k) * 3);
+  });
+  const g = new BufferGeometry();
+  g.setAttribute('position', new BufferAttribute(out, 3));
+  const lines = new LineSegments(g, new LineBasicMaterial({ color: 0x40ff70, depthTest: false, transparent: true, opacity: 0.8 }));
+  lines.renderOrder = 10;
+  lines.frustumCulled = false;
+  return lines;
 }
