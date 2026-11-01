@@ -21,8 +21,10 @@ import {
   Vector2,
   Vector3,
   type Scene,
+  type WebGLRenderer,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import balance from '../../../shared/balance.json';
 import { fbm2D, ridgedNoise2D, warpedFbm2D } from './noise.js';
@@ -98,6 +100,7 @@ export class TerrainSystem {
 
   constructor(
     readonly scene: Scene,
+    readonly renderer: WebGLRenderer,
     readonly quality: QualityProfile,
     readonly onSetupMaterial: (mat: MeshStandardMaterial) => void
   ) {
@@ -474,19 +477,20 @@ export class TerrainSystem {
     const gltfLoader = new GLTFLoader();
     gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
-    const ironDiff = loadTex(`/assets/env/ignis/materials/blackened_rusted_iron_diff_${res}.webp`, 1, true);
-    const ironNor = loadTex(`/assets/env/ignis/materials/blackened_rusted_iron_nor_${res}.webp`, 1, false);
-    const ironArm = loadTex(`/assets/env/ignis/materials/blackened_rusted_iron_arm_${res}.webp`, 1, false);
-
-    const ironPbrMat = new MeshStandardMaterial({
-      map: ironDiff,
-      normalMap: ironNor,
-      aoMap: ironArm,
-      roughnessMap: ironArm,
-      metalnessMap: ironArm,
-      roughness: 0.72,
-      metalness: 0.88,
-    });
+    const ironPbrMat = new MeshStandardMaterial({ roughness: 0.72, metalness: 0.88 });
+    // The kit stores its maps as KTX2 only; normals exist at 1K.
+    const ktx2 = new KTX2Loader().setTranscoderPath('/assets/env/ignis/basis/').detectSupport(this.renderer);
+    const iron = (map: string, size: string, srgb: boolean, apply: (t: Texture) => void): void => {
+      ktx2.load(`/assets/env/ignis/materials/blackened_rusted_iron_${map}_${size}.ktx2`, (tex) => {
+        if (srgb) tex.colorSpace = SRGBColorSpace;
+        tex.anisotropy = 8;
+        apply(tex);
+        ironPbrMat.needsUpdate = true;
+      });
+    };
+    iron('diff', res, true, (t) => { ironPbrMat.map = t; });
+    iron('nor_uastc', '1k', false, (t) => { ironPbrMat.normalMap = t; });
+    iron('arm', res, false, (t) => { ironPbrMat.aoMap = t; ironPbrMat.roughnessMap = t; ironPbrMat.metalnessMap = t; });
 
     const coalMat = new MeshStandardMaterial({
       color: 0x3a0c02,

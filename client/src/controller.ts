@@ -49,6 +49,15 @@ export class HeroController {
     this.character = world.createCharacterController(tuning.skin);
     this.character.setSlideEnabled(true);
     this.character.setApplyImpulsesToDynamicBodies(false);
+    if (!bounded) {
+      // Open zones have stairs, lanes and terraces: stay on the ground going down, climb lanes, not cliffs.
+      const walk = balance.world.walk;
+      const rad = Math.PI / 180;
+      this.character.enableSnapToGround(walk.snapToGround);
+      this.character.setMaxSlopeClimbAngle(walk.maxSlopeClimbDeg * rad);
+      this.character.setMinSlopeSlideAngle(walk.minSlopeSlideDeg * rad);
+      this.character.enableAutostep(walk.autostepHeight, walk.autostepMinWidth, false);
+    }
     world.step();
     this.sync();
     this.previous.copy(this.position);
@@ -77,7 +86,8 @@ export class HeroController {
       this.verticalVelocity = impulse.y;
     }
     this.verticalVelocity -= tuning.gravity * dt;
-    velocity.y = Math.max(floorCenter - previous.y, this.verticalVelocity * dt);
+    // The flat arena clamps to its floor; open zones stand on the land and its colliders.
+    velocity.y = this.bounded ? Math.max(floorCenter - previous.y, this.verticalVelocity * dt) : this.verticalVelocity * dt;
     this.character.computeColliderMovement(this.collider, velocity);
     const movement = this.character.computedMovement();
     if (this.character.computedGrounded()) this.verticalVelocity = 0;
@@ -86,12 +96,12 @@ export class HeroController {
     const limit = balance.arena.size / 2 - tuning.radius - tuning.skin;
     const next = {
       x: previous.x + movement.x,
-      y: Math.max(floorCenter, previous.y + movement.y),
+      y: this.bounded ? Math.max(floorCenter, previous.y + movement.y) : previous.y + movement.y,
       z: previous.z + movement.z,
     };
     const reach = Math.hypot(next.x, next.z);
     if (this.bounded && reach > limit) { next.x *= limit / reach; next.z *= limit / reach; }
-    if (next.y === floorCenter) this.verticalVelocity = 0;
+    if (this.bounded && next.y === floorCenter) this.verticalVelocity = 0;
     this.speed = Math.hypot(next.x - previous.x, next.z - previous.z) / dt;
     this.body.setNextKinematicTranslation(next);
     this.world.step();

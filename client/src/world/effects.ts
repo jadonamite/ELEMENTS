@@ -68,17 +68,21 @@ export function createFires(fires: Array<{ position: Vector3; scale: number }>):
       ${NOISE}
       void main() {
         vec2 p = vUv;
-        float t = uTime * 1.6 + vSeed * 20.0;
-        float n = wFbm(vec2(p.x * 3.0 + vSeed * 7.0, p.y * 2.2 - t * 1.4));
-        float sway = (wNoise(vec2(t * 0.7, p.y * 2.0)) - 0.5) * 0.18 * p.y;
-        float x = (p.x - 0.5 - sway) * 2.0;
-        float width = mix(0.95, 0.12, pow(p.y, 0.7)) * (0.75 + 0.6 * n);
-        float body = 1.0 - smoothstep(width * 0.4, width, abs(x));
-        body *= smoothstep(0.0, 0.08, p.y) * (1.0 - smoothstep(0.55 + 0.35 * n, 1.0, p.y));
-        float heat = body * (0.55 + 0.6 * n) * (1.0 - p.y * 0.7);
-        vec3 col = mix(vec3(0.55, 0.06, 0.01), vec3(1.0, 0.42, 0.06), smoothstep(0.15, 0.55, heat));
-        col = mix(col, vec3(1.0, 0.78, 0.42), smoothstep(0.75, 1.0, heat));
-        gl_FragColor = vec4(col * heat * 1.5, 1.0);
+        float t = uTime + vSeed * 20.0;
+        // Two scales of turbulence scroll upward; the fine one runs faster, like real flame.
+        float turb = wFbm(vec2(p.x * 4.0 + vSeed * 7.0, p.y * 3.0 - t * 2.4)) * 0.65
+          + wFbm(vec2(p.x * 9.0 - vSeed * 3.0, p.y * 6.0 - t * 4.2)) * 0.35;
+        float sway = (wNoise(vec2(t * 0.8, p.y * 1.5 + vSeed * 5.0)) - 0.5) * 0.25 * p.y;
+        float x = (p.x - 0.5 - sway - (turb - 0.5) * 0.35 * p.y) * 2.0;
+        // A cone that thins and cools with height; the noise eats its edges into separate tongues.
+        float f = 1.0 - abs(x) / mix(0.9, 0.25, p.y) - p.y * 0.85;
+        f += (turb - 0.5) * 1.1 * (0.3 + p.y);
+        f *= smoothstep(0.0, 0.06, p.y);
+        float heat = smoothstep(0.0, 0.45, f);
+        float core = smoothstep(0.5, 0.95, f);
+        vec3 col = mix(vec3(0.5, 0.05, 0.01), vec3(1.0, 0.38, 0.05), smoothstep(0.0, 0.6, heat));
+        col = mix(col, vec3(1.0, 0.8, 0.45), core);
+        gl_FragColor = vec4(col * (heat * 0.85 + core * 0.35), 1.0);
       }`,
   });
   const mesh = new Mesh(geometry, material);
@@ -214,17 +218,25 @@ export function createWindowMaterial(): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ color: 0x0c0806, roughness: 0.35, metalness: 0, emissive: 0xff8a3a });
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uNight = nightness;
+    shader.uniforms.uTime = worldTime;
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uNight;')
+      .replace('#include <common>', '#include <common>\nuniform float uNight;\nuniform float uTime;')
       .replace('#include <emissivemap_fragment>', `
-        vec2 g = abs(fract(vEmissiveUv * vec2(3.0, 4.0)) - 0.5);
-        float bar = step(0.44, max(g.x, g.y));
-        float warmth = (0.25 + 0.75 * uNight) * (1.0 - bar) * (0.75 + 0.25 * sin(vEmissiveUv.y * 3.0));
-        totalEmissiveRadiance *= warmth * 0.85;`);
+        // Leaded diamond lattice, lit from a hearth low in the room that flickers slowly.
+        vec2 q = vEmissiveUv * vec2(3.0, 4.0);
+        vec2 dia = abs(fract(vec2(q.x + q.y, q.x - q.y) * 0.5) - 0.5);
+        float lead = smoothstep(0.43, 0.47, max(dia.x, dia.y));
+        float edge = smoothstep(0.0, 0.06, min(min(vEmissiveUv.x, 1.0 - vEmissiveUv.x), min(vEmissiveUv.y, 1.0 - vEmissiveUv.y)));
+        float flick = 0.85 + 0.15 * sin(uTime * 2.3 + vEmissiveUv.x * 5.0) * sin(uTime * 3.7 + 1.3);
+        float room = mix(1.0, 0.45, vEmissiveUv.y) * flick;
+        // Each window lights at its own moment through dusk and goes dark through dawn.
+        float lit = smoothstep(vWinSeed * 0.75, vWinSeed * 0.75 + 0.1, uNight);
+        float warmth = (0.08 + 0.92 * lit) * (1.0 - lead) * edge * room;
+        totalEmissiveRadiance *= warmth * 1.1;`);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vEmissiveUv;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvEmissiveUv = uv;');
-    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vEmissiveUv;');
+      .replace('#include <common>', '#include <common>\nvarying vec2 vEmissiveUv;\nvarying float vWinSeed;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvEmissiveUv = uv;\nvWinSeed = fract(sin(dot(floor(position.xz / 2.5), vec2(12.9898, 78.233))) * 43758.5453);');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vEmissiveUv;\nvarying float vWinSeed;');
   };
   return material;
 }
@@ -275,7 +287,10 @@ export class LightPool {
       const flick = 1 - e.flicker * (0.5 + 0.5 * Math.sin(time * 9 + seed) * Math.sin(time * 5.3 + seed * 2));
       // Fade the farthest light of the pool so swaps never pop.
       const edge = i === this.lights.length - 1 ? 0.5 : 1;
-      light.intensity = e.intensity * flick * edge * (0.35 + 0.65 * nightness.value);
+      // Braziers burn all day but only read after dark; each catches at its own moment through dusk.
+      const stagger = Math.abs(Math.sin(seed * 12.9898)) * 0.6;
+      const dark = Math.min(1, Math.max(0, (nightness.value - stagger) / 0.25));
+      light.intensity = e.intensity * flick * edge * (0.3 + 0.7 * dark);
     });
   }
 

@@ -8,6 +8,7 @@ import {
   SphereGeometry,
   type Texture,
 } from 'three';
+import { skyUniforms } from './clock.js';
 import { nightness, worldTime } from './effects.js';
 import { LOOKS } from './materials.js';
 
@@ -41,6 +42,10 @@ function ridged(x: number, z: number, octaves = 5): number {
 export interface Walkable {
   /** Metres from the nearest walkable ground; 0 or less is inside. */
   distance(x: number, z: number): number;
+  /** Height of the walking surface; missing means 0. */
+  floorAt?(x: number, z: number): number;
+  /** Terrain height under built ground, which may sit below the floor; missing means the floor. */
+  groundAt?(x: number, z: number): number;
 }
 
 export interface Peak { x: number; z: number; radius: number; height: number }
@@ -48,6 +53,7 @@ export interface Peak { x: number; z: number; radius: number; height: number }
 /** Ground height: flat where people walk, a steep basalt bank at the edge, then broken hills. */
 export function heightAt(x: number, z: number, walk: Walkable, peaks: Peak[]): number {
   const d = walk.distance(x, z);
+  const base = d > 0 ? (walk.floorAt?.(x, z) ?? 0) : (walk.groundAt?.(x, z) ?? walk.floorAt?.(x, z) ?? 0);
   let h = 0;
   if (d > 0) {
     // Warp the edge so banks wander instead of following the town's straight lines.
@@ -57,6 +63,7 @@ export function heightAt(x: number, z: number, walk: Walkable, peaks: Peak[]): n
     const hills = smoothstep(4, 60, e) * (ridged(x * 0.012, z * 0.012) * 42 + fbm(x * 0.05, z * 0.05) * 6);
     h = bank + hills + (fbm(x * 0.4, z * 0.4, 2) - 0.5) * 0.8 * smoothstep(0, 4, e);
   }
+  h += base;
   const outside = smoothstep(0, 8, d);
   for (const p of peaks) {
     const r = Math.hypot(x - p.x, z - p.z) / p.radius;
@@ -141,7 +148,11 @@ export function slopeBlend(ground: MeshStandardMaterial, rock: MeshStandardMater
   return material;
 }
 
-/** Dusk over a forge nation: soot cloud lit orange from below, a red glow toward the volcano. */
+/**
+ * The sky over a forge nation at any hour: blue-grey through a broken soot deck by day,
+ * a burning horizon at sunrise and sunset, moon and stars through the gaps at night,
+ * and always a red glow toward the volcano.
+ */
 export function createSky(): Mesh {
   const material = new ShaderMaterial({
     side: BackSide,
@@ -150,6 +161,9 @@ export function createSky(): Mesh {
     uniforms: {
       uTime: worldTime,
       uNight: nightness,
+      uSunDir: skyUniforms.uSunDir,
+      uMoonDir: skyUniforms.uMoonDir,
+      uDusk: skyUniforms.uDusk,
       uGlowDir: { value: new Color(0.45, 0.05, -0.89) },
     },
     vertexShader: /* glsl */ `
@@ -162,6 +176,9 @@ export function createSky(): Mesh {
     fragmentShader: /* glsl */ `
       uniform float uTime;
       uniform float uNight;
+      uniform float uDusk;
+      uniform vec3 uSunDir;
+      uniform vec3 uMoonDir;
       uniform vec3 uGlowDir;
       varying vec3 vDir;
       float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -171,24 +188,47 @@ export function createSky(): Mesh {
       void main() {
         vec3 d = normalize(vDir);
         float y = max(d.y, -0.05);
-        // Day: pale ochre haze under the plume. Night: soot black.
-        vec3 dayZen = vec3(0.30, 0.27, 0.25), dayHor = vec3(0.78, 0.58, 0.38);
-        vec3 nightZen = vec3(0.025, 0.022, 0.028), nightHor = vec3(0.30, 0.10, 0.04);
-        vec3 zen = mix(dayZen, nightZen, uNight), hor = mix(dayHor, nightHor, uNight);
-        vec3 col = mix(hor, zen, pow(smoothstep(-0.02, 0.55, y), 0.7));
-        vec3 glowDir = normalize(uGlowDir);
-        float toward = max(0.0, dot(normalize(vec3(d.x, 0.0, d.z)), normalize(vec3(glowDir.x, 0.0, glowDir.z))));
-        float glow = pow(toward, 6.0) * (1.0 - smoothstep(0.0, 0.35, y));
-        col += vec3(0.9, 0.22, 0.04) * glow * (0.5 + 0.8 * uNight);
-        // Cloud deck, drifting; lit underneath by the town and the volcano.
+        float up = pow(smoothstep(-0.02, 0.55, y), 0.7);
+        vec3 sunDir = normalize(uSunDir);
+        float sunUp = smoothstep(-0.06, 0.04, sunDir.y);
+        // Day: blue-grey zenith over a pale ochre haze. Night: blue-black soot over a faint red horizon.
+        vec3 day = mix(vec3(0.66, 0.62, 0.55), vec3(0.24, 0.36, 0.56), up);
+        vec3 night = mix(vec3(0.09, 0.05, 0.04), vec3(0.010, 0.014, 0.028), up);
+        vec3 col = mix(day, night, uNight);
+        // Sunrise and sunset: the horizon burns on the sun's side.
+        vec2 across = d.xz / max(length(d.xz), 1e-4);
+        vec2 sunFlat = sunDir.xz / max(length(sunDir.xz), 1e-4);
+        float sunSide = max(0.0, dot(across, sunFlat));
+        float low = 1.0 - smoothstep(0.0, 0.5, y);
+        col += vec3(0.9, 0.34, 0.1) * uDusk * (0.25 + 0.75 * pow(sunSide, 3.0)) * low * (1.0 - 0.6 * uNight);
+        // The volcano's glow on the haze, stronger after dark.
+        vec2 glowFlat = normalize(uGlowDir.xz);
+        float toward = max(0.0, dot(across, glowFlat));
+        col += vec3(0.9, 0.22, 0.04) * pow(toward, 6.0) * (1.0 - smoothstep(0.0, 0.35, y)) * (0.2 + 0.9 * uNight);
+        // Sun disc and its halo, warmer and larger near the horizon.
+        float sd = max(dot(d, sunDir), 0.0);
+        vec3 sunCol = mix(vec3(1.0, 0.93, 0.8), vec3(1.0, 0.5, 0.2), uDusk);
+        vec3 halo = mix(vec3(1.0, 0.8, 0.6), vec3(1.0, 0.42, 0.14), uDusk);
+        vec3 sun = (sunCol * smoothstep(0.99955, 0.9997, sd) * 40.0 + halo * (pow(sd, 300.0) * 0.8 + pow(sd, 24.0) * 0.12)) * sunUp;
+        // Moon disc at night.
+        float md = max(dot(d, normalize(uMoonDir)), 0.0);
+        vec3 moon = vec3(0.75, 0.8, 0.95) * (smoothstep(0.99965, 0.9998, md) * 6.0 + pow(md, 120.0) * 0.12) * uNight;
+        // Cloud deck, drifting and broken: lit by the sun by day, from below by the town and volcano at night.
         vec2 cp = d.xz / (y + 0.12) * 1.3 + vec2(uTime * 0.004, uTime * 0.002);
         float c = fb(cp + fb(cp * 0.6) * 1.2);
-        float cover = smoothstep(0.38, 0.78, c) * smoothstep(0.0, 0.08, y);
-        vec3 cloudDark = mix(vec3(0.20, 0.17, 0.16), vec3(0.03, 0.025, 0.025), uNight);
-        vec3 cloudLit = mix(vec3(0.85, 0.55, 0.32), vec3(0.42, 0.12, 0.04), uNight);
-        float under = (1.0 - smoothstep(0.0, 0.4, y)) * (0.4 + 0.6 * toward);
-        vec3 cloud = mix(cloudDark, cloudLit, under * smoothstep(0.35, 0.9, 1.0 - c));
-        col = mix(col, cloud, cover * 0.92);
+        float cover = smoothstep(0.45, 0.82, c) * smoothstep(0.0, 0.08, y);
+        float thick = smoothstep(0.35, 0.9, c);
+        vec3 cloudDay = mix(vec3(0.62, 0.6, 0.6), vec3(0.3, 0.3, 0.33), thick) * (0.75 + 0.5 * pow(sd, 4.0) * sunUp);
+        cloudDay = mix(cloudDay, vec3(0.95, 0.48, 0.24) * (0.4 + 0.8 * sunSide), uDusk * 0.7);
+        float under = low * (0.4 + 0.6 * toward);
+        vec3 cloudNight = mix(vec3(0.03, 0.03, 0.04), vec3(0.4, 0.11, 0.035), under * (1.0 - thick));
+        vec3 cloud = mix(cloudDay, cloudNight, uNight);
+        // Stars only through gaps in the soot.
+        vec2 sc = floor(vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0))) * 700.0);
+        float star = smoothstep(0.9982, 1.0, h2(sc)) * smoothstep(0.15, 0.45, y) * (0.6 + 0.4 * sin(uTime * 2.0 + h2(sc + 7.0) * 30.0));
+        col += vec3(0.9, 0.92, 1.0) * star * 2.5 * uNight * (1.0 - smoothstep(0.2, 0.5, c));
+        col += (sun + moon) * (1.0 - cover * 0.85);
+        col = mix(col, cloud, cover * 0.9);
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

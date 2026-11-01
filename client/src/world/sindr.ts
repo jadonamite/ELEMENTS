@@ -1,33 +1,27 @@
 import { CylinderGeometry, Matrix4, Vector3 } from 'three';
 import { seeded, WorldBuilder, type HouseSpec } from './builder.js';
-import type { Peak, Walkable } from './landscape.js';
+import type { Peak } from './landscape.js';
+import { circleArea, Levels, rectArea } from './levels.js';
+import { brackets, roof } from './roofs.js';
 
 /** Sindr, the IGNIS forge town, and the Shrine of Embers west of it. x runs east toward the fort; north is -z. */
 
-export const SPAWN = { x: -6, z: 2.5, facing: Math.PI / 2 };
+export const SPAWN = { x: 2, z: 0, facing: Math.PI / 2 };
 const STREET = { x0: 52, x1: 224, half: 4.5 };
 const SQUARE = { x0: 104, x1: 146, z0: -16, z1: 16 };
 const YARD = { x: 124, z: -40, r: 14 };
 const SHRINE_R = 16;
 
-interface Box { x0: number; x1: number; z0: number; z1: number }
-const rectDistance = (r: Box, x: number, z: number): number => {
-  const dx = Math.max(r.x0 - x, 0, x - r.x1), dz = Math.max(r.z0 - z, 0, z - r.z1);
-  return Math.hypot(dx, dz);
-};
-
-/** Ground people walk on: the shrine, its road, the town and the start of the gorge. */
-export const WALKABLE: Walkable = {
-  distance(x, z) {
-    return Math.min(
-      Math.hypot(x, z) - 22,
-      rectDistance({ x0: 10, x1: 60, z0: -8, z1: 8 }, x, z),
-      rectDistance({ x0: 48, x1: 228, z0: -66, z1: 56 }, x, z),
-      rectDistance({ x0: 180, x1: 200, z0: -80, z1: -60 }, x, z),
-      rectDistance({ x0: 226, x1: 300, z0: -6, z1: 6 }, x, z),
-    );
-  },
-};
+/** Ground people walk on: the shrine, its road, the town, gorge road, barrens and fort. */
+export const WALKABLE = new Levels([
+  circleArea('shrine', 0, 0, 22),
+  rectArea('shrine-road', { x0: 10, x1: 60, z0: -8, z1: 8 }),
+  rectArea('town', { x0: 48, x1: 228, z0: -66, z1: 56 }),
+  rectArea('keep-gate', { x0: 180, x1: 200, z0: -80, z1: -60 }),
+  rectArea('gorge-road', { x0: 224, x1: 450, z0: -9, z1: 9 }),
+  rectArea('slag-barrens', { x0: 450, x1: 680, z0: -110, z1: 110 }),
+  rectArea('east-fort', { x0: 680, x1: 765, z0: -35, z1: 35 }),
+]);
 
 export const PEAKS: Peak[] = [
   { x: 190, z: -118, radius: 42, height: 36 },
@@ -56,8 +50,10 @@ export function buildSindr(b: WorldBuilder, ground: (x: number, z: number) => nu
 
 function shrine(b: WorldBuilder): void {
   b.at(0, 0, 0);
-  b.add('ashlar_stone_blocks', new CylinderGeometry(SHRINE_R, SHRINE_R, 0.2, 48), new Matrix4().makeTranslation(0, -0.09, 0));
+  // Base floor discs
+  b.add('pale_stone', new CylinderGeometry(SHRINE_R, SHRINE_R, 0.2, 48), new Matrix4().makeTranslation(0, -0.09, 0));
   b.add('basalt_cobblestone', new CylinderGeometry(4.2, 4.2, 0.2, 32), new Matrix4().makeTranslation(0, -0.08, 0));
+
   // Sunken: three basalt terraces ring the floor, open to the east where the road leaves.
   const segments = 40;
   for (let i = 0; i < segments; i++) {
@@ -73,17 +69,37 @@ function shrine(b: WorldBuilder): void {
     b.at(Math.cos(a) * (SHRINE_R + 2), Math.sin(a) * (SHRINE_R + 2), -a + Math.PI / 2);
     b.solid(0, 1, 0, arc, 2, 4);
   }
-  // Six basalt pillars.
-  for (let k = 0; k < 6; k++) {
-    const a = Math.PI / 6 + k * Math.PI / 3;
-    const x = Math.cos(a) * 12.5, z = Math.sin(a) * 12.5;
+
+  // Twelve noble red lacquer columns with moulded pale stone bases and capitals
+  // The east opening (-0.35 to +0.35 rad) is left wide open so the road connects freely
+  const colRadius = 12.5;
+  const colH = 6.4;
+  for (let k = 0; k < 12; k++) {
+    const a = (k + 0.5) * (Math.PI * 2 / 12);
+    const x = Math.cos(a) * colRadius, z = Math.sin(a) * colRadius;
     b.at(x, z, a);
-    b.add('basalt_rock_face', new CylinderGeometry(0.75, 0.9, 7.2, 6), new Matrix4().makeTranslation(0, 3.6, 0));
-    b.box('ashlar_stone_blocks', 0, 7.35, 0, 2.0, 0.4, 2.0);
-    b.box('ashlar_stone_blocks', 0, 0.25, 0, 2.2, 0.5, 2.2);
-    b.solid(0, 3.6, 0, 1.9, 7.2, 1.9);
+    b.column(0, 0, colH, 0.38, { mat: 'red_lacquer', baseMat: 'pale_stone' });
+    // North-half white plaster backing wall segments between columns
+    if (z < -3) {
+      b.box('lime_plaster', 0, colH / 2, 0.5, 4.2, colH * 0.85, 0.22);
+    }
   }
-  // The unquenched brazier.
+
+  // 12-sided open roof ring over the perimeter columns (leaving the center open to the sky for smoke)
+  const roofSegments = 12;
+  const rOuter = 14.8;
+  const rInner = 10.2;
+  for (let i = 0; i < roofSegments; i++) {
+    const a0 = i * (Math.PI * 2 / roofSegments);
+    const a1 = (i + 1) * (Math.PI * 2 / roofSegments);
+    const aMid = (a0 + a1) / 2;
+    const chordLen = Math.hypot(Math.cos(a1) * rOuter - Math.cos(a0) * rOuter, Math.sin(a1) * rOuter - Math.sin(a0) * rOuter);
+    b.at(Math.cos(aMid) * (rOuter + rInner) / 2, Math.sin(aMid) * (rOuter + rInner) / 2, -aMid + Math.PI / 2);
+    b.box('roof_tile_red', 0, colH + 0.45, 0, chordLen + 0.3, 0.14, rOuter - rInner + 0.2, { x: 0.32 });
+    b.box('gold_trim', 0, colH + 0.22, (rOuter - rInner) / 2, chordLen + 0.3, 0.08, 0.06);
+  }
+
+  // The unquenched brazier at center
   b.at(0, 0, 0);
   b.add('ashlar_stone_blocks', new CylinderGeometry(1.5, 1.8, 0.9, 16), new Matrix4().makeTranslation(0, 0.45, 0));
   b.add('blackened_rusted_iron', new CylinderGeometry(1.35, 0.7, 0.7, 20, 1, true), new Matrix4().makeTranslation(0, 1.25, 0));
@@ -115,7 +131,9 @@ function road(b: WorldBuilder): void {
 /** An iron brazier on a stand: the kit model plus its fire and light. */
 function brazier(b: WorldBuilder, x: number, z: number, scale = 1): void {
   b.prop('iron_brazier', x, z, 0, scale);
-  b.fire(x, 1.05 * scale, z, 0.75 * scale);
+  // Live coals over the model's flat basket top; the flame stands on them.
+  b.cylinder('lava', x, 0.75 * scale, z, 0.44 * scale, 0.44 * scale, 0.03 * scale, 16);
+  b.fire(x, 0.76 * scale, z, 0.8 * scale);
   b.light(x, 1.9 * scale, z, 0xff7a2a, 28, 14, 0.3);
   b.solid(x, 0.6, z, 0.7, 1.2, 0.7);
 }
@@ -167,8 +185,9 @@ function houses(b: WorldBuilder, rand: () => number): void {
   };
   row(STREET.x0 + 2, SQUARE.x0 - 1, -1);
   row(STREET.x0 + 2, SQUARE.x0 - 1, 1, [[64, 92]]);
-  row(SQUARE.x1 + 1, STREET.x1, -1, [[184, 196]]);
-  row(SQUARE.x1 + 1, STREET.x1, 1, [[166, 216]]);
+  // East rows start past the two counting houses, which stand at the square's mouth (x 146.5 to 155.5).
+  row(SQUARE.x1 + 11, STREET.x1, -1, [[184, 196]]);
+  row(SQUARE.x1 + 11, STREET.x1, 1, [[166, 216]]);
   b.at(0, 0, 0);
   // Square frontage: houses on its north and south sides, lanes left open to the hall and the Raid Hall.
   for (const [x, w] of [[109, 9], [140, 10]] as const) {
@@ -199,7 +218,7 @@ function square(b: WorldBuilder): void {
     for (const px of [-2.2, 2.2]) for (const pz of [-1.3, 1.3]) b.box('charred_timber_beams', px, 1.3, pz, 0.16, 2.6, 0.16);
     b.box('charred_timber_beams', 0, 0.95, 1.2, 4.6, 0.12, 0.9);
     b.box('charred_timber_beams', 0, 0.5, 1.45, 4.4, 0.9, 0.08);
-    b.box('roof_slates', 0, 2.75, 0.2, 5.2, 0.08, 3.6, { x: 0.22 });
+    b.box('roof_tile_charcoal', 0, 2.75, 0.2, 5.2, 0.08, 3.6, { x: 0.22 });
     b.prop('crate', -1.4, -0.6, 0.3, 0.8);
     b.prop('barrel', 1.5, -0.7, 0, 0.8);
     b.solid(0, 1.3, 0, 4.8, 2.6, 3);
@@ -208,11 +227,12 @@ function square(b: WorldBuilder): void {
 }
 
 function mastersHall(b: WorldBuilder, rand: () => number): void {
+  void rand;
   b.at(0, 0, 0);
-  // Lane from the square to the yard.
+  // Lane from the square to the yard
   b.box('basalt_cobblestone', YARD.x, -0.03, -21, 9, 0.1, 10);
   b.add('packed_dirt_road', new CylinderGeometry(YARD.r, YARD.r, 0.1, 40), new Matrix4().makeTranslation(YARD.x, -0.03, YARD.z));
-  // Low yard wall with a gap on the south side.
+  // Low yard wall with a gap on the south side
   for (let i = 0; i < 28; i++) {
     const a = (i + 0.5) / 28 * Math.PI * 2;
     if (Math.abs(a - Math.PI / 2) < 0.3) continue;
@@ -223,20 +243,63 @@ function mastersHall(b: WorldBuilder, rand: () => number): void {
   }
   b.at(0, 0, 0);
   for (const [dx, dz] of [[-6, 6], [6, 6]] as const) brazier(b, YARD.x + dx, YARD.z + dz, 1.1);
-  // Training posts in the yard.
+  // Training posts in the yard
   for (const [dx, dz] of [[-7, -4], [7, -4]] as const) {
     b.add('charred_timber_beams', new CylinderGeometry(0.18, 0.2, 2.0, 8), new Matrix4().makeTranslation(YARD.x + dx, 1.0, YARD.z + dz));
     b.at(YARD.x + dx, YARD.z + dz, 0);
     b.solid(0, 1, 0, 0.4, 2, 0.4);
     b.at(0, 0, 0);
   }
-  // The hall: long, stone, two storeys, a deep timber porch.
-  b.house({ x: YARD.x, z: YARD.z - YARD.r - 8, yaw: 0, w: 24, d: 12, floors: 2, stone: true, chimney: 1, pitch: 0.62, door: 0 }, rand);
-  b.at(YARD.x, YARD.z - YARD.r - 1.4, 0);
-  for (let i = -2; i <= 2; i++) b.box('charred_timber_beams', i * 4.2, 1.7, 0, 0.32, 3.4, 0.32);
-  b.box('charred_timber_beams', 0, 3.45, 0, 18, 0.3, 0.36);
-  b.box('roof_slates', 0, 3.75, -0.6, 18.6, 0.12, 2.4, { x: 0.25 });
-  b.light(0, 2.6, 0.5, 0xff8a3a, 6, 10, 0.2);
+
+  // The Master's Hall: 2.4 m stone podium, white plaster walls, red lacquer columns, dougong brackets, noble roof
+  const hallX = YARD.x;
+  const hallZ = YARD.z - YARD.r - 8;
+  const podiumH = 2.4;
+  const hallW = 26;
+  const hallD = 13;
+  const wallH = 4.8;
+
+  b.at(hallX, hallZ, 0);
+  b.podium(0, 0, hallW + 2, hallD + 2, podiumH, 6.0);
+
+  // Main hall body on the podium
+  const hallBase = podiumH;
+  b.box('lime_plaster', 0, hallBase + wallH / 2, 0, hallW, wallH, hallD);
+  b.solid(0, hallBase + wallH / 2, 0, hallW, wallH, hallD);
+
+  // Front veranda along south (+z) side with red lacquer columns
+  const frontZ = hallD / 2;
+  const cols = 7;
+  const colSpacing = (hallW - 2.4) / (cols - 1);
+  const colPositions: number[] = [];
+  for (let c = 0; c < cols; c++) {
+    const cx = -hallW / 2 + 1.2 + c * colSpacing;
+    colPositions.push(cx);
+    b.column(cx, frontZ + 1.2, wallH, 0.32, { mat: 'red_lacquer', baseMat: 'pale_stone' });
+    if (c < cols - 1) {
+      b.lattice(cx + colSpacing / 2, hallBase + wallH * 0.55, frontZ, colSpacing * 0.78, 2.2, 1, true);
+    }
+  }
+
+  // Dougong bracket sets under the eaves
+  brackets(b, 'x', colPositions, hallBase + wallH, frontZ + 1.2, true);
+  brackets(b, 'x', colPositions, hallBase + wallH, -frontZ, true);
+
+  // Noble grand hip-and-gable roof
+  roof(b, {
+    w: hallW + 1.2,
+    d: hallD + 2.4,
+    base: hallBase + wallH,
+    pitch: 0.62,
+    overhang: 1.6,
+    curve: 0.25,
+    cornerLift: 0.38,
+    gableRatio: 0.48,
+    tile: 'roof_tile_red',
+    trim: true,
+  });
+
+  b.light(0, hallBase + 2.6, frontZ + 1.6, 0xff8a3a, 18, 14, 0.2);
 }
 
 function greatForge(b: WorldBuilder, rand: () => number): void {
@@ -253,8 +316,18 @@ function greatForge(b: WorldBuilder, rand: () => number): void {
   }
   for (const z of [-7.5, 7.5]) b.box('charred_timber_beams', 0, 6.4, z, 25.5, 0.45, 0.5);
   for (let i = -3; i <= 3; i++) b.box('charred_timber_beams', i * 4, 6.4, 0, 0.4, 0.4, 15.5);
-  for (const s of [-1, 1]) b.box('roof_slates', 0, 8.2, s * 4.4, 27, 0.18, 10.4, { x: s * 0.62 });
-  b.box('charred_timber_beams', 0, 9.95, 0, 27, 0.3, 0.3);
+  roof(b, {
+    w: 26,
+    d: 18,
+    base: 6.4,
+    pitch: 0.56,
+    overhang: 1.2,
+    curve: 0.16,
+    cornerLift: 0.12,
+    gableRatio: 0.45,
+    tile: 'roof_tile_charcoal',
+    trim: false,
+  });
   // The great hearth and its stack.
   b.box('ashlar_stone_blocks', 0, 1.2, -3.5, 7, 1.6, 3.4);
   b.box('lava', 0, 2.03, -3.5, 5.6, 0.06, 2.4);
@@ -291,22 +364,52 @@ function raidHall(b: WorldBuilder, rand: () => number): void {
 }
 
 function countingHouses(b: WorldBuilder): void {
-  // Twin stone towers at the square's east mouth, iron-studded doors shut.
+  // Twin stone and lacquer treasuries at the square's east mouth
   for (const s of [-1, 1]) {
     b.at(SQUARE.x1 + 5, s * 10.5, s > 0 ? Math.PI : 0);
-    b.box('basalt_rock_face', 0, 0.35, 0, 9.4, 0.7, 9.4);
-    b.box('ashlar_stone_blocks', 0, 8, 0, 9, 15, 9);
-    b.box('ashlar_stone_blocks', 0, 15.7, 0, 9.8, 0.5, 9.8);
-    for (let i = 0; i < 4; i++) for (let k = -1; k <= 1; k += 2) {
-      b.box('ashlar_stone_blocks', -3.6 + i * 2.4, 16.5, k * 4.5, 1.2, 1.2, 0.8);
-      b.box('ashlar_stone_blocks', k * 4.5, 16.5, -3.6 + i * 2.4, 0.8, 1.2, 1.2);
+    const tw = 9.4, td = 9.4;
+    const baseH = 5.5;
+    const upperH = 4.5;
+
+    // Heavy ashlar stone ground bastion
+    b.box('ashlar_stone_blocks', 0, baseH / 2, 0, tw, baseH, td);
+    // Narrow barred slit windows on ground level
+    b.box('blackened_rusted_iron', -2.2, 3.0, td / 2 + 0.05, 0.4, 1.2, 0.1);
+    b.box('blackened_rusted_iron', 2.2, 3.0, td / 2 + 0.05, 0.4, 1.2, 0.1);
+
+    // Reinforced iron-studded red lacquer vault door
+    b.box('red_lacquer', 0, 1.9, td / 2 + 0.04, 2.2, 3.2, 0.18);
+    for (let i = 0; i < 4; i++) {
+      for (let k = 0; k < 3; k++) {
+        b.box('gold_trim', -0.7 + k * 0.7, 0.8 + i * 0.75, td / 2 + 0.14, 0.1, 0.1, 0.05);
+      }
     }
-    b.box('charred_timber_beams', 0, 1.9, 4.55, 2.2, 3.2, 0.2);
-    for (let i = 0; i < 4; i++) for (let k = 0; k < 3; k++) b.box('blackened_rusted_iron', -0.75 + k * 0.75, 0.8 + i * 0.75, 4.68, 0.1, 0.1, 0.06);
-    b.box('blackened_rusted_iron', 0, 1.9, 4.66, 2.3, 0.12, 0.06);
-    b.box('ashlar_stone_blocks', 0, 3.75, 4.65, 3.0, 0.5, 0.4);
-    for (const y of [7, 11]) for (const x of [-2.4, 2.4]) b.window(x, y, 4.5, 0.6, 1.2);
-    b.solid(0, 8, 0, 9.4, 16, 9.4);
+
+    // Upper floor: lime plaster with red lacquer corner framing
+    b.box('lime_plaster', 0, baseH + upperH / 2, 0, tw - 0.4, upperH, td - 0.4);
+    for (const cx of [-tw / 2 + 0.4, tw / 2 - 0.4]) {
+      for (const cz of [-td / 2 + 0.4, td / 2 - 0.4]) {
+        b.box('red_lacquer', cx, baseH + upperH / 2, cz, 0.5, upperH, 0.5);
+      }
+    }
+    b.lattice(0, baseH + upperH * 0.55, td / 2 - 0.1, 2.2, 1.8, 1, true);
+
+    // Two-tier noble roof with gold trim
+    roof(b, {
+      w: tw,
+      d: td,
+      base: baseH + upperH,
+      pitch: 0.65,
+      overhang: 1.3,
+      curve: 0.22,
+      cornerLift: 0.32,
+      gableRatio: 0.5,
+      tiers: 2,
+      tile: 'roof_tile_red',
+      trim: true,
+    });
+
+    b.solid(0, (baseH + upperH) / 2, 0, tw, baseH + upperH, td);
   }
 }
 
@@ -362,30 +465,66 @@ function eastGate(b: WorldBuilder): void {
   b.box('blackened_rusted_iron', 0, 7.6, 0, 0.3, 0.6, 9);
   brazier(b, 3.4, -3.4, 1.1);
   brazier(b, 3.4, 3.4, 1.1);
-  // Rockfall a little way down the gorge: the road beyond opens with the next build.
+  // Roadside boulders framing the gorge entrance (open road)
   b.at(0, 0, 0);
-  b.prop('boulder_huge', 262, -1.5, 0.4, 3.2);
-  b.prop('boulder_large', 258, 3, 2.1, 2.6);
-  b.prop('rock_cluster_b', 256, -3.5, 1.0, 2.2);
-  b.at(260, 0, 0);
-  b.solid(0, 3, 0, 8, 6, 14);
+  b.prop('boulder_huge', 262, -7.5, 0.4, 3.2);
+  b.prop('boulder_large', 258, 8.0, 2.1, 2.6);
+  b.prop('rock_cluster_b', 256, -8.5, 1.0, 2.2);
 }
 
 function keep(b: WorldBuilder, y: number): void {
-  // Brandr's keep on the crag: curtain wall, two towers and a hall, read from the town below.
+  // Brandr's Keep on the crag: tiered castle keep over arched basalt retaining walls
   b.at(KEEP.x, KEEP.z, 0.15, y);
-  b.box('basalt_rock_face', 0, -3, 0, 34, 8, 26);
-  b.box('ashlar_stone_blocks', 0, 5, 0, 30, 10, 22);
-  for (const [x, z] of [[-15, 11], [15, 11], [-15, -11], [15, -11]] as const) {
-    b.add('ashlar_stone_blocks', new CylinderGeometry(3.2, 3.6, 18, 12), new Matrix4().makeTranslation(x, 9, z));
-    b.add('roof_slates', new CylinderGeometry(0.2, 4.0, 5, 12), new Matrix4().makeTranslation(x, 20.5, z));
+
+  // Arched retaining wall stepping up the rock
+  b.box('basalt_rock_face', 0, -3, 0, 36, 8, 28);
+  b.box('ashlar_stone_blocks', 0, 3, 0, 32, 6, 24);
+
+  // Central 3-tier pagoda-style main keep tower
+  const towerW = 14, towerD = 14;
+  const towerH = 14;
+  b.box('ashlar_stone_blocks', 0, 6 + towerH * 0.35, 0, towerW, towerH * 0.7, towerD);
+  b.box('lime_plaster', 0, 6 + towerH * 0.85, 0, towerW - 0.6, towerH * 0.3, towerD - 0.6);
+
+  roof(b, {
+    w: towerW,
+    d: towerD,
+    base: 6 + towerH,
+    pitch: 0.66,
+    overhang: 1.4,
+    curve: 0.24,
+    cornerLift: 0.36,
+    gableRatio: 0.52,
+    tiers: 3,
+    tile: 'roof_tile_red',
+    trim: true,
+  });
+
+  // Corner turrets with 2-tier roofs
+  for (const [tx, tz] of [[-14, 10], [14, 10], [-14, -10], [14, -10]] as const) {
+    b.box('ashlar_stone_blocks', tx, 8, tz, 5.5, 16, 5.5);
+    roof(b, {
+      w: 5.5,
+      d: 5.5,
+      base: 16,
+      pitch: 0.65,
+      overhang: 1.1,
+      curve: 0.22,
+      cornerLift: 0.28,
+      gableRatio: 0.5,
+      tiers: 2,
+      tile: 'roof_tile_red',
+      trim: true,
+    });
   }
-  b.box('ashlar_stone_blocks', 2, 14, -2, 14, 10, 10);
-  b.add('ashlar_stone_blocks', new CylinderGeometry(3.5, 3.8, 32, 12), new Matrix4().makeTranslation(-4, 16, -4));
-  for (let i = 0; i < 8; i++) b.box('ashlar_stone_blocks', -14 + i * 4, 10.6, 11.2, 1.6, 1.2, 0.9);
-  for (const [x, y] of [[-6, 6], [0, 6], [6, 6], [2, 15], [8, 15]] as const) b.window(x, y, 11.05, 0.7, 1.4);
-  b.fire(-15, 18.5, 11, 1.6);
-  b.fire(15, 18.5, 11, 1.6);
-  b.light(0, 8, 13, 0xff6a20, 12, 30, 0.2);
-  b.chimneys.push(b.world(-4, 32.5, -4));
+
+  // Windows, torches and chimneys
+  for (const [wx, wy] of [[-4, 8], [4, 8], [-2, 14], [2, 14]] as const) {
+    b.window(wx, wy, towerD / 2 + 0.05, 0.7, 1.4);
+  }
+  b.fire(-14, 16.5, 10, 1.6);
+  b.fire(14, 16.5, 10, 1.6);
+  b.light(0, 8, 14, 0xff6a20, 14, 32, 0.2);
+  b.chimneys.push(b.world(-3, 30, -3));
+  b.solid(0, 12, 0, 32, 24, 24);
 }

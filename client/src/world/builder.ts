@@ -15,12 +15,17 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LOOKS, worldUv, type Surface } from './materials.js';
+import { roof } from './roofs.js';
 
 /** Surfaces that glow instead of taking scanned textures. */
 export type Glow = 'window' | 'forge' | 'lava';
 export type Bucket = Surface | Glow;
 
-export interface Collider { x: number; y: number; z: number; hx: number; hy: number; hz: number; yaw: number }
+export interface Collider {
+  x: number; y: number; z: number; hx: number; hy: number; hz: number; yaw: number;
+  /** Full rotation for tilted boxes (stair and lane ramps); overrides yaw. */
+  q?: { x: number; y: number; z: number; w: number };
+}
 /** A light source the nearest-lights pool may pick: braziers, forge mouths, windows. */
 export interface Emitter { position: Vector3; color: number; intensity: number; range: number; flicker: number }
 
@@ -111,6 +116,15 @@ export class WorldBuilder {
     this.colliders.push({ x: c.x, y: c.y, z: c.z, hx: sx / 2, hy: sy / 2, hz: sz / 2, yaw });
   }
 
+  /** A solid block tilted about the frame's x axis (a ramp rising along +z for a negative pitch). */
+  solidTilted(x: number, y: number, z: number, sx: number, sy: number, sz: number, pitch: number): void {
+    const c = this.world(x, y, z);
+    const frameQ = new Quaternion();
+    this.frame.decompose(new Vector3(), frameQ, new Vector3());
+    const q = frameQ.multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), pitch));
+    this.colliders.push({ x: c.x, y: c.y, z: c.z, hx: sx / 2, hy: sy / 2, hz: sz / 2, yaw: 0, q: { x: q.x, y: q.y, z: q.z, w: q.w } });
+  }
+
   light(x: number, y: number, z: number, color: number, intensity: number, range: number, flicker = 0.25): void {
     this.emitters.push({ position: this.world(x, y, z), color, intensity, range, flicker });
   }
@@ -126,15 +140,68 @@ export class WorldBuilder {
     this.props.push({ id, x: p.x, y: p.y, z: p.z, yaw: yaw + frameYaw, scale });
   }
 
-  /** A window: glowing pane, timber frame and sill, set on the face at z = face. */
-  window(x: number, y: number, face: number, w = 0.8, h = 1.1): void {
-    this.box('window', x, y, face + 0.02, w, h, 0.06, undefined, { u: 1, v: 1 });
-    const t = 0.12;
-    this.box('charred_timber_beams', x, y + h / 2 + t / 2, face + 0.06, w + t * 2, t, 0.14);
-    this.box('charred_timber_beams', x, y - h / 2 - t / 2, face + 0.08, w + t * 2.6, t, 0.2);
-    this.box('charred_timber_beams', x - w / 2 - t / 2, y, face + 0.06, t, h, 0.14);
-    this.box('charred_timber_beams', x + w / 2 + t / 2, y, face + 0.06, t, h, 0.14);
-    this.box('charred_timber_beams', x, y, face + 0.05, 0.05, h, 0.08);
+  /** A window: glowing pane set back inside a deep timber casing and sill, on the face at z = face; dir -1 faces -z. */
+  window(x: number, y: number, face: number, w = 0.8, h = 1.1, dir = 1): void {
+    this.box('window', x, y, face + 0.02 * dir, w, h, 0.04, undefined, { u: 1, v: 1 });
+    const t = 0.14, deep = 0.3;
+    this.box('charred_timber_beams', x, y + h / 2 + t / 2, face + deep / 2 * dir, w + t * 2, t, deep);
+    this.box('charred_timber_beams', x, y - h / 2 - t / 2, face + (deep / 2 + 0.05) * dir, w + t * 2.8, t, deep + 0.1);
+    this.box('charred_timber_beams', x - w / 2 - t / 2, y, face + deep / 2 * dir, t, h, deep);
+    this.box('charred_timber_beams', x + w / 2 + t / 2, y, face + deep / 2 * dir, t, h, deep);
+  }
+
+  /** A noble lacquered round column on a moulded stone base with a capital block. */
+  column(x: number, z: number, height: number, radius = 0.22, opts?: { mat?: Surface; baseMat?: Surface; solid?: boolean }): void {
+    const mat: Surface = opts?.mat ?? 'red_lacquer';
+    const baseMat: Surface = opts?.baseMat ?? 'pale_stone';
+    const baseH = 0.35;
+    const baseR = radius * 1.6;
+    const capH = 0.22;
+    this.cylinder(baseMat, x, baseH / 2, z, baseR * 0.9, baseR, baseH, 16);
+    this.cylinder(mat, x, baseH + (height - baseH - capH) / 2, z, radius * 0.95, radius, height - baseH - capH, 16);
+    this.box(mat, x, height - capH / 2, z, radius * 2.5, capH, radius * 2.5);
+    if (opts?.solid !== false) {
+      this.solid(x, height / 2, z, radius * 2, height, radius * 2);
+    }
+  }
+
+  /** A decorative lattice screen panel with optional window glow behind. */
+  lattice(x: number, y: number, face: number, w = 1.2, h = 1.8, dir = 1, glow = true): void {
+    if (glow) {
+      this.box('window', x, y, face + 0.02 * dir, w - 0.1, h - 0.1, 0.04, undefined, { u: 1, v: 1 });
+    }
+    const t = 0.12, deep = 0.15;
+    this.box('red_lacquer', x, y + h / 2 - t / 2, face + deep / 2 * dir, w, t, deep);
+    this.box('red_lacquer', x, y - h / 2 + t / 2, face + deep / 2 * dir, w, t, deep);
+    this.box('red_lacquer', x - w / 2 + t / 2, y, face + deep / 2 * dir, t, h, deep);
+    this.box('red_lacquer', x + w / 2 - t / 2, y, face + deep / 2 * dir, t, h, deep);
+    const barsX = 3, barsY = 4;
+    for (let i = 1; i < barsX; i++) {
+      const bx = x - w / 2 + (i * w) / barsX;
+      this.box('red_lacquer', bx, y, face + 0.04 * dir, 0.04, h - t * 2, 0.06);
+    }
+    for (let j = 1; j < barsY; j++) {
+      const by = y - h / 2 + (j * h) / barsY;
+      this.box('red_lacquer', x, by, face + 0.04 * dir, w - t * 2, 0.04, 0.06);
+    }
+  }
+
+  /** A stone platform with a moulded edge, pale stone floor on top, and optional front stair. */
+  podium(x: number, z: number, w: number, d: number, h: number, stairW = 0): void {
+    this.box('ashlar_stone_blocks', x, h / 2, z, w, h, d);
+    this.box('pale_stone', x, h + 0.05, z, w + 0.3, 0.1, d + 0.3);
+    this.solid(x, h / 2, z, w, h, d);
+    if (stairW > 0) {
+      const steps = Math.max(3, Math.round(h / 0.2));
+      const stepH = h / steps;
+      const stepD = 0.45;
+      for (let s = 1; s <= steps; s++) {
+        const sy = s * stepH - stepH / 2;
+        const sz = d / 2 + (steps - s + 0.5) * stepD;
+        this.box('pale_stone', x, sy, z + sz, stairW, stepH, stepD);
+        this.solid(x, sy, z + sz, stairW, stepH, stepD);
+      }
+    }
   }
 
   /** A town house: basalt plinth, ashlar ground floor, jettied timber-framed plaster floors, slate gable roof. */
@@ -180,7 +247,7 @@ export class WorldBuilder {
       this.box('basalt_rock_face', door, 0.12, front + 0.45, 1.6, 0.24, 0.6);
       const side = door > 0 ? -1 : 1;
       if (w > 5) this.window(side * Math.min(w / 2 - 1.2, Math.abs(door) + 2.1), plinth + 1.7, front);
-      if (rand() > 0.6) this.window(0, plinth + 1.7, -front - 0.0, 0.7, 0.9);
+      if (rand() > 0.6) this.window(0, plinth + 1.7, -front, 0.7, 0.9, -1);
     }
     let top = plinth + groundH;
     for (let f = 1; f < floors; f++) {
@@ -205,27 +272,22 @@ export class WorldBuilder {
       }
       top += upperH;
     }
-    // Gable roof, ridge along the width.
-    const pitch = spec.pitch ?? 0.78;
-    const half = (d + jetty * 2) / 2;
-    const rise = Math.tan(pitch) * half;
-    const overhang = 0.45;
-    const slab = (half + overhang) / Math.cos(pitch);
-    for (const s of [-1, 1]) {
-      const cz = s * (half + overhang) / 2;
-      const cy = top + rise - Math.tan(pitch) * Math.abs(cz) + 0.12;
-      this.box('roof_slates', 0, cy, cz, w + 0.9, 0.16, slab, { x: s * pitch },
-        { u: (w + 0.9) / LOOKS.roof_slates.tile, v: slab / LOOKS.roof_slates.tile });
-    }
-    this.box('charred_timber_beams', 0, top + rise + 0.12, 0, w + 1.0, 0.22, 0.26);
-    const gable = new Shape();
-    gable.moveTo(-half, 0); gable.lineTo(half, 0); gable.lineTo(0, rise); gable.lineTo(-half, 0);
-    for (const s of [-1, 1]) {
-      const g = new ExtrudeGeometry(gable, { depth: 0.2, bevelEnabled: false });
-      const m = new Matrix4().makeTranslation(s * (w / 2 - 0.1), top, 0).multiply(new Matrix4().makeRotationY(Math.PI / 2))
-        .multiply(new Matrix4().makeTranslation(0, 0, -0.1));
-      this.add(spec.stone ? 'ashlar_stone_blocks' : 'sooted_plaster', g, m);
-    }
+    // Hip-and-gable roof, ridge along width
+    const totalD = d + jetty * 2;
+    const pitch = spec.pitch ?? 0.62;
+    const rise = Math.tan(pitch) * (totalD / 2);
+    roof(this, {
+      w: w + 0.4,
+      d: totalD,
+      base: top,
+      pitch,
+      overhang: 0.85,
+      curve: 0.18,
+      cornerLift: 0.12,
+      gableRatio: 0.44,
+      tile: 'roof_tile_charcoal',
+      trim: false,
+    });
     const chimney = spec.chimney ?? (rand() > 0.5 ? 1 : -1);
     if (chimney !== 0 || spec.forge) {
       const cx = (chimney || 1) * (w / 2 - 0.8);

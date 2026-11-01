@@ -95,7 +95,7 @@ export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
   scene.userData['setupMaterial'] = setupMaterial;
 
   // 4. Terrain System: 2K floor, POM, rolling hills, distant ridge line, braziers
-  const terrain = new TerrainSystem(scene, quality, (m) => setupMaterial(m));
+  const terrain = new TerrainSystem(scene, renderer, quality, (m) => setupMaterial(m));
 
   // 5. Foliage System: Wind-animated instanced grass
   const foliage = new FoliageSystem(scene, quality, (m) => setupMaterial(m));
