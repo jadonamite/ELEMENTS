@@ -15,6 +15,9 @@ export default defineConfig({
       input: {
         game: resolve(import.meta.dirname, 'index.html'),
         privyTest: resolve(import.meta.dirname, 'privy-test.html'),
+        kit: resolve(import.meta.dirname, 'kit.html'),
+        people: resolve(import.meta.dirname, 'people.html'),
+        hound: resolve(import.meta.dirname, 'hound.html'),
       },
     },
   },

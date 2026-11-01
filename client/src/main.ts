@@ -11,7 +11,7 @@ import { FixedStepper, HeroController, locomotionForSpeed, movementVelocity, tur
 import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
 import { Combat, type CombatAction, type FightingStyle } from './combat.js';
-import { loadEnemyTemplate } from './enemy.js';
+import { loadEnemyTemplate, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
 import { FightHud, type RoundHudInfo } from './hud.js';
 import { SwordStance } from './sword.js';
@@ -25,6 +25,9 @@ import { BendState, type BendRefusal } from './bend-state.js';
 import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
 import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
+import { Satchel } from './world/satchel.js';
+import { nightness } from './world/effects.js';
+import { HomeMenu } from './ui/home-menu.js';
 import { Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 
@@ -61,7 +64,9 @@ async function main(): Promise<void> {
 
   // ?town walks Sindr from the Shrine of Embers; without it the fight arena opens.
   const inTown = new URLSearchParams(window.location.search).has('town');
+  const zoneStart = performance.now();
   const zone = inTown ? await createZone(canvas) : null;
+  if (zone) (window as unknown as { zoneLoadMs?: number }).zoneLoadMs = performance.now() - zoneStart;
   const physics = zone ? zone.physics : await initPhysics();
   if (disposed) { physics.dispose(); return; }
   cleanup.push(() => physics.dispose());
@@ -75,7 +80,7 @@ async function main(): Promise<void> {
   const shoulderCamera = new ShoulderCamera(camera, physics.world, !zone);
   if (zone) { controller.facing = SPAWN.facing; shoulderCamera.yaw = SPAWN.facing + Math.PI; }
   let hero: HeroInstance;
-  const husks = loadEnemyTemplate();
+  const villains = loadEnemyTemplate();
   try {
     hero = await loadHero();
   } catch (error) {
@@ -137,8 +142,9 @@ async function main(): Promise<void> {
   }
   const consent = new ConsentBanner();
   cleanup.push(() => consent.dispose());
+  const satchel = new Satchel();
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, satchel, clock: zone?.clock, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -199,7 +205,7 @@ async function main(): Promise<void> {
   let slowMotion = 0;
   let lockedEnemy: Enemy | null = null;
 
-  const fight = new Fight(await husks, physics.world, scene, {
+  const fight = new Fight(await villains, physics.world, scene, {
     heroHit(blocked) {
       hurtAt = performance.now();
       if (blocked) bend.gain('blocked');
@@ -219,6 +225,9 @@ async function main(): Promise<void> {
       shoulderCamera.shake(0.4);
       sound.playThump(50, 0.6, 0.7);
       reviveIn = balance.hero.respawnSeconds;
+      if (zone) {
+        satchel.dropOnDeath(controller.position.x, controller.position.z);
+      }
     },
     heroParried() {
       bend.gain('parry');
@@ -227,20 +236,22 @@ async function main(): Promise<void> {
       hitStop = Math.max(hitStop, 0.12);
       notice('Parry');
     },
-    enemyHit(_enemy, killed) {
+    enemyHit(_enemy, killed, damage = 35, hitPos, isCrit = false) {
       bend.gain('hit');
-      shoulderCamera.shake(killed ? 0.18 : 0.08);
+      const isHeavy = isCrit || combat.current?.startsWith('heavy') || combat.current === 'uppercut' || combat.current === 'ground_pound';
+      hitStop = killed ? 0.12 : isHeavy ? 0.09 : 0.06;
+      shoulderCamera.shake(killed ? 0.35 : isHeavy ? 0.24 : 0.14);
       sound.playImpact(killed, false);
       killed ? sound.playVillainDeath(_enemy.controller.position) : sound.playVillainHurt(_enemy.controller.position);
-      if (isLit) {
-        bending.spawnHitBurst(_enemy.controller.position, heroElement);
-      }
+      const pos = hitPos ?? _enemy.controller.position;
+      bending.spawnHitBurst(pos, heroElement);
+      fightHud.showDamage(pos, damage, isCrit || isHeavy);
       if (killed && fight.allDead) {
         slowMotion = 1.2;
       }
     },
-    roundStarted(roundNumber, zombieCount) {
-      fightHud.say(`Round ${roundNumber} — ${zombieCount} ${zombieCount === 1 ? 'Villain' : 'Villains'}`);
+    roundStarted(roundNumber, villainCount) {
+      fightHud.say(`Round ${roundNumber} — ${villainCount} ${villainCount === 1 ? 'Villain' : 'Villains'}`);
       setTimeout(() => {
         if (fight.heroAlive && !fight.isVictory && fight.intermissionRemaining <= 0) {
           fightHud.say('');
@@ -260,13 +271,71 @@ async function main(): Promise<void> {
   const startRound = Number(new URLSearchParams(window.location.search).get('round'));
   if (startRound > 1) fight.setRound(startRound);
   if (zone) { fight.stopWaves(); fightHud.say(''); }
+  let yardSpawned = false;
+  input.onInteract = () => {
+    if (zone && satchel.dropped) {
+      const dist = Math.hypot(controller.position.x - satchel.dropped.x, controller.position.z - satchel.dropped.z);
+      if (dist < 4.0) {
+        const recovered = satchel.recoverDropped();
+        if (recovered && recovered.length > 0) {
+          notice(`Recovered satchel: ${recovered.map(i => `${i.count} ${i.name}`).join(', ')}`);
+          return;
+        }
+      }
+    }
+  };
+  input.onDuelToggle = () => {
+    const fwd = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
+    const spawnPos = controller.position.clone().addScaledVector(fwd, 4.0);
+    const kinds: VillainKind[] = ['brawler', 'armed', 'bender'];
+    const kind = kinds[Math.floor(Math.random() * kinds.length)]!;
+    const spawned = fight.spawnVillain({ x: spawnPos.x, z: spawnPos.z }, kind, 120);
+    lockedEnemy = spawned;
+    shoulderCamera.lockTarget = spawned.controller.position;
+    notice(`Challenged ${kind}! Press Tab to lock/unlock.`);
+  };
   cleanup.push(() => fight.dispose());
+  /** Auto-realigns hero facing toward target and glides closer to prevent whiffs on combos and openers. */
+  const alignToTarget = (): void => {
+    let targetDx = 0;
+    let targetDz = 0;
+    let hasTarget = false;
+    if (lockedEnemy && lockedEnemy.alive) {
+      targetDx = lockedEnemy.controller.position.x - controller.position.x;
+      targetDz = lockedEnemy.controller.position.z - controller.position.z;
+      hasTarget = true;
+    } else {
+      const looking = shoulderCamera.yaw + Math.PI;
+      const { aimAssistRange, aimAssistAngle } = balance.combat;
+      const mark = fight.nearestInFront(controller.position, looking, aimAssistRange, aimAssistAngle);
+      if (mark) {
+        targetDx = mark.controller.position.x - controller.position.x;
+        targetDz = mark.controller.position.z - controller.position.z;
+        hasTarget = true;
+      }
+    }
+    if (hasTarget) {
+      controller.facing = Math.atan2(targetDx, targetDz);
+      const dist = Math.hypot(targetDx, targetDz);
+      if (dist > 1.3 && dist < 3.8) {
+        const step = Math.min(dist - 1.25, 0.7);
+        controller.position.x += (targetDx / dist) * step;
+        controller.position.z += (targetDz / dist) * step;
+        controller.body.setTranslation({ x: controller.position.x, y: controller.position.y, z: controller.position.z }, true);
+      }
+    }
+  };
   /** A bending move the meter paid for as a chain link: it starts even while on cooldown. */
   let chainPass: string | null = null;
   const combat = new Combat(
     hero.anim,
     (move) => move === chainPass || fight.ready(move, isLit),
-    (move, swingAt) => fight.startMove(move, swingAt, isLit),
+    (move, swingAt) => {
+      fight.startMove(move, swingAt, isLit);
+      if (move !== 'dodge' && move !== 'hit' && move !== 'death') {
+        alignToTarget();
+      }
+    },
   );
   /** The weapon model currently in the hero's hands. */
   let heldWeapon: string = 'sword';
@@ -294,7 +363,7 @@ async function main(): Promise<void> {
   let calmIn = 0;
   /** An attack pressed while the sword was sheathed, thrown once it is drawn. */
   let pending: CombatAction | null = null;
-  /** Sheathed by hand: a nearby husk doesn't draw the sword until the next attack or guard. */
+  /** Sheathed by hand: a nearby villain doesn't draw the sword until the next attack or guard. */
   let heldCalm = false;
 
   /** Weapon, hands or legs; bending is a separate switch that works with any of them. */
@@ -326,6 +395,15 @@ async function main(): Promise<void> {
     changeFighter.hidden = false;
     changeFighter.addEventListener('click', () => picker?.open(true));
   }
+
+  const homeMenu = new HomeMenu({
+    inTown,
+    currentElement: kitElement,
+    isDim,
+    onOpenPicker: () => picker?.open(true),
+    onOpenCreator: () => picker?.open(true),
+  });
+  cleanup.push(() => homeMenu.dispose());
   /** Whether this element keeps its current weapon in hand while bending. */
   const bendsArmed = (): boolean => {
     const allowed = (balance.combat.bendWithWeapon as Record<string, string | string[]>)[kitElement];
@@ -384,7 +462,7 @@ async function main(): Promise<void> {
     }
     if (move === 'ultimate' && !isLit) setBending(true);
     if (!isLit) { notice('Bending is off (B)'); return { ok: false, strength: 0 }; }
-    if (combat.current && !isBendMove(combat.current)) return { ok: false, strength: 0 };
+    if (combat.current && !isBendMove(combat.current)) combat.reset();
     const go = bend.begin(move, fight.ready(move, isLit), controller.position);
     if (!go.go) { if (refusals[go.why]) notice(refusals[go.why]); return { ok: false, strength: 0 }; }
     const skip = go.chained || go.free === true;
@@ -394,32 +472,12 @@ async function main(): Promise<void> {
     const ok = combat.press(action);
     chainPass = null;
     if (ok && go.chained) notice(`Chain ${go.link}`);
-    return { ok, strength: go.strength };
+    return { ok: ok || true, strength: go.strength };
   };
 
-  const attack = (action: CombatAction): void => {
-    if (!combat.current) {
-      if (lockedEnemy && lockedEnemy.alive) {
-        const dx = lockedEnemy.controller.position.x - controller.position.x;
-        const dz = lockedEnemy.controller.position.z - controller.position.z;
-        controller.facing = Math.atan2(dx, dz);
-      } else {
-        const looking = shoulderCamera.yaw + Math.PI;
-        const { aimAssistRange, aimAssistAngle } = balance.combat;
-        const mark = fight.nearestInFront(controller.position, looking, aimAssistRange, aimAssistAngle);
-        controller.facing = mark
-          ? Math.atan2(mark.controller.position.x - controller.position.x, mark.controller.position.z - controller.position.z)
-          : looking;
-      }
-    }
-    const bendMove = bendingMoveFor(action);
-    let strength = 1;
-    if (bendMove || isDim && action === 'uppercut') {
-      const started = startBending(action, bendMove ?? 'bend_palm');
-      if (!started.ok) return;
-      strength = started.strength;
-    } else if (!combat.press(action)) return;
+  let actionBuffer: { action: CombatAction; expiresAt: number } | null = null;
 
+  const triggerAttackEffects = (action: CombatAction, strength = 1, bendMove?: BendMoveId | null): void => {
     if (isDim && action === 'uppercut') {
       // A Hush spends a shard on a weak spark of the shard's element.
       if (kitElement === 'IGNIS') bending.spawnFireball(controller.position, controller.facing, 'IGNIS');
@@ -536,6 +594,26 @@ async function main(): Promise<void> {
     }
   };
 
+  const attack = (action: CombatAction): void => {
+    if (!combat.current) {
+      alignToTarget();
+    }
+    const bendMove = bendingMoveFor(action);
+    let strength = 1;
+    if (bendMove || isDim && action === 'uppercut') {
+      const started = startBending(action, bendMove ?? 'bend_palm');
+      if (!started.ok) return;
+      strength = started.strength;
+    } else {
+      if (!combat.press(action)) {
+        actionBuffer = { action, expiresAt: performance.now() + 380 };
+        return;
+      }
+    }
+    actionBuffer = null;
+    triggerAttackEffects(action, strength, bendMove);
+  };
+
   const bladeBase = new Vector3();
   const bladeTip = new Vector3();
   const handR = new Vector3();
@@ -569,8 +647,8 @@ async function main(): Promise<void> {
       slowMotion = Math.max(0, slowMotion - rawDelta);
       timeScale = 0.25;
     }
-    // The fight and the combat clock stand still together while the fighter picker is open.
-    const picking = document.body.classList.contains('selecting');
+    // The fight and the combat clock stand still together while the fighter picker or home menu is open.
+    const picking = document.body.classList.contains('selecting') || document.body.classList.contains('home-open');
     const delta = rawDelta * timeScale;
 
     // Validate lock-on target
@@ -609,6 +687,17 @@ async function main(): Promise<void> {
       controller.facing = turnToward(controller.facing, toward, delta);
     }
     if (!picking) combat.update(delta);
+    if (alive && actionBuffer) {
+      if (performance.now() > actionBuffer.expiresAt) {
+        actionBuffer = null;
+      } else if (!combat.current || combat.progress >= (1 - balance.combat.comboWindow)) {
+        const buffered = actionBuffer.action;
+        if (combat.press(buffered)) {
+          actionBuffer = null;
+          triggerAttackEffects(buffered, 1, bendingMoveFor(buffered));
+        }
+      }
+    }
     bend.tick(delta, controller.position);
     if (mending.left > 0) {
       const step = Math.min(delta, mending.left);
@@ -616,7 +705,7 @@ async function main(): Promise<void> {
       fight.healHero(mending.perSecond * step);
     }
     if (fightingStyle === 'weapon') {
-      // Stay drawn while fighting or with a husk close by; sheathe after a quiet spell.
+      // Stay drawn while fighting or with a villain close by; sheathe after a quiet spell.
       const threatened = !heldCalm && fight.nearestDistance(controller.position) < balance.stance.engageRadius;
       if ((combat.current && combat.current !== 'dodge') || combat.blocking || pending || threatened) {
         calmIn = balance.stance.calmAfterSeconds;
@@ -637,6 +726,23 @@ async function main(): Promise<void> {
       fight.reviveHero();
       combat.reset();
       fightHud.say('');
+      if (zone) {
+        controller.body.setTranslation({ x: SPAWN.x, y: 0.92, z: SPAWN.z }, true);
+        controller.position.set(SPAWN.x, 0, SPAWN.z);
+        controller.facing = SPAWN.facing;
+        shoulderCamera.yaw = SPAWN.facing + Math.PI;
+      }
+    }
+    if (zone) {
+      const yardDist = Math.hypot(controller.position.x - 124, controller.position.z - -36);
+      if (yardDist < 12 && !yardSpawned && fight.enemies.filter(e => e.alive).length === 0) {
+        yardSpawned = true;
+        fight.spawnVillain({ x: 121, z: -38 }, 'brawler', 100);
+        fight.spawnVillain({ x: 127, z: -34 }, 'armed', 110);
+        notice("Master's Sparring Yard: Defeat the challengers! (K: summon partner)");
+      } else if (yardDist > 24) {
+        yardSpawned = false;
+      }
     }
     hero.sword.updateMatrixWorld(true);
     hero.sword.localToWorld(bladeBase.copy(hero.bladeBase));
@@ -686,7 +792,7 @@ async function main(): Promise<void> {
     const bladeLit = fightingStyle === 'weapon';
     bending.setLit(isLit, heroElement, drawn, controller.facing, bladeLit ? bladeBase : undefined, bladeLit ? bladeTip : undefined);
     bending.syncBurnPatches(fight.activeBurnPatches);
-    bending.setBurningHusks(fight.burningHusks);
+    bending.setBurningVillains(fight.burningVillains);
     bending.update(delta, drawn, camera);
     scene.userData.cameraQuaternion = camera.quaternion;
     elementFx.update(delta);
@@ -701,8 +807,8 @@ async function main(): Promise<void> {
     const roundInfo: RoundHudInfo = {
       round: fight.currentRoundNumber,
       totalRounds: fight.totalRounds,
-      target: fight.roundZombieTarget,
-      remaining: fight.zombiesRemaining,
+      target: fight.roundVillainTarget,
+      remaining: fight.villainsRemaining,
       isVictory: fight.isVictory,
       intermission: fight.intermissionRemaining,
     };
