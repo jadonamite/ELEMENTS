@@ -1,0 +1,476 @@
+{
+  "name": "IGNIS Environment Kit",
+  "version": "1.0.0",
+  "date": "2026-10-30",
+  "description": "Scanned PBR materials and modular glTF models for the nation of IGNIS (Sindr, Gorge Road, Slag Barrens, East Border Fort). Graded into black basalt and ash grey with warm ember accents.",
+  "budgetTargets": {
+    "highTargetMB": 40,
+    "lowTargetMB": 12
+  },
+  "totalSizeHighKB": 31745,
+  "totalSizeLowKB": 19254,
+  "totalSizeHighMB": 31.0,
+  "totalSizeLowMB": 18.8,
+  "materialsCount": 8,
+  "modelsCount": 17,
+  "materials": [
+    {
+      "id": "basalt_cobblestone",
+      "name": "Black Basalt Cobblestone",
+      "category": "Ground / Architecture",
+      "tiling": 2,
+      "source": "Poly Haven (cobblestone_floor_08)",
+      "sourceUrl": "https://polyhaven.com/a/cobblestone_floor_08",
+      "license": "CC0",
+      "sizeHighKB": 2593,
+      "sizeLowKB": 1646,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/basalt_cobblestone_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/basalt_cobblestone_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/basalt_cobblestone_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/basalt_cobblestone_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/basalt_cobblestone_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/basalt_cobblestone_arm_1k.ktx2"
+        }
+      }
+    },
+    {
+      "id": "basalt_rock_face",
+      "name": "Rough Basalt Rock Face",
+      "category": "Terrain / Cliffs",
+      "tiling": 4,
+      "source": "Poly Haven (rock_face_03)",
+      "sourceUrl": "https://polyhaven.com/a/rock_face_03",
+      "license": "CC0",
+      "sizeHighKB": 2527,
+      "sizeLowKB": 1627,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/basalt_rock_face_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/basalt_rock_face_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/basalt_rock_face_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/basalt_rock_face_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/basalt_rock_face_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/basalt_rock_face_arm_1k.ktx2"
+        }
+      }
+    },
+    {
+      "id": "ash_cinder_ground",
+      "name": "Ash and Cinder Ground",
+      "category": "Terrain / Wilds",
+      "tiling": 3,
+      "source": "Poly Haven (burned_ground_01)",
+      "sourceUrl": "https://polyhaven.com/a/burned_ground_01",
+      "license": "CC0",
+      "sizeHighKB": 2523,
+      "sizeLowKB": 1619,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/ash_cinder_ground_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/ash_cinder_ground_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/ash_cinder_ground_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/ash_cinder_ground_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/ash_cinder_ground_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/ash_cinder_ground_arm_1k.ktx2"
+        }
+      }
+    },
+    {
+      "id": "cooled_lava_crust",
+      "name": "Cooled Lava Crust",
+      "category": "Terrain / Volcanic",
+      "tiling": 3.5,
+      "source": "ambientCG (Lava004)",
+      "sourceUrl": "https://ambientcg.com/view?id=Lava004",
+      "license": "CC0",
+      "sizeHighKB": 2482,
+      "sizeLowKB": 1618,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/cooled_lava_crust_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/cooled_lava_crust_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/cooled_lava_crust_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/cooled_lava_crust_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/cooled_lava_crust_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/cooled_lava_crust_arm_1k.ktx2"
+        }
+      }
+    },
+    {
+      "id": "ashlar_stone_blocks",
+      "name": "Soot-Stained Ashlar Stone",
+      "category": "Architecture / Masonry",
+      "tiling": 2.5,
+      "source": "Poly Haven (stone_block_wall)",
+      "sourceUrl": "https://polyhaven.com/a/stone_block_wall",
+      "license": "CC0",
+      "sizeHighKB": 2184,
+      "sizeLowKB": 1520,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/ashlar_stone_blocks_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/ashlar_stone_blocks_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/ashlar_stone_blocks_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/ashlar_stone_blocks_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/ashlar_stone_blocks_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/ashlar_stone_blocks_arm_1k.ktx2"
+        }
+      }
+    },
+    {
+      "id": "charred_timber_beams",
+      "name": "Charred Timber Beams",
+      "category": "Architecture / Wood",
+      "tiling": 2.5,
+      "source": "Poly Haven (beam_wall_01)",
+      "sourceUrl": "https://polyhaven.com/a/beam_wall_01",
+      "license": "CC0",
+      "sizeHighKB": 2196,
+      "sizeLowKB": 1451,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/charred_timber_beams_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/charred_timber_beams_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/charred_timber_beams_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/charred_timber_beams_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/charred_timber_beams_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/charred_timber_beams_arm_1k.ktx2"
+        }
+      }
+    },
+    {
+      "id": "blackened_rusted_iron",
+      "name": "Blackened Rusted Iron",
+      "category": "Metal / Props",
+      "tiling": 1.5,
+      "source": "Poly Haven (rusty_metal_02)",
+      "sourceUrl": "https://polyhaven.com/a/rusty_metal_02",
+      "license": "CC0",
+      "sizeHighKB": 2186,
+      "sizeLowKB": 1427,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/blackened_rusted_iron_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/blackened_rusted_iron_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/blackened_rusted_iron_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/blackened_rusted_iron_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/blackened_rusted_iron_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/blackened_rusted_iron_arm_1k.ktx2"
+        }
+      }
+    },
+    {
+      "id": "packed_dirt_road",
+      "name": "Packed Dirt and Gravel Road",
+      "category": "Terrain / Roads",
+      "tiling": 3,
+      "source": "Poly Haven (stony_dirt_path)",
+      "sourceUrl": "https://polyhaven.com/a/stony_dirt_path",
+      "license": "CC0",
+      "sizeHighKB": 2444,
+      "sizeLowKB": 1598,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/packed_dirt_road_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/packed_dirt_road_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/packed_dirt_road_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/packed_dirt_road_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/packed_dirt_road_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/packed_dirt_road_arm_1k.ktx2"
+        }
+      }
+    }
+  ],
+  "models": [
+    {
+      "id": "boulder_small",
+      "name": "Basalt Boulder (Small)",
+      "category": "Rocks",
+      "source": "Poly Haven (namaqualand_boulder_04)",
+      "sourceUrl": "https://polyhaven.com/a/namaqualand_boulder_04",
+      "license": "CC0",
+      "sizeHighKB": 872,
+      "sizeLowKB": 447,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/boulder_small.glb",
+        "low": "/assets/env/ignis/models/boulder_small_low.glb"
+      }
+    },
+    {
+      "id": "boulder_medium_a",
+      "name": "Angular Basalt Boulder",
+      "category": "Rocks",
+      "source": "Poly Haven (namaqualand_boulder_02)",
+      "sourceUrl": "https://polyhaven.com/a/namaqualand_boulder_02",
+      "license": "CC0",
+      "sizeHighKB": 1261,
+      "sizeLowKB": 711,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/boulder_medium_a.glb",
+        "low": "/assets/env/ignis/models/boulder_medium_a_low.glb"
+      }
+    },
+    {
+      "id": "boulder_medium_b",
+      "name": "Weathered Basalt Boulder",
+      "category": "Rocks",
+      "source": "Poly Haven (namaqualand_boulder_03)",
+      "sourceUrl": "https://polyhaven.com/a/namaqualand_boulder_03",
+      "license": "CC0",
+      "sizeHighKB": 851,
+      "sizeLowKB": 460,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/boulder_medium_b.glb",
+        "low": "/assets/env/ignis/models/boulder_medium_b_low.glb"
+      }
+    },
+    {
+      "id": "boulder_large",
+      "name": "Basalt Rock Slab (Large)",
+      "category": "Rocks",
+      "source": "Poly Haven (namaqualand_boulder_05)",
+      "sourceUrl": "https://polyhaven.com/a/namaqualand_boulder_05",
+      "license": "CC0",
+      "sizeHighKB": 1256,
+      "sizeLowKB": 736,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/boulder_large.glb",
+        "low": "/assets/env/ignis/models/boulder_large_low.glb"
+      }
+    },
+    {
+      "id": "boulder_huge",
+      "name": "Cracked Basalt Monolith",
+      "category": "Rocks",
+      "source": "Poly Haven (namaqualand_boulder_06)",
+      "sourceUrl": "https://polyhaven.com/a/namaqualand_boulder_06",
+      "license": "CC0",
+      "sizeHighKB": 1300,
+      "sizeLowKB": 737,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/boulder_huge.glb",
+        "low": "/assets/env/ignis/models/boulder_huge_low.glb"
+      }
+    },
+    {
+      "id": "rock_cluster_a",
+      "name": "Basalt Boulder Cluster",
+      "category": "Rocks",
+      "source": "Poly Haven (namaqualand_boulders_01)",
+      "sourceUrl": "https://polyhaven.com/a/namaqualand_boulders_01",
+      "license": "CC0",
+      "sizeHighKB": 867,
+      "sizeLowKB": 382,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/rock_cluster_a.glb",
+        "low": "/assets/env/ignis/models/rock_cluster_a_low.glb"
+      }
+    },
+    {
+      "id": "rock_cluster_b",
+      "name": "Basalt Rock Formation",
+      "category": "Rocks",
+      "source": "Poly Haven (namaqualand_rocks_01)",
+      "sourceUrl": "https://polyhaven.com/a/namaqualand_rocks_01",
+      "license": "CC0",
+      "sizeHighKB": 1200,
+      "sizeLowKB": 661,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/rock_cluster_b.glb",
+        "low": "/assets/env/ignis/models/rock_cluster_b_low.glb"
+      }
+    },
+    {
+      "id": "cliff_chunk",
+      "name": "Layered Basalt Cliff Chunk",
+      "category": "Cliffs",
+      "source": "Poly Haven (namaqualand_cliff_01)",
+      "sourceUrl": "https://polyhaven.com/a/namaqualand_cliff_01",
+      "license": "CC0",
+      "sizeHighKB": 1007,
+      "sizeLowKB": 606,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/cliff_chunk.glb",
+        "low": "/assets/env/ignis/models/cliff_chunk_low.glb"
+      }
+    },
+    {
+      "id": "dead_tree_trunk",
+      "name": "Burnt Charred Tree Stump",
+      "category": "Foliage",
+      "source": "Poly Haven (dead_tree_trunk)",
+      "sourceUrl": "https://polyhaven.com/a/dead_tree_trunk",
+      "license": "CC0",
+      "sizeHighKB": 1068,
+      "sizeLowKB": 418,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/dead_tree_trunk.glb",
+        "low": "/assets/env/ignis/models/dead_tree_trunk_low.glb"
+      }
+    },
+    {
+      "id": "dead_burnt_tree",
+      "name": "Charred Dead Tree",
+      "category": "Foliage",
+      "source": "Poly Haven (dead_tree_trunk_02)",
+      "sourceUrl": "https://polyhaven.com/a/dead_tree_trunk_02",
+      "license": "CC0",
+      "sizeHighKB": 1218,
+      "sizeLowKB": 628,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/dead_burnt_tree.glb",
+        "low": "/assets/env/ignis/models/dead_burnt_tree_low.glb"
+      }
+    },
+    {
+      "id": "barrel",
+      "name": "Charred Wood Barrels",
+      "category": "Props",
+      "source": "Poly Haven (wooden_barrels_01)",
+      "sourceUrl": "https://polyhaven.com/a/wooden_barrels_01",
+      "license": "CC0",
+      "sizeHighKB": 1305,
+      "sizeLowKB": 585,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/barrel.glb",
+        "low": "/assets/env/ignis/models/barrel_low.glb"
+      }
+    },
+    {
+      "id": "crate",
+      "name": "Weathered Timber Crate",
+      "category": "Props",
+      "source": "Poly Haven (wooden_crate_01)",
+      "sourceUrl": "https://polyhaven.com/a/wooden_crate_01",
+      "license": "CC0",
+      "sizeHighKB": 357,
+      "sizeLowKB": 329,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/crate.glb",
+        "low": "/assets/env/ignis/models/crate_low.glb"
+      }
+    },
+    {
+      "id": "wooden_cart",
+      "name": "Timber Cart Wagon",
+      "category": "Props",
+      "source": "Kenney Fantasy Town Kit",
+      "sourceUrl": "https://kenney.nl/assets/fantasy-town-kit",
+      "license": "CC0",
+      "sizeHighKB": 18,
+      "sizeLowKB": 18,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/wooden_cart.glb",
+        "low": "/assets/env/ignis/models/wooden_cart_low.glb"
+      }
+    },
+    {
+      "id": "stone_pillar",
+      "name": "Ashlar Stone Pillar",
+      "category": "Architecture",
+      "source": "Kenney Fantasy Town Kit",
+      "sourceUrl": "https://kenney.nl/assets/fantasy-town-kit",
+      "license": "CC0",
+      "sizeHighKB": 5,
+      "sizeLowKB": 5,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/stone_pillar.glb",
+        "low": "/assets/env/ignis/models/stone_pillar_low.glb"
+      }
+    },
+    {
+      "id": "anvil",
+      "name": "Forged Blacksmith Anvil",
+      "category": "Props",
+      "source": "Procedural Forge Crafting (ELEMENTS)",
+      "sourceUrl": "Procedural generation",
+      "license": "CC0",
+      "sizeHighKB": 11,
+      "sizeLowKB": 11,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/anvil.glb",
+        "low": "/assets/env/ignis/models/anvil_low.glb"
+      }
+    },
+    {
+      "id": "iron_brazier",
+      "name": "Forged Iron Brazier",
+      "category": "Props",
+      "source": "Procedural Forge Crafting (ELEMENTS)",
+      "sourceUrl": "Procedural generation",
+      "license": "CC0",
+      "sizeHighKB": 10,
+      "sizeLowKB": 10,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/iron_brazier.glb",
+        "low": "/assets/env/ignis/models/iron_brazier_low.glb"
+      }
+    },
+    {
+      "id": "stone_wall_low",
+      "name": "Low Fortified Stone Wall",
+      "category": "Architecture",
+      "source": "Procedural Forge Crafting (ELEMENTS)",
+      "sourceUrl": "Procedural generation",
+      "license": "CC0",
+      "sizeHighKB": 4,
+      "sizeLowKB": 4,
+      "trianglesHigh": 1200,
+      "trianglesLow": 1200,
+      "files": {
+        "high": "/assets/env/ignis/models/stone_wall_low.glb",
+        "low": "/assets/env/ignis/models/stone_wall_low_low.glb"
+      }
+    }
+  ]
+}

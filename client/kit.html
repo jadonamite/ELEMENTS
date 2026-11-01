@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>IGNIS Environment Kit — ELEMENTS</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+      }
+      body, html {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #0c0a09;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        color: #e5e5e5;
+      }
+      #kit-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        z-index: 1;
+      }
+      #kit-ui {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 24px 32px;
+      }
+      .interactive {
+        pointer-events: auto;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .title-group h1 {
+        font-size: 20px;
+        letter-spacing: 2.5px;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #f5f5f5;
+        margin-bottom: 4px;
+      }
+      .title-group p {
+        font-size: 12px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #a8a29e;
+      }
+      .badge-ignis {
+        display: inline-block;
+        background: #dc2626;
+        color: #ffffff;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        padding: 3px 8px;
+        border-radius: 2px;
+        margin-right: 8px;
+        vertical-align: middle;
+      }
+      .view-tabs {
+        display: flex;
+        gap: 8px;
+        background: rgba(18, 16, 15, 0.85);
+        backdrop-filter: blur(12px);
+        padding: 4px;
+        border: 1px solid #292524;
+        border-radius: 4px;
+      }
+      .tab-btn {
+        background: transparent;
+        border: none;
+        color: #a8a29e;
+        padding: 8px 16px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        cursor: pointer;
+        border-radius: 2px;
+        transition: all 0.15s ease;
+      }
+      .tab-btn:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .tab-btn.active {
+        color: #ffffff;
+        background: #262322;
+        border: 1px solid #44403c;
+      }
+      .quality-toggle {
+        display: flex;
+        gap: 4px;
+        background: rgba(18, 16, 15, 0.85);
+        backdrop-filter: blur(12px);
+        padding: 4px;
+        border: 1px solid #292524;
+        border-radius: 4px;
+      }
+      .quality-btn {
+        background: transparent;
+        border: none;
+        color: #a8a29e;
+        padding: 6px 12px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        cursor: pointer;
+        border-radius: 2px;
+      }
+      .quality-btn.active {
+        background: #44403c;
+        color: #ffffff;
+      }
+      .sidebar {
+        position: absolute;
+        top: 96px;
+        left: 32px;
+        width: 320px;
+        background: rgba(18, 16, 15, 0.88);
+        backdrop-filter: blur(16px);
+        border: 1px solid #292524;
+        border-radius: 6px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .sidebar-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: #e7e5e4;
+        border-bottom: 1px solid #292524;
+        padding-bottom: 8px;
+      }
+      .selector-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 280px;
+        overflow-y: auto;
+      }
+      .selector-item {
+        background: transparent;
+        border: 1px solid transparent;
+        color: #a8a29e;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        text-align: left;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .selector-item:hover {
+        background: rgba(255, 255, 255, 0.04);
+        color: #fafaf9;
+      }
+      .selector-item.active {
+        background: #292524;
+        border-color: #57534e;
+        color: #f5f5f4;
+      }
+      .meta-box {
+        background: rgba(12, 10, 9, 0.6);
+        border: 1px solid #292524;
+        border-radius: 4px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 11px;
+      }
+      .meta-row {
+        display: flex;
+        justify-content: space-between;
+        color: #a8a29e;
+      }
+      .meta-row span.val {
+        color: #f5f5f4;
+        font-weight: 600;
+      }
+      footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+      }
+      .hud-stats {
+        background: rgba(18, 16, 15, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid #292524;
+        border-radius: 4px;
+        padding: 8px 16px;
+        display: flex;
+        gap: 20px;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+      }
+      .hud-stats div span {
+        color: #a8a29e;
+        margin-right: 6px;
+      }
+      .hud-stats div strong {
+        color: #f5f5f4;
+      }
+      .controls-hint {
+        background: rgba(18, 16, 15, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid #292524;
+        border-radius: 4px;
+        padding: 8px 16px;
+        font-size: 11px;
+        color: #a8a29e;
+        letter-spacing: 0.5px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="kit-canvas"></canvas>
+    <div id="kit-ui">
+      <header>
+        <div class="title-group">
+          <h1><span class="badge-ignis">IGNIS</span>Environment Kit Gallery</h1>
+          <p>Black Basalt, Ash Grey, Quenched Iron, Ember Accents &bull; Milestone M3</p>
+        </div>
+        <div class="view-tabs interactive">
+          <button id="tab-mat-sheet" class="tab-btn active">Materials Sheet</button>
+          <button id="tab-materials" class="tab-btn">Material Inspector</button>
+          <button id="tab-models" class="tab-btn">Model Turntable</button>
+        </div>
+        <div class="quality-toggle interactive">
+          <button id="btn-high" class="quality-btn active">HIGH (2K)</button>
+          <button id="btn-low" class="quality-btn">LOW (1K)</button>
+        </div>
+      </header>
+
+      <div id="sidebar-container" class="sidebar interactive">
+        <div id="sidebar-heading" class="sidebar-title">Select Material</div>
+        <div id="selector-list" class="selector-list"></div>
+        <div id="meta-display" class="meta-box">
+          <div class="meta-row"><span>Asset:</span><span id="meta-name" class="val">-</span></div>
+          <div class="meta-row"><span>Category:</span><span id="meta-cat" class="val">-</span></div>
+          <div class="meta-row"><span>Format / Resolution:</span><span id="meta-res" class="val">-</span></div>
+          <div class="meta-row"><span>Size:</span><span id="meta-size" class="val">-</span></div>
+          <div class="meta-row"><span>Source:</span><span id="meta-source" class="val">-</span></div>
+        </div>
+      </div>
+
+      <footer>
+        <div class="hud-stats">
+          <div><span>FPS:</span><strong id="stat-fps">60</strong></div>
+          <div><span>Draw Calls:</span><strong id="stat-drawcalls">12</strong></div>
+          <div><span>Triangles:</span><strong id="stat-tris">12.4k</strong></div>
+          <div><span>Quality:</span><strong id="stat-quality">HIGH</strong></div>
+        </div>
+        <div class="controls-hint">
+          Left Drag: Orbit &bull; Right Drag: Pan &bull; Scroll: Zoom &bull; Space: Turntable Pause
+        </div>
+      </footer>
+    </div>
+    <script type="module" src="/src/kit/main.ts"></script>
+  </body>
+</html>
