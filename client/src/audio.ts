@@ -41,9 +41,10 @@ export interface SoundManagerOptions {
 }
 
 interface VillainAudioState {
-  strideTimer: number;
+  strideDistance: number;
   wasAttacking: boolean;
   deathPlayed: boolean;
+  lastStepRight: boolean;
 }
 
 export class SoundManager {
@@ -69,7 +70,8 @@ export class SoundManager {
   ambientActive = false;
 
   // Hero locomotion and stride
-  private heroStrideTimer = 0;
+  private heroStrideDistance = 0;
+  private heroLastStepRight = false;
 
   // Sword state tracking for draw/sheathe foley
   private lastSwordArmed = false;
@@ -102,13 +104,17 @@ export class SoundManager {
 
       // Limiter / mastering compressor settings to ensure six villains never clip
       this.compressor.threshold.setValueAtTime(-6, this.ctx.currentTime);
-      this.compressor.knee.setValueAtTime(6, this.ctx.currentTime);
-      this.compressor.ratio.setValueAtTime(12, this.ctx.currentTime);
-      this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
-      this.compressor.release.setValueAtTime(0.15, this.ctx.currentTime);
+      this.compressor.knee.setValueAtTime(4, this.ctx.currentTime);
+      this.compressor.ratio.setValueAtTime(20, this.ctx.currentTime);
+      this.compressor.attack.setValueAtTime(0.001, this.ctx.currentTime);
+      this.compressor.release.setValueAtTime(0.12, this.ctx.currentTime);
+
+      const masterCeiling = this.ctx.createGain();
+      masterCeiling.gain.setValueAtTime(0.85, this.ctx.currentTime);
 
       this.masterGain.connect(this.compressor);
-      this.compressor.connect(this.analyser);
+      this.compressor.connect(masterCeiling);
+      masterCeiling.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
 
       // Separate mix busses
@@ -386,14 +392,14 @@ export class SoundManager {
     enemies?: readonly SoundEnemyLike[],
     sword?: SoundSwordLike,
   ): void {
-    if (!this.ctx || this.muted) return;
+    if (this.muted) return;
 
-    if (camera) {
+    if (camera && this.ctx) {
       this.updateListener(camera);
     }
 
     // Ambient slow volume drift across the 3 layers
-    if (this.ambientActive && this.ambientLayerGains.length >= 3) {
+    if (this.ambientActive && this.ambientLayerGains.length >= 3 && this.ctx) {
       this.ambientClock += delta;
       const t = this.ambientClock;
       const g0 = 0.70 + 0.20 * Math.sin(t * 0.12);
@@ -405,21 +411,24 @@ export class SoundManager {
       this.ambientLayerGains[2]?.gain.setValueAtTime(Math.max(0.15, g2), this.ctx.currentTime);
     }
 
-    // Hero footsteps tracking
+    // Hero footsteps tracking locked to animation footfall distance
     if (controller) {
       const speed = controller.speed;
       const isAirborne = controller.position.y > 0.06;
       const isIdle = speed < 0.2;
 
       if (isAirborne || isIdle) {
-        this.heroStrideTimer = 0;
+        this.heroStrideDistance = 0;
       } else {
         const isRun = speed >= 3.8;
-        const interval = isRun ? 0.32 : 0.50;
-        this.heroStrideTimer += delta;
-        if (this.heroStrideTimer >= interval) {
-          this.heroStrideTimer -= interval;
-          this.playFootstep(isRun);
+        // Half-stride distance (metres between alternating footfalls) matching authored walk (0.485m) and run (1.48m)
+        const stepDistance = isRun ? 1.48 : 0.485;
+        this.heroStrideDistance += speed * delta;
+        if (this.heroStrideDistance >= stepDistance) {
+          this.heroStrideDistance -= stepDistance;
+          this.heroLastStepRight = !this.heroLastStepRight;
+          const footPitch = this.heroLastStepRight ? 1.04 : 0.96;
+          this.playFootstep(isRun, footPitch);
         }
       }
     }
@@ -434,7 +443,7 @@ export class SoundManager {
 
         let state = this.villainStates.get(enemy);
         if (!state) {
-          state = { strideTimer: Math.random() * 0.2, wasAttacking: false, deathPlayed: false };
+          state = { strideDistance: Math.random() * 0.2, wasAttacking: false, deathPlayed: false, lastStepRight: false };
           this.villainStates.set(enemy, state);
         }
 
@@ -446,16 +455,18 @@ export class SoundManager {
 
         const vSpeed = enemy.controller.speed;
         const vAirborne = enemy.controller.position.y > 0.08;
-        if (!vAirborne && vSpeed >= 0.3 && !isAttacking) {
+        if (!vAirborne && vSpeed >= 0.25 && !isAttacking) {
           const isRun = vSpeed >= 3.8;
-          const interval = isRun ? 0.32 : 0.50;
-          state.strideTimer += delta;
-          if (state.strideTimer >= interval) {
-            state.strideTimer -= interval;
-            this.playVillainFootstep(enemy.controller.position, isRun);
+          const stepDistance = isRun ? 1.48 : 0.485;
+          state.strideDistance += vSpeed * delta;
+          if (state.strideDistance >= stepDistance) {
+            state.strideDistance -= stepDistance;
+            state.lastStepRight = !state.lastStepRight;
+            const footPitch = state.lastStepRight ? 1.03 : 0.95;
+            this.playVillainFootstep(enemy.controller.position, isRun, footPitch);
           }
         } else {
-          state.strideTimer = 0;
+          state.strideDistance = 0;
         }
       }
     }
@@ -554,15 +565,15 @@ export class SoundManager {
   }
 
   /** Hero footstep on stone, walk or run. */
-  playFootstep(isRun = false): void {
+  playFootstep(isRun = false, pitchMult = 1.0): void {
     const category = isRun ? 'footstep_stone_run' : 'footstep_stone_walk';
-    this.playSample(category, isRun ? 1.0 : 0.85, 1.0, this.footstepGain);
+    this.playSample(category, isRun ? 1.0 : 0.85, pitchMult, this.footstepGain);
   }
 
   /** Spatialized villain footstep on stone, quieter. */
-  playVillainFootstep(position: SoundPosition, isRun = false): void {
+  playVillainFootstep(position: SoundPosition, isRun = false, pitchMult = 1.0): void {
     const category = isRun ? 'footstep_stone_run' : 'footstep_stone_walk';
-    this.playSample(category, isRun ? 0.45 : 0.35, 0.95, this.footstepGain, position);
+    this.playSample(category, isRun ? 0.45 : 0.35, 0.95 * pitchMult, this.footstepGain, position);
   }
 
   /** Spatialized villain attack swing whoosh. */
