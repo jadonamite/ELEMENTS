@@ -7,7 +7,7 @@ The track (NEAR Hackathon, Games With Real Economies) asks for exactly what our 
 ## 1. The loop
 
 ### Every 30 seconds
-- **Lit (Shaper):** walk Sindr or the road, fight. A robber, a deserter, an ember hound. The fight is the God of War-weight fight we have: weapon, hands, legs, bending, parry, combos. The winner takes the loser's loot: villains drop mostly the CHROMA they carried; monsters drop shards of their nation's colour (40% chance of 1 in a nation zone). The pack fills and the player feels the weight of carrying it, because robbers target players who carry too much, and dying drops the materials you carried where you fell.
+- **Lit (Shaper):** walk Sindr or the road, fight. A robber, a deserter, an ember hound. The fight is the God of War-weight fight we have: weapon, hands, legs, bending, parry, combos. The winner takes the loser's loot: villains drop mostly the CHROMA they carried; monsters drop shards of their nation's colour (40% chance of 1 in a nation zone). Loot drops onto the ground where the enemy falls; the player must walk over it to claim it (it is never vacuumed automatically into satchels). The pack fills and the player feels the weight of carrying it, because robbers target players who carry too much, and dying drops the materials you carried where you fell.
 - **Dim (Hush):** buy or win raw shards, work the forge. The forging mini-game, where timing decides quality. Repair a Lit player's worn gear for coin. Run errands at the Raid Hall branch for a cut.
 - **Both:** see the world react. A merchant's price tag changes after you sell to them. A shop's purse visibly shrinks. A Sentry or guard notices how much you carry.
 
@@ -24,7 +24,8 @@ The track (NEAR Hackathon, Games With Real Economies) asks for exactly what our 
 - **Follow a lead.** The master's hint, the forged relic, the road to Chromara. Between leads, the world is open.
 
 ### For judges and for us: the fast-forward
-A room in the counting house (the ledger room) where the clerk shows the town's books. One control runs Sindr's economy forward a week in a minute: 100 simulated players fight, sell, craft and bank; prices move on the board; a merchant's purse drains and its shutters close; a player buys it. It runs the real rules (the 60-day economy simulation already does this offline). Every number on screen is the ledger's, and each purse links to its account on the NEAR explorer for anyone who wants to look. Players who don't care never see the chain.
+*(Deferred to the end of the entire build; not built now.)*
+A room in the counting house (the ledger room) where the clerk shows the town's books. One control runs Sindr's economy forward a week in a minute: 100 simulated players fight, sell, craft and bank; prices move on the board; a merchant's purse drains and its shutters close; a player buys it. It runs the real rules (the 60-day economy simulation already does this offline). Every number on screen is the ledger's, and each purse links to its account on the NEAR explorer for anyone who wants to look. Players who don't care never see the chain. Observed and integrated towards the end of the entire build after the main game is complete.
 
 ## 2. Who the agents are
 
@@ -54,13 +55,13 @@ Nothing is removed from the build plan; the economy items move up and run in par
 
 1. **Town (running now):** Sindr on levels with stairs and walls, the maze style reworked, the look raised toward the bar. The market square, counting houses, forge and master's hall are where the loop happens, so they come first and to the full look.
 2. **The loop in Sindr, playable (new position, straight after the town's core):**
-   - loot drops and the pack (M5.2), dying drops what you carried (M3.8);
+   - loot drops in the world (player walks over to claim, not auto-vacuumed) and the pack (M5.2), dying drops what you carried (M3.8);
    - merchants in the square with purses, stock, the price file, reasoning tooltips, NPC memory (M5.3, M5.11), and the AI agent deciding restock and words;
    - counting houses open (M5.4), red flags, bounties, notice board (M5.5, M5.6);
    - shards from monsters (M7.3) with the ember hound (M1.11), the forge mini-game for the Dim (M7.4), wear and repair (M7.5);
    - a broke merchant's shop that a player can buy;
-   - the ledger room and the fast-forward;
    - shops shut at night (M3.7).
+   *(Note: The ledger room fast-forward is left for the end of the entire build).*
 3. **On chain, alongside:** the economy server and coin contract merged, NEP-245 contract, agent accounts, settling (M6.1, M6.3, M6.4), then Intents with merchants as solvers.
 4. **Then the rest of M3 as planned:** Gorge Road and ambushes, preset arenas, Slag Barrens, the fort. Then M4 onward, unchanged.
 

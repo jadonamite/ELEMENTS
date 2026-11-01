@@ -129,7 +129,7 @@ The nations are at war from the start, as a state of the world: hostile borders,
 Each nation holds one piece of the search for the Allborn: four chapters, one per nation, each ending with that nation's master giving up their rumour.
 
 ### Battle
-- **The enemies are villains, not husks:** robbers, soldiers, miscreants, level bosses and monsters. "Husk" is retired as an idea; the code still uses the word for now.
+- **The enemies are villains, not husks:** robbers, soldiers, miscreants, level bosses and monsters. "Husk" is retired as an idea.
 - Nations at war with each other is part of the world, built out later.
 
 ## 4. Chromara and the seat of the Edict
@@ -175,7 +175,7 @@ Agreed 29 Oct. Monsters and bosses will be broadened later; they need more imagi
 - **The Lord is unseen,** felt only through the Sentries and the Edict.
 
 ### Bending among NPCs
-Most NPCs can bend, but not all: NPCs are 65% Lit and 35% Dim. Robbers are mostly Dim and fight with weapons; some soldiers and every boss are Lit.
+Most NPCs cannot bend: NPCs are 20% Lit and 80% Dim (Jadon, 1 Nov). There are no Vakna among NPCs. Robbers are mostly Dim and fight with weapons; some soldiers and every boss are Lit.
 
 ### Showdowns
 - **Any showdown can happen anywhere.** Fights don't need a special place.
@@ -192,6 +192,7 @@ Agreed 29 Oct.
 ### Loot
 - Villains mostly drop the CHROMA they were carrying.
 - Whoever wins a fight takes the loser's loot: CHROMA, carried items and shards.
+- **Physical drop collection (1 Nov):** Loot drops into the physical world at the point of defeat. The player must walk over to claim it; items are never vacuumed automatically into satchels.
 
 ### Bending is who you are
 - A Lit player can bend at any time; it never runs out. Bending is not fuelled by a meter.
@@ -304,7 +305,7 @@ Agreed 30 Oct.
 - A district of plots at the edge of each nation's town, and a small, very expensive district in Chromara.
 
 ### Theft from plots
-- Breaking into a plot's stores counts as robbing (red flag; a bounty if a guard sees). Players are not told this is possible: they find out.
+- Breaking into a plot's stores counts as robbing (a red flag). Players are not told this is possible: they find out.
 - Raids are a separate thing, still to be designed.
 - While offline, a player can lose at most 10 to 20% of everything they own to robbery.
 
@@ -497,8 +498,8 @@ Villains carry CHROMA, and whoever wins a fight takes the loser's loot. Robbers 
 - **Marked players can't draw.** Counting houses answer to the Edict and refuse anyone with a red flag or a bounty.
 - **Red flag:** a minor offence (speaking a banished name, brawling in town). It shows over your head, fades with time, and Sentries fine you on sight.
 - **Bounty:** a serious offence. Your face goes on the notice boards with a price in CHROMA, and anyone who beats you collects it. It never fades; you pay it off in CHROMA or someone collects it.
-- **Robbing** another player is allowed anywhere. It earns a red flag; if a guard sees it, a bounty.
-- **Three red flags** held at once, before they fade, become a bounty.
+- **Robbing** another player is allowed anywhere. Robbing and other evil deeds earn a red flag (Jadon, 1 Nov).
+- **Three red flags** held at once, before they fade, become a bounty. That is the only road to a bounty.
 - **Jail** seizes 40% of your CHROMA, materials and gear, vault included (land is never seized), and getting out costs a fine on top.
 - **Trade between players** happens hand to hand, at stalls on owned land, and on a market board in Chromara. Most trade runs through the Dim. Trades between two Lit are taxed far more heavily than trades with the Dim: the Lit are hunters and looters, the Dim are the traders.
 - **A merchant who goes broke** shuts their shop. A player can buy it; if nobody does, a new NPC merchant arrives after a while.

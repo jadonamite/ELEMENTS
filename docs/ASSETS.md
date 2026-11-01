@@ -111,9 +111,9 @@ These source-code licenses permit commercial software under their conditions, wi
 
 ## IGNIS environment kit (acquired 2026-10-30)
 
-Production asset set for the nation of IGNIS (Sindr, Gorge Road, Slag Barrens, East Border Fort). All assets are dedicated to the public domain under CC0 1.0 Universal, color-graded to a unified volcanic palette (deep charcoal basalt `#1a1614`, soot/ash `#2d2724`, warm ember rust `#5a2a18`, neutral mortar `#3a3532`), packed into glTF/KTX2/WebP with meshopt compression, and supplied in paired High (2K / high-poly) and Low (1K / low-poly) LODs. Total kit size: 39.8 MB High (budget < 40 MB), 10.02 MB Low (budget < 12 MB).
+Production asset set for the nation of IGNIS (Sindr, Gorge Road, Slag Barrens, East Border Fort). All assets are dedicated to the public domain under CC0 1.0 Universal, color-graded to a unified volcanic palette (deep charcoal basalt `#1a1614`, soot/ash `#2d2724`, warm ember rust `#5a2a18`, neutral mortar `#3a3532`), and packed for the browser. Materials are KTX2: colour and packed AO/roughness/metal maps in ETC1S at 2K (high) and 1K (low), normals in UASTC at 1K for both levels. Models are glTF with meshopt geometry and WebP textures, 1K on the high level and 512 px on the low one. Download per level: about 31 MB high and 19 MB low.
 
-### Scanned PBR Materials (8)
+### Scanned PBR Materials (10)
 
 | Material ID | Name | Category | Source and ID | License | Acquisition Date | Recolored to IGNIS Palette |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -125,6 +125,8 @@ Production asset set for the nation of IGNIS (Sindr, Gorge Road, Slag Barrens, E
 | `charred_timber_beams` | Charred Timber Beams | Architecture / Props | [Poly Haven: beam_wall_01](https://polyhaven.com/a/beam_wall_01) | CC0 | 2026-10-30 | Yes (scorched dark timber with carbonized grain) |
 | `blackened_rusted_iron` | Blackened Forge Iron | Metal / Weapons / Props | [Poly Haven: rusty_metal_02](https://polyhaven.com/a/rusty_metal_02) | CC0 | 2026-10-30 | Yes (heavy forge iron with warm ember oxide pits) |
 | `packed_dirt_road` | Packed Dirt Road | Ground / Paths | [Poly Haven: stony_dirt_path](https://polyhaven.com/a/stony_dirt_path) | CC0 | 2026-10-30 | Yes (graded to dark volcanic ash road with volcanic gravel) |
+| `roof_slates` | Roof Slates | Architecture / Roofs | [Poly Haven: roof_slates_02](https://polyhaven.com/a/roof_slates_02) | CC0 | 2026-10-30 | Tinted in the town shader |
+| `sooted_plaster` | Sooted Plaster | Architecture / Walls | [Poly Haven: damaged_plaster](https://polyhaven.com/a/damaged_plaster) | CC0 | 2026-10-30 | Tinted in the town shader |
 
 ### Models and Foliage (17)
 
@@ -148,3 +150,19 @@ Production asset set for the nation of IGNIS (Sindr, Gorge Road, Slag Barrens, E
 | `iron_brazier` | Iron Brazier | Props | Procedural mesh | CC0 | 2026-10-30 | Authored in blackened iron and glowing core |
 | `stone_wall_low` | Low Stone Wall Segment | Architecture | Procedural mesh | CC0 | 2026-10-30 | Authored in ashlar stone blocks |
 
+### Monsters (1)
+
+| Model ID | Name | Category | Source and ID | License | Acquisition Date | Recolored to IGNIS Palette |
+| --- | --- | --- | --- | --- | --- | --- |
+| `ember_hound` | Ember Hound | Monster / Wildlife | [Quaternius: Ultimate Animated Animals (Wolf)](https://quaternius.com) and [ambientCG: Lava004](https://ambientcg.com/view?id=Lava004) | CC0 | 2026-11-01 | Yes (lean, dark cooling basalt carapace, dull ember fissure glow, lighter unarmoured nape patch, optimized with KTX2 and meshopt) |
+
+
+
+## People (MakeHuman bodies), added 1 Nov 2026
+
+| Asset | Source | License | Used for |
+| --- | --- | --- | --- |
+| Human base mesh, targets, game-engine rig and weights | MPFB 2 for Blender (extensions.blender.org, build 20261010) | Tool GPL; its output and bundled data CC0 | Every body in `client/public/assets/people/` |
+| Skins, eyes, eyebrows, eyelashes, teeth, hair | MakeHuman system assets pack (`makehuman_system_assets_cc0.zip`, files2.makehumancommunity.org), 1 Nov 2026 | CC0 | Skin, eyes, brows, lashes, teeth, hair |
+| Wool texture Fabric031, linen Fabric061, woven Fabric019, Leather037 | ambientCG (ambientcg.com), 1K JPG, 1 Nov 2026 | CC0 | The commoner's rags (tunic, trousers, wraps, belt), tinted |
+| Commoner's rags meshes | Made for ELEMENTS from the base mesh's helper shapes (`workbench/scripts/people/make_rags.py`) | Ours | Tunic, trousers, belt, foot wraps |
