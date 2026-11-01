@@ -233,7 +233,7 @@
       "patchDurationMax": 3.8,
       "patchRadius": 1.25,
       "maxPatches": 16,
-      "huskBurnDuration": 2.5
+      "villainBurnDuration": 2.5
     },
     "rules": {
       "placeholder": true,
@@ -759,6 +759,60 @@
         "6": 1.25,
         "7": 1.5
       }
+    },
+    "situationalCounters": {
+      "enabled": false,
+      "edgeMultiplier": 1.15,
+      "situations": {
+        "AQUES": {
+          "advantageOver": "IGNIS",
+          "terrains": [
+            "wet",
+            "river",
+            "coastal"
+          ],
+          "weathers": [
+            "rain",
+            "storm"
+          ]
+        },
+        "IGNIS": {
+          "advantageOver": "AURA",
+          "terrains": [
+            "volcanic",
+            "scorched",
+            "slag"
+          ],
+          "weathers": [
+            "ash",
+            "heatwave"
+          ]
+        },
+        "AURA": {
+          "advantageOver": "TERRA",
+          "terrains": [
+            "elevated",
+            "cliff",
+            "rooftop"
+          ],
+          "weathers": [
+            "gale",
+            "high_winds"
+          ]
+        },
+        "TERRA": {
+          "advantageOver": "AQUES",
+          "terrains": [
+            "rocky",
+            "canyon",
+            "bedrock"
+          ],
+          "weathers": [
+            "drought",
+            "sandstorm"
+          ]
+        }
+      }
     }
   },
   "hero": {
@@ -926,5 +980,66 @@
         }
       }
     ]
+  },
+  "world": {
+    "walk": {
+      "snapToGround": 0.5,
+      "maxSlopeClimbDeg": 40,
+      "minSlopeSlideDeg": 50,
+      "autostepHeight": 0.25,
+      "autostepMinWidth": 0.2
+    },
+    "dayNight": {
+      "dayMinutes": 12,
+      "duskMinutes": 2,
+      "nightMinutes": 8,
+      "dawnMinutes": 2,
+      "startMinute": 4,
+      "sunMaxElevationDeg": 58
+    }
+  },
+  "monsters": {
+    "emberHound": {
+      "health": 120,
+      "speeds": {
+        "walk": 2.2,
+        "run": 6.5,
+        "charge": 10.5
+      },
+      "chargeDistance": 7.5,
+      "chargeCooldown": 2.0,
+      "biteDamage": 18,
+      "weakSpotMultiplier": 2.0,
+      "weakSpotRadius": 0.35,
+      "weakSpotAngleDeg": 60,
+      "packSize": 3,
+      "flankAngleDeg": 65,
+      "stalkDistanceMin": 5.0,
+      "stalkDistanceMax": 7.0,
+      "noticeRange": 16.0,
+      "biteRange": 1.8,
+      "staggerDuration": 0.8,
+      "weakSpotStaggerDuration": 1.5,
+      "attackHitFraction": 0.4,
+      "attackDuration": 0.9,
+      "fireResistance": 0.5,
+      "waterVulnerability": 1.5,
+      "drops": [
+        {
+          "id": "ignis_shard",
+          "name": "IGNIS Shard",
+          "chance": 0.85,
+          "min": 1,
+          "max": 2
+        },
+        {
+          "id": "ember_hide",
+          "name": "Ember Hide",
+          "chance": 1.0,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    }
   }
 }
