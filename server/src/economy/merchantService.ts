@@ -3,13 +3,18 @@ import {
   type MerchantState,
   type MerchantStatus,
   type MerchantInventoryItem,
+  type QuoteStep,
+  type DemandWindow,
   calculateQuote,
   updateMerchantSolvency,
   applyMerchantBailout,
   TREASURY_ACCOUNT_ID,
   TAX_RATES,
+  DEMAND_CONFIG,
+  COLOR_BALANCE_CONFIG,
+  getElementFromItemType,
 } from '@elements/shared';
-import { getDatabase } from '../db.js';
+import { getDatabase, getActiveShopOwnership, insertShopSale } from '../db.js';
 import { recordTransaction } from './ledgerService.js';
 import { getNpcMemory } from './npcMemoryService.js';
 
@@ -84,6 +89,103 @@ export function saveMerchant(merchant: MerchantState, db: DatabaseSync = getData
   );
 }
 
+export function recordMerchantDemand(
+  params: {
+    merchantId: string;
+    itemType: string;
+    action: 'buy' | 'sell';
+    quantity: number;
+    timestamp?: number;
+  },
+  db: DatabaseSync = getDatabase(),
+): void {
+  const now = params.timestamp ?? Date.now();
+  const id = `${params.merchantId}:${now}:${Math.random().toString(36).slice(2, 9)}`;
+  db.prepare(
+    `INSERT INTO merchant_demand (id, merchant_id, item_type, action, quantity, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    params.merchantId,
+    params.itemType,
+    params.action,
+    params.quantity,
+    now,
+  );
+}
+
+export function getMerchantDemandWindow(
+  merchantId: string,
+  now = Date.now(),
+  db: DatabaseSync = getDatabase(),
+): DemandWindow {
+  const cutoff = now - DEMAND_CONFIG.windowMs;
+  const rows = (db
+    .prepare(
+      `SELECT item_type, action, quantity, timestamp
+       FROM merchant_demand
+       WHERE merchant_id = ? AND timestamp >= ? AND timestamp <= ?`,
+    )
+    .all(merchantId, cutoff, now) as unknown) as Array<{
+    item_type: string;
+    action: 'buy' | 'sell';
+    quantity: number;
+    timestamp: number;
+  }>;
+
+  const window: DemandWindow = {};
+  for (const row of rows) {
+    if (!window[row.item_type]) {
+      window[row.item_type] = [];
+    }
+    const list = window[row.item_type];
+    if (list) {
+      list.push({
+        action: row.action,
+        quantity: row.quantity,
+        timestamp: row.timestamp,
+      });
+    }
+  }
+  return window;
+}
+
+export function getRecentShardSales(
+  now = Date.now(),
+  db: DatabaseSync = getDatabase(),
+): Record<string, number> {
+  const cutoff = now - COLOR_BALANCE_CONFIG.windowMs;
+  const rows = (db
+    .prepare(
+      `SELECT d.item_type, m.nation, SUM(d.quantity) as total
+       FROM merchant_demand d
+       JOIN merchant_states m ON d.merchant_id = m.id
+       WHERE d.action = 'sell' AND d.timestamp >= ? AND d.timestamp <= ?
+       GROUP BY d.item_type, m.nation`,
+    )
+    .all(cutoff, now) as unknown) as Array<{
+    item_type: string;
+    nation: string;
+    total: number;
+  }>;
+
+  const counts: Record<string, number> = {
+    IGNIS: 0,
+    AQUES: 0,
+    TERRA: 0,
+    AURA: 0,
+  };
+
+  for (const row of rows) {
+    const el = getElementFromItemType(row.item_type, row.nation);
+    if (el && counts[el] !== undefined) {
+      counts[el] = (counts[el] ?? 0) + Number(row.total);
+    }
+  }
+
+  return counts;
+}
+
 export function quoteMerchantTrade(
   params: {
     merchantId: string;
@@ -92,30 +194,68 @@ export function quoteMerchantTrade(
     quantity: number;
     isOutsider?: boolean;
     buyerAccountId?: string;
+    now?: number;
+    shardSales?: Record<string, number>;
   },
   db: DatabaseSync = getDatabase(),
-): { unitPrice: number; totalPrice: number; canExecute: boolean; reason?: string } {
+): {
+  unitPrice: number;
+  totalPrice: number;
+  canExecute: boolean;
+  reason?: string;
+  steps: QuoteStep[];
+  summary: string;
+} {
   const merchant = getMerchant(params.merchantId, db);
   if (!merchant) {
-    return { unitPrice: 0, totalPrice: 0, canExecute: false, reason: 'Merchant not found' };
-  }
-
-  if (merchant.status === 'closed') {
-    return { unitPrice: 0, totalPrice: 0, canExecute: false, reason: 'Merchant shop is closed' };
-  }
-
-  if (params.action === 'sell' && merchant.status === 'broke_buying_paused') {
+    const reason = 'Merchant not found';
     return {
       unitPrice: 0,
       totalPrice: 0,
       canExecute: false,
-      reason: 'Merchant has insufficient funds and has paused purchases',
+      reason,
+      steps: [{ rule: 'not_found', effect: 0, words: 'No merchant by that name trades in this district.' }],
+      summary: 'No merchant by that name trades in this district.',
     };
   }
 
-  const invItem = merchant.inventory[params.itemType];
+  if (merchant.status === 'closed') {
+    const reason = 'Merchant shop is closed';
+    return {
+      unitPrice: 0,
+      totalPrice: 0,
+      canExecute: false,
+      reason,
+      steps: [{ rule: 'closed', effect: 0, words: 'The shop is shuttered; no coin or goods move here today.' }],
+      summary: 'The shop is shuttered; no coin or goods move here today.',
+    };
+  }
+
+  if (params.action === 'sell' && merchant.status === 'broke_buying_paused') {
+    const reason = 'Merchant has insufficient funds and has paused purchases';
+    return {
+      unitPrice: 0,
+      totalPrice: 0,
+      canExecute: false,
+      reason,
+      steps: [{ rule: 'paused', effect: 0, words: 'My purse is drained dry; I cannot buy more goods today.' }],
+      summary: 'My purse is drained dry; I cannot buy more goods today.',
+    };
+  }
+
+  const invItem =
+    merchant.inventory[params.itemType] ??
+    (params.itemType.startsWith('shard') ? merchant.inventory['shard'] : undefined);
   if (!invItem) {
-    return { unitPrice: 0, totalPrice: 0, canExecute: false, reason: 'Item not traded by merchant' };
+    const reason = 'Item not traded by merchant';
+    return {
+      unitPrice: 0,
+      totalPrice: 0,
+      canExecute: false,
+      reason,
+      steps: [{ rule: 'untraded', effect: 0, words: 'I do not trade in those goods.' }],
+      summary: 'I do not trade in those goods.',
+    };
   }
 
   let memoryScore = 0;
@@ -123,6 +263,15 @@ export function quoteMerchantTrade(
     const mem = getNpcMemory(params.merchantId, params.buyerAccountId, db);
     memoryScore = mem.score;
   }
+
+  const now = params.now ?? Date.now();
+  const demandWindow = getMerchantDemandWindow(params.merchantId, now, db);
+  const shardSales = params.shardSales ?? getRecentShardSales(now, db);
+
+  const ownership = getActiveShopOwnership(params.merchantId, db);
+  const ownerMultiplier =
+    ownership?.priceMultipliers?.[params.itemType] ??
+    (params.itemType.startsWith('shard') ? ownership?.priceMultipliers?.['shard'] : undefined);
 
   const quote = calculateQuote({
     itemType: params.itemType,
@@ -132,6 +281,11 @@ export function quoteMerchantTrade(
     basePrice: invItem.basePrice,
     isOutsider: params.isOutsider ?? false,
     npcMemoryScore: memoryScore,
+    demandWindow,
+    shardSales,
+    now,
+    nation: merchant.nation,
+    ownerMultiplier,
   });
 
   if (!quote.canExecute) {
@@ -140,6 +294,8 @@ export function quoteMerchantTrade(
       totalPrice: 0,
       canExecute: false,
       reason: quote.reason ?? 'Cannot execute quote',
+      steps: quote.steps,
+      summary: quote.summary,
     };
   }
 
@@ -147,6 +303,8 @@ export function quoteMerchantTrade(
     unitPrice: quote.unitPrice,
     totalPrice: quote.unitPrice * params.quantity,
     canExecute: true,
+    steps: quote.steps,
+    summary: quote.summary,
   };
 }
 
@@ -157,16 +315,20 @@ export function buyFromMerchant(
     itemType: string;
     quantity: number;
     isOutsider?: boolean;
+    now?: number;
   },
   db: DatabaseSync = getDatabase(),
 ): { unitPrice: number; totalPrice: number; taxAmount: number } {
   const merchant = getMerchant(params.merchantId, db);
   if (!merchant) throw new Error('Merchant not found');
 
-  const invItem = merchant.inventory[params.itemType];
+  const invItem =
+    merchant.inventory[params.itemType] ??
+    (params.itemType.startsWith('shard') ? merchant.inventory['shard'] : undefined);
   if (!invItem) throw new Error(`Merchant does not stock ${params.itemType}`);
   if (invItem.stock < params.quantity) throw new Error('Insufficient merchant stock');
 
+  const now = params.now ?? Date.now();
   const quoteParams: {
     merchantId: string;
     itemType: string;
@@ -174,11 +336,13 @@ export function buyFromMerchant(
     quantity: number;
     isOutsider?: boolean;
     buyerAccountId?: string;
+    now?: number;
   } = {
     merchantId: params.merchantId,
     itemType: params.itemType,
     action: 'buy',
     quantity: params.quantity,
+    now,
   };
   if (params.isOutsider) quoteParams.isOutsider = true;
   if (params.buyerAccountId) quoteParams.buyerAccountId = params.buyerAccountId;
@@ -199,6 +363,7 @@ export function buyFromMerchant(
       amount: totalPrice,
       reason: 'merchant_buy',
       refId: `${merchant.id}:${params.itemType}:${params.quantity}`,
+      timestamp: now,
     },
     db,
   );
@@ -211,6 +376,7 @@ export function buyFromMerchant(
       amount: salesTax,
       reason: 'merchant_sales_tax',
       refId: `tax:${merchant.id}:${params.itemType}`,
+      timestamp: now,
     },
     db,
   );
@@ -219,6 +385,31 @@ export function buyFromMerchant(
   invItem.stock -= params.quantity;
   merchant.balance += totalPrice - salesTax;
   saveMerchant(merchant, db);
+
+  // 4. Record demand
+  recordMerchantDemand(
+    {
+      merchantId: params.merchantId,
+      itemType: params.itemType,
+      action: 'buy',
+      quantity: params.quantity,
+      timestamp: now,
+    },
+    db,
+  );
+
+  insertShopSale(
+    {
+      merchantId: params.merchantId,
+      buyerId: params.buyerAccountId,
+      sellerId: merchant.id,
+      itemType: params.itemType,
+      quantity: params.quantity,
+      price: totalPrice,
+      timestamp: now,
+    },
+    db,
+  );
 
   return { unitPrice: quote.unitPrice, totalPrice, taxAmount: salesTax };
 }
@@ -230,15 +421,19 @@ export function sellToMerchant(
     itemType: string;
     quantity: number;
     isOutsider?: boolean;
+    now?: number;
   },
   db: DatabaseSync = getDatabase(),
 ): { unitPrice: number; totalPrice: number } {
   const merchant = getMerchant(params.merchantId, db);
   if (!merchant) throw new Error('Merchant not found');
 
-  const invItem = merchant.inventory[params.itemType];
+  const invItem =
+    merchant.inventory[params.itemType] ??
+    (params.itemType.startsWith('shard') ? merchant.inventory['shard'] : undefined);
   if (!invItem) throw new Error(`Merchant does not buy ${params.itemType}`);
 
+  const now = params.now ?? Date.now();
   const quoteParams: {
     merchantId: string;
     itemType: string;
@@ -246,11 +441,13 @@ export function sellToMerchant(
     quantity: number;
     isOutsider?: boolean;
     buyerAccountId?: string;
+    now?: number;
   } = {
     merchantId: params.merchantId,
     itemType: params.itemType,
     action: 'sell',
     quantity: params.quantity,
+    now,
   };
   if (params.isOutsider) quoteParams.isOutsider = true;
   if (params.sellerAccountId) quoteParams.buyerAccountId = params.sellerAccountId;
@@ -273,6 +470,7 @@ export function sellToMerchant(
       amount: totalPrice,
       reason: 'merchant_sell',
       refId: `${merchant.id}:${params.itemType}:${params.quantity}`,
+      timestamp: now,
     },
     db,
   );
@@ -283,6 +481,18 @@ export function sellToMerchant(
 
   const solvency = updateMerchantSolvency(merchant, false);
   saveMerchant(solvency.state, db);
+
+  // 3. Record demand
+  recordMerchantDemand(
+    {
+      merchantId: params.merchantId,
+      itemType: params.itemType,
+      action: 'sell',
+      quantity: params.quantity,
+      timestamp: now,
+    },
+    db,
+  );
 
   return { unitPrice: quote.unitPrice, totalPrice };
 }

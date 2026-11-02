@@ -4,3 +4,6 @@ export * from './countingHouseService.js';
 export * from './crimeService.js';
 export * from './npcMemoryService.js';
 export * from './tradeService.js';
+export * from './lootService.js';
+export * from './shopService.js';
+export * from './agents/index.js';

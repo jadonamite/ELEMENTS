@@ -20,6 +20,14 @@ import {
   addRedFlag,
   processJailSentence,
   executePlayerTrade,
+  listLootPiles,
+  claimLootPile,
+  getMerchantMind,
+  getShopsForSale,
+  buyShop,
+  setShopPrices,
+  stockShop,
+  withdrawShopProfit,
 } from './economy/index.js';
 
 function extractToken(req: Request): string | null {
@@ -466,6 +474,261 @@ export function setupApi(app: Application): void {
       res.json({ success: true, ...trade });
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Trade failed' });
+    }
+  });
+
+  app.get('/api/economy/loot', (req: Request, res: Response) => {
+    const zone = typeof req.query.zone === 'string' ? req.query.zone : '';
+    if (!zone) {
+      res.status(400).json({ error: 'Missing zone parameter' });
+      return;
+    }
+
+    const x = req.query.x !== undefined ? Number(req.query.x) : undefined;
+    const z = req.query.z !== undefined ? Number(req.query.z) : undefined;
+    const r = req.query.r !== undefined ? Number(req.query.r) : undefined;
+
+    if (x !== undefined && Number.isNaN(x)) {
+      res.status(400).json({ error: 'Invalid coordinate x' });
+      return;
+    }
+    if (z !== undefined && Number.isNaN(z)) {
+      res.status(400).json({ error: 'Invalid coordinate z' });
+      return;
+    }
+    if (r !== undefined && Number.isNaN(r)) {
+      res.status(400).json({ error: 'Invalid radius r' });
+      return;
+    }
+
+    try {
+      const piles = listLootPiles({ zone, x, z, radius: r });
+      res.json({ piles });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to query loot piles' });
+    }
+  });
+
+  app.post('/api/economy/loot/:pileId/claim', async (req: Request, res: Response) => {
+    const pileId = String(req.params.pileId ?? '');
+    if (!pileId) {
+      res.status(400).json({ error: 'Missing pileId' });
+      return;
+    }
+
+    let accountId = req.body?.accountId;
+    const token = extractToken(req);
+    if (token) {
+      try {
+        const verified = await verifyToken(token);
+        accountId = verified.userId;
+      } catch {
+        // Fall back to body accountId if token fails
+      }
+    }
+
+    const { x, z } = req.body || {};
+    if (!accountId || x === undefined || z === undefined) {
+      res.status(400).json({ error: 'Missing accountId, x, or z' });
+      return;
+    }
+
+    const numX = Number(x);
+    const numZ = Number(z);
+    if (Number.isNaN(numX) || Number.isNaN(numZ)) {
+      res.status(400).json({ error: 'Invalid coordinates x or z' });
+      return;
+    }
+
+    try {
+      const result = claimLootPile({
+        pileId,
+        accountId: String(accountId),
+        x: numX,
+        z: numZ,
+      });
+      res.json({ success: true, ...result });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Claim failed' });
+    }
+  });
+
+  app.get('/api/economy/merchants/:merchantId/mind', (req: Request, res: Response) => {
+    const merchantId = String(req.params.merchantId ?? '');
+    if (!merchantId) {
+      res.status(400).json({ error: 'Missing merchantId' });
+      return;
+    }
+
+    try {
+      const mind = getMerchantMind(merchantId);
+      if (!mind) {
+        res.status(404).json({ error: 'Merchant not found' });
+        return;
+      }
+      res.json(mind);
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to query merchant mind' });
+    }
+  });
+
+  // --- Shop Ownership endpoints (E4) ---
+
+  app.get('/api/economy/shops/for-sale', (_req: Request, res: Response) => {
+    try {
+      const shops = getShopsForSale();
+      res.json({ shops });
+    } catch (err: unknown) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to query shops for sale',
+      });
+    }
+  });
+
+  app.post('/api/economy/shops/:merchantId/buy', async (req: Request, res: Response) => {
+    const merchantId = String(req.params.merchantId ?? '');
+    if (!merchantId) {
+      res.status(400).json({ error: 'Missing merchantId' });
+      return;
+    }
+    const token = extractToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Missing auth token' });
+      return;
+    }
+    let verified: { userId: string };
+    try {
+      verified = await verifyToken(token);
+    } catch {
+      res.status(401).json({ error: 'Invalid auth token' });
+      return;
+    }
+
+    try {
+      const result = buyShop({
+        merchantId,
+        buyerAccountId: verified.userId,
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Failed to purchase shop',
+      });
+    }
+  });
+
+  app.post('/api/economy/shops/:merchantId/prices', async (req: Request, res: Response) => {
+    const merchantId = String(req.params.merchantId ?? '');
+    if (!merchantId) {
+      res.status(400).json({ error: 'Missing merchantId' });
+      return;
+    }
+    const token = extractToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Missing auth token' });
+      return;
+    }
+    let verified: { userId: string };
+    try {
+      verified = await verifyToken(token);
+    } catch {
+      res.status(401).json({ error: 'Invalid auth token' });
+      return;
+    }
+
+    const multipliers = req.body?.multipliers ?? req.body?.prices;
+    if (!multipliers || typeof multipliers !== 'object') {
+      res.status(400).json({ error: 'Missing multipliers dictionary' });
+      return;
+    }
+
+    try {
+      const result = setShopPrices({
+        merchantId,
+        ownerAccountId: verified.userId,
+        multipliers,
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Failed to set shop prices',
+      });
+    }
+  });
+
+  app.post('/api/economy/shops/:merchantId/stock', async (req: Request, res: Response) => {
+    const merchantId = String(req.params.merchantId ?? '');
+    if (!merchantId) {
+      res.status(400).json({ error: 'Missing merchantId' });
+      return;
+    }
+    const token = extractToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Missing auth token' });
+      return;
+    }
+    let verified: { userId: string };
+    try {
+      verified = await verifyToken(token);
+    } catch {
+      res.status(401).json({ error: 'Invalid auth token' });
+      return;
+    }
+
+    const { itemType, quantity } = req.body || {};
+    if (!itemType || typeof quantity !== 'number') {
+      res.status(400).json({ error: 'Missing itemType or quantity' });
+      return;
+    }
+
+    try {
+      const result = stockShop({
+        merchantId,
+        ownerAccountId: verified.userId,
+        itemType: String(itemType),
+        quantity: Number(quantity),
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Failed to stock shop',
+      });
+    }
+  });
+
+  app.post('/api/economy/shops/:merchantId/withdraw', async (req: Request, res: Response) => {
+    const merchantId = String(req.params.merchantId ?? '');
+    if (!merchantId) {
+      res.status(400).json({ error: 'Missing merchantId' });
+      return;
+    }
+    const token = extractToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Missing auth token' });
+      return;
+    }
+    let verified: { userId: string };
+    try {
+      verified = await verifyToken(token);
+    } catch {
+      res.status(401).json({ error: 'Invalid auth token' });
+      return;
+    }
+
+    const amount =
+      req.body?.amount !== undefined ? Number(req.body.amount) : undefined;
+
+    try {
+      const result = withdrawShopProfit({
+        merchantId,
+        ownerAccountId: verified.userId,
+        amount,
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Failed to withdraw shop profit',
+      });
     }
   });
 }

@@ -943,10 +943,23 @@
       "bailoutGrant": 100000,
       "outsiderBuySurcharge": 0.2,
       "outsiderSellDiscount": 0.1,
+      "defaultSellMargin": 0.8,
+      "maxPriceMultiplier": 3.9,
+      "minPrice": 1,
       "basePrices": {
         "shard": 10,
         "potion": 20,
         "item": 150
+      },
+      "demand": {
+        "windowHours": 24,
+        "maxDemandFactor": 0.3
+      },
+      "colorBalance": {
+        "windowHours": 48,
+        "thresholdRatio": 0.4,
+        "discountRate": 0.2,
+        "counterPremiumRate": 0.2
       }
     },
     "taxes": {
@@ -963,6 +976,92 @@
     },
     "death": {
       "carriedShardLossRate": 0.25
+    },
+    "drops": {
+      "ownerSeconds": 60,
+      "expireMinutes": 15,
+      "claimRadius": 1.5,
+      "monsterNationDropChance": 0.4,
+      "monsterChromaraDropChance": 0.3
+    },
+    "merchants": {
+      "sindr": [
+        {
+          "id": "sindr_shards",
+          "name": "Sindr Shards and Materials",
+          "nation": "IGNIS",
+          "personality": "A keen-eyed trader with charcoal-stained fingers who knows the true weight of every rough shard.",
+          "startingPurse": 20000,
+          "inventory": {
+            "shard": {
+              "stock": 100,
+              "maxStock": 200,
+              "basePrice": 10
+            },
+            "material": {
+              "stock": 50,
+              "maxStock": 100,
+              "basePrice": 15
+            }
+          }
+        },
+        {
+          "id": "sindr_supplies",
+          "name": "Sindr Potions and Supplies",
+          "nation": "IGNIS",
+          "personality": "A calm apothecary measuring every tincture by the drop, wary of waste and sudden shortages.",
+          "startingPurse": 20000,
+          "inventory": {
+            "potion": {
+              "stock": 50,
+              "maxStock": 100,
+              "basePrice": 20
+            },
+            "supplies": {
+              "stock": 50,
+              "maxStock": 100,
+              "basePrice": 25
+            }
+          }
+        },
+        {
+          "id": "sindr_arms",
+          "name": "Sindr Arms and Armour",
+          "nation": "IGNIS",
+          "personality": "A weathered veteran smith who judges folk by the balance of their blade and the firmness of their purse.",
+          "startingPurse": 20000,
+          "inventory": {
+            "item": {
+              "stock": 25,
+              "maxStock": 50,
+              "basePrice": 150
+            },
+            "armour": {
+              "stock": 25,
+              "maxStock": 50,
+              "basePrice": 150
+            }
+          }
+        }
+      ]
+    },
+    "agents": {
+      "tickGameMinutes": 30,
+      "dayStartHour": 6,
+      "nightStartHour": 20,
+      "minOpenHour": 6,
+      "maxCloseHour": 22,
+      "restockStockRatio": 0.3,
+      "tributeStockRatio": 0.9
+    },
+    "shops": {
+      "salePrice": 2000,
+      "saleDays": 3,
+      "maxPerPlayer": 1,
+      "upkeepPerDay": 10,
+      "minPriceMultiplier": 0.6,
+      "maxPriceMultiplier": 2.5,
+      "unpaidUpkeepDaysToForfeit": 7
     }
   }
 }

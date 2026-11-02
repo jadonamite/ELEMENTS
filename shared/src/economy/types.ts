@@ -11,6 +11,8 @@ export type LedgerReason =
   | 'merchant_sell'
   | 'merchant_sales_tax'
   | 'merchant_bailout'
+  | 'merchant_restock'
+  | 'merchant_tribute'
   | 'counting_house_deposit'
   | 'counting_house_withdrawal'
   | 'counting_house_fee'
@@ -19,9 +21,14 @@ export type LedgerReason =
   | 'jail_fine'
   | 'robbery'
   | 'loot_drop'
+  | 'loot_claim'
+  | 'loot_expired'
   | 'training_tithe'
   | 'repair_fee'
-  | 'upkeep_fee';
+  | 'upkeep_fee'
+  | 'shop_purchase'
+  | 'shop_upkeep'
+  | 'shop_withdrawal';
 
 export interface LedgerEntry {
   id: string;
@@ -110,3 +117,105 @@ export interface TradeTaxResult {
   taxAmount: number;
   sellerReceives: number;
 }
+
+export interface QuoteStep {
+  rule: string;
+  effect: number;
+  words: string;
+}
+
+export interface Quote {
+  unitPrice: number;
+  canExecute: boolean;
+  reason?: string;
+  steps: QuoteStep[];
+  summary: string;
+}
+
+export interface DemandEntry {
+  action: 'buy' | 'sell';
+  quantity: number;
+  timestamp: number;
+}
+
+export type DemandWindow = Record<string, DemandEntry[]>;
+
+export interface ShardSaleEntry {
+  element: string;
+  quantity: number;
+  timestamp: number;
+}
+
+export type Colour = 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA';
+
+export type LootSource = 'villain' | 'monster' | 'player_death';
+
+export interface LootContents {
+  chroma: number;
+  shards: Record<Colour, number>;
+  materials: Record<string, number>;
+}
+
+export interface LootPile {
+  id: string;
+  x: number;
+  z: number;
+  zone: string;
+  contents: LootContents;
+  droppedAt: number;
+  ownerId: string | null;
+  ownerUntil: number;
+  expiresAt: number;
+  source: LootSource;
+  claimed?: boolean | undefined;
+  claimedBy?: string | null | undefined;
+  claimedAt?: number | null | undefined;
+  expired?: boolean | undefined;
+}
+
+export type ShopOwnershipAction =
+  | 'purchase'
+  | 'set_prices'
+  | 'stock'
+  | 'upkeep'
+  | 'withdraw'
+  | 'forfeit'
+  | 'relinquish';
+
+export interface ShopOwnershipRecord {
+  id: string;
+  merchantId: string;
+  ownerId: string;
+  action: ShopOwnershipAction;
+  priceMultipliers: Record<string, number>;
+  unpaidUpkeepDays: number;
+  lastUpkeepAt: number;
+  amount: number;
+  active: boolean;
+  timestamp: number;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+export interface ShopSaleRecord {
+  id: string;
+  merchantId: string;
+  buyerId?: string | null | undefined;
+  sellerId?: string | null | undefined;
+  itemType: string;
+  quantity: number;
+  price: number;
+  timestamp: number;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+export interface ShopForSale {
+  merchantId: string;
+  name: string;
+  nation: string;
+  salePrice: number;
+  daysOnSale: number;
+  remainingDays: number;
+  inventory: Record<string, MerchantInventoryItem>;
+  listedAt: number;
+}
+
