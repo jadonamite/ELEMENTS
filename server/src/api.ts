@@ -516,20 +516,23 @@ export function setupApi(app: Application): void {
       return;
     }
 
-    let accountId = req.body?.accountId;
+    // The claimer is always the signed-in player, never a name sent in the body.
     const token = extractToken(req);
-    if (token) {
-      try {
-        const verified = await verifyToken(token);
-        accountId = verified.userId;
-      } catch {
-        // Fall back to body accountId if token fails
-      }
+    if (!token) {
+      res.status(401).json({ error: 'Missing auth token' });
+      return;
+    }
+    let accountId: string;
+    try {
+      accountId = (await verifyToken(token)).userId;
+    } catch {
+      res.status(401).json({ error: 'Invalid auth token' });
+      return;
     }
 
     const { x, z } = req.body || {};
-    if (!accountId || x === undefined || z === undefined) {
-      res.status(400).json({ error: 'Missing accountId, x, or z' });
+    if (x === undefined || z === undefined) {
+      res.status(400).json({ error: 'Missing x or z' });
       return;
     }
 
@@ -675,25 +678,11 @@ export function setupApi(app: Application): void {
       return;
     }
 
-    const { itemType, quantity } = req.body || {};
-    if (!itemType || typeof quantity !== 'number') {
-      res.status(400).json({ error: 'Missing itemType or quantity' });
-      return;
-    }
-
-    try {
-      const result = stockShop({
-        merchantId,
-        ownerAccountId: verified.userId,
-        itemType: String(itemType),
-        quantity: Number(quantity),
-      });
-      res.json(result);
-    } catch (err: unknown) {
-      res.status(400).json({
-        error: err instanceof Error ? err.message : 'Failed to stock shop',
-      });
-    }
+    // Refused until the server records what each player carries: without that record,
+    // stocking would create goods from nothing.
+    void merchantId;
+    void verified;
+    res.status(501).json({ error: 'Shop stocking is not open yet' });
   });
 
   app.post('/api/economy/shops/:merchantId/withdraw', async (req: Request, res: Response) => {

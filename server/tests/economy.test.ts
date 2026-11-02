@@ -923,6 +923,11 @@ test('HTTP API: handles loot listing and claiming endpoints end-to-end', async (
   migrateDatabase(db);
   setDatabase(db);
 
+  setTokenVerifier(async (token) => {
+    if (token === 'api_player') return { userId: 'api_player' };
+    throw new Error('Invalid token');
+  });
+
   const server = await startTestServer();
 
   try {
@@ -951,18 +956,27 @@ test('HTTP API: handles loot listing and claiming endpoints end-to-end', async (
     assert.equal(dataFar.piles.length, 0);
 
     // Claim attempt from too far away
-    const resFarClaim = await fetch(`${server.baseUrl}/api/economy/loot/${pile.id}/claim`, {
+    // A claim naming a player in the body, with no sign-in, is refused
+    const resForgedClaim = await fetch(`${server.baseUrl}/api/economy/loot/${pile.id}/claim`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accountId: 'api_player', x: 50, z: 50 }),
+      body: JSON.stringify({ accountId: 'api_player', x: 10.8, z: 20 }),
+    });
+    assert.equal(resForgedClaim.status, 401);
+    assert.equal(getAccountBalance('api_player', db), 0);
+
+    const resFarClaim = await fetch(`${server.baseUrl}/api/economy/loot/${pile.id}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer api_player' },
+      body: JSON.stringify({ x: 50, z: 50 }),
     });
     assert.equal(resFarClaim.status, 400);
 
     // Valid claim within 1.5 m (e.g. 10.8, 20 -> dist 0.8 m)
     const resValidClaim = await fetch(`${server.baseUrl}/api/economy/loot/${pile.id}/claim`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accountId: 'api_player', x: 10.8, z: 20 }),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer api_player' },
+      body: JSON.stringify({ x: 10.8, z: 20 }),
     });
     assert.equal(resValidClaim.status, 200);
     const claimData = (await resValidClaim.json()) as { success: boolean; contents: { chroma: number } };
@@ -1956,9 +1970,8 @@ test('HTTP API: shop ownership endpoints handle for-sale listing, purchase, pric
         quantity: 20,
       }),
     });
-    assert.equal(stockRes.status, 200);
-    const stockData = (await stockRes.json()) as { success: boolean; newStock: number };
-    assert.ok(stockData.newStock >= 20);
+    // Refused until the server records what each player carries
+    assert.equal(stockRes.status, 501);
 
     // 6. Fund merchant and test POST withdraw
     const merch = getMerchant(merchantId, db)!;
