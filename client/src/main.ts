@@ -10,7 +10,7 @@ import { loadHero, type HeroInstance } from './hero.js';
 import { FixedStepper, HeroController, locomotionForSpeed, movementVelocity, turnToward } from './controller.js';
 import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
-import { Combat, getStrikingLimb, type CombatAction, type FightingStyle } from './combat.js';
+import { Combat, strikeKind, type CombatAction, type FightingStyle } from './combat.js';
 import { loadEnemyTemplate, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
 import { inFront } from './hits.js';
@@ -401,6 +401,8 @@ async function main(): Promise<void> {
         alignToTarget();
       }
     },
+    undefined,
+    clip => hero.strikeLimbOf(clip),
   );
   /** The weapon model currently in the hero's hands. */
   let heldWeapon: string = 'sword';
@@ -603,7 +605,7 @@ async function main(): Promise<void> {
   const triggerAttackEffects = (action: CombatAction, strength = 1, bendMove?: BendMoveId | null): void => {
     // Thrown moves are drawn when they leave the hand (projectileLaunched), not on the key press.
     if (isDim && action === 'uppercut') return;
-    if (bendMove && getStrikingLimb(bendMove, fightingStyle) === 'projectile') return;
+    if (bendMove && strikeKind(bendMove, fightingStyle) === 'projectile') return;
     if (bendMove === 'dash_strike' && kitElement === 'AQUES') {
       const spec = rules.moveFor('dash_strike', fight.kit);
       const quality = bend.healingQuality(controller.position);
@@ -668,7 +670,7 @@ async function main(): Promise<void> {
     } else if (fightingStyle === 'legs') {
       sound.playSwing(0.9, action === 'heavy');
       const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
-      const kickingFoot = action === 'heavy' ? footR : (combat.current === 'leg_light_2' ? footL : footR);
+      const kickingFoot = combat.strikingLimb === 'foot_l' ? footL : footR;
       if (isLit) {
         if (heroElement === 'IGNIS') {
           bending.spawnLegKickArc(controller.position, kickingFoot, controller.facing, action === 'heavy');

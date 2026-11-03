@@ -3,7 +3,7 @@ import test from 'node:test';
 import { Vector3, Bone, Object3D, MeshStandardMaterial } from 'three';
 import balance from '../../shared/balance.json' with { type: 'json' };
 import { createCombatRules } from '../../shared/src/index.js';
-import { Combat, getStrikingLimb } from '../src/combat.js';
+import { Combat } from '../src/combat.js';
 import { limbTouchesCapsule, bladeTouches, inFront } from '../src/hits.js';
 import { SWORD_WEAPON } from '../src/weapon.js';
 
@@ -17,11 +17,16 @@ class MockAnimPlayer {
   play(_clip) {}
 }
 
+// Stands in for the hero's reading of each clip: the jab lands with the left hand, the side kick with the left foot.
+const clipLimbs = { bare_punch_1: 'hand_l', bare_punch_2: 'hand_r', bare_kick: 'foot_r', bare_heavy_1: 'hand_r',
+  leg_kick_1: 'foot_r', leg_kick_2: 'foot_l', leg_kick_heavy: 'foot_r' };
+const limbOf = clip => clipLimbs[clip] ?? null;
+
 test('three fighting styles have distinct openers, combo chains and striking limbs', () => {
   const anim = new MockAnimPlayer();
 
   // Weapon style
-  const combatWeapon = new Combat(anim);
+  const combatWeapon = new Combat(anim, undefined, undefined, undefined, limbOf);
   combatWeapon.setStyle('weapon');
   assert.equal(combatWeapon.fightingStyle, 'weapon');
   combatWeapon.press('light');
@@ -29,19 +34,19 @@ test('three fighting styles have distinct openers, combo chains and striking lim
   assert.equal(combatWeapon.strikingLimb, 'blade');
 
   // Bare hands style: punches and kicks
-  const combatHands = new Combat(anim);
+  const combatHands = new Combat(anim, undefined, undefined, undefined, limbOf);
   combatHands.setStyle('bare_hands');
   assert.equal(combatHands.fightingStyle, 'bare_hands');
   combatHands.press('light');
   assert.equal(combatHands.current, 'bare_light_1');
-  assert.equal(combatHands.strikingLimb, 'hand_r');
+  assert.equal(combatHands.strikingLimb, 'hand_l');
 
   // Advance into combo window and test light combo chaining
   combatHands.update(0.6 * (1 - balance.combat.comboWindow) + 0.05);
   combatHands.press('light');
   combatHands.update(0.2); // finish move to start queued
   assert.equal(combatHands.current, 'bare_light_2');
-  assert.equal(combatHands.strikingLimb, 'hand_l');
+  assert.equal(combatHands.strikingLimb, 'hand_r');
 
   // Chain to kick
   combatHands.update(0.6 * (1 - balance.combat.comboWindow) + 0.05);
@@ -51,14 +56,14 @@ test('three fighting styles have distinct openers, combo chains and striking lim
   assert.equal(combatHands.strikingLimb, 'foot_r');
 
   // Heavy strike
-  const combatHeavy = new Combat(anim);
+  const combatHeavy = new Combat(anim, undefined, undefined, undefined, limbOf);
   combatHeavy.setStyle('bare_hands');
   combatHeavy.press('heavy');
   assert.equal(combatHeavy.current, 'bare_heavy_1');
   assert.equal(combatHeavy.strikingLimb, 'hand_r');
 
   // Legs/kicks style
-  const combatLegs = new Combat(anim);
+  const combatLegs = new Combat(anim, undefined, undefined, undefined, limbOf);
   combatLegs.setStyle('legs');
   assert.equal(combatLegs.fightingStyle, 'legs');
   combatLegs.press('light');
@@ -70,7 +75,7 @@ test('three fighting styles have distinct openers, combo chains and striking lim
   combatLegs.press('light');
   combatLegs.update(0.2);
   assert.equal(combatLegs.current, 'leg_light_2');
-  assert.equal(combatLegs.strikingLimb, 'foot_r');
+  assert.equal(combatLegs.strikingLimb, 'foot_l');
 
   // Chain into heavy kick
   combatLegs.update(0.26);
@@ -80,14 +85,14 @@ test('three fighting styles have distinct openers, combo chains and striking lim
   assert.equal(combatLegs.strikingLimb, 'foot_r');
 
   // Bending style (Lit only)
-  const combatBending = new Combat(anim);
+  const combatBending = new Combat(anim, undefined, undefined, undefined, limbOf);
   combatBending.setStyle('bending');
   assert.equal(combatBending.fightingStyle, 'bending');
   combatBending.press('light');
   assert.equal(combatBending.current, 'bend_palm');
   assert.equal(combatBending.strikingLimb, 'projectile');
 
-  const combatSweep = new Combat(anim);
+  const combatSweep = new Combat(anim, undefined, undefined, undefined, limbOf);
   combatSweep.setStyle('bending');
   combatSweep.press('heavy');
   assert.equal(combatSweep.current, 'bend_sweep');
