@@ -637,6 +637,54 @@ async function main(): Promise<void> {
     get weaponSlot() { return hero.weaponSlot; },
   };
 
+  // --- Online: ?online joins this zone's room on the game server. ---
+  if (new URLSearchParams(window.location.search).has('online')) {
+    const online = await import('./net/online.js');
+    const { getServerUrl, getStoredAuthToken } = await import('./auth/server-api.js');
+    const { loadHoundTemplate } = await import('./monsters/hound.js');
+    const lagMs = Number(new URLSearchParams(window.location.search).get('lag')) || 0;
+    online.OnlineSession.connect({
+      scene, camera, world: physics.world, controller, hero, combat,
+      kit: () => fight.kit,
+      alive: () => fight.heroAlive,
+      isLit: () => isLit,
+      loadAvatar: () => loadHero(),
+      loadHound: () => loadHoundTemplate(undefined, renderer),
+      villains,
+      onMyHit(at, damage, killed) {
+        bend.gain('hit');
+        hitStop = killed ? 0.12 : 0.06;
+        shoulderCamera.shake(killed ? 0.35 : 0.14);
+        sound.playImpact(killed, false);
+        bending.spawnHitBurst(at, heroElement);
+        fightHud.showDamage(at, damage, killed);
+      },
+      onHurt(hp, max) {
+        const wasAlive = fight.heroAlive;
+        fight.heroHealth = { current: Math.min(hp, max), maximum: max };
+        hurtAt = performance.now();
+        shoulderCamera.shake(0.25);
+        sound.playImpact(false, false);
+        if (wasAlive && hp <= 0) {
+          combat.react('death');
+          fightHud.say('You fell');
+          reviveIn = balance.hero.respawnSeconds;
+        } else if (hp > 0) {
+          sound.playHeroHurt();
+          if (!combat.current) combat.react('hit');
+        }
+      },
+      onStatus: status,
+    }, {
+      server: getServerUrl(), zone: inTown ? 'sindr' : 'arena', token: getStoredAuthToken(),
+      element: kitElement, role: isDim ? 'Hush' : 'Shaper', lag: lagMs / 1000,
+    }).then((session) => {
+      cleanup.push(() => session.dispose());
+      if (fps) Object.assign((window as unknown as { elements: object }).elements, { online: session });
+    }).catch((error: unknown) => status(`Playing offline: ${(error as Error).message}`));
+  }
+  // --- End online ---
+
   renderer.setAnimationLoop(() => {
     const now = performance.now();
     const rawDelta = Math.min((now - lastTime) / 1000, balance.controller.maxFrameDelta);
