@@ -25,11 +25,15 @@ import { BendState, type BendRefusal } from './bend-state.js';
 import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
 import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
-import { Satchel } from './world/satchel.js';
+import { TownEconomy } from './economy/town-economy.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { ClientRobberGang } from './agents/outlaws/robberGang.js';
+import { ClientDeserterBand } from './agents/outlaws/deserterBand.js';
+import type { OutlawSenses } from '../../shared/src/agents/types.js';
+import type { Quarry } from './enemy.js';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -142,9 +146,8 @@ async function main(): Promise<void> {
   }
   const consent = new ConsentBanner();
   cleanup.push(() => consent.dispose());
-  const satchel = new Satchel();
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, satchel, clock: zone?.clock, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -225,9 +228,7 @@ async function main(): Promise<void> {
       shoulderCamera.shake(0.4);
       sound.playThump(50, 0.6, 0.7);
       reviveIn = balance.hero.respawnSeconds;
-      if (zone) {
-        satchel.dropOnDeath(controller.position.x, controller.position.z);
-      }
+      townEconomy?.heroDied(controller.position.clone());
     },
     heroParried() {
       bend.gain('parry');
@@ -246,6 +247,7 @@ async function main(): Promise<void> {
       const pos = hitPos ?? _enemy.controller.position;
       bending.spawnHitBurst(pos, heroElement);
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
+      if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone());
       if (killed && fight.allDead) {
         slowMotion = 1.2;
       }
@@ -273,17 +275,9 @@ async function main(): Promise<void> {
   if (zone) { fight.stopWaves(); fightHud.say(''); }
   let yardSpawned = false;
   input.onInteract = () => {
-    if (zone && satchel.dropped) {
-      const dist = Math.hypot(controller.position.x - satchel.dropped.x, controller.position.z - satchel.dropped.z);
-      if (dist < 4.0) {
-        const recovered = satchel.recoverDropped();
-        if (recovered && recovered.length > 0) {
-          notice(`Recovered satchel: ${recovered.map(i => `${i.count} ${i.name}`).join(', ')}`);
-          return;
-        }
-      }
-    }
+    townEconomy?.interact();
   };
+
   input.onDuelToggle = () => {
     const fwd = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
     const spawnPos = controller.position.clone().addScaledVector(fwd, 4.0);
@@ -295,6 +289,39 @@ async function main(): Promise<void> {
     notice(`Challenged ${kind}! Press Tab to lock/unlock.`);
   };
   cleanup.push(() => fight.dispose());
+
+  // --- [creatures: outlaws in Sindr] ---
+  const carryParam = params.get('chroma');
+  // ?chroma=N overrides the purse for tests; otherwise robbers read the server satchel.
+  const forcedCarry = carryParam !== null ? Number(carryParam) : null;
+  const carried = (): { chroma: number; weight: number } =>
+    forcedCarry !== null ? { chroma: forcedCarry, weight: forcedCarry >= 300 ? 8 : 1 }
+      : townEconomy?.carried ?? { chroma: 0, weight: 0 };
+  let robberGang: ClientRobberGang | null = null;
+  let deserterBand: ClientDeserterBand | null = null;
+  if (zone) {
+    villains.then((template) => {
+      robberGang = new ClientRobberGang({
+        onAlert: (msg) => notice(msg),
+        onSpawnEnemy: (enemy) => fight.enemies.push(enemy),
+        onDespawnEnemy: (enemy) => {
+          const idx = fight.enemies.indexOf(enemy);
+          if (idx >= 0) fight.enemies.splice(idx, 1);
+        },
+      });
+      robberGang.bindWorld(scene, physics.world, template);
+
+      deserterBand = new ClientDeserterBand({
+        onAlert: (msg) => notice(msg),
+        onSpawnEnemy: (enemy) => fight.enemies.push(enemy),
+        onDespawnEnemy: (enemy) => {
+          const idx = fight.enemies.indexOf(enemy);
+          if (idx >= 0) fight.enemies.splice(idx, 1);
+        },
+      });
+      deserterBand.bindWorld(scene, physics.world, template);
+    }).catch(console.error);
+  }
   /** Auto-realigns hero facing toward target and glides closer to prevent whiffs on combos and openers. */
   const alignToTarget = (): void => {
     let targetDx = 0;
@@ -373,6 +400,9 @@ async function main(): Promise<void> {
     fightHud.say(text);
     setTimeout(() => { if (fight.heroAlive && !fight.isVictory) fightHud.say(''); }, 1600);
   };
+  // Loot, the market stalls and death drops, held by the server. Sindr is an IGNIS town.
+  const townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', { notice }) : null;
+  cleanup.push(() => townEconomy?.dispose());
   const applyStyle = (): void => {
     fightingStyle = armedWith === 'weapon' ? 'weapon' : armedWith === 'legs' ? 'legs' : (isLit ? 'bending' : 'bare_hands');
     combat.setStyle(fightingStyle);
@@ -696,7 +726,7 @@ async function main(): Promise<void> {
       timeScale = 0.25;
     }
     // The fight and the combat clock stand still together while the fighter picker or home menu is open.
-    const picking = document.body.classList.contains('selecting') || document.body.classList.contains('home-open');
+    const picking = document.body.classList.contains('selecting') || document.body.classList.contains('home-open') || document.body.classList.contains('shop-open');
     const delta = rawDelta * timeScale;
 
     // Validate lock-on target
@@ -706,6 +736,7 @@ async function main(): Promise<void> {
     shoulderCamera.lockTarget = lockedEnemy ? lockedEnemy.controller.position : null;
 
     const alive = fight.heroAlive;
+    townEconomy?.update(rawDelta, controller.position);
     for (const action of alive ? input.takeActions() : []) {
       if (action !== 'dodge') {
         heldCalm = false;
@@ -791,6 +822,46 @@ async function main(): Promise<void> {
       } else if (yardDist > 24) {
         yardSpawned = false;
       }
+
+      // --- [creatures: outlaw encounter evaluation in Sindr] ---
+      if (robberGang && alive) {
+        const isNight = nightness.value >= 0.45;
+        const hour = isNight ? 23 : 14;
+        const inAlley = controller.position.x >= 70 && controller.position.x <= 160 && Math.abs(controller.position.z) > 7;
+        const onRoad = controller.position.x > 220;
+        const zoneType = onRoad ? 'road_out_of_town' : (inAlley ? 'alley' : 'open_street');
+
+        const quarry: Quarry = {
+          position: controller.position,
+          alive: fight.heroAlive,
+        };
+
+        const sentryNearShrine = controller.position.x < 48;
+        const sentryDistance = sentryNearShrine ? 12 : 60;
+
+        const senses: OutlawSenses = {
+          playerCarry: {
+            accountId: 'player_hero',
+            chroma: carried().chroma,
+            satchelWeight: carried().weight,
+          },
+          playerLocation: {
+            x: controller.position.x,
+            z: controller.position.z,
+            zoneType,
+          },
+          timeOfDay: isNight ? 'night' : 'day',
+          hour,
+          sentriesNear: sentryNearShrine,
+          sentryDistance,
+        };
+
+        if (onRoad && deserterBand) {
+          deserterBand.update(delta, quarry, senses.playerCarry, senses.playerLocation);
+        } else {
+          robberGang.update(delta, quarry, senses);
+        }
+      }
     }
     hero.sword.updateMatrixWorld(true);
     hero.sword.localToWorld(bladeBase.copy(hero.bladeBase));
@@ -875,8 +946,10 @@ async function main(): Promise<void> {
       fightingStyle,
       isDim,
     );
-    const supply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
+    const chromaTag = `CHROMA: ${carried().chroma}`;
+    const baseSupply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
       : kitElement === 'AQUES' ? `Waterskin ${bend.waterskin}/${balance.combat.waterskin.charges}${bend.nearWater(controller.position) ? ' · water near' : ''}` : null;
+    const supply = zone ? (baseSupply ? `${baseSupply} · ${chromaTag}` : chromaTag) : baseSupply;
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, supply);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;

@@ -26,13 +26,16 @@ const AIR_GRAVITY = 2.4;
 const FLIGHT_CLIP_SPEED = 1.8;
 const { height, radius } = balance.controller;
 
-type EnemyState = 'spawn' | 'chase' | 'circle' | 'attack' | 'cast' | 'stagger' | 'standing' | 'dead';
+type EnemyState = 'spawn' | 'chase' | 'circle' | 'attack' | 'cast' | 'stagger' | 'standing' | 'flee' | 'dead';
 
 /**
  * How a villain fights. Brawlers use fists, the armed carry a sword or club, benders throw
- * fire from range. Husks are the shambling dead, kept for later in the game and not in waves.
+ * fire from range. Husks are the shambling dead. Robbers are street outlaws. Deserters are rogue soldiers.
  */
-export type VillainKind = 'brawler' | 'armed' | 'bender' | 'husk';
+export type VillainKind = 'brawler' | 'armed' | 'bender' | 'husk' | 'robber' | 'deserter';
+
+/** Drop hook upon kill that returns nothing itself: the economy lane fills it. */
+export type OnKillHook = (kind: string, position: { x: number; y: number; z: number }) => void;
 type KindTuning = {
   attacks: string[]; attackDamage: number; attackRange: number; attackSpeed: number;
   attackHitFraction: number; attackCooldown: number; walkSpeed: number; runSpeed: number;
@@ -142,7 +145,14 @@ export class Enemy {
   private slowScale = 1;
   private slowLeft = 0;
 
-  constructor(template: EnemyTemplate, world: RAPIER.World, spawn: { x: number; z: number }, maxHealth: number, kind: VillainKind = 'brawler') {
+  constructor(
+    template: EnemyTemplate,
+    world: RAPIER.World,
+    spawn: { x: number; z: number },
+    maxHealth: number,
+    kind: VillainKind = 'brawler',
+    bounded = Math.hypot(spawn.x, spawn.z) <= (balance.arena.size / 2),
+  ) {
     const variant = template.variants[Math.floor(Math.random() * template.variants.length)]!;
     this.kind = kind;
     this.fit = KINDS[kind];
@@ -162,7 +172,7 @@ export class Enemy {
       this.materials.push(material);
     });
     this.anim = new AnimationPlayer(this.model, variant.clips, { defaultFadeDuration: 0.2 });
-    this.controller = new HeroController(world, spawn, { ...tuning, walkSpeed: this.fit.walkSpeed, runSpeed: this.fit.runSpeed });
+    this.controller = new HeroController(world, spawn, { ...tuning, walkSpeed: this.fit.walkSpeed, runSpeed: this.fit.runSpeed }, bounded);
     this.health = { current: maxHealth, maximum: maxHealth };
     this.controller.facing = Math.atan2(-spawn.x, -spawn.z);
     this.arm(template);
@@ -219,6 +229,15 @@ export class Enemy {
     const cast = this.thrown;
     this.thrown = null;
     return cast;
+  }
+
+  onKill?: OnKillHook | undefined;
+
+  /** Forces this villain to break off and run away (e.g. robber retreat). */
+  flee(): void {
+    if (this.alive) {
+      this.state = 'flee';
+    }
   }
 
   get alive(): boolean { return this.state !== 'dead'; }
@@ -358,6 +377,13 @@ export class Enemy {
         if (this.timer >= this.length) { this.state = 'chase'; this.castCooldown = fit.castCooldown ?? 3; this.cooldown = fit.attackCooldown; }
         break;
       }
+      case 'flee': {
+        // Run directly away from the quarry
+        yaw = Math.atan2(-toHero.x, -toHero.z);
+        this.controller.facing = yaw;
+        move = { forward: 1, right: 0, running: true };
+        break;
+      }
       case 'dead':
         if (impulse) {
           this.controller.step({ forward: 0, right: 0, running: false }, 0, 0, 1.0, impulse);
@@ -470,6 +496,11 @@ export class Enemy {
 
     this.state = 'dead';
     this.timer = 0;
+    this.onKill?.(this.kind, {
+      x: this.controller.position.x,
+      y: this.controller.position.y,
+      z: this.controller.position.z,
+    });
     const deathClip = hasFlyingDeath && (isHeavy || isFlying || Math.random() < 0.65)
       ? 'death_flying'
       : 'death';
@@ -487,9 +518,9 @@ export class Enemy {
       this.timer += delta;
       const sinking = this.timer - tuning.corpseSeconds;
       if (sinking > 0) position.y -= (sinking / tuning.sinkSeconds) * height * 0.6;
-    } else if (this.state === 'chase' || this.state === 'circle') {
+    } else if (this.state === 'chase' || this.state === 'circle' || this.state === 'flee') {
       const speed = this.controller.speed;
-      const gait = speed < balance.controller.idleSpeedThreshold ? 'idle' : speed < this.fit.runSpeed - 0.5 ? 'walk' : 'run';
+      const gait = this.state === 'flee' ? 'run' : speed < balance.controller.idleSpeedThreshold ? 'idle' : speed < this.fit.runSpeed - 0.5 ? 'walk' : 'run';
       const clip = this.kind === 'husk' ? `husk_${gait}` : gait;
       this.anim.play(clip, 0.25);
       if (gait !== 'idle') this.anim.setSpeed(clip, Math.max(0.5, speed / this.fit.clipSpeeds[gait]));
