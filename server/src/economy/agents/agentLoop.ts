@@ -204,18 +204,20 @@ export async function tickMerchantAgent(
     } else if (act.type === 'tribute') {
       const invItem = merchant.inventory[act.itemType];
       if (invItem && invItem.stock >= act.quantity) {
-        const payout = act.quantity * invItem.basePrice;
-        recordTransaction(
-          {
-            from: TREASURY_ACCOUNT_ID,
-            to: merchant.id,
-            amount: payout,
-            reason: 'merchant_tribute',
-            refId: `${merchant.id}:${act.itemType}:${act.quantity}`,
-            timestamp: now,
-          },
-          db,
-        );
+        const payout = Math.floor(act.quantity * invItem.basePrice * AGENT_CONFIG.tributePriceRatio);
+        if (payout > 0) {
+          recordTransaction(
+            {
+              from: TREASURY_ACCOUNT_ID,
+              to: merchant.id,
+              amount: payout,
+              reason: 'merchant_tribute',
+              refId: `${merchant.id}:${act.itemType}:${act.quantity}`,
+              timestamp: now,
+            },
+            db,
+          );
+        }
         invItem.stock -= act.quantity;
         merchant.balance += payout;
       }

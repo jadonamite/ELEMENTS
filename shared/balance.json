@@ -1167,7 +1167,8 @@
       "minOpenHour": 6,
       "maxCloseHour": 22,
       "restockStockRatio": 0.3,
-      "tributeStockRatio": 0.9
+      "tributeStockRatio": 0.9,
+      "tributePriceRatio": 0.25
     },
     "shops": {
       "salePrice": 2000,

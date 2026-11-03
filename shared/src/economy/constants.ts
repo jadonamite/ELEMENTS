@@ -173,6 +173,8 @@ export const AGENT_CONFIG = {
   maxCloseHour: economyBalance?.agents?.maxCloseHour ?? 22,
   restockStockRatio: economyBalance?.agents?.restockStockRatio ?? 0.3,
   tributeStockRatio: economyBalance?.agents?.tributeStockRatio ?? 0.9,
+  // Share of base price the Lord pays for goods shipped as tribute.
+  tributePriceRatio: economyBalance?.agents?.tributePriceRatio ?? 0.25,
 } as const;
 
 export const SHOPS_CONFIG = {
