@@ -69,6 +69,7 @@ import {
   buyShop,
   setShopPrices,
   stockShop,
+  addItems,
   withdrawShopProfit,
   payShopUpkeep,
   tickShopDay,
@@ -1216,6 +1217,11 @@ test('RuleDecider over 7 simulated days keeps all three merchants solvent and le
           // ignore if stock temporarily low
         }
 
+        // The player gathered one material on the road today.
+        addItems(
+          { accountId: player, from: 'world', stacks: [{ itemId: 'material', quantity: 1 }], reason: 'grant', now: currentTime },
+          db,
+        );
         try {
           sellToMerchant(
             {
@@ -1340,6 +1346,10 @@ test('Merchant solvency: forced flood of 20 x maxStock shards drains purse below
   const floodQuantity = 20 * maxStock; // 4,000 shards
 
   const seller = 'flooding_wholesaler';
+  addItems(
+    { accountId: seller, from: 'world', stacks: [{ itemId: 'shard_ignis', quantity: floodQuantity }], reason: 'grant', now: 1000 },
+    db,
+  );
 
   // Seller dumps shards in repeated sells until merchant purse is drained below 1,000
   let now = 1000;
@@ -1358,7 +1368,7 @@ test('Merchant solvency: forced flood of 20 x maxStock shards drains purse below
         {
           merchantId,
           sellerAccountId: seller,
-          itemType: 'shard',
+          itemType: 'shard_ignis',
           quantity: batchSize,
           now,
         },
@@ -1388,7 +1398,7 @@ test('Merchant solvency: forced flood of 20 x maxStock shards drains purse below
       {
         merchantId,
         sellerAccountId: seller,
-        itemType: 'shard',
+        itemType: 'shard_ignis',
         quantity: 1,
         now,
       },
@@ -1528,11 +1538,17 @@ test("Shop Ownership: broke merchant closes, goes on sale, is bought, restocked,
 
   // 3. Alice restocks the shop with 40 shards at zero tax
   const stockBefore = getMerchant(merchantId, db)!.inventory['shard']!.stock;
+  // Stocking with nothing in the satchel is refused
+  assert.throws(
+    () => stockShop({ merchantId, ownerAccountId: alice, itemType: 'shard_ignis', quantity: 40, now }, db),
+    /Not enough shard_ignis/,
+  );
+  addItems({ accountId: alice, from: 'world', stacks: [{ itemId: 'shard_ignis', quantity: 40 }], reason: 'grant', now }, db);
   const stockRes = stockShop(
     {
       merchantId,
       ownerAccountId: alice,
-      itemType: 'shard',
+      itemType: 'shard_ignis',
       quantity: 40,
       now,
     },
@@ -1966,12 +1982,27 @@ test('HTTP API: shop ownership endpoints handle for-sale listing, purchase, pric
         Authorization: `Bearer ${alice}`,
       },
       body: JSON.stringify({
-        itemType: 'shard',
+        itemType: 'shard_ignis',
         quantity: 20,
       }),
     });
-    // Refused until the server records what each player carries
-    assert.equal(stockRes.status, 501);
+    // Alice carries no shards yet
+    assert.equal(stockRes.status, 400);
+
+    addItems({ accountId: alice, from: 'world', stacks: [{ itemId: 'shard_ignis', quantity: 20 }], reason: 'grant' }, db);
+    const stockRes2 = await fetch(`${server.baseUrl}/api/economy/shops/${merchantId}/stock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${alice}` },
+      body: JSON.stringify({ itemType: 'shard_ignis', quantity: 20 }),
+    });
+    assert.equal(stockRes2.status, 200);
+
+    const satchelRes = await fetch(`${server.baseUrl}/api/economy/satchel`, {
+      headers: { Authorization: `Bearer ${alice}` },
+    });
+    assert.equal(satchelRes.status, 200);
+    const satchelData = (await satchelRes.json()) as { items: Record<string, number> };
+    assert.equal(satchelData.items['shard_ignis'] ?? 0, 0);
 
     // 6. Fund merchant and test POST withdraw
     const merch = getMerchant(merchantId, db)!;

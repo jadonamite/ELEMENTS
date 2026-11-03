@@ -15,6 +15,7 @@ import {
   checkShopSaleExpiry,
   checkUpkeepStatus,
   applyMerchantBailout,
+  stockKeyForItem,
 } from '@elements/shared';
 import {
   getDatabase,
@@ -27,6 +28,7 @@ import {
 import { getAccountBalance, recordTransaction } from './ledgerService.js';
 import { getMerchant, getAllMerchants, saveMerchant } from './merchantService.js';
 import { getActiveRedFlags, hasActiveBounty } from './crimeService.js';
+import { removeItems, withSavepoint } from './satchelService.js';
 
 // Lists all closed shops currently offered for player acquisition.
 export function getShopsForSale(
@@ -50,10 +52,7 @@ export function getShopsForSale(
         let daysOnSale = 0;
         if (lastListing) {
           listedAt = lastListing.timestamp;
-          daysOnSale = Math.max(
-            0,
-            Math.floor((now - listedAt) / (24 * GAME_HOUR_MS)),
-          );
+          daysOnSale = Math.max(0, Math.floor((now - listedAt) / (24 * GAME_HOUR_MS)));
         } else if (m.daysBroke >= MERCHANT_CONFIG.closureDays) {
           daysOnSale = Math.max(0, m.daysBroke - MERCHANT_CONFIG.closureDays);
         }
@@ -267,51 +266,55 @@ export function stockShop(
     throw new Error(`Merchant ${params.merchantId} not found`);
   }
 
-  const invItem =
-    merchant.inventory[params.itemType] ??
-    (params.itemType.startsWith('shard') ? merchant.inventory['shard'] : undefined);
-
-  if (invItem) {
-    invItem.stock += params.quantity;
-    invItem.maxStock = Math.max(invItem.maxStock, invItem.stock);
-  } else {
-    merchant.inventory[params.itemType] = {
-      stock: params.quantity,
-      maxStock: Math.max(100, params.quantity * 2),
-      basePrice: 10,
-    };
+  // A shop only takes goods its trade has a shelf for, and only from what the owner carries.
+  const stockKey = stockKeyForItem(params.itemType, merchant.inventory);
+  const invItem = stockKey ? merchant.inventory[stockKey] : undefined;
+  if (!stockKey || !invItem) {
+    throw new Error(`This shop has no shelf for ${params.itemType}`);
   }
 
-  saveMerchant(merchant, db);
-
-  insertShopOwnership(
-    {
-      merchantId: params.merchantId,
-      ownerId: params.ownerAccountId,
-      action: 'stock',
-      priceMultipliers: active.priceMultipliers,
-      unpaidUpkeepDays: active.unpaidUpkeepDays,
-      lastUpkeepAt: active.lastUpkeepAt,
-      amount: 0,
-      active: true,
-      timestamp: now,
-      metadata: {
-        itemType: params.itemType,
-        quantity: params.quantity,
+  return withSavepoint(db, () => {
+    removeItems(
+      {
+        accountId: params.ownerAccountId,
+        to: merchant.id,
+        stacks: [{ itemId: params.itemType, quantity: params.quantity }],
+        reason: 'shop_stock',
+        refId: merchant.id,
+        now,
       },
-    },
-    db,
-  );
+      db,
+    );
 
-  const finalStock =
-    merchant.inventory[params.itemType]?.stock ??
-    (merchant.inventory['shard']?.stock || params.quantity);
+    invItem.stock += params.quantity;
+    invItem.maxStock = Math.max(invItem.maxStock, invItem.stock);
+    saveMerchant(merchant, db);
 
-  return {
-    success: true,
-    itemType: params.itemType,
-    newStock: finalStock,
-  };
+    insertShopOwnership(
+      {
+        merchantId: params.merchantId,
+        ownerId: params.ownerAccountId,
+        action: 'stock',
+        priceMultipliers: active.priceMultipliers,
+        unpaidUpkeepDays: active.unpaidUpkeepDays,
+        lastUpkeepAt: active.lastUpkeepAt,
+        amount: 0,
+        active: true,
+        timestamp: now,
+        metadata: {
+          itemType: params.itemType,
+          quantity: params.quantity,
+        },
+      },
+      db,
+    );
+
+    return {
+      success: true,
+      itemType: params.itemType,
+      newStock: invItem.stock,
+    };
+  });
 }
 
 // Withdraws accumulated shop profit to the owner's purse.

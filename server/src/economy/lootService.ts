@@ -8,13 +8,19 @@ import {
   canClaim as pureCanClaim,
   createLootPile as pureCreateLootPile,
   deathDrop,
+  itemsFromLoot,
+  satchelAsCarried,
   monsterDrop,
+  calculateVillainDrop,
   villainDrop,
   DROPS_CONFIG,
   TREASURY_ACCOUNT_ID,
 } from '@elements/shared';
 import { getDatabase } from '../db.js';
 import { getAccountBalance, recordTransaction } from './ledgerService.js';
+import { addItems, getSatchel, removeItems, withSavepoint } from './satchelService.js';
+
+const CLIENT_KILL_MIN_GAP_MS = 1500;
 
 interface RawLootPileRow {
   id: string;
@@ -38,7 +44,11 @@ function mapRowToPile(row: RawLootPileRow): LootPile {
   try {
     contents = JSON.parse(row.contents) as LootContents;
   } catch {
-    contents = { chroma: 0, shards: { IGNIS: 0, AQUES: 0, TERRA: 0, AURA: 0 }, materials: {} };
+    contents = {
+      chroma: 0,
+      shards: { IGNIS: 0, AQUES: 0, TERRA: 0, AURA: 0 },
+      materials: {},
+    };
   }
 
   return {
@@ -155,24 +165,49 @@ export function createLootPileFromFight(
     contents = villainDrop(params.carried, params.rng);
   } else if (params.source === 'monster') {
     contents = monsterDrop(params.nation ?? 'IGNIS', params.zoneKind ?? 'nation', params.rng);
+  } else if (params.sourceAccountId) {
+    // A player's death drops from what the server holds for them, never from what the client claims.
+    contents = deathDrop({
+      chroma: 0,
+      ...satchelAsCarried(getSatchel(params.sourceAccountId, db)),
+    });
   } else {
     contents = deathDrop(params.carried ?? { chroma: 0 });
   }
 
-  return createLootPile(
-    {
-      id: params.id,
-      x: params.x,
-      z: params.z,
-      zone: params.zone,
-      contents,
-      source: params.source,
-      ownerId: params.winnerId ?? null,
-      sourceAccountId: params.sourceAccountId,
-      now: params.now,
-    },
-    db,
-  );
+  const pileId = params.id ?? `pile_${randomUUID()}`;
+  return withSavepoint(db, () => {
+    if (params.source === 'player_death' && params.sourceAccountId) {
+      const stacks = itemsFromLoot(contents);
+      if (stacks.length > 0) {
+        removeItems(
+          {
+            accountId: params.sourceAccountId,
+            to: pileId,
+            stacks,
+            reason: 'death_drop',
+            refId: pileId,
+            now: params.now,
+          },
+          db,
+        );
+      }
+    }
+    return createLootPile(
+      {
+        id: pileId,
+        x: params.x,
+        z: params.z,
+        zone: params.zone,
+        contents,
+        source: params.source,
+        ownerId: params.winnerId ?? null,
+        sourceAccountId: params.sourceAccountId,
+        now: params.now,
+      },
+      db,
+    );
+  });
 }
 
 export function getLootPileById(pileId: string, db: DatabaseSync = getDatabase()): LootPile | null {
@@ -279,23 +314,40 @@ export function claimLootPile(
     throw new Error('Cannot claim loot pile');
   }
 
-  db.prepare(
-    `UPDATE loot_piles SET claimed = 1, claimed_by = ?, claimed_at = ? WHERE id = ?`,
-  ).run(params.accountId, now, pile.id);
+  withSavepoint(db, () => {
+    db.prepare(
+      `UPDATE loot_piles SET claimed = 1, claimed_by = ?, claimed_at = ? WHERE id = ?`,
+    ).run(params.accountId, now, pile.id);
 
-  if (pile.contents.chroma > 0) {
-    recordTransaction(
-      {
-        from: pile.id,
-        to: params.accountId,
-        amount: pile.contents.chroma,
-        reason: 'loot_claim',
-        refId: pile.id,
-        metadata: { zone: pile.zone, source: pile.source },
-      },
-      db,
-    );
-  }
+    if (pile.contents.chroma > 0) {
+      recordTransaction(
+        {
+          from: pile.id,
+          to: params.accountId,
+          amount: pile.contents.chroma,
+          reason: 'loot_claim',
+          refId: pile.id,
+          metadata: { zone: pile.zone, source: pile.source },
+        },
+        db,
+      );
+    }
+
+    const stacks = itemsFromLoot(pile.contents);
+    if (stacks.length > 0) {
+      addItems(
+        {
+          accountId: params.accountId,
+          from: pile.id,
+          stacks,
+          reason: 'loot_claim',
+          refId: pile.id,
+          now,
+        },
+        db,
+      );
+    }
+  });
 
   const updatedPile: LootPile = {
     ...pile,
@@ -353,4 +405,58 @@ export function sweepExpiredPiles(
     sweptPiles,
     reclaimedChroma,
   };
+}
+
+const lastClientKillDrop = new Map<string, number>();
+
+// Whether this server accepts kills reported by a player's browser. Off in production: there,
+// only server-owned enemies drop loot.
+export function clientKillsAllowed(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.ELEMENTS_CLIENT_KILLS === '1';
+}
+
+// Drops loot where a browser-run enemy fell. The fight's winner holds the pile for the first minute.
+export function dropFromClientKill(
+  params: {
+    accountId: string;
+    kind: string;
+    x: number;
+    z: number;
+    zone: string;
+    nation?: string | undefined;
+    now?: number | undefined;
+    rng?: (() => number) | undefined;
+  },
+  db: DatabaseSync = getDatabase(),
+): LootPile {
+  const now = params.now ?? Date.now();
+  const last = lastClientKillDrop.get(params.accountId) ?? -Infinity;
+  if (now - last < CLIENT_KILL_MIN_GAP_MS) {
+    throw new Error('Too many kills reported too quickly');
+  }
+  lastClientKillDrop.set(params.accountId, now);
+
+  const rng = params.rng ?? Math.random;
+  const nation = (params.nation ?? 'IGNIS').toUpperCase();
+  if (params.kind === 'monster' || params.kind === 'ember_hound') {
+    return createLootPileFromFight(
+      { x: params.x, z: params.z, zone: params.zone, source: 'monster', nation, zoneKind: 'nation', winnerId: params.accountId, now, rng },
+      db,
+    );
+  }
+  const odds = calculateVillainDrop(params.kind);
+  const shards: Record<string, number> = rng() < odds.shardChance ? { [nation]: 1 } : {};
+  return createLootPileFromFight(
+    {
+      x: params.x,
+      z: params.z,
+      zone: params.zone,
+      source: 'villain',
+      carried: { chroma: odds.chroma, shards },
+      winnerId: params.accountId,
+      now,
+      rng,
+    },
+    db,
+  );
 }

@@ -7,3 +7,5 @@ export * from './tradeService.js';
 export * from './lootService.js';
 export * from './shopService.js';
 export * from './agents/index.js';
+export * from './satchelService.js';
+export * from './worldLoop.js';

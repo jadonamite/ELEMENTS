@@ -223,6 +223,26 @@ export function migrateDatabase(database: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_shop_sales_merchant ON shop_sales(merchant_id);
     CREATE INDEX IF NOT EXISTS idx_shop_sales_buyer ON shop_sales(buyer_id);
     CREATE INDEX IF NOT EXISTS idx_shop_sales_item ON shop_sales(item_type);
+
+    CREATE TABLE IF NOT EXISTS player_items (
+      account_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity >= 0),
+      PRIMARY KEY (account_id, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS item_ledger (
+      id TEXT PRIMARY KEY,
+      from_id TEXT NOT NULL,
+      to_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      reason TEXT NOT NULL,
+      ref_id TEXT,
+      timestamp INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_item_ledger_from ON item_ledger(from_id);
+    CREATE INDEX IF NOT EXISTS idx_item_ledger_to ON item_ledger(to_id);
   `);
 
   const ledgerCount = database
@@ -285,17 +305,19 @@ export function createDatabase(dbPath?: string): DatabaseSync {
   return db;
 }
 
-let activeDb: DatabaseSync = createDatabase();
+// Opened on first use, so importing this module (as every test does) never touches the file.
+let activeDb: DatabaseSync | null = null;
 
 export function setDatabase(db: DatabaseSync): void {
   activeDb = db;
 }
 
 export function getDatabase(): DatabaseSync {
+  activeDb ??= createDatabase();
   return activeDb;
 }
 
-export function getAccount(id: string, db: DatabaseSync = activeDb): AccountRecord | null {
+export function getAccount(id: string, db: DatabaseSync = getDatabase()): AccountRecord | null {
   const row = db
     .prepare('SELECT id, role, element, created_at FROM accounts WHERE id = ?')
     .get(id) as { id: string; role: string | null; element: string | null; created_at: number } | undefined;
@@ -309,7 +331,7 @@ export function getAccount(id: string, db: DatabaseSync = activeDb): AccountReco
   };
 }
 
-export function createOrGetAccount(id: string, db: DatabaseSync = activeDb): AccountRecord {
+export function createOrGetAccount(id: string, db: DatabaseSync = getDatabase()): AccountRecord {
   const existing = getAccount(id, db);
   if (existing) return existing;
 
@@ -321,7 +343,7 @@ export function createOrGetAccount(id: string, db: DatabaseSync = activeDb): Acc
   return { id, role: null, element: null, created_at };
 }
 
-export function getRising(accountId: string, db: DatabaseSync = activeDb): RisingRecord | null {
+export function getRising(accountId: string, db: DatabaseSync = getDatabase()): RisingRecord | null {
   const row = db
     .prepare('SELECT account_id, role, element, created_at FROM risings WHERE account_id = ?')
     .get(accountId) as { account_id: string; role: string; element: string | null; created_at: number } | undefined;
@@ -341,7 +363,7 @@ const secureRandom = (): number => randomInt(0, 2 ** 47) / 2 ** 47;
 export function createOrGetRising(
   accountId: string,
   rand: () => number = secureRandom,
-  db: DatabaseSync = activeDb,
+  db: DatabaseSync = getDatabase(),
 ): RisingRecord {
   const existing = getRising(accountId, db);
   if (existing) {
@@ -388,7 +410,7 @@ export function saveAccount(
   id: string,
   role: 'Shaper' | 'Hush',
   element?: 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA' | null,
-  db: DatabaseSync = activeDb,
+  db: DatabaseSync = getDatabase(),
 ): SavedAccountRecord {
   const existing = getAccount(id, db);
   if (existing && existing.role) {

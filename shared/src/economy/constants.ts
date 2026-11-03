@@ -1,8 +1,10 @@
-import { readFileSync } from 'node:fs';
+import * as fs from 'node:fs';
 
+// Reads the economy block on the server. In a browser node:fs is a stub that throws when touched,
+// so the client falls back to the defaults below; it never prices anything itself.
 function loadEconomyBalance() {
   try {
-    const raw = readFileSync(new URL('../../balance.json', import.meta.url), 'utf-8');
+    const raw = fs.readFileSync(new URL('../../balance.json', import.meta.url), 'utf-8');
     return JSON.parse(raw)?.economy;
   } catch {
     return null;

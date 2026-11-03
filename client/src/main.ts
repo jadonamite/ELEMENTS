@@ -25,7 +25,7 @@ import { BendState, type BendRefusal } from './bend-state.js';
 import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
 import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
-import { Satchel } from './world/satchel.js';
+import { TownEconomy } from './economy/town-economy.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { Vector3 } from 'three';
@@ -142,9 +142,8 @@ async function main(): Promise<void> {
   }
   const consent = new ConsentBanner();
   cleanup.push(() => consent.dispose());
-  const satchel = new Satchel();
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, satchel, clock: zone?.clock, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -225,9 +224,7 @@ async function main(): Promise<void> {
       shoulderCamera.shake(0.4);
       sound.playThump(50, 0.6, 0.7);
       reviveIn = balance.hero.respawnSeconds;
-      if (zone) {
-        satchel.dropOnDeath(controller.position.x, controller.position.z);
-      }
+      townEconomy?.heroDied(controller.position.clone());
     },
     heroParried() {
       bend.gain('parry');
@@ -246,6 +243,7 @@ async function main(): Promise<void> {
       const pos = hitPos ?? _enemy.controller.position;
       bending.spawnHitBurst(pos, heroElement);
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
+      if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone());
       if (killed && fight.allDead) {
         slowMotion = 1.2;
       }
@@ -273,17 +271,9 @@ async function main(): Promise<void> {
   if (zone) { fight.stopWaves(); fightHud.say(''); }
   let yardSpawned = false;
   input.onInteract = () => {
-    if (zone && satchel.dropped) {
-      const dist = Math.hypot(controller.position.x - satchel.dropped.x, controller.position.z - satchel.dropped.z);
-      if (dist < 4.0) {
-        const recovered = satchel.recoverDropped();
-        if (recovered && recovered.length > 0) {
-          notice(`Recovered satchel: ${recovered.map(i => `${i.count} ${i.name}`).join(', ')}`);
-          return;
-        }
-      }
-    }
+    townEconomy?.interact();
   };
+
   input.onDuelToggle = () => {
     const fwd = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
     const spawnPos = controller.position.clone().addScaledVector(fwd, 4.0);
@@ -373,6 +363,9 @@ async function main(): Promise<void> {
     fightHud.say(text);
     setTimeout(() => { if (fight.heroAlive && !fight.isVictory) fightHud.say(''); }, 1600);
   };
+  // Loot, the market stalls and death drops, held by the server. Sindr is an IGNIS town.
+  const townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', { notice }) : null;
+  cleanup.push(() => townEconomy?.dispose());
   const applyStyle = (): void => {
     fightingStyle = armedWith === 'weapon' ? 'weapon' : armedWith === 'legs' ? 'legs' : (isLit ? 'bending' : 'bare_hands');
     combat.setStyle(fightingStyle);
@@ -648,7 +641,7 @@ async function main(): Promise<void> {
       timeScale = 0.25;
     }
     // The fight and the combat clock stand still together while the fighter picker or home menu is open.
-    const picking = document.body.classList.contains('selecting') || document.body.classList.contains('home-open');
+    const picking = document.body.classList.contains('selecting') || document.body.classList.contains('home-open') || document.body.classList.contains('shop-open');
     const delta = rawDelta * timeScale;
 
     // Validate lock-on target
@@ -658,6 +651,7 @@ async function main(): Promise<void> {
     shoulderCamera.lockTarget = lockedEnemy ? lockedEnemy.controller.position : null;
 
     const alive = fight.heroAlive;
+    townEconomy?.update(rawDelta, controller.position);
     for (const action of alive ? input.takeActions() : []) {
       if (action !== 'dodge') {
         heldCalm = false;

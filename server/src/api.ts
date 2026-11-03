@@ -28,6 +28,10 @@ import {
   setShopPrices,
   stockShop,
   withdrawShopProfit,
+  getSatchel,
+  clientKillsAllowed,
+  dropFromClientKill,
+  createLootPileFromFight,
 } from './economy/index.js';
 
 function extractToken(req: Request): string | null {
@@ -509,6 +513,81 @@ export function setupApi(app: Application): void {
     }
   });
 
+  // A browser-run enemy fell: drop its loot where it lay. Development builds only.
+  app.post('/api/economy/loot/fight', async (req: Request, res: Response) => {
+    if (!clientKillsAllowed()) {
+      res.status(403).json({ error: 'Kills are reported by the game server here' });
+      return;
+    }
+    const token = extractToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Missing auth token' });
+      return;
+    }
+    let accountId: string;
+    try {
+      accountId = (await verifyToken(token)).userId;
+    } catch {
+      res.status(401).json({ error: 'Invalid auth token' });
+      return;
+    }
+    const { kind, x, z, zone, nation } = req.body || {};
+    const numX = Number(x);
+    const numZ = Number(z);
+    if (typeof kind !== 'string' || typeof zone !== 'string' || !Number.isFinite(numX) || !Number.isFinite(numZ)) {
+      res.status(400).json({ error: 'Missing kind, zone, x or z' });
+      return;
+    }
+    try {
+      const pile = dropFromClientKill({
+        accountId,
+        kind,
+        x: numX,
+        z: numZ,
+        zone,
+        nation: typeof nation === 'string' ? nation : undefined,
+      });
+      res.json({ pile });
+    } catch (err: unknown) {
+      res.status(429).json({ error: err instanceof Error ? err.message : 'Drop failed' });
+    }
+  });
+
+  // The signed-in player died: what they carried (per the server) falls where they fell.
+  app.post('/api/economy/death', async (req: Request, res: Response) => {
+    const token = extractToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Missing auth token' });
+      return;
+    }
+    let accountId: string;
+    try {
+      accountId = (await verifyToken(token)).userId;
+    } catch {
+      res.status(401).json({ error: 'Invalid auth token' });
+      return;
+    }
+    const { x, z, zone } = req.body || {};
+    const numX = Number(x);
+    const numZ = Number(z);
+    if (typeof zone !== 'string' || !Number.isFinite(numX) || !Number.isFinite(numZ)) {
+      res.status(400).json({ error: 'Missing zone, x or z' });
+      return;
+    }
+    try {
+      const pile = createLootPileFromFight({
+        x: numX,
+        z: numZ,
+        zone,
+        source: 'player_death',
+        sourceAccountId: accountId,
+      });
+      res.json({ pile });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Death drop failed' });
+    }
+  });
+
   app.post('/api/economy/loot/:pileId/claim', async (req: Request, res: Response) => {
     const pileId = String(req.params.pileId ?? '');
     if (!pileId) {
@@ -678,11 +757,39 @@ export function setupApi(app: Application): void {
       return;
     }
 
-    // Refused until the server records what each player carries: without that record,
-    // stocking would create goods from nothing.
-    void merchantId;
-    void verified;
-    res.status(501).json({ error: 'Shop stocking is not open yet' });
+    const { itemType, quantity } = req.body || {};
+    if (!itemType || typeof quantity !== 'number') {
+      res.status(400).json({ error: 'Missing itemType or quantity' });
+      return;
+    }
+
+    try {
+      const result = stockShop({
+        merchantId,
+        ownerAccountId: verified.userId,
+        itemType: String(itemType),
+        quantity: Number(quantity),
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Failed to stock shop',
+      });
+    }
+  });
+
+  app.get('/api/economy/satchel', async (req: Request, res: Response) => {
+    const token = extractToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Missing auth token' });
+      return;
+    }
+    try {
+      const { userId } = await verifyToken(token);
+      res.json({ accountId: userId, items: getSatchel(userId) });
+    } catch {
+      res.status(401).json({ error: 'Invalid auth token' });
+    }
   });
 
   app.post('/api/economy/shops/:merchantId/withdraw', async (req: Request, res: Response) => {
