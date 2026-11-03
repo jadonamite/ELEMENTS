@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:," />
-    <title>Ember Hound Test — ELEMENTS</title>
+    <title>Creatures and Outlaws — ELEMENTS</title>
     <style>
       * {
         box-sizing: border-box;
@@ -62,31 +62,57 @@
         color: #a8a29e;
         margin-top: 4px;
       }
+      .panels-row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
       .stats-panel {
-        background: rgba(28, 25, 23, 0.85);
+        background: rgba(28, 25, 23, 0.88);
         border: 1px solid #44403c;
         border-radius: 6px;
         padding: 10px 14px;
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 12px;
         line-height: 1.5;
-        min-width: 180px;
+        min-width: 190px;
         text-align: right;
       }
       .stats-panel .highlight {
         color: #38bdf8;
         font-weight: 700;
       }
+      .outlaw-status-panel {
+        background: rgba(28, 25, 23, 0.88);
+        border: 1px solid #44403c;
+        border-radius: 6px;
+        padding: 10px 14px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        min-width: 280px;
+        text-align: left;
+      }
+      .outlaw-status-panel .gold {
+        color: #fbbf24;
+        font-weight: 700;
+      }
+      .outlaw-status-panel .decision {
+        color: #f97316;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
       .controls-bar {
         display: flex;
-        gap: 12px;
+        gap: 10px;
         align-items: center;
-        background: rgba(28, 25, 23, 0.85);
+        background: rgba(28, 25, 23, 0.88);
         border: 1px solid #44403c;
         border-radius: 6px;
         padding: 10px 16px;
         font-size: 13px;
         color: #d6d3d1;
+        flex-wrap: wrap;
       }
       .btn {
         background: #292524;
@@ -103,8 +129,13 @@
         background: #44403c;
         border-color: #f97316;
       }
+      .btn.active {
+        background: #7c2d12;
+        border-color: #f97316;
+        color: #ffedd5;
+      }
       .combat-log {
-        max-height: 120px;
+        max-height: 140px;
         overflow-y: hidden;
         font-family: ui-monospace, monospace;
         font-size: 12px;
@@ -113,8 +144,8 @@
         gap: 4px;
       }
       .log-entry {
-        background: rgba(12, 10, 9, 0.75);
-        padding: 3px 8px;
+        background: rgba(12, 10, 9, 0.85);
+        padding: 4px 10px;
         border-radius: 4px;
         border-left: 3px solid #78716c;
       }
@@ -126,6 +157,16 @@
       .log-death {
         border-left-color: #ef4444;
         color: #fca5a5;
+      }
+      .log-alert {
+        border-left-color: #f97316;
+        color: #fed7aa;
+        font-weight: 700;
+      }
+      .log-retreat {
+        border-left-color: #38bdf8;
+        color: #bae6fd;
+        font-weight: 700;
       }
       #labels-container {
         position: absolute;
@@ -152,7 +193,7 @@
         letter-spacing: 0.05em;
         padding: 2px 6px;
         border-radius: 3px;
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.75);
         color: #fdba74;
       }
       .hound-hp-bar {
@@ -175,14 +216,22 @@
     <div id="hound-ui">
       <header>
         <div class="title-group">
-          <h1>Ember Hound — M1.11 Monster Prototype</h1>
-          <p>WASD to move stand-in target | Left Click to strike nearest hound | Space to reset hounds</p>
+          <h1 id="view-title">Ember Hound Pack — Creatures Lane</h1>
+          <p id="view-sub">WASD move | Left Click strike nearest creature | Space respawn</p>
         </div>
-        <div class="stats-panel">
-          <div>FPS: <span id="stat-fps" class="highlight">--</span></div>
-          <div>Frame Time: <span id="stat-ms" class="highlight">-- ms</span></div>
-          <div>Headroom: <span id="stat-headroom" class="highlight">-- %</span></div>
-          <div>Active Hounds: <span id="stat-count" class="highlight">3</span></div>
+        <div class="panels-row">
+          <div class="outlaw-status-panel interactive">
+            <div>Mode: <span id="stat-mode" class="highlight">Hounds</span></div>
+            <div>Carry: <span id="stat-carry" class="gold">500 CHROMA</span></div>
+            <div>Time / Zone: <span id="stat-time" class="highlight">Night</span> | <span id="stat-zone" class="highlight">Sindr Alley</span></div>
+            <div>Decider: <span id="stat-decider" class="decision">IDLE</span></div>
+          </div>
+          <div class="stats-panel">
+            <div>FPS: <span id="stat-fps" class="highlight">--</span></div>
+            <div>Work Ms: <span id="stat-ms" class="highlight">-- ms</span></div>
+            <div>Headroom: <span id="stat-headroom" class="highlight">-- %</span></div>
+            <div>Entities: <span id="stat-count" class="highlight">3</span></div>
+          </div>
         </div>
       </header>
 
@@ -190,13 +239,28 @@
 
       <footer>
         <div class="controls-bar interactive">
-          <span>Camera:</span>
-          <button id="btn-cam-follow" class="btn">Follow Target</button>
-          <button id="btn-cam-free" class="btn">Orbit Cam</button>
-          <span style="margin-left: 12px;">Packs:</span>
+          <span>Mode:</span>
+          <button id="btn-mode-hound" class="btn active">Hounds</button>
+          <button id="btn-mode-robber" class="btn">Robber Gang</button>
+
+          <span style="margin-left: 10px;">Camera:</span>
+          <button id="btn-cam-follow" class="btn">Follow</button>
+          <button id="btn-cam-overhead" class="btn">Overhead</button>
+          <button id="btn-cam-closeup" class="btn">Close-up</button>
+          <button id="btn-lighting-dusk" class="btn">Dusk Light</button>
+
+          <span style="margin-left: 10px;" id="hound-ctrl-group">Hounds:</span>
           <button id="btn-pack-3" class="btn">3 Hounds (1 Pack)</button>
           <button id="btn-pack-9" class="btn">9 Hounds (3 Packs)</button>
-          <button id="btn-reset" class="btn" style="margin-left: auto;">Respawn</button>
+          <button id="btn-kill-leader" class="btn" style="color: #fca5a5;">Kill Leader (Retreat)</button>
+
+          <span style="margin-left: 10px; display: none;" id="robber-ctrl-group">Outlaw Carry:</span>
+          <button id="btn-carry-500" class="btn" style="display: none;">500 CHROMA (Ambush)</button>
+          <button id="btn-carry-20" class="btn" style="display: none;">20 CHROMA (Ignored)</button>
+          <button id="btn-toggle-time" class="btn" style="display: none;">Toggle Night/Day</button>
+          <button id="btn-wound-robber" class="btn" style="display: none; color: #bae6fd;">Hit Robber (Flee)</button>
+
+          <button id="btn-reset" class="btn" style="margin-left: auto;">Reset</button>
         </div>
       </footer>
     </div>
