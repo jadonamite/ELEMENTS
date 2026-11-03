@@ -10,7 +10,7 @@ import { loadHero, type HeroInstance } from './hero.js';
 import { FixedStepper, HeroController, locomotionForSpeed, movementVelocity, turnToward } from './controller.js';
 import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
-import { Combat, type CombatAction, type FightingStyle } from './combat.js';
+import { Combat, getStrikingLimb, type CombatAction, type FightingStyle } from './combat.js';
 import { loadEnemyTemplate, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
 import { inFront } from './hits.js';
@@ -203,7 +203,6 @@ async function main(): Promise<void> {
         .setTranslation(center.x, center.y, center.z)
         .setRotation({ x: 0, y: Math.sin(facing / 2), z: 0, w: Math.cos(facing / 2) }),
     );
-    bending.addActiveWall(center, size, facing, seconds);
     setTimeout(() => { if (!disposed) physics.world.removeCollider(collider, false); }, seconds * 1000);
   };
   // Wind and water douse / extinguish fire
@@ -257,9 +256,29 @@ async function main(): Promise<void> {
       bending.spawnHitBurst(enemyPos, heroElement);
       notice(`${heroElement} bending countered attack`);
     },
-    villainCast(cast) {
-      bending.spawnFireball(cast.origin, cast.facing, cast.element as Parameters<typeof bending.spawnFireball>[2], true);
-      sound.playFireBurst(0.3);
+    projectileLaunched(p) {
+      // The picture rides the projectile the fight judges, so it stops and bursts where the hit is decided.
+      if (p.side === 'villain') {
+        bending.spawnFireball(p, p.element as Parameters<typeof bending.spawnFireball>[1]);
+        sound.playFireBurst(0.3);
+        return;
+      }
+      const facing = Math.atan2(p.velocity.x, p.velocity.z);
+      if (kitElement === 'IGNIS') {
+        bending.spawnFireball(p, isDim ? 'IGNIS' : heroElement);
+        sound.playFireBurst(isDim ? 0.2 : 0.4);
+      } else if (isDim) {
+        elementFx.spark(kitElement, controller.position, facing);
+        sound.playFireBurst(0.2);
+      } else {
+        elementFx.cast(kitElement, p.move as BendMoveId, controller.position, facing, p.scale);
+        sound.playSwing(1.3, false);
+      }
+      shoulderCamera.shake(isDim ? 0.1 : 0.2);
+    },
+    projectileEnded(p) {
+      if (p.side === 'hero' && kitElement !== 'IGNIS' && p.end) bending.spawnHitBurst(p.end.at, heroElement);
+      if (p.end?.reason === 'world') sound.playImpact(false, true);
     },
     heroDied() {
       combat.react('death');
@@ -309,19 +328,10 @@ async function main(): Promise<void> {
       slowMotion = 2.5;
     },
   });
-  fight.isBlockedByWall = (from, to) => bending.isBlockedByWall(from, to);
-  fight.isAttackCountered = (enemy, heroView) => {
-    const enemyElem = enemy.element;
-    // Wind and Water extinguish Fire attacks
-    if (enemyElem === 'IGNIS' && (heroElement === 'AURA' || heroElement === 'AQUES') && (isLit || combat.blocking || bend.windskiffActive)) {
-      return true;
-    }
-    // Wind and Water redirect Earth attacks
-    if (enemyElem === 'TERRA' && (heroElement === 'AURA' || heroElement === 'AQUES') && (isLit || combat.blocking || bend.windskiffActive)) {
-      return true;
-    }
-    return false;
-  };
+  // Wind and water put out fire and turn aside earth while the hero is bending, guarding or riding the windskiff.
+  fight.isAttackCountered = (element) =>
+    (element === 'IGNIS' || element === 'TERRA') && (heroElement === 'AURA' || heroElement === 'AQUES')
+    && (isLit || combat.blocking || bend.windskiffActive);
   // ?round=N starts the wave mode at round N, for testing later waves.
   const startRound = Number(new URLSearchParams(window.location.search).get('round'));
   if (startRound > 1) fight.setRound(startRound);
@@ -529,21 +539,12 @@ async function main(): Promise<void> {
       techniqueClipUntil = performance.now() + 520;
       lightningBareUntil = performance.now() + 650;
 
-      const targetEnemy = fight.enemies.find(e => e.alive && controller.position.distanceTo(e.controller.position) <= 22.0 && inFront(controller.position, controller.facing, e.controller.position, 0.55));
-      const targetPos = targetEnemy ? targetEnemy.controller.position.clone() : undefined;
-      bending.spawnLightningBolt(controller.position, controller.facing, 22.0, targetPos);
+      // The bolt runs until the world stops it and strikes every villain on its line.
+      const boltEnd = fight.beam(controller.position, controller.facing, 22.0, Math.round(55 * rules.tierBendScale(tier)), 1.2);
+      bending.spawnLightningBolt(controller.position, controller.facing, boltEnd.distanceTo(controller.position), boltEnd);
       sound.playThump(90, 0.5, 1.0);
       sound.playFireBurst(1.4);
       shoulderCamera.shake(0.55);
-      for (const enemy of fight.enemies) {
-        if (!enemy.alive) continue;
-        const d = controller.position.distanceTo(enemy.controller.position);
-        if (d <= 22.0 && inFront(controller.position, controller.facing, enemy.controller.position, 0.55)) {
-          const lightningDmg = Math.round(55 * rules.tierBendScale(tier));
-          enemy.hurt({ current: Math.max(0, enemy.health.current - lightningDmg), maximum: enemy.health.maximum }, 'lightning', controller.position, true);
-          enemy.afflict({ stunSeconds: 1.2 });
-        }
-      }
       notice('Lightning Bending (Forge Lightning)');
     }
   };
@@ -600,13 +601,9 @@ async function main(): Promise<void> {
   let actionBuffer: { action: CombatAction; expiresAt: number } | null = null;
 
   const triggerAttackEffects = (action: CombatAction, strength = 1, bendMove?: BendMoveId | null): void => {
-    if (isDim && action === 'uppercut') {
-      // A Hush spends a shard on a weak spark of the shard's element.
-      if (kitElement === 'IGNIS') bending.spawnFireball(controller.position, controller.facing, 'IGNIS');
-      else elementFx.spark(kitElement, controller.position, controller.facing);
-      sound.playFireBurst(0.2);
-      return;
-    }
+    // Thrown moves are drawn when they leave the hand (projectileLaunched), not on the key press.
+    if (isDim && action === 'uppercut') return;
+    if (bendMove && getStrikingLimb(bendMove, fightingStyle) === 'projectile') return;
     if (bendMove === 'dash_strike' && kitElement === 'AQUES') {
       const spec = rules.moveFor('dash_strike', fight.kit);
       const quality = bend.healingQuality(controller.position);
@@ -640,12 +637,7 @@ async function main(): Promise<void> {
     }
 
     if (fightingStyle === 'bending') {
-      if (action === 'light') {
-        // Palm thrust fireball
-        bending.spawnFireball(controller.position, controller.facing, heroElement);
-        sound.playFireBurst(0.4);
-        shoulderCamera.shake(0.2);
-      } else if (action === 'heavy') {
+      if (action === 'heavy') {
         // Ground flame sweep
         bending.spawnFlameSweep(controller.position, controller.facing, heroElement);
         sound.playGroundPound();

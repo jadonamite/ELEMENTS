@@ -928,7 +928,6 @@
         "castDamage": 14,
         "castCooldown": 3.2,
         "boltSpeed": 14,
-        "boltHitRadius": 1.3,
         "keepDistance": 6.5
       },
       "husk": {

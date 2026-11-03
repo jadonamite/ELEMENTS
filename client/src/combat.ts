@@ -32,8 +32,8 @@ export function getStrikingLimb(move: string | null, style: FightingStyle = 'wea
   }
   if (style === 'bending') {
     if (move === 'bend_palm') return 'projectile';
-    if (move === 'bend_sweep' || move === 'ground_pound' || move === 'uppercut') return 'area';
-    if (move === 'dash_strike') return 'projectile';
+    // The dash carries the body itself into the target, so it is judged around the body.
+    if (move === 'bend_sweep' || move === 'ground_pound' || move === 'uppercut' || move === 'dash_strike') return 'area';
     return 'area';
   }
   // weapon style

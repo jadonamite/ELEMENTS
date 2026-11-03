@@ -31,7 +31,7 @@ import { FlameField, FxMode } from './fx/flame-field.js';
 import { SoftDepth } from './fx/soft-depth.js';
 import { GroundRings } from './fx/ground-ring.js';
 import { FireWalls } from './fx/fire-wall.js';
-import { anyWallBetween, type StoneWall } from './wall-block.js';
+import type { Projectile } from './attacks/projectile.js';
 
 export type BendingType = Element | 'HUSH';
 
@@ -227,6 +227,8 @@ interface FireballProjectile {
   elapsed: number;
   /** Thrown by a villain: no burning ground is left where it lands. */
   hostile: boolean;
+  /** The fight's projectile this fireball draws; it moves and ends only when that does. */
+  follow?: Projectile | undefined;
 }
 
 const POOL_SPARKS = 220;
@@ -303,25 +305,10 @@ export class BendingEffects {
   private burningVillains: BurningVillainInfo[] = [];
   private readonly patchLights: PointLight[] = [];
   private readonly fireballs: FireballProjectile[] = [];
-  private readonly activeTerraWalls: StoneWall[] = [];
-  private readonly fbPrev = new Vector3();
   private patchSmokeClock = 0;
 
   onFireballImpact?: (pos: Vector3, element: BendingType, hostile: boolean) => void;
 
-  /** Register a standing TERRA wall; it stops melee lines and projectiles until it falls. */
-  addActiveWall(center: Vector3, size: Vector3, facing: number, seconds: number): void {
-    const now = this.field.time.value;
-    for (let i = this.activeTerraWalls.length - 1; i >= 0; i--) {
-      if (now > (this.activeTerraWalls[i]?.expiresAt ?? 0)) this.activeTerraWalls.splice(i, 1);
-    }
-    this.activeTerraWalls.push({ center: center.clone(), size: size.clone(), facing, expiresAt: now + seconds });
-  }
-
-  /** True when a standing wall lies between the two points, using the wall's real turn. */
-  isBlockedByWall(from: Vector3, to: Vector3): boolean {
-    return anyWallBetween(this.activeTerraWalls, this.field.time.value, from, to);
-  }
 
   /**
    * Water or wind extinguishing fire: snuffs out active flame patches,
@@ -811,16 +798,18 @@ export class BendingEffects {
   /**
    * Bare-handed bending: palm thrust throws an elemental projectile (fireball).
    */
-  spawnFireball(origin: Vector3, facing: number, element: BendingType = 'IGNIS', hostile = false): void {
+  /** Draws a fireball riding the fight's projectile: it flies, stops and bursts exactly where the hit is judged. */
+  spawnFireball(p: Projectile, element: BendingType = 'IGNIS', hostile = p.side === 'villain'): void {
     const fb = this.fireballs.find(f => !f.active);
     if (!fb) return;
-    const dir = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const dir = p.velocity.clone().normalize();
     fb.active = true;
-    fb.position.copy(origin).setY(origin.y + 1.15).addScaledVector(dir, 1.0);
-    fb.velocity.copy(dir).multiplyScalar(14.0).setY(-0.4);
+    fb.follow = p;
+    fb.position.copy(p.position);
+    fb.velocity.copy(p.velocity);
     fb.element = element;
     fb.hostile = hostile;
-    fb.duration = 0.55;
+    fb.duration = Infinity;
     fb.elapsed = 0;
 
     const style = ELEMENT_STYLES[element] ?? ELEMENT_STYLES.IGNIS;
@@ -1135,7 +1124,7 @@ export class BendingEffects {
     for (const fb of this.fireballs) {
       if (!fb.active) continue;
       fb.elapsed += delta;
-      fb.position.addScaledVector(fb.velocity, delta);
+      if (fb.follow) fb.position.copy(fb.follow.position); else fb.position.addScaledVector(fb.velocity, delta);
       const mode = flameMode(fb.element);
       const p = fb.position;
       if (mode <= FxMode.HUSH) {
@@ -1175,21 +1164,18 @@ export class BendingEffects {
         this.spawnParticle('spark', fb.position, pvel, 0.25, 0.05, 0.015, fb.element, 1.0);
       }
 
-      // The path travelled this frame, so a fast shot cannot skip through a thin wall.
-      this.fbPrev.copy(fb.position).addScaledVector(fb.velocity, -delta);
-      const hitWall = anyWallBetween(this.activeTerraWalls, this.field.time.value, this.fbPrev, fb.position, 0.3);
-
-      if (hitWall || fb.elapsed >= fb.duration || fb.position.y <= 0.06) {
+      if (fb.follow ? fb.follow.done : (fb.elapsed >= fb.duration || fb.position.y <= 0.06)) {
         fb.active = false;
-        const impactPos = fb.position.clone().setY(0.04);
+        const impactPos = (fb.follow?.end?.at ?? fb.position).clone();
+        fb.follow = undefined;
         this.spawnHitBurst(impactPos, fb.element);
         if (mode <= FxMode.HUSH) {
           this.field.emit({ x: impactPos.x, y: 0.08, z: impactPos.z, life: 0.8,
             w0: 1.6, h0: 1.6, w1: 2.1, h1: 2.1, mode, atlas: 1, alpha: 1 });
-          this.spawnScorch(impactPos, 1.8, 3);
+          this.spawnScorch(impactPos.clone().setY(0.04), 1.8, 3);
         }
         const style = ELEMENT_STYLES[fb.element] ?? ELEMENT_STYLES.IGNIS;
-        this.triggerFlash(impactPos.clone().setY(0.65), style.lightHex, 3.2, 0.4);
+        this.triggerFlash(impactPos.clone().setY(Math.max(0.65, impactPos.y)), style.lightHex, 3.2, 0.4);
         this.onFireballImpact?.(impactPos, fb.element, fb.hostile);
       }
     }
