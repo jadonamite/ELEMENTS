@@ -24,6 +24,8 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import balance from '../../shared/balance.json';
+import type { Element } from '../../shared/src/index.js';
+import { getNationGeography } from './env/nations.js';
 import { QualityManager } from './env/quality.js';
 import { HeightFogSystem } from './env/height-fog.js';
 import { LightingSystem, SUN_AZIMUTH } from './env/lighting.js';
@@ -44,8 +46,14 @@ export interface ArenaObjects {
   dispose(): void;
 }
 
-export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
+export function createArena(
+  canvas: HTMLCanvasElement,
+  nation: Element = 'IGNIS',
+  isFullMoon = false
+): ArenaObjects {
   const look = balance.look;
+  const geo = getNationGeography(nation);
+  const met = geo.meteorology;
 
   // Initialize renderer
   const renderer = new WebGLRenderer({
@@ -77,13 +85,12 @@ export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
   const qualityManager = new QualityManager();
   const quality = qualityManager.profile;
 
-  // 2. Height Fog System
+  // 2. Height Fog System attuned to nation meteorology
   const heightFog = new HeightFogSystem();
-  // Enable Three.js fog defining USE_FOG
-  scene.fog = new FogExp2(new Color(0x4c5d7a), 0.006);
+  scene.fog = new FogExp2(new Color(met.fogColor), met.fogDensity);
 
-  // 3. Lighting System with Cascaded Shadow Maps (CSM) & Sky HDR
-  const lighting = new LightingSystem(scene, camera, renderer, quality);
+  // 3. Lighting System with Cascaded Shadow Maps (CSM) & Sky HDR attuned to nation
+  const lighting = new LightingSystem(scene, camera, renderer, quality, nation, isFullMoon);
   heightFog.update(lighting.sunDirection);
 
   const setupMaterial = (mat: Material): void => {
@@ -94,14 +101,14 @@ export function createArena(canvas: HTMLCanvasElement): ArenaObjects {
   // Store hook on scene so async loaded props can attach
   scene.userData['setupMaterial'] = setupMaterial;
 
-  // 4. Terrain System: 2K floor, POM, rolling hills, distant ridge line, braziers
-  const terrain = new TerrainSystem(scene, renderer, quality, (m) => setupMaterial(m));
+  // 4. Terrain System: Geographically attuned floor, organic perimeter wall, distant ridges
+  const terrain = new TerrainSystem(scene, renderer, quality, (m) => setupMaterial(m), nation);
 
-  // 5. Foliage System: Wind-animated instanced grass
-  const foliage = new FoliageSystem(scene, quality, (m) => setupMaterial(m));
+  // 5. Foliage System: Wind-animated instanced grass attuned to nation
+  const foliage = new FoliageSystem(scene, quality, (m) => setupMaterial(m), nation);
 
-  // 6. Particle System: Sunlit dust motes, brazier embers, smoke
-  const particles = new ParticleSystem(scene, quality, lighting.sunDirection);
+  // 6. Particle System: Nation-attuned weather particles (ash, snow, wind, dust)
+  const particles = new ParticleSystem(scene, quality, lighting.sunDirection, nation);
 
   // 7. God Rays: Screen-space volumetric light shafts
   const godRays = new GodRaysSystem(lighting.sunDirection, quality.enableGodRays);
@@ -177,19 +184,47 @@ interface PropPlacement {
   y?: number;
 }
 
-/** Statue landmark, boulders and the crags and standing stones beyond the wall. */
-export async function loadProps(scene: Scene, loader = new GLTFLoader()): Promise<void> {
-  const placements: PropPlacement[] = [
-    ...balance.arena.obstacles.map((o) => ({
-      file: o.file,
-      x: o.x,
-      z: o.z,
-      scale: o.scale,
-      yaw: o.yaw,
-    })),
-  ];
+/** Props and crags attuned to nation geography. */
+export async function loadProps(scene: Scene, loader = new GLTFLoader(), nation: Element = 'IGNIS'): Promise<void> {
+  const placements: PropPlacement[] = [];
 
-  // Crags ring the arena outside the wall, each turning its scanned face (+Z) to the centre
+  if (nation === 'AQUES') {
+    // Polar sanctuary: ice crags, pack ice boulders, no Sindr statue
+    placements.push(
+      { file: 'rock_face_01', x: -8, z: -8, scale: 2.8, yaw: 0.5, y: 0.2 },
+      { file: 'rock_face_02', x: 9, z: -6, scale: 2.6, yaw: -0.8, y: 0.2 },
+      { file: 'namaqualand_boulder_02', x: -8.5, z: 6, scale: 2.2, yaw: 1.2 },
+      { file: 'namaqualand_boulder_02', x: 8, z: 8, scale: 2.0, yaw: 2.1 },
+    );
+  } else if (nation === 'TERRA') {
+    // Canyon quarry: massive sandstone monoliths and boulders
+    placements.push(
+      { file: 'namaqualand_boulder_02', x: 0, z: -10, scale: 3.2, yaw: 0.2 },
+      { file: 'rock_face_01', x: 9, z: 4, scale: 2.8, yaw: -1.2 },
+      { file: 'rock_face_02', x: -9, z: -3, scale: 2.9, yaw: 0.8 },
+      { file: 'namaqualand_boulder_02', x: 6, z: 7, scale: 2.4, yaw: 2.4 },
+    );
+  } else if (nation === 'AURA') {
+    // High mountain spire: precipitous spires and rock pillars
+    placements.push(
+      { file: 'rock_face_01', x: 0, z: -12, scale: 3.5, yaw: 0.0, y: 0.5 },
+      { file: 'rock_face_02', x: 8, z: 6, scale: 2.4, yaw: 1.5 },
+      { file: 'rock_face_01', x: -8, z: 6, scale: 2.4, yaw: -1.5 },
+    );
+  } else {
+    // IGNIS / Sindr caldera
+    placements.push(
+      ...balance.arena.obstacles.map((o) => ({
+        file: o.file,
+        x: o.x,
+        z: o.z,
+        scale: o.scale,
+        yaw: o.yaw,
+      }))
+    );
+  }
+
+  // Crags ring the perimeter beyond the wall
   const crags = ['rock_face_01', 'rock_face_02'];
   for (let i = 0; i < 14; i++) {
     const angle = (i / 14) * Math.PI * 2 + 0.2;

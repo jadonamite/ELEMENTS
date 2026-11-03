@@ -13,6 +13,7 @@ import { GameInput } from './input.js';
 import { Combat, type CombatAction, type FightingStyle } from './combat.js';
 import { loadEnemyTemplate, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
+import { inFront } from './hits.js';
 import { FightHud, type RoundHudInfo } from './hud.js';
 import { SwordStance } from './sword.js';
 import { SoundManager } from './audio.js';
@@ -64,15 +65,22 @@ async function main(): Promise<void> {
 
   // ?town walks Sindr from the Shrine of Embers; without it the fight arena opens.
   const inTown = new URLSearchParams(window.location.search).has('town');
+  const params = new URLSearchParams(window.location.search);
+  const forcedElement = ELEMENTS.find(e => e === params.get('element')?.toUpperCase() || e === params.get('nation')?.toUpperCase()) ?? null;
+  const forcedHush = params.has('hush');
+  const storedChoice = lastFighter();
+  const initialChoice: Element = forcedElement || (storedChoice && 'element' in storedChoice ? storedChoice.element : null) || 'IGNIS';
+  const isFullMoon = params.get('moon') === 'full' || (!params.has('moon') && initialChoice === 'AQUES');
+
   const zoneStart = performance.now();
   const zone = inTown ? await createZone(canvas) : null;
   if (zone) (window as unknown as { zoneLoadMs?: number }).zoneLoadMs = performance.now() - zoneStart;
-  const physics = zone ? zone.physics : await initPhysics();
+  const physics = zone ? zone.physics : await initPhysics(initialChoice);
   if (disposed) { physics.dispose(); return; }
   cleanup.push(() => physics.dispose());
-  const arena = zone ?? createArena(canvas);
+  const arena = zone ?? createArena(canvas, initialChoice, isFullMoon);
   const { scene, camera, renderer } = arena;
-  if (!zone) loadProps(scene).catch((error: unknown) => console.error('Arena props failed to load:', error));
+  if (!zone) loadProps(scene, undefined, initialChoice).catch((error: unknown) => console.error('Arena props failed to load:', error));
   cleanup.push(() => { renderer.setAnimationLoop(null); arena.dispose(); });
   const controller = new HeroController(physics.world, zone ? SPAWN : undefined, undefined, !zone);
   cleanup.push(() => controller.dispose());
@@ -80,9 +88,16 @@ async function main(): Promise<void> {
   const shoulderCamera = new ShoulderCamera(camera, physics.world, !zone);
   if (zone) { controller.facing = SPAWN.facing; shoulderCamera.yaw = SPAWN.facing + Math.PI; }
   let hero: HeroInstance;
+  const airballBones = ['thigh_l', 'thigh_r', 'calf_l', 'calf_r', 'upperarm_l', 'upperarm_r', 'spine_01'] as const;
+  const initialBoneRotations = new Map<string, { x: number; y: number; z: number }>();
+  let wasAirballActive = false;
   const villains = loadEnemyTemplate();
   try {
     hero = await loadHero();
+    for (const name of airballBones) {
+      const b = hero.model.getObjectByName(name);
+      if (b) initialBoneRotations.set(name, { x: b.rotation.x, y: b.rotation.y, z: b.rotation.z });
+    }
   } catch (error) {
     if (!disposed) {
       button.textContent = 'Reload to retry';
@@ -113,9 +128,6 @@ async function main(): Promise<void> {
   /** Set once the fight exists, so a Drawing result arriving later updates the style too. */
   let refreshStyle: (() => void) | null = null;
   // Test flags: ?element=AQUES picks the element, ?hush plays a Hush, ?tier=N sets the tier (default 5: every move open, no extra strength).
-  const params = new URLSearchParams(window.location.search);
-  const forcedElement = ELEMENTS.find(e => e === params.get('element')?.toUpperCase()) ?? null;
-  const forcedHush = params.has('hush');
   const tier = Math.max(1, Math.min(7, Number(params.get('tier')) || 5));
   /** The element a Hush's shards carry; a Shaper's own element otherwise. */
   let kitElement: Element = 'IGNIS';
@@ -173,21 +185,39 @@ async function main(): Promise<void> {
   const rules = createCombatRules(balance.combat as unknown as CombatBalance);
   const elementFx = new ElementEffects(scene, new URLSearchParams(window.location.search).get('fxQuality') === 'low' ? 'low' : 'high');
   cleanup.push(() => elementFx.dispose());
-  // Two stone basins give AQUES water to bend from in the arena.
+  // Attuned water sources for AQUES: spirit water oasis and natural pools
   if (!zone) {
-    elementFx.basin(new Vector3(-8.5, 0, 6.5));
-    elementFx.basin(new Vector3(9, 0, -6.5));
+    if (initialChoice === 'AQUES') {
+      elementFx.spiritOasis(new Vector3(0, 0, 11));
+      elementFx.basin(new Vector3(-6, 0, -4));
+      elementFx.basin(new Vector3(7, 0, 3));
+    } else {
+      elementFx.basin(new Vector3(-8.5, 0, 6.5));
+      elementFx.basin(new Vector3(9, 0, -6.5));
+    }
   }
-  // A TERRA wall stops bodies for as long as it stands.
+  // A TERRA wall stops bodies for as long as it stands and physically blocks any elemental attacks.
   elementFx.onWall = (center, facing, size, seconds) => {
     const collider = physics.world.createCollider(
       RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
         .setTranslation(center.x, center.y, center.z)
         .setRotation({ x: 0, y: Math.sin(facing / 2), z: 0, w: Math.cos(facing / 2) }),
     );
+    bending.addActiveWall(center, size, seconds);
     setTimeout(() => { if (!disposed) physics.world.removeCollider(collider, false); }, seconds * 1000);
   };
-  const bend = new BendState({ element: 'IGNIS', weapon: 'sword' }, tier, () => elementFx.waterSources);
+  // Wind and water douse / extinguish fire
+  elementFx.onExtinguish = (pos, radius) => {
+    bending.extinguishAt(pos, radius);
+  };
+  const bend = new BendState(
+    { element: 'IGNIS', weapon: 'sword' },
+    tier,
+    () => elementFx.waterSources,
+    () => elementFx.spiritWaterSources
+  );
+  bend.hasWaterEnvironment = initialChoice === 'AQUES';
+  bend.isFullMoon = isFullMoon;
   /** Seconds of AQUES Mend left, and how much it heals each second. */
   let mending = { left: 0, perSecond: 0 };
 
@@ -214,6 +244,18 @@ async function main(): Promise<void> {
       sound.playImpact(false, blocked);
       if (!blocked) sound.playHeroHurt();
       if (!combat.current && !blocked) combat.react('hit');
+    },
+    wallBlocked(enemyPos) {
+      sound.playImpact(false, true);
+      shoulderCamera.shake(0.12);
+      bending.spawnHitBurst(enemyPos, 'TERRA');
+      notice('Terra Wall intercepted attack');
+    },
+    elementBlocked(enemyPos) {
+      sound.playImpact(false, true);
+      shoulderCamera.shake(0.15);
+      bending.spawnHitBurst(enemyPos, heroElement);
+      notice(`${heroElement} bending countered attack`);
     },
     villainCast(cast) {
       bending.spawnFireball(cast.origin, cast.facing, cast.element as Parameters<typeof bending.spawnFireball>[2], true);
@@ -267,6 +309,19 @@ async function main(): Promise<void> {
       slowMotion = 2.5;
     },
   });
+  fight.isBlockedByWall = (from, to) => bending.isBlockedByWall(from, to);
+  fight.isAttackCountered = (enemy, heroView) => {
+    const enemyElem = enemy.element;
+    // Wind and Water extinguish Fire attacks
+    if (enemyElem === 'IGNIS' && (heroElement === 'AURA' || heroElement === 'AQUES') && (isLit || combat.blocking || bend.airballActive)) {
+      return true;
+    }
+    // Wind and Water redirect Earth attacks
+    if (enemyElem === 'TERRA' && (heroElement === 'AURA' || heroElement === 'AQUES') && (isLit || combat.blocking || bend.airballActive)) {
+      return true;
+    }
+    return false;
+  };
   // ?round=N starts the wave mode at round N, for testing later waves.
   const startRound = Number(new URLSearchParams(window.location.search).get('round'));
   if (startRound > 1) fight.setRound(startRound);
@@ -346,6 +401,9 @@ async function main(): Promise<void> {
     // AURA carries the staff; everyone else the sword.
     if (weapon !== heldWeapon) { heldWeapon = weapon; void hero.equipWeapon(weapon === 'staff' ? STAFF_WEAPON : SWORD_WEAPON); }
     fight.kit = kit;
+    fight.isFullMoon = isFullMoon || kitElement === 'AQUES';
+    bend.isFullMoon = fight.isFullMoon;
+    bend.hasWaterEnvironment = kitElement === 'AQUES';
     combat.element = kitElement;
     bend.setKit(kit);
     const names: Record<string, string> = {};
@@ -440,6 +498,68 @@ async function main(): Promise<void> {
 
   input.onBendingToggle = () => setBending(!isLit);
 
+  let techniqueClipUntil = 0;
+  let lightningBareUntil = 0;
+
+  input.onTechnique = () => {
+    if (kitElement === 'AURA') {
+      const active = bend.toggleAirball();
+      if (active && sword.phase === 'armed') sword.forceSheathe();
+      elementFx.setAirball(active, controller.position);
+      sound.playSwing(1.2, true);
+      notice(active ? 'Airball technique active (Air Scooter)' : 'Airball technique dismissed');
+    } else if (kitElement === 'TERRA') {
+      const ok = bend.triggerSeismicSense();
+      if (ok) {
+        hero.anim.playOnce('ground_pound', 0.08);
+        techniqueClipUntil = performance.now() + 650;
+        elementFx.dust(controller.position.clone().setY(0.04), 1.4, 18);
+        const positions = fight.enemies.filter(e => e.alive).map(e => e.controller.position);
+        elementFx.spawnSeismicPulse(controller.position, 32.0, positions);
+        sound.playGroundPound();
+        shoulderCamera.shake(0.35);
+        notice(`Seismic Sense: ${positions.length} vibration(s) detected through bedrock`);
+      }
+    } else if (kitElement === 'IGNIS') {
+      if (!isLit) setBending(true);
+      // Lightning bending requires bare-handed chi channeling through outstretched fingers
+      setFightingStyle('bare_hands');
+      hero.sword.visible = false;
+      hero.anim.playOnce('bare_punch_2', 0.08);
+      techniqueClipUntil = performance.now() + 520;
+      lightningBareUntil = performance.now() + 650;
+
+      const targetEnemy = fight.enemies.find(e => e.alive && controller.position.distanceTo(e.controller.position) <= 22.0 && inFront(controller.position, controller.facing, e.controller.position, 0.55));
+      const targetPos = targetEnemy ? targetEnemy.controller.position.clone() : undefined;
+      bending.spawnLightningBolt(controller.position, controller.facing, 22.0, targetPos);
+      sound.playThump(90, 0.5, 1.0);
+      sound.playFireBurst(1.4);
+      shoulderCamera.shake(0.55);
+      for (const enemy of fight.enemies) {
+        if (!enemy.alive) continue;
+        const d = controller.position.distanceTo(enemy.controller.position);
+        if (d <= 22.0 && inFront(controller.position, controller.facing, enemy.controller.position, 0.55)) {
+          const lightningDmg = Math.round(55 * rules.tierBendScale(tier));
+          enemy.hurt({ current: Math.max(0, enemy.health.current - lightningDmg), maximum: enemy.health.maximum }, 'lightning', controller.position, true);
+          enemy.afflict({ stunSeconds: 1.2 });
+        }
+      }
+      notice('Lightning Bending (Cold-Blooded Fire)');
+    }
+  };
+
+  if (fps && (window as unknown as { elements?: Record<string, unknown> }).elements) {
+    Object.assign((window as unknown as { elements: Record<string, unknown> }).elements, {
+      get elementFx() { return elementFx; },
+      get setBending() { return setBending; },
+      get applyStyle() { return applyStyle; },
+      get bend() { return bend; },
+      set armedWith(val: 'weapon' | 'hands' | 'legs') { armedWith = val; applyStyle(); },
+      get armedWith() { return armedWith; },
+      triggerAttack(act: CombatAction) { attack(act); },
+    });
+  }
+
   const refusals: Record<BendRefusal, string> = {
     no_water: 'No water here', cooldown: '', tier: 'Not yet: your tier is too low', hush: 'The Dim cannot bend', no_shards: 'No shards left',
   };
@@ -449,6 +569,8 @@ async function main(): Promise<void> {
     if (bendAction[action]) return bendAction[action]!;
     if (fightingStyle === 'bending' && action === 'light') return 'bend_palm';
     if (fightingStyle === 'bending' && action === 'heavy') return 'bend_sweep';
+    if (fightingStyle === 'legs' && isLit && action === 'light') return 'bend_palm';
+    if (fightingStyle === 'legs' && isLit && action === 'heavy') return 'bend_sweep';
     return null;
   };
   /** Starts a bending move through the meter, the waterskin and the tier; false when refused. */
@@ -462,12 +584,12 @@ async function main(): Promise<void> {
     }
     if (move === 'ultimate' && !isLit) setBending(true);
     if (!isLit) { notice('Bending is off (B)'); return { ok: false, strength: 0 }; }
-    if (combat.current && !isBendMove(combat.current)) combat.reset();
+    if (combat.current && !isBendMove(combat.current) && !combat.current.startsWith('leg_')) combat.reset();
     const go = bend.begin(move, fight.ready(move, isLit), controller.position);
     if (!go.go) { if (refusals[go.why]) notice(refusals[go.why]); return { ok: false, strength: 0 }; }
     const skip = go.chained || go.free === true;
     fight.setBend(go.strength, skip);
-    if (combat.current) combat.reset();
+    if (combat.current && !combat.current.startsWith('leg_')) combat.reset();
     chainPass = skip ? move : null;
     const ok = combat.press(action);
     chainPass = null;
@@ -487,10 +609,16 @@ async function main(): Promise<void> {
     }
     if (bendMove === 'dash_strike' && kitElement === 'AQUES') {
       const spec = rules.moveFor('dash_strike', fight.kit);
-      const bonus = bend.nearWater(controller.position) ? 1 + Number((balance.combat.elements.AQUES.dash_strike as { inWaterBonus?: number }).inWaterBonus ?? 0) : 1;
-      mending = { left: 2, perSecond: (spec.heal ?? 24) * bonus * strength / 2 };
+      const quality = bend.healingQuality(controller.position);
+      const mult = bend.healingMultiplier(controller.position);
+      mending = { left: 2, perSecond: (spec.heal ?? 24) * mult * strength / 2 };
+      elementFx.cast('AQUES', 'dash_strike', controller.position, controller.facing, strength, quality);
+      notice(quality === 'spirit_water' ? 'Spirit Water Mend (+150%)' : quality === 'natural' ? 'Natural Water Mend (+50%)' : 'Mend (Waterskin)');
+      sound.playSwing(1.3, false);
+      shoulderCamera.shake(0.15);
+      return;
     }
-    if (bendMove && kitElement !== 'IGNIS') {
+    if (bendMove && kitElement !== 'IGNIS' && fightingStyle !== 'legs') {
       elementFx.cast(kitElement, bendMove, controller.position, controller.facing, strength);
       if (kitElement === 'TERRA') sound.playGroundPound();
       else sound.playSwing(1.3, bendMove === 'ultimate' || bendMove === 'bend_sweep');
@@ -547,11 +675,20 @@ async function main(): Promise<void> {
       }
     } else if (fightingStyle === 'legs') {
       sound.playSwing(0.9, action === 'heavy');
-      if (isLit && heroElement === 'IGNIS') {
-        // Bending through the legs: each knee throws a short arc of fire that stays on the floor.
-        const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
-        bending.spawnSwingFireSpew(controller.position, controller.facing, 'IGNIS', action === 'heavy');
-        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, action === 'heavy' ? 2.0 : 1.3), action === 'heavy' ? 1.3 : 1.0, action === 'heavy' ? 3.0 : 2.2, 'IGNIS');
+      const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
+      const kickingFoot = action === 'heavy' ? footR : (combat.current === 'leg_light_2' ? footL : footR);
+      if (isLit) {
+        if (heroElement === 'IGNIS') {
+          bending.spawnLegKickArc(controller.position, kickingFoot, controller.facing, action === 'heavy');
+          fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, action === 'heavy' ? 2.2 : 1.4), action === 'heavy' ? 1.35 : 1.05, action === 'heavy' ? 3.2 : 2.2, 'IGNIS');
+          sound.playFireBurst(action === 'heavy' ? 0.35 : 0.25);
+          shoulderCamera.shake(action === 'heavy' ? 0.28 : 0.15);
+        } else {
+          elementFx.castKick(kitElement, bendMove ?? (action === 'heavy' ? 'bend_sweep' : 'bend_palm'), controller.position, kickingFoot, controller.facing, action === 'heavy', strength);
+          if (kitElement === 'TERRA') sound.playGroundPound();
+          else sound.playSwing(1.3, action === 'heavy');
+          shoulderCamera.shake(action === 'heavy' ? 0.3 : 0.15);
+        }
       }
     } else if (fightingStyle === 'bare_hands') {
       sound.playSwing(1.2, action === 'heavy');
@@ -704,7 +841,8 @@ async function main(): Promise<void> {
       mending.left -= step;
       fight.healHero(mending.perSecond * step);
     }
-    if (fightingStyle === 'weapon') {
+    const inLightning = performance.now() < lightningBareUntil;
+    if (fightingStyle === 'weapon' && !inLightning) {
       // Stay drawn while fighting or with a villain close by; sheathe after a quiet spell.
       const threatened = !heldCalm && fight.nearestDistance(controller.position) < balance.stance.engageRadius;
       if ((combat.current && combat.current !== 'dodge') || combat.blocking || pending || threatened) {
@@ -755,7 +893,7 @@ async function main(): Promise<void> {
     hero.getLimbWorldPosition('knee_l', kneeL);
     heroView.facing = controller.facing;
     const rooted = combat.current !== null || combat.blocking;
-    const speedMultiplier = isLit ? 1.25 : 1.0;
+    const speedMultiplier = (isLit ? 1.25 : 1.0) * (bend.airballActive ? 1.85 : 1.0);
     const alpha = stepper.advance(delta, () => {
       // Fists close in further than a blade before the step stops.
       const stopAt = fightingStyle === 'weapon' ? balance.combat.lungeStopDistance : balance.combat.bareLungeStopDistance;
@@ -765,20 +903,74 @@ async function main(): Promise<void> {
       if (!picking) fight.step(heroView, combat, isLit);
     });
 
+    if (bend.airballActive) {
+      elementFx.updateAirball(controller.position, delta, controller.speed, controller.facing);
+    }
+
     const animDelta = delta;
     drawn.lerpVectors(controller.previous, controller.position, alpha);
+    if (bend.airballActive) drawn.y += 0.45;
     hero.model.position.copy(drawn);
     hero.model.rotation.y = controller.facing + balance.controller.modelForwardYaw;
-    if (combat.blocking) {
-      hero.anim.play('block', balance.combat.fade);
-    } else if (!combat.current) {
-      const pace = locomotionForSpeed(controller.speed);
-      const clip = pace === 'idle' && !sword.engaged ? 'idle_relaxed' : pace;
-      hero.anim.play(clip, balance.controller.animationFade);
-      if (pace !== 'idle') hero.anim.setSpeed(pace, Math.max(0.5, controller.speed / clipSpeeds[pace]));
+    if (bend.airballActive) {
+      wasAirballActive = true;
+      // In Airball mode, hero rides seated atop the air scooter
+      hero.anim.play('jump', 0.2); // Airborne tuck posture
+      hero.anim.setSpeed('jump', 0); // Freeze tuck in air
+      hero.model.position.y = drawn.y + 0.65; // Elevated seat height atop the spinning airball
+    } else {
+      if (wasAirballActive) {
+        wasAirballActive = false;
+        // Cleanly restore all mutated bones to initial rest pose
+        for (const [name, rot] of initialBoneRotations.entries()) {
+          const b = hero.model.getObjectByName(name);
+          if (b) b.rotation.set(rot.x, rot.y, rot.z);
+        }
+        hero.anim.play('idle_relaxed', 0.2);
+      }
+      if (combat.blocking) {
+        hero.anim.play('block', balance.combat.fade);
+      } else if (!combat.current && performance.now() > techniqueClipUntil) {
+        const pace = locomotionForSpeed(controller.speed);
+        const clip = pace === 'idle' && !sword.engaged ? 'idle_relaxed' : pace;
+        hero.anim.play(clip, balance.controller.animationFade);
+        if (pace !== 'idle') hero.anim.setSpeed(pace, Math.max(0.5, controller.speed / clipSpeeds[pace]));
+      }
     }
     hero.anim.update(animDelta);
     sword.update(animDelta);
+    if (bend.airballActive || performance.now() < lightningBareUntil) {
+      if (sword.phase === 'armed') sword.forceSheathe();
+      hero.sword.visible = false;
+      // Sitting riding posture on bone joints atop the sphere
+      if (bend.airballActive) {
+        const thighL = hero.model.getObjectByName('thigh_l');
+        const thighR = hero.model.getObjectByName('thigh_r');
+        const calfL = hero.model.getObjectByName('calf_l');
+        const calfR = hero.model.getObjectByName('calf_r');
+        const armL = hero.model.getObjectByName('upperarm_l');
+        const armR = hero.model.getObjectByName('upperarm_r');
+        const spine = hero.model.getObjectByName('spine_01');
+        if (thighL) { thighL.rotation.x = 1.35; thighL.rotation.z = -0.2; }
+        if (thighR) { thighR.rotation.x = 1.35; thighR.rotation.z = 0.2; }
+        if (calfL) { calfL.rotation.x = -1.6; }
+        if (calfR) { calfR.rotation.x = -1.6; }
+        if (armL) { armL.rotation.x = 0.75; armL.rotation.z = -0.4; }
+        if (armR) { armR.rotation.x = 0.75; armR.rotation.z = 0.4; }
+        if (spine) { spine.rotation.x = -0.15; }
+      }
+    } else {
+      hero.sword.visible = true;
+      if (wasAirballActive) {
+        wasAirballActive = false;
+        hero.anim.setSpeed('jump', 1.0);
+        hero.anim.play('idle_relaxed', 0.1);
+        for (const [name, rot] of initialBoneRotations.entries()) {
+          const b = hero.model.getObjectByName(name);
+          if (b) b.rotation.set(rot.x, rot.y, rot.z);
+        }
+      }
+    }
     hero.model.updateMatrixWorld(true);
     hero.sword.updateMatrixWorld(true);
     hero.sword.localToWorld(bladeBase.copy(hero.bladeBase));
@@ -789,7 +981,7 @@ async function main(): Promise<void> {
     hero.getLimbWorldPosition('foot_l', footL);
     hero.getLimbWorldPosition('knee_r', kneeR);
     hero.getLimbWorldPosition('knee_l', kneeL);
-    const bladeLit = fightingStyle === 'weapon';
+    const bladeLit = fightingStyle === 'weapon' && performance.now() >= lightningBareUntil;
     bending.setLit(isLit, heroElement, drawn, controller.facing, bladeLit ? bladeBase : undefined, bladeLit ? bladeTip : undefined);
     bending.syncBurnPatches(fight.activeBurnPatches);
     bending.setBurningVillains(fight.burningVillains);
@@ -828,7 +1020,7 @@ async function main(): Promise<void> {
       isDim,
     );
     const supply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
-      : kitElement === 'AQUES' ? `Waterskin ${bend.waterskin}/${balance.combat.waterskin.charges}${bend.nearWater(controller.position) ? ' · water near' : ''}` : null;
+      : kitElement === 'AQUES' ? `Waterskin ${bend.hasWaterEnvironment || bend.nearWater(controller.position) ? '∞ (reusable)' : `${bend.waterskin}/${balance.combat.waterskin.charges}`}${bend.healingQuality(controller.position) === 'spirit_water' ? ' · Spirit Water Oasis' : bend.nearWater(controller.position) ? ' · Water source' : ''}${bend.isFullMoon ? ' · Full Moon (+50%)' : ''}` : null;
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, supply);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;

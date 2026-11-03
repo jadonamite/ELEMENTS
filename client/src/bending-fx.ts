@@ -1,15 +1,26 @@
 import {
   AdditiveBlending,
+  BufferGeometry,
   CanvasTexture,
+  CatmullRomCurve3,
   Color,
+  CylinderGeometry,
   DoubleSide,
+  EdgesGeometry,
+  Float32BufferAttribute,
   Group,
+  Line,
+  LineBasicMaterial,
+  LineSegments,
   Mesh,
   MeshBasicMaterial,
   NormalBlending,
   PlaneGeometry,
   PointLight,
   Quaternion,
+  RingGeometry,
+  SphereGeometry,
+  TubeGeometry,
   type Camera,
   type Scene,
   Vector3,
@@ -291,9 +302,259 @@ export class BendingEffects {
   private burningVillains: BurningVillainInfo[] = [];
   private readonly patchLights: PointLight[] = [];
   private readonly fireballs: FireballProjectile[] = [];
+  private readonly activeTerraWalls: Array<{ center: Vector3; size: Vector3; expiresAt: number }> = [];
   private patchSmokeClock = 0;
 
   onFireballImpact?: (pos: Vector3, element: BendingType, hostile: boolean) => void;
+
+  /** Register an active Terra wall to physically intercept and block projectiles. */
+  addActiveWall(center: Vector3, size: Vector3, seconds: number): void {
+    this.activeTerraWalls.push({
+      center: center.clone(),
+      size: size.clone(),
+      expiresAt: this.field.time.value + seconds,
+    });
+  }
+
+  /**
+   * Checks whether a line segment between two positions is intercepted by any active Terra stone wall.
+   */
+  isBlockedByWall(from: Vector3, to: Vector3): boolean {
+    const dir = new Vector3().subVectors(to, from);
+    const len = dir.length();
+    if (len < 0.001) return false;
+    dir.divideScalar(len);
+
+    const now = this.field.time.value;
+    for (const wall of this.activeTerraWalls) {
+      if (now > wall.expiresAt) continue;
+      const minX = wall.center.x - wall.size.x * 0.5 - 0.45;
+      const maxX = wall.center.x + wall.size.x * 0.5 + 0.45;
+      const minY = wall.center.y - wall.size.y * 0.5 - 0.3;
+      const maxY = wall.center.y + wall.size.y * 0.5 + 0.6;
+      const minZ = wall.center.z - wall.size.z * 0.5 - 0.45;
+      const maxZ = wall.center.z + wall.size.z * 0.5 + 0.45;
+
+      let tmin = (minX - from.x) / (dir.x || 1e-6);
+      let tmax = (maxX - from.x) / (dir.x || 1e-6);
+      if (tmin > tmax) [tmin, tmax] = [tmax, tmin];
+
+      let tymin = (minY - from.y) / (dir.y || 1e-6);
+      let tymax = (maxY - from.y) / (dir.y || 1e-6);
+      if (tymin > tymax) [tymin, tymax] = [tymax, tymin];
+
+      if (tmin > tymax || tymin > tmax) continue;
+      if (tymin > tmin) tmin = tymin;
+      if (tymax < tmax) tmax = tymax;
+
+      let tzmin = (minZ - from.z) / (dir.z || 1e-6);
+      let tzmax = (maxZ - from.z) / (dir.z || 1e-6);
+      if (tzmin > tzmax) [tzmin, tzmax] = [tzmax, tzmin];
+
+      if (tmin > tzmax || tzmin > tmax) continue;
+      if (tzmin > tmin) tmin = tzmin;
+      if (tzmax < tmax) tmax = tzmax;
+
+      if (tmax >= 0 && tmin <= len) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Water or wind extinguishing fire: snuffs out active flame patches,
+   * in-flight fireballs, and burning villain states within range.
+   */
+  extinguishAt(pos: Vector3, radius = 3.4): void {
+    // 1. Extinguish active flame ground patches
+    this.activePatches = this.activePatches.filter(p => {
+      const d = p.position.distanceTo(pos);
+      if (d <= radius) {
+        this.field.emit({
+          x: p.position.x, y: 0.3, z: p.position.z,
+          vy: 1.2, life: 0.9, w0: 0.8, h0: 0.8, w1: 1.8, h1: 1.8,
+          mode: FxMode.MIST, alpha: 0.75,
+        });
+        return false;
+      }
+      return true;
+    });
+
+    // 2. Extinguish in-flight fireballs
+    for (const fb of this.fireballs) {
+      if (!fb.active || fb.element !== 'IGNIS') continue;
+      if (fb.position.distanceTo(pos) <= radius + 0.8) {
+        fb.active = false;
+        this.field.emit({
+          x: fb.position.x, y: fb.position.y, z: fb.position.z,
+          vy: 0.8, life: 0.6, w0: 0.6, h0: 0.6, w1: 1.2, h1: 1.2,
+          mode: FxMode.MIST, alpha: 0.8,
+        });
+      }
+    }
+
+    // 3. Extinguish burning villains
+    this.burningVillains = this.burningVillains.filter(v => v.position.distanceTo(pos) > radius);
+  }
+
+  /**
+   * Advanced Fire technique: Lightning Bending (Cold-Blooded Fire).
+   * Generates volumetric high-voltage electric plasma bolts with branching arcs,
+   * blinding detonation flash, and explosive ground shockwave.
+   */
+  spawnLightningBolt(origin: Vector3, facing: number, reach = 22, targetPos?: Vector3): void {
+    const dir = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const start = origin.clone().setY(origin.y + 1.25).addScaledVector(dir, 0.75);
+    const end = targetPos ? targetPos.clone().setY(0.9) : start.clone().addScaledVector(dir, reach).setY(0.4);
+
+    const boltGroup = new Group();
+    const disposables: Array<{ dispose(): void }> = [];
+
+    const makeForkPoints = (from: Vector3, to: Vector3, jitter: number, segs = 18): Vector3[] => {
+      const pts: Vector3[] = [from];
+      const step = new Vector3().subVectors(to, from).divideScalar(segs);
+      for (let i = 1; i < segs; i++) {
+        const pt = from.clone().addScaledVector(step, i);
+        pt.x += (Math.random() - 0.5) * jitter;
+        pt.y += (Math.random() - 0.5) * jitter * 0.7;
+        pt.z += (Math.random() - 0.5) * jitter;
+        pts.push(pt);
+      }
+      pts.push(to);
+      return pts;
+    };
+
+    // 1. Primary Volumetric Core Bolt (White-hot incandescent plasma)
+    const mainPts = makeForkPoints(start, end, 1.4, 20);
+    const mainCurve = new CatmullRomCurve3(mainPts);
+    const mainGeo = new TubeGeometry(mainCurve, 36, 0.065, 8, false);
+    const mainMat = new MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 1.0,
+      blending: AdditiveBlending,
+      depthWrite: false,
+    });
+    const mainMesh = new Mesh(mainGeo, mainMat);
+    boltGroup.add(mainMesh);
+    disposables.push(mainGeo, mainMat);
+
+    // 2. High-Voltage Electric Corona / Plasma Aura (Vibrant radiant cyan)
+    const auraGeo = new TubeGeometry(mainCurve, 28, 0.17, 8, false);
+    const auraMat = new MeshBasicMaterial({
+      color: 0x00e1ff,
+      transparent: true,
+      opacity: 0.8,
+      blending: AdditiveBlending,
+      depthWrite: false,
+    });
+    const auraMesh = new Mesh(auraGeo, auraMat);
+    boltGroup.add(auraMesh);
+    disposables.push(auraGeo, auraMat);
+
+    // 3. Volumetric Branching Fork Bolts
+    const forkMaterials: MeshBasicMaterial[] = [];
+    const forkCount = 4;
+    for (let f = 0; f < forkCount; f++) {
+      const frac = 0.25 + f * 0.18;
+      const forkStart = mainCurve.getPoint(frac);
+      const side = new Vector3(
+        (Math.random() - 0.5) * 4.5,
+        (Math.random() - 0.4) * 2.2,
+        (Math.random() - 0.5) * 4.5
+      );
+      const forkEnd = forkStart.clone().add(side);
+      if (Math.random() < 0.6) forkEnd.y = 0.05; // Ground strike arcs
+
+      const forkPts = makeForkPoints(forkStart, forkEnd, 0.8, 10);
+      const forkCurve = new CatmullRomCurve3(forkPts);
+      const forkGeo = new TubeGeometry(forkCurve, 14, 0.035, 6, false);
+      const forkMat = new MeshBasicMaterial({
+        color: 0x70e4ff,
+        transparent: true,
+        opacity: 0.85,
+        blending: AdditiveBlending,
+        depthWrite: false,
+      });
+      boltGroup.add(new Mesh(forkGeo, forkMat));
+      forkMaterials.push(forkMat);
+      disposables.push(forkGeo, forkMat);
+    }
+
+    // 4. Ground Detonation Shockwave Ring
+    const shockGeo = new RingGeometry(0.35, 0.95, 36);
+    shockGeo.rotateX(-Math.PI / 2);
+    const shockMat = new MeshBasicMaterial({
+      color: 0x66f0ff,
+      transparent: true,
+      opacity: 0.95,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    const shockMesh = new Mesh(shockGeo, shockMat);
+    shockMesh.position.copy(end).setY(0.04);
+    boltGroup.add(shockMesh);
+    disposables.push(shockGeo, shockMat);
+
+    // 5. Origin hand flash and impact detonation point lights
+    const handLight = new PointLight(0x80e8ff, 7.0, 12);
+    handLight.position.copy(start);
+    boltGroup.add(handLight);
+    disposables.push(handLight);
+
+    const hitLight = new PointLight(0xccf8ff, 14.0, 22);
+    hitLight.position.copy(end).setY(1.2);
+    boltGroup.add(hitLight);
+    disposables.push(hitLight);
+
+    this.root.add(boltGroup);
+
+    this.spawnHitBurst(end, 'IGNIS');
+    this.spawnScorch(end.clone().setY(0.03), 2.2, 5.0);
+
+    // High velocity electric spark dispersal
+    for (const p of mainPts) {
+      if (Math.random() < 0.5) continue;
+      for (let s = 0; s < 2; s++) {
+        const vel = new Vector3(
+          (Math.random() - 0.5) * 8.0,
+          (Math.random() - 0.2) * 5.0,
+          (Math.random() - 0.5) * 8.0
+        );
+        this.spawnParticle('spark', p, vel, 0.35, 0.08, 0.02, 'IGNIS', 1.0);
+      }
+    }
+
+    // Rapid electrical crackle and dissipation
+    let age = 0;
+    const interval = setInterval(() => {
+      age += 0.033;
+      const t = age / 0.38;
+      const alpha = Math.max(0, 1.0 - t * t);
+
+      mainMat.opacity = alpha;
+      auraMat.opacity = alpha * 0.8;
+      for (const fm of forkMaterials) fm.opacity = alpha * 0.85;
+
+      // Expand ground shockwave ring
+      const shockScale = 1.0 + t * 4.2;
+      shockMesh.scale.set(shockScale, shockScale, shockScale);
+      shockMat.opacity = Math.max(0, 0.95 * (1.0 - t));
+
+      handLight.intensity = Math.max(0, 7.0 * (1.0 - t));
+      hitLight.intensity = Math.max(0, 14.0 * (1.0 - t));
+
+      if (t >= 1.0) {
+        clearInterval(interval);
+        this.root.remove(boltGroup);
+        for (const d of disposables) d.dispose();
+      }
+    }, 33);
+
+    this.onFireballImpact?.(end, 'IGNIS', false);
+  }
 
   constructor(private readonly scene: Scene) {
     this.root.name = 'BendingEffects';
@@ -673,6 +934,42 @@ export class BendingEffects {
     }
   }
 
+  /**
+   * Spawns a crescent arc of fire launched directly from the kicking foot/limb.
+   */
+  spawnLegKickArc(origin: Vector3, footPos: Vector3, facing: number, isHeavy = false): void {
+    const dir = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const side = new Vector3(Math.cos(facing), 0, -Math.sin(facing));
+    const mode = FxMode.FIRE;
+    const startY = Math.max(0.2, footPos.y);
+
+    this.triggerFlash(footPos.clone().setY(startY), 0xff4500, isHeavy ? 4.0 : 2.5, 0.45, true);
+
+    const count = isHeavy ? 16 : 10;
+    const kickSpeed = isHeavy ? 9.0 : 7.0;
+    for (let i = 0; i < count; i++) {
+      const arcT = (i / (count - 1) - 0.5) * (isHeavy ? 1.6 : 1.1);
+      const pos = footPos.clone().addScaledVector(side, arcT * (isHeavy ? 0.9 : 0.6));
+      const vel = dir.clone().multiplyScalar(kickSpeed + (1 - Math.abs(arcT)) * 2.0).addScaledVector(side, arcT * 3.0);
+      vel.y = (1 - Math.abs(arcT)) * 1.5;
+
+      this.field.emit({
+        x: pos.x, y: startY, z: pos.z, vx: vel.x, vy: vel.y, vz: vel.z, drag: 2.5,
+        life: 0.45 + Math.random() * 0.2, w0: 0.4, h0: 0.45, w1: 0.5, h1: 0.85,
+        mode, alpha: 0.95, delay: Math.abs(arcT) * 0.03,
+      });
+
+      // Embers trailing from the kicking foot
+      if (i % 2 === 0) {
+        this.spawnParticle('spark', pos, vel.clone().multiplyScalar(1.2), 0.35, 0.05, 0.015, 'IGNIS', 1.0);
+      }
+    }
+
+    if (isHeavy) {
+      this.spawnFlameSweep(origin, facing, 'IGNIS');
+    }
+  }
+
   /** Per frame update: advance every effect and upload this frame's quads. */
   update(delta: number, heroPos?: Vector3, camera?: Camera): void {
     this.auraClock += delta;
@@ -916,7 +1213,21 @@ export class BendingEffects {
         const pvel = new Vector3((Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8);
         this.spawnParticle('spark', fb.position, pvel, 0.25, 0.05, 0.015, fb.element, 1.0);
       }
-      if (fb.elapsed >= fb.duration || fb.position.y <= 0.06) {
+
+      // Check collision against active Terra stone walls (Terra wall blocks any element)
+      let hitWall = false;
+      for (const wall of this.activeTerraWalls) {
+        if (this.field.time.value > wall.expiresAt) continue;
+        const dx = Math.abs(fb.position.x - wall.center.x);
+        const dz = Math.abs(fb.position.z - wall.center.z);
+        const dy = Math.abs(fb.position.y - wall.center.y);
+        if (dx <= wall.size.x / 2 + 0.4 && dz <= wall.size.z / 2 + 0.4 && dy <= wall.size.y / 2 + 0.5) {
+          hitWall = true;
+          break;
+        }
+      }
+
+      if (hitWall || fb.elapsed >= fb.duration || fb.position.y <= 0.06) {
         fb.active = false;
         const impactPos = fb.position.clone().setY(0.04);
         this.spawnHitBurst(impactPos, fb.element);

@@ -1,8 +1,11 @@
-import { readFileSync } from 'node:fs';
-
 function loadEconomyBalance() {
   try {
-    const raw = readFileSync(new URL('../../balance.json', import.meta.url), 'utf-8');
+    if (typeof process === 'undefined' || typeof process.getBuiltinModule !== 'function') {
+      return null;
+    }
+    const fs = process.getBuiltinModule('node:fs') as { readFileSync: (url: URL, enc: string) => string } | undefined;
+    if (!fs?.readFileSync) return null;
+    const raw = fs.readFileSync(new URL('../../balance.json', import.meta.url), 'utf-8');
     return JSON.parse(raw)?.economy;
   } catch {
     return null;

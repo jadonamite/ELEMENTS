@@ -58,6 +58,10 @@ export interface FightEvents {
   roundCleared?(roundNumber: number, nextRoundVillainCount: number): void;
   /** Triggered when the final round (15 villains) is completed. */
   victory?(): void;
+  /** An attack struck a Terra stone wall instead of the hero. */
+  wallBlocked?(pos: Vector3): void;
+  /** An enemy attack was countered or extinguished by an elemental defense. */
+  elementBlocked?(pos: Vector3): void;
 }
 
 /**
@@ -68,6 +72,12 @@ export class Fight {
   readonly enemies: Enemy[] = [];
   readonly burnPatches: BurnPatch[] = [];
   private readonly villainBurns = new Map<Enemy, { burnRemaining: number; tickAccumulator: number }>();
+  /** Full Moon lunar phase state empowering AQUES */
+  isFullMoon = false;
+  /** Optional wall intercept predicate checking if a Terra stone wall is between two points. */
+  isBlockedByWall?: (from: Vector3, to: Vector3) => boolean;
+  /** Optional elemental defense predicate checking if an attack is countered by hero bending. */
+  isAttackCountered?: (enemy: Enemy, hero: HeroView) => boolean;
   heroHealth: Health = rules.createHealth(balance.hero.maxHealth);
   /** The hero's element and weapon; moves take their numbers from it. */
   kit: Kit = { element: 'IGNIS', weapon: 'sword' };
@@ -349,11 +359,32 @@ export class Fight {
         this.events.heroParried?.(enemy);
         continue;
       }
-      const damage = rules.calculateDamage(enemy.attackDamage || tuning.attackDamage) *
-        (guarded ? balance.hero.blockDamageScale : 1);
+      // Block confirmed: player completely blocked the strike. Hero takes ZERO damage.
+      // Life should ONLY reduce on successful unblocked hit confirmation.
+      if (guarded) {
+        this.events.heroHit(true);
+        continue;
+      }
+      // Check if an active Terra stone wall intercepts the attack between enemy and hero
+      if (this.isBlockedByWall?.(enemy.controller.position, hero.position)) {
+        this.events.wallBlocked?.(enemy.controller.position);
+        continue;
+      }
+      // Check if the attack is countered by the hero's elemental bending defense
+      if (this.isAttackCountered?.(enemy, hero)) {
+        this.events.elementBlocked?.(enemy.controller.position);
+        continue;
+      }
+      // Confirmed, unblocked, unobstructed hit confirmation: only now does life reduce!
+      const damage = rules.calculateDamage(enemy.attackDamage || tuning.attackDamage);
       this.heroHealth = rules.applyDamage(this.heroHealth, damage);
+      if (damage >= 14) {
+        // Heavy unblocked trauma inflicts deep scars / internal wounds (cannot be cured by water healing)
+        const trauma = Math.max(1, Math.round(damage * 0.18));
+        this.heroHealth = rules.inflictScars(this.heroHealth, trauma);
+      }
       if (rules.isDead(this.heroHealth)) this.events.heroDied();
-      else this.events.heroHit(guarded);
+      else this.events.heroHit(false);
     }
 
     // Advance fire patches
@@ -479,10 +510,13 @@ export class Fight {
         target: this.combatant(tuning.element as Element, enemy.controller.position, enemy.health, tuning.armour),
         moveId: move, now: this.clock, state: this.heroState, swingAt: Math.min(combat.swingAt, this.clock),
         isLit, bendScale: this.bend.scale, chained: this.bend.chained,
+        situation: { isFullMoon: this.isFullMoon },
       });
       if (!result.accepted) continue;
       this.heroState = result.state;
-      const effect = isBendMove(move) ? afflictionFor(this.kit.element, move, hero.position, enemy.controller.position, Math.min(1, this.bend.scale)) : null;
+      const effect = (isBendMove(move) || (isLit && (move.startsWith('leg_') || move.startsWith('bare_'))))
+        ? afflictionFor(this.kit.element, move, hero.position, enemy.controller.position, Math.min(1, this.bend.scale))
+        : null;
       if (effect && result.target.health.current > 0) enemy.afflict(effect);
 
       const prevHp = enemy.health.current;

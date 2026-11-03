@@ -118,6 +118,8 @@ export class Enemy {
   readonly anim: AnimationPlayer;
   readonly controller: HeroController;
   readonly kind: VillainKind;
+  /** Primary element of this enemy for combat and counters. */
+  get element(): string { return this.fit.element ?? 'IGNIS'; }
   health: Health;
   /** Damage of the strike that just landed, melee or thrown. */
   attackDamage = 0;

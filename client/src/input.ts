@@ -23,6 +23,7 @@ export class GameInput {
   onStyleSelect?: (style: FightingStyle) => void;
   onInteract?: () => void;
   onDuelToggle?: () => void;
+  onTechnique?: () => void;
 
   constructor(private readonly canvas: HTMLCanvasElement, button: HTMLButtonElement,
     orbit: (dx: number, dy: number) => void, status: (text: string) => void) {
@@ -85,6 +86,11 @@ export class GameInput {
       if (event.code === 'KeyK' && !event.repeat) {
         event.preventDefault();
         this.onDuelToggle?.();
+        return;
+      }
+      if (event.code === 'KeyV' && !event.repeat) {
+        event.preventDefault();
+        this.onTechnique?.();
         return;
       }
       if (movementKeys.has(event.code)) {

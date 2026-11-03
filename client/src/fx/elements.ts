@@ -28,6 +28,7 @@ import {
   RepeatWrapping,
   RingGeometry,
   type Scene,
+  SphereGeometry,
   SRGBColorSpace,
   type Texture,
   TextureLoader,
@@ -165,10 +166,20 @@ export class ElementEffects {
   private readonly foam: MeshBasicMaterial;
   /** A raised TERRA wall: the scene gives it a solid body for its lifetime. */
   onWall?: (center: Vector3, facing: number, size: Vector3, seconds: number) => void;
+  /** Wind and water extinguishing fire: douses flame patches and fireballs in range. */
+  onExtinguish?: (at: Vector3, radius: number) => void;
   private readonly wind: MeshBasicMaterial;
   private readonly textures: Texture[] = [];
   /** Pools and floods AQUES made; they count as water to bend from while they last. */
   readonly pools: Array<{ position: Vector3; until: number }> = [];
+  readonly spiritPools: Array<{ position: Vector3; until: number }> = [];
+  private readonly activeBoulders: Array<{ position: Vector3; forward: Vector3; reach: number; s: number }> = [];
+  private airballGroup: Group | null = null;
+  private airballSphere: Mesh | null = null;
+  private airballTorus1: Mesh | null = null;
+  private airballTorus2: Mesh | null = null;
+  private airballTorus3: Mesh | null = null;
+  private airballDust: Mesh | null = null;
   private clock = 0;
 
   constructor(private readonly scene: Scene, quality: 'high' | 'low' = 'high') {
@@ -206,20 +217,337 @@ export class ElementEffects {
 
   /** Water sources from effects that are still on the ground. */
   get waterSources(): Vector3[] { return this.pools.filter(p => p.until > this.clock).map(p => p.position); }
+  /** Sacred spirit water sources in the world. */
+  get spiritWaterSources(): Vector3[] { return this.spiritPools.filter(p => p.until > this.clock).map(p => p.position); }
+
+  /**
+   * Air or water redirecting flying boulders: changes boulder trajectory with a wind/water burst.
+   */
+  redirectBoulders(near: Vector3, newForward: Vector3, radius = 4.5): boolean {
+    let redirected = false;
+    for (const b of this.activeBoulders) {
+      if (b.position.distanceTo(near) <= radius) {
+        b.forward.copy(newForward).normalize();
+        redirected = true;
+        this.droplets(b.position, 12, 2.5, 1.5, 0.6);
+      }
+    }
+    return redirected;
+  }
+
+  /**
+   * Toggle the AURA Airball (Air Scooter) technique.
+   * Spawns a glowing sphere of compressed air, spinning wind rings, and ground vortex beneath the sitting hero.
+   */
+  setAirball(active: boolean, at?: Vector3): void {
+    if (!this.airballGroup) {
+      this.airballGroup = new Group();
+      this.airballGroup.name = 'Airball';
+
+      // 1. Central glowing sphere of compressed spinning air
+      const sGeo = new SphereGeometry(0.68, 24, 24);
+      const airSphereMat = new MeshBasicMaterial({
+        color: 0xe6f4ff,
+        transparent: true,
+        opacity: 0.65,
+        blending: AdditiveBlending,
+      });
+      this.airballSphere = new Mesh(sGeo, airSphereMat);
+
+      // 2. High-speed equator and oblique wind vortex rings
+      const tGeo1 = new TorusGeometry(0.76, 0.06, 12, 32);
+      this.airballTorus1 = new Mesh(tGeo1, this.wind);
+
+      const tGeo2 = new TorusGeometry(0.72, 0.05, 12, 32);
+      this.airballTorus2 = new Mesh(tGeo2, this.wind);
+      this.airballTorus2.rotation.x = Math.PI / 3;
+
+      const tGeo3 = new TorusGeometry(0.74, 0.04, 12, 32);
+      this.airballTorus3 = new Mesh(tGeo3, this.wind);
+      this.airballTorus3.rotation.z = Math.PI / 4;
+
+      // 3. Ground vortex ring lifting air dust
+      const dGeo = new RingGeometry(0.3, 1.2, 32);
+      dGeo.rotateX(-Math.PI / 2);
+      this.airballDust = new Mesh(dGeo, this.spray);
+      this.airballDust.position.y = -0.66;
+
+      this.airballGroup.add(this.airballSphere, this.airballTorus1, this.airballTorus2, this.airballTorus3, this.airballDust);
+      this.scene.add(this.airballGroup);
+    }
+    this.airballGroup.visible = active;
+    if (active && at) {
+      this.airballGroup.position.copy(at).setY(at.y + 0.68);
+    }
+  }
+
+  /** Update the spinning airball under the hero while riding. */
+  updateAirball(at: Vector3, delta: number, speed: number, facing: number): void {
+    if (!this.airballGroup || !this.airballGroup.visible) return;
+    this.airballGroup.position.set(at.x, at.y + 0.68, at.z);
+    this.airballGroup.rotation.y = facing;
+    const spin = delta * (14 + speed * 6);
+    if (this.airballSphere) {
+      this.airballSphere.rotation.x += spin * 0.8;
+      this.airballSphere.rotation.y += spin;
+    }
+    if (this.airballTorus1) this.airballTorus1.rotation.y += spin * 1.2;
+    if (this.airballTorus2) this.airballTorus2.rotation.z += spin * 1.4;
+    if (this.airballTorus3) this.airballTorus3.rotation.x += spin * 1.1;
+    if (this.airballDust) this.airballDust.rotation.y -= spin * 0.6;
+    if (speed > 0.5 && Math.random() < 0.35) {
+      this.dust(at.clone().setY(0.05), 0.7, 2);
+    }
+  }
+
+  /**
+   * Seismic Sense for TERRA benders:
+   * Radiates expanding ground sonar waves and highlights enemy footfalls through bedrock and walls.
+   * Uses depthTest=false so vibrational beacons project directly through solid obstacles.
+   */
+  spawnSeismicPulse(origin: Vector3, maxRadius = 32.0, enemies: readonly Vector3[] = []): void {
+    const group = new Group();
+    group.position.copy(origin).setY(0.04);
+    const disposables: Array<BufferGeometry | Material> = [];
+
+    // 1. Concentric high-contrast ground vibrational sonar ripples
+    const ringGeo1 = new RingGeometry(0.35, 1.15, 64);
+    ringGeo1.rotateX(-Math.PI / 2);
+    const ringMat1 = new MeshBasicMaterial({
+      color: new Color(0x35ff75), // Vibrant emerald vibrational resonance
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+      opacity: 0.95,
+    });
+    const ringMesh1 = new Mesh(ringGeo1, ringMat1);
+    group.add(ringMesh1);
+    disposables.push(ringGeo1, ringMat1);
+
+    const ringGeo2 = new RingGeometry(0.4, 0.85, 64);
+    ringGeo2.rotateX(-Math.PI / 2);
+    const ringMat2 = new MeshBasicMaterial({
+      color: new Color(0xffdf55), // Secondary earth harmonic golden vibration
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+      opacity: 0.85,
+    });
+    const ringMesh2 = new Mesh(ringGeo2, ringMat2);
+    group.add(ringMesh2);
+    disposables.push(ringGeo2, ringMat2);
+
+    const ringGeo3 = new RingGeometry(0.3, 0.65, 48);
+    ringGeo3.rotateX(-Math.PI / 2);
+    const ringMesh3 = new Mesh(ringGeo3, ringMat1);
+    group.add(ringMesh3);
+    disposables.push(ringGeo3);
+
+    // 2. Vibrational Sonar Beacons tracking each detected enemy through bedrock
+    const enemyMarkers: Array<{
+      pillar: Mesh;
+      diamond: Mesh;
+      footRings: Mesh[];
+      x: number;
+      z: number;
+    }> = [];
+
+    for (const e of enemies) {
+      const d = Math.hypot(e.x - origin.x, e.z - origin.z);
+      if (d <= maxRadius) {
+        // Holographic cylindrical sonar column through bedrock (depthTest: false penetrates walls)
+        const pillarGeo = new CylinderGeometry(0.75, 0.85, 2.8, 32, 1, true);
+        const pillarMat = new MeshBasicMaterial({
+          color: new Color(0x40ff80),
+          transparent: true,
+          opacity: 0.75,
+          side: DoubleSide,
+          blending: AdditiveBlending,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const pillarMesh = new Mesh(pillarGeo, pillarMat);
+        pillarMesh.position.set(e.x - origin.x, 1.4, e.z - origin.z);
+        pillarMesh.renderOrder = 999;
+        group.add(pillarMesh);
+        disposables.push(pillarGeo, pillarMat);
+
+        // Hovering diamond / octahedron sonar beacon above head (depthTest: false)
+        const diamondGeo = new OctahedronGeometry(0.35, 0);
+        const diamondMat = new MeshBasicMaterial({
+          color: new Color(0x70ffaa),
+          transparent: true,
+          opacity: 0.95,
+          blending: AdditiveBlending,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const diamondMesh = new Mesh(diamondGeo, diamondMat);
+        diamondMesh.position.set(e.x - origin.x, 2.9, e.z - origin.z);
+        diamondMesh.renderOrder = 1000;
+        group.add(diamondMesh);
+        disposables.push(diamondGeo, diamondMat);
+
+        // Ground vibrational footfall resonance rings
+        const footGeo = new RingGeometry(0.35, 1.1, 32);
+        footGeo.rotateX(-Math.PI / 2);
+        const footMesh = new Mesh(footGeo, pillarMat);
+        footMesh.position.set(e.x - origin.x, 0.05, e.z - origin.z);
+        footMesh.renderOrder = 998;
+        group.add(footMesh);
+        disposables.push(footGeo);
+
+        enemyMarkers.push({
+          pillar: pillarMesh,
+          diamond: diamondMesh,
+          footRings: [footMesh],
+          x: e.x - origin.x,
+          z: e.z - origin.z,
+        });
+      }
+    }
+
+    this.add(group, (age) => {
+      const duration = 3.6;
+      const t = age / duration;
+      const r1 = Math.min(maxRadius, (age / 1.3) * maxRadius);
+      const r2 = Math.min(maxRadius, Math.max(0, ((age - 0.22) / 1.3) * maxRadius));
+      const r3 = Math.min(maxRadius, Math.max(0, ((age - 0.45) / 1.3) * maxRadius));
+
+      ringMesh1.scale.setScalar(r1);
+      ringMesh2.scale.setScalar(r2);
+      ringMesh3.scale.setScalar(r3);
+
+      const fade = Math.max(0, 1.0 - t);
+      ringMat1.opacity = 0.95 * fade;
+      ringMat2.opacity = 0.85 * fade;
+
+      // Animate enemy vibrational beacons
+      enemyMarkers.forEach((m, idx) => {
+        const pulse = Math.sin(age * 12 + idx * 1.5);
+        m.diamond.rotation.y += 0.08;
+        m.diamond.position.y = 2.9 + pulse * 0.12;
+        (m.diamond.material as MeshBasicMaterial).opacity = Math.max(0, 0.95 * fade * (0.75 + pulse * 0.25));
+
+        m.pillar.scale.set(1.0 + pulse * 0.08, 1.0, 1.0 + pulse * 0.08);
+        (m.pillar.material as MeshBasicMaterial).opacity = Math.max(0, 0.75 * fade * (0.8 + pulse * 0.2));
+
+        for (const f of m.footRings) {
+          const footPulse = ((age * 3.0 + idx) % 1.0);
+          f.scale.setScalar(0.7 + footPulse * 1.4);
+        }
+      });
+
+      return t < 1;
+    }, disposables);
+  }
+
+  /**
+   * Foot and leg bending strikes: projects crescent arcs of water, wind scythes, or stone
+   * ruptures originating directly from the kicking foot/limb.
+   */
+  castKick(
+    element: Element,
+    action: string,
+    origin: Vector3,
+    footPos: Vector3,
+    facing: number,
+    isHeavy = false,
+    strength = 1
+  ): void {
+    const forward = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const at = origin.clone().setY(0);
+    const foot = footPos.clone();
+    const s = Math.max(0.6, Math.min(1.5, strength));
+
+    if (element === 'AQUES' || element === 'AURA') {
+      this.onExtinguish?.(origin.clone().addScaledVector(forward, 2.5), 4.2);
+      this.redirectBoulders(origin.clone().addScaledVector(forward, 2.0), forward);
+    }
+
+    if (element === 'AQUES') {
+      if (isHeavy) {
+        // Heavy kick: sweeping crescent water scythe and crashing tidal surge along the ground
+        this.tide(at, facing, 5.0 * s, s);
+        this.droplets(foot, 16, 4.5 * s, 2.0 * s, 0.7);
+        this.pool(at.clone().addScaledVector(forward, 2.5), 1.8 * s, 5);
+      } else {
+        // Light kick: snapping water whip arc launched directly from the foot
+        this.lash(foot.setY(Math.max(0.2, foot.y)), forward, 5.5 * s, s);
+        this.droplets(foot, 10, 3.5 * s, 1.5 * s, 0.5);
+        this.pool(at.clone().addScaledVector(forward, 3.2), 1.2 * s, 4);
+      }
+    } else if (element === 'AURA') {
+      if (isHeavy) {
+        // Heavy kick: sweeping 180-degree cyclone gale and vacuum burst
+        this.gust(at, facing, 6.0 * s, s);
+        this.cyclone(at.clone().addScaledVector(forward, 1.8), 0.9, 1.2 * s);
+      } else {
+        // Light kick: high-velocity crescent air blade sliced directly from the kicking foot
+        this.airBlade(foot.setY(Math.max(0.4, foot.y)), forward, facing, 10 * s, s);
+        this.streaks(foot, facing, 0.6, 4.5 * s, 12, 1.2, 0.35);
+      }
+    } else if (element === 'TERRA') {
+      if (isHeavy) {
+        // Heavy kick: tearing stone rupture wave churned up along the kicking line
+        this.rockWave(at, forward, 5.5 * s, s);
+        this.spire(at.clone().addScaledVector(forward, 2.8), s);
+        this.dust(foot, 1.5, 12);
+      } else {
+        // Light kick: rock shard kicked from the floor at high velocity
+        this.stoneShot(foot.setY(0.2), forward, 8.5 * s, s);
+        this.dust(foot, 1.0, 8);
+      }
+    }
+  }
 
   /** Draws one bending move. `strength` below 1 means a weaker move from an empty meter. */
-  cast(element: Element, move: string, origin: Vector3, facing: number, strength = 1): void {
+  cast(
+    element: Element,
+    move: string,
+    origin: Vector3,
+    facing: number,
+    strength = 1,
+    quality: 'waterskin' | 'natural' | 'spirit_water' = 'waterskin'
+  ): void {
     const forward = new Vector3(Math.sin(facing), 0, Math.cos(facing));
     const at = origin.clone().setY(0);
     const s = Math.max(0.55, Math.min(1.4, strength));
+
+    // Wind and water extinguish fire in front of them
+    if (element === 'AQUES' || element === 'AURA') {
+      this.onExtinguish?.(origin.clone().addScaledVector(forward, 2.5), 4.2);
+    }
+    // Wind and water can redirect airborne boulders
+    if (element === 'AQUES' || element === 'AURA') {
+      this.redirectBoulders(origin.clone().addScaledVector(forward, 2.0), forward);
+    }
+
     const key = `${element}:${move}`;
     switch (key) {
-      case 'AQUES:bend_palm': this.lash(at, forward, 6, s); break;
-      case 'AQUES:bend_sweep': this.tide(at, facing, 4.5, s); break;
-      case 'AQUES:uppercut': this.geyser(at.clone().addScaledVector(forward, 1.3), s); break;
-      case 'AQUES:ground_pound': this.freeze(at, 4 * s); break;
-      case 'AQUES:dash_strike': this.mend(at); break;
-      case 'AQUES:ultimate': this.deluge(at, forward, facing); break;
+      case 'AQUES:bend_palm':
+        this.lash(at, forward, 6, s);
+        this.pool(at.clone().addScaledVector(forward, 4.0), 1.5 * s, 6);
+        break;
+      case 'AQUES:bend_sweep':
+        this.tide(at, facing, 4.5, s);
+        break;
+      case 'AQUES:uppercut':
+        this.geyser(at.clone().addScaledVector(forward, 1.3), s);
+        this.pool(at.clone().addScaledVector(forward, 1.3), 1.8 * s, 6);
+        break;
+      case 'AQUES:ground_pound':
+        this.freeze(at, 4 * s);
+        break;
+      case 'AQUES:dash_strike':
+        this.mend(at, quality);
+        break;
+      case 'AQUES:ultimate':
+        this.deluge(at, forward, facing);
+        this.pool(at.clone().addScaledVector(forward, 4.0), 4.5, 8);
+        break;
       case 'TERRA:bend_palm': this.stoneShot(at, forward, 8, s); break;
       case 'TERRA:bend_sweep': this.rockWave(at, forward, 5, s); break;
       case 'TERRA:uppercut': this.spire(at.clone().addScaledVector(forward, 1.3), s); break;
@@ -255,6 +583,34 @@ export class ElementEffects {
     group.add(rim, surface);
     this.pools.push({ position: at.clone().setY(0), until: Infinity });
     this.add(group, (age) => { surface.position.y = 0.2 + Math.sin(age * 1.3) * 0.006; return true; }, [rimGeo, surfaceGeo, surfaceMat]);
+  }
+
+  /**
+   * Sacred Spirit Oasis pool found in the Water Tribe polar sanctuary.
+   * Grants Spirit Water for purest healing.
+   */
+  spiritOasis(at: Vector3, radius = 2.4): void {
+    const group = new Group();
+    group.position.copy(at).setY(0);
+    const rimGeo = new TorusGeometry(radius, 0.32, 12, 48);
+    rimGeo.rotateX(Math.PI / 2);
+    const rim = this.mesh(rimGeo, this.stone);
+    rim.position.y = 0.16;
+    const surfaceGeo = new CircleGeometry(radius - 0.05, 48);
+    surfaceGeo.rotateX(-Math.PI / 2);
+    const surfaceMat = this.water.clone();
+    surfaceMat.color.setRGB(0.3, 0.95, 1.0);
+    surfaceMat.opacity = 0.92;
+    surfaceMat.depthWrite = true;
+    const surface = this.mesh(surfaceGeo, surfaceMat, false);
+    surface.position.y = 0.22;
+    group.add(rim, surface);
+    this.pools.push({ position: at.clone().setY(0), until: Infinity });
+    this.spiritPools.push({ position: at.clone().setY(0), until: Infinity });
+    this.add(group, (age) => {
+      surface.position.y = 0.22 + Math.sin(age * 1.8) * 0.01;
+      return true;
+    }, [rimGeo, surfaceGeo, surfaceMat]);
   }
 
   /** A weak spark of any element thrown by a Hush. */
@@ -492,25 +848,33 @@ export class ElementEffects {
     }, disposables);
   }
 
-  private mend(at: Vector3): void {
+  private mend(at: Vector3, quality: 'waterskin' | 'natural' | 'spirit_water' = 'waterskin'): void {
     const group = new Group();
     group.position.copy(at);
     const geo = new CylinderGeometry(0.7, 0.75, 0.3, 40, 1, true, 0, Math.PI * 1.2);
     const mat = this.wind.clone();
-    mat.color.setRGB(0.45, 0.85, 1);
+    if (quality === 'spirit_water') {
+      mat.color.setRGB(0.55, 0.98, 1.0);
+    } else if (quality === 'natural') {
+      mat.color.setRGB(0.25, 0.75, 1.0);
+    } else {
+      mat.color.setRGB(0.45, 0.85, 1.0);
+    }
     const rings: Mesh[] = [];
-    for (let i = 0; i < 4; i++) { const m = new Mesh(geo, mat); rings.push(m); group.add(m); }
+    const ringCount = quality === 'spirit_water' ? 6 : 4;
+    for (let i = 0; i < ringCount; i++) { const m = new Mesh(geo, mat); rings.push(m); group.add(m); }
     this.add(group, (age) => {
       rings.forEach((m, i) => {
-        const t = ((age * 0.7 + i / 4) % 1);
-        m.position.y = 0.1 + t * 2.0;
+        const t = ((age * 0.7 + i / ringCount) % 1);
+        m.position.y = 0.1 + t * 2.2;
         m.scale.setScalar(1 - t * 0.45);
         m.rotation.y = age * 5 + i * 1.6;
       });
-      mat.opacity = 0.75 * Math.min(1, age / 0.2) * Math.min(1, (2 - age) / 0.3);
+      mat.opacity = 0.85 * Math.min(1, age / 0.2) * Math.min(1, (2 - age) / 0.3);
       return age < 2;
     }, [geo, mat]);
-    this.droplets(at.clone().setY(1.6), 12, 0.6, 0.8, 1.2);
+    const dropCount = quality === 'spirit_water' ? 24 : 12;
+    this.droplets(at.clone().setY(1.6), dropCount, 0.7, 0.9, 1.3);
   }
 
   private deluge(at: Vector3, forward: Vector3, facing: number): void {
@@ -564,16 +928,26 @@ export class ElementEffects {
     const m = this.mesh(geo, this.stone);
     const right = new Vector3().crossVectors(forward, UP);
     const start = at.clone().addScaledVector(forward, 1.1).addScaledVector(right, 0.7);
+    const boulderData = { position: start.clone(), forward: forward.clone(), reach, s };
+    this.activeBoulders.push(boulderData);
     let burst = false;
     this.add(m, (age) => {
       if (age < 0.22) {
         m.position.copy(start).setY(-0.3 + ease(age / 0.22) * 1.9);
+        boulderData.position.copy(m.position);
       } else {
         const t = (age - 0.22) / 0.4;
-        m.position.copy(start).addScaledVector(forward, t * reach * s).addScaledVector(right, -t * 0.7).setY(1.6 - t * 0.5);
+        m.position.copy(start).addScaledVector(boulderData.forward, t * reach * s).addScaledVector(right, -t * 0.7).setY(1.6 - t * 0.5);
+        boulderData.position.copy(m.position);
         m.rotation.x += 0.35;
         m.rotation.z += 0.2;
-        if (t >= 1 && !burst) { burst = true; this.chips(m.position.clone(), 10, 0.12); this.dust(m.position.clone().setY(0), 0.8, 6); }
+        if (t >= 1 && !burst) {
+          burst = true;
+          this.chips(m.position.clone(), 10, 0.12);
+          this.dust(m.position.clone().setY(0), 0.8, 6);
+          const idx = this.activeBoulders.indexOf(boulderData);
+          if (idx !== -1) this.activeBoulders.splice(idx, 1);
+        }
         if (t >= 1) return false;
       }
       return true;
@@ -606,7 +980,7 @@ export class ElementEffects {
     }, geos);
   }
 
-  private dust(at: Vector3, radius: number, count: number): void {
+  dust(at: Vector3, radius: number, count: number): void {
     const group = new Group();
     const geo = new PlaneGeometry(1, 1);
     const mat = this.spray.clone();

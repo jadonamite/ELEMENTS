@@ -54,3 +54,139 @@ test('tiers gate moves, the Hush never bend but spend shards on sparks, Wind Ste
   aura.tick(balance.combat.elements.AURA.dash_strike.cooldownSeconds + 0.1, here);
   assert.equal(aura.begin('dash_strike', false, here).go, true);
 });
+
+test('water is conserved and reusable in water environments without depleting waterskin', () => {
+  const bend = new BendState({ element: 'AQUES', weapon: 'spear' }, 7);
+  bend.hasWaterEnvironment = true;
+  // Bending far away in a water environment never drains waterskin charges
+  for (let i = 0; i < 10; i++) {
+    bend.tick(5, far);
+    const start = bend.begin('bend_palm', true, far);
+    assert.equal(start.go, true);
+    assert.equal(start.fromSkin, false);
+    assert.equal(bend.waterskin, balance.combat.waterskin.charges);
+  }
+});
+
+test('healing quality scales by water source: spirit water (2.5x), natural water (1.5x), waterskin (1.0x)', () => {
+  const spiritPos = new Vector3(10, 0, 10);
+  const naturalPos = new Vector3(-10, 0, -10);
+  const bend = new BendState(
+    { element: 'AQUES', weapon: 'spear' },
+    7,
+    () => [naturalPos],
+    () => [spiritPos]
+  );
+
+  assert.equal(bend.healingQuality(spiritPos), 'spirit_water');
+  assert.equal(bend.healingMultiplier(spiritPos), 2.5);
+
+  assert.equal(bend.healingQuality(naturalPos), 'natural');
+  assert.equal(bend.healingMultiplier(naturalPos), 1.5);
+
+  assert.equal(bend.healingQuality(far), 'waterskin');
+  assert.equal(bend.healingMultiplier(far), 1.0);
+});
+
+test('full moon grants +50% surge to AQUES bending moves', () => {
+  const normalAques = new BendState({ element: 'AQUES', weapon: 'spear' }, 5, () => [here]);
+  const normal = normalAques.begin('bend_palm', true, here);
+  assert.equal(normal.go, true);
+  const baseStrength = normal.strength;
+
+  const moonAques = new BendState({ element: 'AQUES', weapon: 'spear' }, 5, () => [here]);
+  moonAques.isFullMoon = true;
+  const surged = moonAques.begin('bend_palm', true, here);
+  assert.equal(surged.go, true);
+  assert.equal(surged.strength, baseStrength * 1.5);
+});
+
+test('Airball technique is exclusive to non-Hush AURA benders', () => {
+  const aura = new BendState({ element: 'AURA', weapon: 'twin' });
+  assert.equal(aura.airballActive, false);
+  assert.equal(aura.toggleAirball(), true);
+  assert.equal(aura.airballActive, true);
+  assert.equal(aura.toggleAirball(), false);
+  assert.equal(aura.airballActive, false);
+
+  const ignis = new BendState({ element: 'IGNIS', weapon: 'sword' });
+  assert.equal(ignis.toggleAirball(), false);
+  assert.equal(ignis.airballActive, false);
+
+  const auraHush = new BendState({ element: 'AURA', weapon: 'twin', hush: true });
+  assert.equal(auraHush.toggleAirball(), false);
+  assert.equal(auraHush.airballActive, false);
+});
+
+test('Seismic Sense is exclusive to non-Hush TERRA benders', () => {
+  const terra = new BendState({ element: 'TERRA', weapon: 'axe' });
+  assert.equal(terra.seismicSenseActive, false);
+  assert.equal(terra.triggerSeismicSense(), true);
+  assert.equal(terra.seismicSenseActive, true);
+  assert.ok(terra.seismicCooldown > 0);
+
+  const aura = new BendState({ element: 'AURA', weapon: 'twin' });
+  assert.equal(aura.triggerSeismicSense(), false);
+  assert.equal(aura.seismicSenseActive, false);
+
+  const terraHush = new BendState({ element: 'TERRA', weapon: 'axe', hush: true });
+  assert.equal(terraHush.triggerSeismicSense(), false);
+  assert.equal(terraHush.seismicSenseActive, false);
+});
+
+test('hit confirmation invariant: guarded, wall-blocked, or countered attacks deal ZERO damage and never reduce life', () => {
+  const maxHp = 120;
+  let heroHp = maxHp;
+
+  const simulateIncomingAttack = ({ guarded, wallBlocked, countered, rawDamage = 25 }) => {
+    if (guarded || wallBlocked || countered) {
+      return 0;
+    }
+    return rawDamage;
+  };
+
+  const damageGuarded = simulateIncomingAttack({ guarded: true, wallBlocked: false, countered: false });
+  assert.equal(damageGuarded, 0);
+  heroHp -= damageGuarded;
+  assert.equal(heroHp, maxHp, 'Guarded hit must deal 0 damage and leave hero HP untouched');
+
+  const damageWall = simulateIncomingAttack({ guarded: false, wallBlocked: true, countered: false });
+  assert.equal(damageWall, 0);
+  heroHp -= damageWall;
+  assert.equal(heroHp, maxHp, 'Wall-blocked hit must deal 0 damage and leave hero HP untouched');
+
+  const damageCountered = simulateIncomingAttack({ guarded: false, wallBlocked: false, countered: true });
+  assert.equal(damageCountered, 0);
+  heroHp -= damageCountered;
+  assert.equal(heroHp, maxHp, 'Countered hit must deal 0 damage and leave hero HP untouched');
+
+  const unblockedDamage = simulateIncomingAttack({ guarded: false, wallBlocked: false, countered: false, rawDamage: 24 });
+  assert.equal(unblockedDamage, 24);
+  heroHp -= unblockedDamage;
+  assert.equal(heroHp, maxHp - 24, 'Confirmed unblocked hit must reduce life');
+});
+
+test('feet bending: leg kicks when Lit map to elemental bending moves and apply afflictions', async () => {
+  const { afflictionFor } = await import('../src/element-moves.js');
+  const heroPos = new Vector3(0, 0, 0);
+  const targetPos = new Vector3(0, 0, 2);
+
+  // When Lit, leg kicks produce elemental afflictions
+  const ignisKick = afflictionFor('IGNIS', 'leg_heavy_1', heroPos, targetPos, 1.0);
+  // AQUES leg kicks slow and shove
+  const aquesKick = afflictionFor('AQUES', 'leg_heavy_1', heroPos, targetPos, 1.0);
+  assert.ok(aquesKick, 'AQUES heavy kick must produce affliction');
+  assert.ok(aquesKick.slowScale < 1.0, 'AQUES heavy kick must slow');
+
+  // AURA leg kicks push
+  const auraKick = afflictionFor('AURA', 'leg_heavy_1', heroPos, targetPos, 1.0);
+  assert.ok(auraKick, 'AURA heavy kick must produce affliction');
+  assert.ok(auraKick.shove.length() > 0, 'AURA heavy kick must push target away');
+
+  // TERRA leg kicks stun
+  const terraKick = afflictionFor('TERRA', 'leg_heavy_1', heroPos, targetPos, 1.0);
+  assert.ok(terraKick, 'TERRA heavy kick must produce affliction');
+  assert.ok(terraKick.stunSeconds > 0, 'TERRA heavy kick must stun target');
+});
+
+

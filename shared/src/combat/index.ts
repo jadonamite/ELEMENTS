@@ -13,7 +13,8 @@ const isMove = (value: string): value is MoveId => MOVE_IDS.some(id => id === va
 const isWeaponMove = (value: MoveId): value is WeaponMoveId => (WEAPON_MOVE_IDS as readonly string[]).includes(value);
 export const isBendMove = (value: string): value is BendMoveId => (BEND_MOVE_IDS as readonly string[]).includes(value);
 const validPosition = (p: Position): boolean => [p.x, p.y, p.z].every(Number.isFinite);
-const validHealth = (h: Health): boolean => positive(h.maximum) && nonnegative(h.current) && h.current <= h.maximum;
+const validHealth = (h: Health): boolean => positive(h.maximum) && nonnegative(h.current) && h.current <= h.maximum &&
+  (h.scars === undefined || (nonnegative(h.scars) && h.scars <= h.maximum));
 const validCombatant = (c: Combatant): boolean => isElement(c.element) && validPosition(c.position) && validHealth(c.health) &&
   nonnegative(c.armour) && (c.weapon === undefined || isWeapon(c.weapon));
 const invalid = (): never => { throw new RangeError('Combat values must be finite and within their valid range.'); };
@@ -89,9 +90,9 @@ export function createCombatRules(balance: CombatBalance) {
     if (!nonnegative(damage)) invalid();
     return damage;
   }
-  function createHealth(maximum = rules.defaultMaxHealth): Health {
-    if (!positive(maximum)) invalid();
-    return { current: maximum, maximum };
+  function createHealth(maximum = rules.defaultMaxHealth, scars = ZERO): Health {
+    if (!positive(maximum) || !nonnegative(scars) || scars > maximum) invalid();
+    return { current: maximum - scars, maximum, scars };
   }
   function applyDamage(health: Health, damage: number): Health {
     if (!validHealth(health) || !nonnegative(damage)) invalid();
@@ -99,7 +100,16 @@ export function createCombatRules(balance: CombatBalance) {
   }
   function heal(health: Health, amount: number): Health {
     if (!validHealth(health) || !nonnegative(amount)) invalid();
-    return { ...health, current: Math.min(health.maximum, health.current + amount) };
+    const scars = health.scars ?? ZERO;
+    const effectiveCap = Math.max(ZERO, health.maximum - scars);
+    return { ...health, current: Math.min(effectiveCap, health.current + amount) };
+  }
+  function inflictScars(health: Health, trauma: number): Health {
+    if (!validHealth(health) || !nonnegative(trauma)) invalid();
+    const currentScars = health.scars ?? ZERO;
+    const maxScars = Math.floor(health.maximum * 0.5);
+    const scars = Math.min(maxScars, currentScars + trauma);
+    return { ...health, scars, current: Math.min(health.current, Math.max(ZERO, health.maximum - scars)) };
   }
   function isDead(health: Health): boolean {
     if (!validHealth(health)) invalid();
@@ -162,7 +172,8 @@ export function createCombatRules(balance: CombatBalance) {
     const cooldownDuration = move.cooldownSeconds * (isLit ? litCooldownMultiplier : ONE);
     if (!sameSwing && !(chained && isBendMove(moveId)) && lastUse !== undefined && swingAt - lastUse < cooldownDuration) return { accepted: false, reason: 'cooldown' };
     const situationMult = calculateSituationalMultiplier(attacker.element, target.element, situation);
-    const grossDamage = move.damage * (isLit ? litDamageMultiplier : ONE) * (isBendMove(moveId) ? scale : ONE) * situationMult;
+    const fullMoonMult = (attacker.element === 'AQUES' && (situation?.isFullMoon || situation?.lunarPhase === 'full_moon')) ? 1.5 : ONE;
+    const grossDamage = move.damage * (isLit ? litDamageMultiplier : ONE) * (isBendMove(moveId) ? scale : ONE) * situationMult * fullMoonMult;
     const spent = state.damageHistory.reduce((sum, hit) => now - hit.at < rules.damageWindowSeconds ? sum + hit.damage : sum, ZERO);
     if (!nonnegative(grossDamage) || !nonnegative(spent)) return { accepted: false, reason: 'invalid_input' };
     if (spent + grossDamage > rules.maxDamagePerSecond * rules.damageWindowSeconds) return { accepted: false, reason: 'damage_cap' };
@@ -262,6 +273,7 @@ export function createCombatRules(balance: CombatBalance) {
     createHealth,
     applyDamage,
     heal,
+    inflictScars,
     isDead,
     createActionState,
     cooldownRemaining,

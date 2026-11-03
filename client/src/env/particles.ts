@@ -11,6 +11,9 @@ import {
 } from 'three';
 import type { QualityProfile } from './types.js';
 
+import type { Element } from '../../../shared/src/index.js';
+import { getNationGeography } from './nations.js';
+
 export class ParticleSystem {
   readonly dustPoints: Points;
   readonly emberPoints: Points;
@@ -23,9 +26,13 @@ export class ParticleSystem {
   constructor(
     readonly scene: Scene,
     readonly quality: QualityProfile,
-    readonly sunDir: Vector3
+    readonly sunDir: Vector3,
+    nation: Element = 'IGNIS'
   ) {
-    /* --- 1. Dust motes in the air --- */
+    const geoNation = getNationGeography(nation);
+    const meteorology = geoNation.meteorology;
+
+    /* --- 1. Atmospheric particles (ash, snow, wind, dust) --- */
     const dustCount = quality.dustCount;
     const dustGeo = new BufferGeometry();
     const dustPos = new Float32Array(dustCount * 3);
@@ -36,13 +43,28 @@ export class ParticleSystem {
     const rand = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
 
     for (let i = 0; i < dustCount; i++) {
-      dustPos[i * 3 + 0] = (rand() - 0.5) * 32;
-      dustPos[i * 3 + 1] = 0.3 + rand() * 4.2;
-      dustPos[i * 3 + 2] = (rand() - 0.5) * 32;
+      dustPos[i * 3 + 0] = (rand() - 0.5) * 36;
+      dustPos[i * 3 + 1] = 0.2 + rand() * 5.5;
+      dustPos[i * 3 + 2] = (rand() - 0.5) * 36;
 
-      dustVel[i * 3 + 0] = 0.15 + rand() * 0.2;
-      dustVel[i * 3 + 1] = (rand() - 0.5) * 0.08;
-      dustVel[i * 3 + 2] = 0.08 + rand() * 0.15;
+      if (meteorology.particleType === 'snow') {
+        dustVel[i * 3 + 0] = 0.4 + rand() * 0.6; // horizontal wind drift
+        dustVel[i * 3 + 1] = -0.8 - rand() * 0.8; // falling snow
+        dustVel[i * 3 + 2] = 0.2 + rand() * 0.4;
+      } else if (meteorology.particleType === 'wind') {
+        dustVel[i * 3 + 0] = 2.5 + rand() * 2.0; // howling gale
+        dustVel[i * 3 + 1] = (rand() - 0.5) * 0.3;
+        dustVel[i * 3 + 2] = 1.0 + rand() * 1.0;
+      } else if (meteorology.particleType === 'dust') {
+        dustVel[i * 3 + 0] = 0.8 + rand() * 1.2; // swirling sand
+        dustVel[i * 3 + 1] = 0.1 + rand() * 0.3;
+        dustVel[i * 3 + 2] = 0.6 + rand() * 0.8;
+      } else {
+        // ash / cinders
+        dustVel[i * 3 + 0] = 0.15 + rand() * 0.25;
+        dustVel[i * 3 + 1] = -0.2 - rand() * 0.3;
+        dustVel[i * 3 + 2] = 0.08 + rand() * 0.18;
+      }
 
       dustRand[i] = rand();
     }
@@ -51,11 +73,19 @@ export class ParticleSystem {
     dustGeo.setAttribute('aVel', new BufferAttribute(dustVel, 3));
     dustGeo.setAttribute('aRand', new BufferAttribute(dustRand, 1));
 
+    const particleColor = meteorology.particleType === 'snow'
+      ? new Color(0xd5eaff)
+      : meteorology.particleType === 'wind'
+        ? new Color(0xffffff)
+        : meteorology.particleType === 'dust'
+          ? new Color(0xe0b060)
+          : new Color(0xff9944);
+
     this.dustMat = new ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
         uSunDir: { value: sunDir },
-        uSunColor: { value: new Color(0xffd59e) },
+        uSunColor: { value: particleColor },
       },
       vertexShader: /* glsl */ `
         uniform float uTime;
