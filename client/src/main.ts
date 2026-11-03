@@ -30,6 +30,10 @@ import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { ClientRobberGang } from './agents/outlaws/robberGang.js';
+import { ClientDeserterBand } from './agents/outlaws/deserterBand.js';
+import type { OutlawSenses } from '../../shared/src/agents/types.js';
+import type { Quarry } from './enemy.js';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -295,6 +299,35 @@ async function main(): Promise<void> {
     notice(`Challenged ${kind}! Press Tab to lock/unlock.`);
   };
   cleanup.push(() => fight.dispose());
+
+  // --- [creatures: outlaws in Sindr] ---
+  const carryParam = params.get('chroma');
+  const carriedChroma = carryParam !== null ? Number(carryParam) : (params.has('peace') ? 20 : 500);
+  let robberGang: ClientRobberGang | null = null;
+  let deserterBand: ClientDeserterBand | null = null;
+  if (zone) {
+    villains.then((template) => {
+      robberGang = new ClientRobberGang({
+        onAlert: (msg) => notice(msg),
+        onSpawnEnemy: (enemy) => fight.enemies.push(enemy),
+        onDespawnEnemy: (enemy) => {
+          const idx = fight.enemies.indexOf(enemy);
+          if (idx >= 0) fight.enemies.splice(idx, 1);
+        },
+      });
+      robberGang.bindWorld(scene, physics.world, template);
+
+      deserterBand = new ClientDeserterBand({
+        onAlert: (msg) => notice(msg),
+        onSpawnEnemy: (enemy) => fight.enemies.push(enemy),
+        onDespawnEnemy: (enemy) => {
+          const idx = fight.enemies.indexOf(enemy);
+          if (idx >= 0) fight.enemies.splice(idx, 1);
+        },
+      });
+      deserterBand.bindWorld(scene, physics.world, template);
+    }).catch(console.error);
+  }
   /** Auto-realigns hero facing toward target and glides closer to prevent whiffs on combos and openers. */
   const alignToTarget = (): void => {
     let targetDx = 0;
@@ -743,6 +776,46 @@ async function main(): Promise<void> {
       } else if (yardDist > 24) {
         yardSpawned = false;
       }
+
+      // --- [creatures: outlaw encounter evaluation in Sindr] ---
+      if (robberGang && alive) {
+        const isNight = nightness.value >= 0.45;
+        const hour = isNight ? 23 : 14;
+        const inAlley = controller.position.x >= 70 && controller.position.x <= 160 && Math.abs(controller.position.z) > 7;
+        const onRoad = controller.position.x > 220;
+        const zoneType = onRoad ? 'road_out_of_town' : (inAlley ? 'alley' : 'open_street');
+
+        const quarry: Quarry = {
+          position: controller.position,
+          alive: fight.heroAlive,
+        };
+
+        const sentryNearShrine = controller.position.x < 48;
+        const sentryDistance = sentryNearShrine ? 12 : 60;
+
+        const senses: OutlawSenses = {
+          playerCarry: {
+            accountId: 'player_hero',
+            chroma: carriedChroma,
+            satchelWeight: carriedChroma >= 300 ? 8 : 1,
+          },
+          playerLocation: {
+            x: controller.position.x,
+            z: controller.position.z,
+            zoneType,
+          },
+          timeOfDay: isNight ? 'night' : 'day',
+          hour,
+          sentriesNear: sentryNearShrine,
+          sentryDistance,
+        };
+
+        if (onRoad && deserterBand) {
+          deserterBand.update(delta, quarry, senses.playerCarry, senses.playerLocation);
+        } else {
+          robberGang.update(delta, quarry, senses);
+        }
+      }
     }
     hero.sword.updateMatrixWorld(true);
     hero.sword.localToWorld(bladeBase.copy(hero.bladeBase));
@@ -827,8 +900,10 @@ async function main(): Promise<void> {
       fightingStyle,
       isDim,
     );
-    const supply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
+    const chromaTag = `CHROMA: ${carriedChroma}`;
+    const baseSupply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
       : kitElement === 'AQUES' ? `Waterskin ${bend.waterskin}/${balance.combat.waterskin.charges}${bend.nearWater(controller.position) ? ' · water near' : ''}` : null;
+    const supply = zone ? (baseSupply ? `${baseSupply} · ${chromaTag}` : chromaTag) : baseSupply;
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, supply);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;

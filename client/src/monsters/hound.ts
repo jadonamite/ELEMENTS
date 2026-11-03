@@ -3,7 +3,7 @@ import {
   type AnimationClip,
   Group,
   Mesh,
-  type MeshStandardMaterial,
+  MeshStandardMaterial,
   type Object3D,
   Vector3,
 } from 'three';
@@ -17,6 +17,8 @@ import { HeroController, type MoveInput } from '../controller.js';
 
 const houndTuning = balance.monsters.emberHound;
 
+export type HoundRole = 'leader' | 'flanker_left' | 'flanker_right';
+
 export type HoundState =
   | 'idle'
   | 'wander'
@@ -25,6 +27,7 @@ export type HoundState =
   | 'charge'
   | 'bite'
   | 'recoil'
+  | 'retreat'
   | 'death';
 
 export interface HoundPose {
@@ -40,11 +43,10 @@ export interface HoundDamageResult {
   staggerDuration: number;
 }
 
-export interface HoundDrop {
-  id: string;
-  name: string;
-  count: number;
-}
+/**
+ * Kill drop hook that returns nothing itself. The economy lane fills it.
+ */
+export type OnKillHook = (kind: string, position: { x: number; y: number; z: number }) => void;
 
 export interface HoundQuarry {
   position: Vector3;
@@ -104,26 +106,6 @@ export function houndDamage(
 }
 
 /**
- * Pure function: rolls drops upon an ember hound's death.
- */
-export function rollHoundDrops(rand: () => number = Math.random): HoundDrop[] {
-  const drops: HoundDrop[] = [];
-  for (const dropDef of houndTuning.drops) {
-    if (rand() <= dropDef.chance) {
-      const min = dropDef.min ?? 1;
-      const max = dropDef.max ?? 1;
-      const count = min + Math.floor(rand() * (max - min + 1));
-      drops.push({
-        id: dropDef.id,
-        name: dropDef.name,
-        count,
-      });
-    }
-  }
-  return drops;
-}
-
-/**
  * Loads the rigged Ember Hound GLB template.
  */
 export async function loadHoundTemplate(
@@ -157,23 +139,30 @@ export class EmberHound {
   readonly controller: HeroController;
   readonly materials: MeshStandardMaterial[] = [];
   private napeBone: Object3D | null = null;
+  private readonly originalEmissives = new Map<MeshStandardMaterial, { color: number; intensity: number }>();
 
   health = houndTuning.health;
   maxHealth = houndTuning.health;
   state: HoundState = 'idle';
+  role: HoundRole = 'leader';
+  onKill?: OnKillHook | undefined;
+
   private timer = 0;
   private stateDuration = 0;
   private cooldown = 0;
   private flankOffsetAngle = 0;
-  private dropsAwarded: HoundDrop[] | null = null;
   private attackHit = false;
 
   constructor(
     template: HoundTemplate,
     world: RAPIER.World,
     spawn = { x: 0, z: 0 },
-    bounded = true
+    bounded = true,
+    role: HoundRole = 'leader',
+    onKill?: OnKillHook
   ) {
+    this.role = role;
+    this.onKill = onKill;
     this.model = cloneSkinned(template.model) as Group;
     this.model.scale.setScalar(0.48);
 
@@ -182,11 +171,29 @@ export class EmberHound {
       if (!mesh.isMesh) return;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      const srcMat = mesh.material as MeshStandardMaterial;
-      if (srcMat) {
-        const mat = srcMat.clone();
-        mesh.material = mat;
+      const configureMat = (mat: MeshStandardMaterial): MeshStandardMaterial => {
+        if (mat.name.includes('Cracks') || mat.name.includes('EmberCracks')) {
+          mat.emissive.setHex(0xff5500);
+          mat.emissiveIntensity = 4.5;
+        } else if (mat.name.includes('Eyes')) {
+          mat.emissive.setHex(0xffaa00);
+          mat.emissiveIntensity = 5.5;
+        } else if (mat.name.includes('Nape')) {
+          mat.emissive.setHex(0xff2a00);
+          mat.emissiveIntensity = 3.5;
+        }
         this.materials.push(mat);
+        this.originalEmissives.set(mat, {
+          color: mat.emissive.getHex(),
+          intensity: mat.emissiveIntensity,
+        });
+        return mat;
+      };
+
+      if (Array.isArray(mesh.material)) {
+        mesh.material = mesh.material.map((srcMat) => configureMat((srcMat as MeshStandardMaterial).clone()));
+      } else if (mesh.material) {
+        mesh.material = configureMat((mesh.material as MeshStandardMaterial).clone());
       }
     });
 
@@ -209,10 +216,6 @@ export class EmberHound {
 
   get alive(): boolean {
     return this.state !== 'death';
-  }
-
-  get drops(): HoundDrop[] | null {
-    return this.dropsAwarded;
   }
 
   get position(): Vector3 {
@@ -265,16 +268,19 @@ export class EmberHound {
     const result = houndDamage(amount, hitPoint, this.getPose(), { element });
     this.health = Math.max(0, this.health - result.damage);
 
-    // Hit flash on materials
+    // Hit flash on materials, then restored to original ember glow
     for (const mat of this.materials) {
       if (mat.emissive) {
         mat.emissive.setHex(result.isWeakSpot ? 0xffea00 : 0xff3300);
+        mat.emissiveIntensity = 2.0;
       }
     }
     setTimeout(() => {
       for (const mat of this.materials) {
-        if (mat.emissive) {
-          mat.emissive.setHex(0x000000);
+        const orig = this.originalEmissives.get(mat);
+        if (orig) {
+          mat.emissive.setHex(orig.color);
+          mat.emissiveIntensity = orig.intensity;
         }
       }
     }, 120);
@@ -291,11 +297,17 @@ export class EmberHound {
     return result;
   }
 
-  die(customDrops?: HoundDrop[]): void {
+  die(onKill?: OnKillHook): void {
     this.state = 'death';
     this.timer = 0;
     this.anim.play('death', 0.15, false);
-    this.dropsAwarded = customDrops ?? rollHoundDrops();
+
+    const hook = onKill ?? this.onKill;
+    hook?.('ember_hound', {
+      x: this.controller.position.x,
+      y: this.controller.position.y,
+      z: this.controller.position.z,
+    });
   }
 
   triggerNotice(): void {
@@ -398,11 +410,9 @@ export class EmberHound {
           this.stateDuration = houndTuning.attackDuration;
           this.anim.play('attack', 0.1);
         } else if (this.timer >= this.stateDuration) {
-          // Reached max charge distance without reaching quarry
           this.state = 'stalk';
           this.cooldown = houndTuning.chargeCooldown;
         } else {
-          // Direct fast lunge along facing
           lungeSpeed = houndTuning.speeds.charge;
         }
         break;
@@ -430,6 +440,17 @@ export class EmberHound {
         }
         break;
       }
+
+      case 'retreat': {
+        this.anim.play('run', 0.15);
+        if (distToQuarry > 0.001) {
+          // Face directly away from quarry
+          this.controller.facing = Math.atan2(-toQuarry.x, -toQuarry.z);
+        }
+        moveYaw = this.controller.facing;
+        moveInput = { forward: 1, right: 0, running: true };
+        break;
+      }
     }
 
     this.controller.step(moveInput, moveYaw, lungeSpeed);
@@ -441,7 +462,8 @@ export class EmberHound {
 
 /**
  * Coordinates a hunting pack of 3 Ember Hounds.
- * One charges frontally while the other two flank and charge from the sides or back.
+ * One leader stalks in front while two flankers circle to the flanks.
+ * When the leader falls, the surviving flankers retreat.
  */
 export class HoundPack {
   readonly hounds: EmberHound[] = [];
@@ -452,24 +474,27 @@ export class HoundPack {
     template: HoundTemplate,
     world: RAPIER.World,
     packCenter = { x: 0, z: 0 },
-    bounded = true
+    bounded = true,
+    onKill?: OnKillHook
   ) {
     const flankRad = ((houndTuning.flankAngleDeg ?? 65) * Math.PI) / 180;
-    const offsets = [
-      { x: 0, z: 0, angle: 0 },                   // Lead / Front
-      { x: -3, z: -2, angle: -flankRad },         // Left Flanker
-      { x: 3, z: -2, angle: flankRad },          // Right Flanker
+    const configs: Array<{ offset: { x: number; z: number }; angle: number; role: HoundRole }> = [
+      { offset: { x: 0, z: 0 }, angle: 0, role: 'leader' },
+      { offset: { x: -3, z: -2 }, angle: -flankRad, role: 'flanker_left' },
+      { offset: { x: 3, z: -2 }, angle: flankRad, role: 'flanker_right' },
     ];
 
     for (let i = 0; i < houndTuning.packSize; i++) {
-      const off = offsets[i] ?? { x: 0, z: 0, angle: 0 };
+      const cfg = configs[i] ?? { offset: { x: 0, z: 0 }, angle: 0, role: 'leader' };
       const hound = new EmberHound(
         template,
         world,
-        { x: packCenter.x + off.x, z: packCenter.z + off.z },
-        bounded
+        { x: packCenter.x + cfg.offset.x, z: packCenter.z + cfg.offset.z },
+        bounded,
+        cfg.role,
+        onKill
       );
-      hound.setFlankAngle(off.angle);
+      hound.setFlankAngle(cfg.angle);
       this.hounds.push(hound);
     }
   }
@@ -478,8 +503,26 @@ export class HoundPack {
     return this.hounds.some((h) => h.alive);
   }
 
+  get leader(): EmberHound | undefined {
+    return this.hounds.find((h) => h.role === 'leader') ?? this.hounds[0];
+  }
+
+  get flankers(): EmberHound[] {
+    return this.hounds.filter((h) => h.role !== 'leader');
+  }
+
   update(dt: number, quarry: HoundQuarry): void {
     this.packTimer += dt;
+
+    // When leader falls, surviving flankers retreat immediately
+    const lead = this.leader;
+    if (lead && (!lead.alive || lead.state === 'death')) {
+      for (const h of this.flankers) {
+        if (h.alive && h.state !== 'retreat') {
+          h.state = 'retreat';
+        }
+      }
+    }
 
     // Check if any hound noticed the quarry; alert the entire pack
     const anyNoticing = this.hounds.some(
@@ -496,7 +539,7 @@ export class HoundPack {
 
     // Pack coordination: manage turns to charge
     const anyChargingOrBiting = this.hounds.some((h) => h.state === 'charge' || h.state === 'bite');
-    if (!anyChargingOrBiting && quarry.alive) {
+    if (!anyChargingOrBiting && quarry.alive && lead && lead.alive) {
       const stalkingHounds = this.hounds.filter((h) => h.state === 'stalk');
       if (stalkingHounds.length > 0) {
         const candidate = this.hounds[this.chargeIndex % this.hounds.length];
