@@ -172,7 +172,7 @@ export function createCombatRules(balance: CombatBalance) {
     const cooldownDuration = move.cooldownSeconds * (isLit ? litCooldownMultiplier : ONE);
     if (!sameSwing && !(chained && isBendMove(moveId)) && lastUse !== undefined && swingAt - lastUse < cooldownDuration) return { accepted: false, reason: 'cooldown' };
     const situationMult = calculateSituationalMultiplier(attacker.element, target.element, situation);
-    const fullMoonMult = (attacker.element === 'AQUES' && (situation?.isFullMoon || situation?.lunarPhase === 'full_moon')) ? 1.2 : ONE;
+    const fullMoonMult = (attacker.element === 'AQUES' && (situation?.isFullMoon || situation?.lunarPhase === 'full_moon')) ? 4 : ONE;
     const grossDamage = move.damage * (isLit ? litDamageMultiplier : ONE) * (isBendMove(moveId) ? scale : ONE) * situationMult * fullMoonMult;
     const spent = state.damageHistory.reduce((sum, hit) => now - hit.at < rules.damageWindowSeconds ? sum + hit.damage : sum, ZERO);
     if (!nonnegative(grossDamage) || !nonnegative(spent)) return { accepted: false, reason: 'invalid_input' };

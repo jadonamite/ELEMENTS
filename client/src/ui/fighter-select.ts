@@ -48,7 +48,7 @@ const SHEETS: Record<Element, { kind: string; feel: string; source: string; weap
       dash_strike: 'Mend. Restores HP based on water quality (Wellspring water +150%). Cannot cure deep internal scars.',
       ultimate: 'A wave crashes forward, knocks everyone down and floods the ground for 6 s.',
     },
-    note: 'Moon tide: under a full moon, water strikes 20% harder. Ice combo: shatters frozen enemies for 30% bonus damage.',
+    note: 'Moon tide: under a full moon, water strikes four times as hard. Ice combo: shatters frozen enemies for 30% bonus damage.',
   },
   TERRA: {
     kind: 'Earth',

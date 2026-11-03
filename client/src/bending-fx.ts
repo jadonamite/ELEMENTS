@@ -31,6 +31,7 @@ import { FlameField, FxMode } from './fx/flame-field.js';
 import { SoftDepth } from './fx/soft-depth.js';
 import { GroundRings } from './fx/ground-ring.js';
 import { FireWalls } from './fx/fire-wall.js';
+import { anyWallBetween, type StoneWall } from './wall-block.js';
 
 export type BendingType = Element | 'HUSH';
 
@@ -302,64 +303,24 @@ export class BendingEffects {
   private burningVillains: BurningVillainInfo[] = [];
   private readonly patchLights: PointLight[] = [];
   private readonly fireballs: FireballProjectile[] = [];
-  private readonly activeTerraWalls: Array<{ center: Vector3; size: Vector3; expiresAt: number }> = [];
+  private readonly activeTerraWalls: StoneWall[] = [];
+  private readonly fbPrev = new Vector3();
   private patchSmokeClock = 0;
 
   onFireballImpact?: (pos: Vector3, element: BendingType, hostile: boolean) => void;
 
-  /** Register an active Terra wall to physically intercept and block projectiles. */
-  addActiveWall(center: Vector3, size: Vector3, seconds: number): void {
-    this.activeTerraWalls.push({
-      center: center.clone(),
-      size: size.clone(),
-      expiresAt: this.field.time.value + seconds,
-    });
+  /** Register a standing TERRA wall; it stops melee lines and projectiles until it falls. */
+  addActiveWall(center: Vector3, size: Vector3, facing: number, seconds: number): void {
+    const now = this.field.time.value;
+    for (let i = this.activeTerraWalls.length - 1; i >= 0; i--) {
+      if (now > (this.activeTerraWalls[i]?.expiresAt ?? 0)) this.activeTerraWalls.splice(i, 1);
+    }
+    this.activeTerraWalls.push({ center: center.clone(), size: size.clone(), facing, expiresAt: now + seconds });
   }
 
-  /**
-   * Checks whether a line segment between two positions is intercepted by any active Terra stone wall.
-   */
+  /** True when a standing wall lies between the two points, using the wall's real turn. */
   isBlockedByWall(from: Vector3, to: Vector3): boolean {
-    const dir = new Vector3().subVectors(to, from);
-    const len = dir.length();
-    if (len < 0.001) return false;
-    dir.divideScalar(len);
-
-    const now = this.field.time.value;
-    for (const wall of this.activeTerraWalls) {
-      if (now > wall.expiresAt) continue;
-      const minX = wall.center.x - wall.size.x * 0.5 - 0.45;
-      const maxX = wall.center.x + wall.size.x * 0.5 + 0.45;
-      const minY = wall.center.y - wall.size.y * 0.5 - 0.3;
-      const maxY = wall.center.y + wall.size.y * 0.5 + 0.6;
-      const minZ = wall.center.z - wall.size.z * 0.5 - 0.45;
-      const maxZ = wall.center.z + wall.size.z * 0.5 + 0.45;
-
-      let tmin = (minX - from.x) / (dir.x || 1e-6);
-      let tmax = (maxX - from.x) / (dir.x || 1e-6);
-      if (tmin > tmax) [tmin, tmax] = [tmax, tmin];
-
-      let tymin = (minY - from.y) / (dir.y || 1e-6);
-      let tymax = (maxY - from.y) / (dir.y || 1e-6);
-      if (tymin > tymax) [tymin, tymax] = [tymax, tymin];
-
-      if (tmin > tymax || tymin > tmax) continue;
-      if (tymin > tmin) tmin = tymin;
-      if (tymax < tmax) tmax = tymax;
-
-      let tzmin = (minZ - from.z) / (dir.z || 1e-6);
-      let tzmax = (maxZ - from.z) / (dir.z || 1e-6);
-      if (tzmin > tzmax) [tzmin, tzmax] = [tzmax, tzmin];
-
-      if (tmin > tzmax || tzmin > tmax) continue;
-      if (tzmin > tmin) tmin = tzmin;
-      if (tzmax < tmax) tmax = tzmax;
-
-      if (tmax >= 0 && tmin <= len) {
-        return true;
-      }
-    }
-    return false;
+    return anyWallBetween(this.activeTerraWalls, this.field.time.value, from, to);
   }
 
   /**
@@ -1214,18 +1175,9 @@ export class BendingEffects {
         this.spawnParticle('spark', fb.position, pvel, 0.25, 0.05, 0.015, fb.element, 1.0);
       }
 
-      // Check collision against active Terra stone walls (Terra wall blocks any element)
-      let hitWall = false;
-      for (const wall of this.activeTerraWalls) {
-        if (this.field.time.value > wall.expiresAt) continue;
-        const dx = Math.abs(fb.position.x - wall.center.x);
-        const dz = Math.abs(fb.position.z - wall.center.z);
-        const dy = Math.abs(fb.position.y - wall.center.y);
-        if (dx <= wall.size.x / 2 + 0.4 && dz <= wall.size.z / 2 + 0.4 && dy <= wall.size.y / 2 + 0.5) {
-          hitWall = true;
-          break;
-        }
-      }
+      // The path travelled this frame, so a fast shot cannot skip through a thin wall.
+      this.fbPrev.copy(fb.position).addScaledVector(fb.velocity, -delta);
+      const hitWall = anyWallBetween(this.activeTerraWalls, this.field.time.value, this.fbPrev, fb.position, 0.3);
 
       if (hitWall || fb.elapsed >= fb.duration || fb.position.y <= 0.06) {
         fb.active = false;

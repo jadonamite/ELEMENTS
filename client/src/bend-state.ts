@@ -30,7 +30,7 @@ export class BendState {
   charges = 0;
   private recharge = 0;
 
-  /** Moon tide: set under a full moon. The 20% damage edge is applied once, in the shared checkHit. */
+  /** Moon tide: set under a full moon. The +300% damage edge is applied once, in the shared checkHit. */
   isFullMoon = false;
   /** Environment with ambient water (rain, canals, river): water is infinite and reusable. */
   hasWaterEnvironment = false;

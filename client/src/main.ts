@@ -203,7 +203,7 @@ async function main(): Promise<void> {
         .setTranslation(center.x, center.y, center.z)
         .setRotation({ x: 0, y: Math.sin(facing / 2), z: 0, w: Math.cos(facing / 2) }),
     );
-    bending.addActiveWall(center, size, seconds);
+    bending.addActiveWall(center, size, facing, seconds);
     setTimeout(() => { if (!disposed) physics.world.removeCollider(collider, false); }, seconds * 1000);
   };
   // Wind and water douse / extinguish fire

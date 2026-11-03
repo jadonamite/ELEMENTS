@@ -393,14 +393,14 @@ test('AURA kit with a staff passes bendWithWeapon and with a sword does not', ()
   assert.equal(combat.canBendWithWeapon({ element: 'TERRA', weapon: 'axe' }), false);
 });
 
-test('moon tide: +20% damage for AQUES when isFullMoon is true', () => {
+test('moon tide: +300% damage for AQUES when isFullMoon is true', () => {
   const aquesKit = combat.defaultKit('AQUES');
   const baseDamage = combat.moveFor('light_1', aquesKit).damage;
   const normalHit = accepted(input({ attacker: fighter('AQUES'), target: fighter('IGNIS'), situation: { isFullMoon: false } }));
   assert.equal(normalHit.damage, baseDamage);
 
   const surgeHit = accepted(input({ attacker: fighter('AQUES'), target: fighter('IGNIS'), situation: { isFullMoon: true } }));
-  assert.equal(surgeHit.damage, Math.round(baseDamage * 1.2));
+  assert.equal(surgeHit.damage, Math.round(baseDamage * 4));
 
   // Other elements do not receive the lunar surge
   const ignisHit = accepted(input({ attacker: fighter('IGNIS'), target: fighter('AURA'), situation: { isFullMoon: true } }));
