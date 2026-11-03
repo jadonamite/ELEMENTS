@@ -12,11 +12,11 @@ export class RuleDecider implements OutlawDecider {
     const playerId = playerCarry.accountId;
     const memory = gang.memories[playerId];
 
-    // 1. Sentries or guards nearby: robbers never strike near authority
+    // 1. Guards nearby: robbers never strike near authority
     if (sentriesNear || sentryDistance < limits.sentrySafeDistance) {
       return {
         action: 'ignore',
-        reason: `Sentries near (${sentryDistance.toFixed(1)}m); robbers hold back in shadows`,
+        reason: `Guards near (${sentryDistance.toFixed(1)}m); robbers hold back in shadows`,
       };
     }
 

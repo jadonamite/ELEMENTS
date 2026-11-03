@@ -71,6 +71,13 @@ export class TownEconomy {
     void this.start();
   }
 
+  /** What the player carries, as robbers judge it: coin, plus the number of items as weight. */
+  get carried(): { chroma: number; weight: number } | null {
+    if (!this.enabled || this.accountId === null) return null;
+    const weight = Object.values(this.items).reduce((sum, n) => sum + n, 0);
+    return { chroma: this.coin, weight };
+  }
+
   get shopOpen(): boolean {
     return this.shop?.isOpen ?? false;
   }

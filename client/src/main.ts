@@ -292,7 +292,11 @@ async function main(): Promise<void> {
 
   // --- [creatures: outlaws in Sindr] ---
   const carryParam = params.get('chroma');
-  const carriedChroma = carryParam !== null ? Number(carryParam) : (params.has('peace') ? 20 : 500);
+  // ?chroma=N overrides the purse for tests; otherwise robbers read the server satchel.
+  const forcedCarry = carryParam !== null ? Number(carryParam) : null;
+  const carried = (): { chroma: number; weight: number } =>
+    forcedCarry !== null ? { chroma: forcedCarry, weight: forcedCarry >= 300 ? 8 : 1 }
+      : townEconomy?.carried ?? { chroma: 0, weight: 0 };
   let robberGang: ClientRobberGang | null = null;
   let deserterBand: ClientDeserterBand | null = null;
   if (zone) {
@@ -790,8 +794,8 @@ async function main(): Promise<void> {
         const senses: OutlawSenses = {
           playerCarry: {
             accountId: 'player_hero',
-            chroma: carriedChroma,
-            satchelWeight: carriedChroma >= 300 ? 8 : 1,
+            chroma: carried().chroma,
+            satchelWeight: carried().weight,
           },
           playerLocation: {
             x: controller.position.x,
@@ -894,7 +898,7 @@ async function main(): Promise<void> {
       fightingStyle,
       isDim,
     );
-    const chromaTag = `CHROMA: ${carriedChroma}`;
+    const chromaTag = `CHROMA: ${carried().chroma}`;
     const baseSupply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
       : kitElement === 'AQUES' ? `Waterskin ${bend.waterskin}/${balance.combat.waterskin.charges}${bend.nearWater(controller.position) ? ' · water near' : ''}` : null;
     const supply = zone ? (baseSupply ? `${baseSupply} · ${chromaTag}` : chromaTag) : baseSupply;

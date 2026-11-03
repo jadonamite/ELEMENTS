@@ -84,7 +84,7 @@ test('RuleDecider: heavy pockets (500 CHROMA) at night in an alley triggers ambu
   assert.ok(step3.ambushSpot !== undefined);
 });
 
-test('RuleDecider: sentries nearby force gang to hold back in shadows', () => {
+test('RuleDecider: guards nearby force gang to hold back in shadows', () => {
   const decider = new RuleDecider();
   const gang = createRobberGang('gang_1', 'Sindr Shadows', { x: 100, z: -10 }, limits);
 
@@ -99,7 +99,7 @@ test('RuleDecider: sentries nearby force gang to hold back in shadows', () => {
 
   const decision = decider.decide(gang, senses, limits);
   assert.equal(decision.action, 'ignore');
-  assert.match(decision.reason, /sentries/i);
+  assert.match(decision.reason, /guards/i);
 });
 
 test('A robber who loses runs; a gang remembers a player who beat them', () => {
