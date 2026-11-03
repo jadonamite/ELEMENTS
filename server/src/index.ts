@@ -40,7 +40,7 @@ export function buildServer(): { server: Server; transport: WebSocketTransport }
     transport,
   });
   server.define('empty', EmptyRoom);
-  server.define('zone', ZoneRoom);
+  server.define('zone', ZoneRoom).filterBy(['zone']);
   return { server, transport };
 }
 

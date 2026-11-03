@@ -118,6 +118,8 @@ async function main(): Promise<void> {
   let refreshStyle: (() => void) | null = null;
   // Test flags: ?element=AQUES picks the element, ?hush plays a Hush, ?tier=N sets the tier (default 5: every move open, no extra strength).
   const params = new URLSearchParams(window.location.search);
+  // Online, the server owns every enemy: no local spawns that other players can't see.
+  const playingOnline = params.has('online');
   const forcedElement = ELEMENTS.find(e => e === params.get('element')?.toUpperCase()) ?? null;
   const forcedHush = params.has('hush');
   const tier = Math.max(1, Math.min(7, Number(params.get('tier')) || 5));
@@ -279,6 +281,7 @@ async function main(): Promise<void> {
   };
 
   input.onDuelToggle = () => {
+    if (playingOnline) return;
     const fwd = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
     const spawnPos = controller.position.clone().addScaledVector(fwd, 4.0);
     const kinds: VillainKind[] = ['brawler', 'armed', 'bender'];
@@ -299,7 +302,7 @@ async function main(): Promise<void> {
       : townEconomy?.carried ?? { chroma: 0, weight: 0 };
   let robberGang: ClientRobberGang | null = null;
   let deserterBand: ClientDeserterBand | null = null;
-  if (zone) {
+  if (zone && !playingOnline) {
     villains.then((template) => {
       robberGang = new ClientRobberGang({
         onAlert: (msg) => notice(msg),
@@ -814,7 +817,7 @@ async function main(): Promise<void> {
     }
     if (zone) {
       const yardDist = Math.hypot(controller.position.x - 124, controller.position.z - -36);
-      if (yardDist < 12 && !yardSpawned && fight.enemies.filter(e => e.alive).length === 0) {
+      if (!playingOnline && yardDist < 12 && !yardSpawned && fight.enemies.filter(e => e.alive).length === 0) {
         yardSpawned = true;
         fight.spawnVillain({ x: 121, z: -38 }, 'brawler', 100);
         fight.spawnVillain({ x: 127, z: -34 }, 'armed', 110);
