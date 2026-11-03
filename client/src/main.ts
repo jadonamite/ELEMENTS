@@ -28,6 +28,7 @@ import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
 import { Satchel } from './world/satchel.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
+import { SindrLifeSystem } from './life/index.js';
 import { Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 
@@ -112,10 +113,10 @@ async function main(): Promise<void> {
 
   /** Set once the fight exists, so a Drawing result arriving later updates the style too. */
   let refreshStyle: (() => void) | null = null;
-  // Test flags: ?element=AQUES picks the element, ?hush plays a Hush, ?tier=N sets the tier (default 5: every move open, no extra strength).
+  // Test flags: ?element=AQUES picks the element, ?dim (or ?hush) plays a Dim, ?tier=N sets the tier (default 5: every move open, no extra strength).
   const params = new URLSearchParams(window.location.search);
   const forcedElement = ELEMENTS.find(e => e === params.get('element')?.toUpperCase()) ?? null;
-  const forcedHush = params.has('hush');
+  const forcedHush = params.has('hush') || params.has('dim');
   const tier = Math.max(1, Math.min(7, Number(params.get('tier')) || 5));
   /** The element a Hush's shards carry; a Shaper's own element otherwise. */
   let kitElement: Element = 'IGNIS';
@@ -143,8 +144,9 @@ async function main(): Promise<void> {
   const consent = new ConsentBanner();
   cleanup.push(() => consent.dispose());
   const satchel = new Satchel();
+  let lifeSystem: SindrLifeSystem | null = null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, satchel, clock: zone?.clock, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, satchel, clock: zone?.clock, get life() { return lifeSystem; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -226,7 +228,11 @@ async function main(): Promise<void> {
       sound.playThump(50, 0.6, 0.7);
       reviveIn = balance.hero.respawnSeconds;
       if (zone) {
-        satchel.dropOnDeath(controller.position.x, controller.position.z);
+        if (lifeSystem) {
+          lifeSystem.onHeroDied();
+        } else {
+          satchel.dropOnDeath(controller.position.x, controller.position.z);
+        }
       }
     },
     heroParried() {
@@ -272,17 +278,43 @@ async function main(): Promise<void> {
   if (startRound > 1) fight.setRound(startRound);
   if (zone) { fight.stopWaves(); fightHud.say(''); }
   let yardSpawned = false;
+  if (zone) {
+    lifeSystem = new SindrLifeSystem({
+      scene,
+      camera,
+      controller,
+      clock: zone.clock,
+      sound,
+      satchel,
+      getPlayerContext: () => ({
+        name: 'Traveler',
+        isLit: !isDim,
+        role: isDim ? 'Dim' : 'Shaper',
+        element: isDim ? 'NONE' : kitElement,
+        carriedItemsCount: satchel.items.length,
+        redFlags: 0,
+        hasBounty: false,
+      }),
+      onNotice: (msg) => notice(msg),
+    });
+    cleanup.push(() => lifeSystem?.dispose());
+  }
+
   input.onInteract = () => {
+    if (lifeSystem && lifeSystem.handleInteract()) {
+      return true;
+    }
     if (zone && satchel.dropped) {
       const dist = Math.hypot(controller.position.x - satchel.dropped.x, controller.position.z - satchel.dropped.z);
       if (dist < 4.0) {
         const recovered = satchel.recoverDropped();
         if (recovered && recovered.length > 0) {
           notice(`Recovered satchel: ${recovered.map(i => `${i.count} ${i.name}`).join(', ')}`);
-          return;
+          return true;
         }
       }
     }
+    return false;
   };
   input.onDuelToggle = () => {
     const fwd = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
@@ -832,7 +864,11 @@ async function main(): Promise<void> {
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, supply);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
-    sound.update(delta, camera, controller, fight.enemies, sword);
+    lifeSystem?.update(delta);
+    sound.update(delta, camera, controller, fight.enemies, sword, zone ? {
+      minute: zone.clock.minute,
+      playerPos: controller.position,
+    } : undefined);
     fps?.tick();
     arena.render();
   });

@@ -503,5 +503,262 @@
       "Enjoy the bonus. We've got the next one.",
       "{player} got the kill. Note it. Learn from it. We won't be second twice."
     ]
+  },
+
+  "smith_sindr": {
+    "_note": "Sindr forge master and smiths. Dim crafters proud of honest metalwork.",
+    "greeting_lit_ignis": [
+      "A fellow son of Crimson. Does your blade hold heat true, {player}?",
+      "Good steel for an IGNIS warrior. Step back from the sparks, Shaper.",
+      "The hearth is hot today. What gear needs quenching, {player}?",
+      "Flame is only half the weapon. It takes good iron to strike a blow."
+    ],
+    "greeting_dim": [
+      "Ah, a fellow Dim! You have hands for honest crafting, {player}.",
+      "One of our own. A true crafter knows the iron sings before it strikes.",
+      "Respect to the Dim. We built every hearth in Sindr with our bare knuckles.",
+      "Good to see a Dim holding their own in the forge town."
+    ],
+    "greeting_outsider_lit": [
+      "An outsider Shaper. Your coin is good, but forge orders go to locals first.",
+      "{nation} element, is it? We work with fire and basalt here. Mind the anvil.",
+      "I see your colors, {player}. Don't expect discounts outside your home lands."
+    ],
+    "heavy_pack": [
+      "You are hauling serious weight in that satchel, {player}. Don't tempt the road robbers.",
+      "Heavy pack. If that is raw ore or shards, get it into a vault before dusk."
+    ],
+    "red_flag": [
+      "I do not forge iron for marked troublemakers. Clear your red flag with the Sentries.",
+      "You carry a red mark. I pay my taxes to the treasury; I want no trouble at my forge."
+    ],
+    "bounty": [
+      "A bounty on your head! Step away from my anvil before the guards take us both.",
+      "I do not deal with outlaws. Run along before someone collects that price on your neck."
+    ],
+    "dusk": [
+      "Bellows are slowing down for dusk. Forge closes until sunrise.",
+      "Time to bank the coals. Even smiths need a tankard at the inn."
+    ],
+    "night": [
+      "Forge is closed for the night. The coals are sleeping.",
+      "Nothing on the anvils until morning light. Head to the inn if you need shelter."
+    ]
+  },
+
+  "trader_sindr": {
+    "_note": "Market square traders in Sindr. Shrewd Dim merchants with sharp eyes for goods.",
+    "greeting_lit_ignis": [
+      "Welcome, Crimson Shaper. Fresh rations and whetstones from the morning caravan.",
+      "Fine wares for an IGNIS fighter. Take a look at the counter, {player}.",
+      "The embers treat our flame-born well today. What do you need?",
+      "Best prices on the square for our own fighters."
+    ],
+    "greeting_dim": [
+      "Welcome, fellow Dim! Honest coin for honest craft.",
+      "Good to see a working hand, {player}. Crafters always get fair measure here.",
+      "You know the sweat that went into these goods. Fair trade between Dim.",
+      "Step right up, {player}. Dim trade keeps Sindr alive."
+    ],
+    "greeting_outsider_lit": [
+      "Outsider Shaper from {nation}. Standard market rates apply to foreign coin.",
+      "A traveler from afar. Tell me what you are looking for, {player}.",
+      "We trade with all nations, but outsider tariffs are paid at the counter."
+    ],
+    "heavy_pack": [
+      "That is a bulging satchel you have there, {player}. Robbers look for packs like that.",
+      "Carrying plenty of loot, are you? Better spend it or bank it before nightfall."
+    ],
+    "red_flag": [
+      "A red flag above your head! Keep your distance, I am a law-abiding merchant.",
+      "The Sentries watch marked men closely. Clear your offense before trading here."
+    ],
+    "bounty": [
+      "You have a bounty on your head! Keep moving, I want no fights breaking my stalls.",
+      "Bounty hunters roam these streets. I will not trade with a hunted person."
+    ],
+    "dusk": [
+      "Packing down the awnings. Market closes as the lanterns light.",
+      "Dusk is here. Shutters are closing across the square."
+    ],
+    "night": [
+      "Market is shut tight for the night. Come back at dawn.",
+      "No sales in the dark, traveler. The square is sleeping."
+    ]
+  },
+
+  "innkeeper_sindr": {
+    "_note": "Keeper of the Hearth and Anvil Inn in Sindr. Source of hot stew, cold ale, gossip and leads.",
+    "greeting_lit_ignis": [
+      "Welcome to the Hearth and Anvil, Shaper. Good ale and glowing embers for you.",
+      "Come in from the dust, {player}. We keep a warm seat for our Crimson fighters.",
+      "Ale is drawn and the stew is steaming. Rest your boots by the hearth."
+    ],
+    "greeting_dim": [
+      "Step in, fellow Dim! The fire is warm and the common room is full of crafters.",
+      "Welcome, {player}. Dim hands built this tavern, and Dim folk drink here in peace.",
+      "A working person's rest is earned. Find a bench and take a bowl."
+    ],
+    "greeting_outsider_lit": [
+      "An outsider in Sindr. A bed is 10 CHROMA and questions are free.",
+      "Welcome to the inn, {player}. We welcome all travelers who leave their fights outside."
+    ],
+    "sell_lead": [
+      "I hear traders speaking of an abandoned cargo cart out in the Slag Barrens. 15 CHROMA and the map marker is yours.",
+      "A courier got spooked and dropped a locked satchel on the Gorge Road. 15 CHROMA and I will tell you where.",
+      "Looking for treasure, {player}? Old scout reports say an outpost crate was left near the East Fort. 15 CHROMA buys the mark."
+    ],
+    "lead_sold": [
+      "There you are. I marked the coordinates on your compass. Watch the road.",
+      "Done deal. Follow the amber beacon marker. And mind the canyon shadows.",
+      "Here is your marker. Bring back whatever you find and tell me the tale."
+    ],
+    "rumour_allborn": [
+      "The Allborn? Folk say whatever keeps their spirits up. Mostly it is campfire talk.",
+      "Some claim the Allborn walked through the East Gate ten years ago. Others say it is a myth the Lord made to distract us.",
+      "Four elements in one body? I have seen enough benders burn their own soup to doubt that tale."
+    ],
+    "dusk": [
+      "Dusk is falling! Come inside, grab an ale, and let the robbers freeze outside.",
+      "The tables are filling up fast for the night. Find a seat while you can."
+    ],
+    "night": [
+      "Best place to be after dark is right here by the hearth fire.",
+      "Night belongs to the shadows and the guards. Stay warm inside."
+    ],
+    "red_flag": [
+      "Keep your head down in my tavern, marked one. I run an honest establishment.",
+      "Mind your temper, {player}. One brawl and the Sentries will haul you to jail."
+    ],
+    "bounty": [
+      "You are on the notice board outside! Drink fast and leave before the hunters arrive.",
+      "A hunted fighter in my taproom... Do not cause trouble under my roof."
+    ]
+  },
+
+  "guard_sindr": {
+    "_note": "Guards on keep lane and town gates. Tough, dutiful, vigilant.",
+    "greeting_lit_ignis": [
+      "Keep lane is secure, Shaper. Brandr watches the town from the crag.",
+      "Stand tall for IGNIS, warrior {player}.",
+      "Move along the lane. All is quiet on the ramparts."
+    ],
+    "greeting_dim": [
+      "Stay on the lower lane, Dim. Only authorized business up toward the keep gate.",
+      "Keep to your trade, citizen. The high lane is for guards and nobles.",
+      "Move along. No loitering near the gatehouse."
+    ],
+    "greeting_outsider_lit": [
+      "Halt, {nation} traveler. You are in Sindr now. Obey the forge laws.",
+      "State your purpose if you walk near the keep lane, outsider."
+    ],
+    "heavy_pack": [
+      "Watch your satchel, traveler. Deserters and thieves watch the Gorge Road.",
+      "Heavy gear on your shoulders. Keep a hand on your weapon out on the roads."
+    ],
+    "red_flag": [
+      "Halt! You carry a red flag! One misstep and you will answer to the Lord's law.",
+      "We have our eyes on you, marked citizen. Watch your conduct."
+    ],
+    "bounty": [
+      "Halt! You have a bounty on your head! Face the garrison or surrender your weapons!",
+      "An outlaw in Sindr! Stand your ground, criminal!"
+    ],
+    "dusk": [
+      "Dusk bell has sounded. Citizens are advised to return to their quarters.",
+      "Gates close to general traffic at nightfall. Move inside the walls."
+    ],
+    "night": [
+      "Halt! Who goes there? State your business in Sindr after dark.",
+      "Night watch is active. Return to the inn or your home immediately."
+    ]
+  },
+
+  "worshipper_sindr": {
+    "_note": "Devout citizens praying at the Shrine of Embers.",
+    "greeting_lit_ignis": [
+      "May the sacred brazier nurture your Crimson flame, Shaper.",
+      "The unquenched flame burns eternal. Pray with us, warrior {player}.",
+      "May the embers guide your steps through the wild lands."
+    ],
+    "greeting_dim": [
+      "Even without an element, the sacred fire warms all who come in peace.",
+      "Welcome to the shrine, friend. The flame knows honest hearts.",
+      "The light does not judge between Dim and Lit. Peace be with you."
+    ],
+    "greeting_outsider_lit": [
+      "The Shrine of Embers welcomes all who respect the sacred fire, even from {nation}.",
+      "May the embers bring warmth to your journey, traveler."
+    ],
+    "allborn_hint": [
+      "The elders whisper that the first flame was lit by the Allborn. But the Edict forbids the old words.",
+      "We pray for the one who will unite all four aspects. Until then, we keep the fire alive."
+    ],
+    "dusk": [
+      "Evening prayers begin as the sun sinks behind the volcanic ridges.",
+      "The sacred brazier shines brightest as the shadows lengthen."
+    ],
+    "night": [
+      "The shrine remains open for quiet vigils through the darkest hours.",
+      "Find peace by the coals, traveler. The night is long."
+    ],
+    "red_flag": [
+      "Seek redemption by the embers, marked soul. Cleanse your misdeeds.",
+      "The flame sees your transgressions, {player}. Walk a righteous path."
+    ],
+    "bounty": [
+      "The shrine is sanctuary from blades, but not from the weight of your deeds.",
+      "A bounty hunter may not strike here, but the law will find you outside."
+    ]
+  },
+
+  "porter_sindr": {
+    "_note": "Common Dim porters moving crates, barrels and supplies.",
+    "greeting_lit_ignis": [
+      "Mind the handcart, Shaper! Heavy ore shipment coming through.",
+      "Good day, {player}. Just hauling another load of charcoal to the great forge."
+    ],
+    "greeting_dim": [
+      "Another day, another sore back. Good to see you, fellow worker.",
+      "Dim hands do all the heavy lifting in this town. Never let them forget it, {player}."
+    ],
+    "greeting_outsider_lit": [
+      "Careful there, traveler! These stone crates weigh a ton.",
+      "Porters coming through. Watch your steps."
+    ],
+    "dusk": [
+      "Last crate for today. My back is ready for an ale at the inn.",
+      "Stacking the final pallets before the lanterns are lit."
+    ],
+    "night": [
+      "Work is done for the night. Off to the tavern or to sleep.",
+      "Alleys get dangerous after dark. I am heading inside."
+    ]
+  },
+
+  "child_sindr": {
+    "_note": "Children playing in Sindr alleys and square.",
+    "greeting_lit_ignis": [
+      "Look, it is a real Shaper! Can you show us a spark, {player}?",
+      "Are you going to fight the ember hounds out past the east gate?",
+      "When I grow up, I want to bend fire just like you!"
+    ],
+    "greeting_dim": [
+      "My uncle is a Dim smith! He says his blades are sharper than any magic.",
+      "Can I see your belt pouches, {player}? Do you have shiny stones?",
+      "We were playing tag around the slag well!"
+    ],
+    "greeting_outsider_lit": [
+      "Whoa! Are you from {nation}? Your clothing looks totally different!",
+      "A traveler from another land! Have you seen real water rivers?"
+    ],
+    "dusk": [
+      "The lanterns are coming on! Mother will be furious if I am late for supper.",
+      "Sun is down behind the crag! Race you home!"
+    ],
+    "night": [
+      "We are not supposed to be out in the dark... Watch out for street robbers!",
+      "I saw glowing eyes near the keep wall earlier..."
+    ]
   }
 }

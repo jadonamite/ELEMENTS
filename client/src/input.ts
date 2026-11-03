@@ -21,7 +21,7 @@ export class GameInput {
   onStanceToggle?: () => void;
   onBendingToggle?: () => void;
   onStyleSelect?: (style: FightingStyle) => void;
-  onInteract?: () => void;
+  onInteract?: () => boolean | void;
   onDuelToggle?: () => void;
 
   constructor(private readonly canvas: HTMLCanvasElement, button: HTMLButtonElement,
@@ -77,10 +77,11 @@ export class GameInput {
         this.onBendingToggle?.();
         return;
       }
-      if (event.code === 'KeyC' && !event.repeat) {
-        event.preventDefault();
-        this.onInteract?.();
-        return;
+      if ((event.code === 'KeyC' || event.code === 'KeyE') && !event.repeat) {
+        if (this.onInteract && this.onInteract() === true) {
+          event.preventDefault();
+          return;
+        }
       }
       if (event.code === 'KeyK' && !event.repeat) {
         event.preventDefault();

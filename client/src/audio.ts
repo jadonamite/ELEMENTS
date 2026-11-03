@@ -34,6 +34,12 @@ export interface SoundSwordLike {
   readonly phase?: string;
 }
 
+export interface SoundWorldContext {
+  minute?: number;
+  playerPos?: SoundPosition;
+  surface?: 'stone' | 'dirt' | 'wood';
+}
+
 export interface SoundManagerOptions {
   sfxVolume?: number;
   musicVolume?: number;
@@ -264,6 +270,44 @@ export class SoundManager {
       ambient_wind: ['/assets/audio/ambient_wind.ogg'],
       ambient_birds: ['/assets/audio/ambient_birds.ogg'],
       ambient_forge_bell: ['/assets/audio/ambient_forge_bell.ogg'],
+      ambient_forge_hammer: ['/assets/audio/ambient_forge_hammer.ogg'],
+      ambient_market: ['/assets/audio/ambient_market.ogg'],
+      ambient_night_insects: ['/assets/audio/ambient_night_insects.ogg'],
+      footstep_dirt_walk: [
+        '/assets/audio/footstep_dirt_walk_01.ogg',
+        '/assets/audio/footstep_dirt_walk_02.ogg',
+        '/assets/audio/footstep_dirt_walk_03.ogg',
+        '/assets/audio/footstep_dirt_walk_04.ogg',
+      ],
+      footstep_dirt_run: [
+        '/assets/audio/footstep_dirt_run_01.ogg',
+        '/assets/audio/footstep_dirt_run_02.ogg',
+        '/assets/audio/footstep_dirt_run_03.ogg',
+        '/assets/audio/footstep_dirt_run_04.ogg',
+      ],
+      footstep_wood_walk: [
+        '/assets/audio/footstep_wood_walk_01.ogg',
+        '/assets/audio/footstep_wood_walk_02.ogg',
+        '/assets/audio/footstep_wood_walk_03.ogg',
+        '/assets/audio/footstep_wood_walk_04.ogg',
+      ],
+      footstep_wood_run: [
+        '/assets/audio/footstep_wood_run_01.ogg',
+        '/assets/audio/footstep_wood_run_02.ogg',
+        '/assets/audio/footstep_wood_run_03.ogg',
+        '/assets/audio/footstep_wood_run_04.ogg',
+      ],
+      bark_guard: ['/assets/audio/bark_guard_01.ogg'],
+      bark_smith: ['/assets/audio/bark_smith_01.ogg'],
+      bark_innkeeper: ['/assets/audio/bark_innkeeper_01.ogg'],
+      bark_male: [
+        '/assets/audio/bark_male_01.ogg',
+        '/assets/audio/bark_male_02.ogg',
+      ],
+      bark_female: [
+        '/assets/audio/bark_female_01.ogg',
+        '/assets/audio/bark_female_02.ogg',
+      ],
     };
 
     for (const [key, urls] of Object.entries(definitions)) {
@@ -294,11 +338,18 @@ export class SoundManager {
     }
   }
 
-  /** Starts the 3-layered ambient bed with 2s fade-in once unlocked. */
+  /** Starts the 6-layered ambient bed with 2s fade-in once unlocked. */
   private startAmbientBed(): void {
     if (!this.ctx || !this.ambientGain || this.ambientActive) return;
 
-    const layers = ['ambient_wind', 'ambient_birds', 'ambient_forge_bell'];
+    const layers = [
+      'ambient_wind',
+      'ambient_birds',
+      'ambient_forge_bell',
+      'ambient_forge_hammer',
+      'ambient_market',
+      'ambient_night_insects',
+    ];
     const buffers: AudioBuffer[] = [];
     for (const key of layers) {
       const list = this.buffers.get(key);
@@ -307,7 +358,7 @@ export class SoundManager {
       }
     }
 
-    if (buffers.length < layers.length) return; // Wait until all 3 are decoded
+    if (buffers.length < layers.length) return; // Wait until all 6 are decoded
 
     this.ambientActive = true;
     this.ambientSources = [];
@@ -319,7 +370,7 @@ export class SoundManager {
     this.ambientGain.gain.setValueAtTime(0.0001, now);
     this.ambientGain.gain.exponentialRampToValueAtTime(0.126, now + 2.0);
 
-    const baseLevels = [0.85, 0.65, 0.55];
+    const baseLevels = [0.75, 0.60, 0.45, 0.70, 0.75, 0.60];
 
     for (let i = 0; i < buffers.length; i++) {
       const buf = buffers[i];
@@ -380,8 +431,8 @@ export class SoundManager {
   /**
    * Main per-frame sound updater. Handles:
    * - Listener positioning
-   * - Ambient loop volume drift
-   * - Hero footstep locomotion tracking
+   * - Ambient loop volume drift across places (forge, market, terraces) and time (day, dusk, night)
+   * - Hero footstep locomotion tracking with surface detection (stone, dirt, wood)
    * - Villain spatialized footsteps and swings
    * - Sword draw/sheathe state foley
    */
@@ -391,6 +442,7 @@ export class SoundManager {
     controller?: SoundControllerLike,
     enemies?: readonly SoundEnemyLike[],
     sword?: SoundSwordLike,
+    worldContext?: SoundWorldContext,
   ): void {
     if (this.muted) return;
 
@@ -398,20 +450,54 @@ export class SoundManager {
       this.updateListener(camera);
     }
 
-    // Ambient slow volume drift across the 3 layers
-    if (this.ambientActive && this.ambientLayerGains.length >= 3 && this.ctx) {
+    // Ambient spatial and time-of-day tuning across the 6 layers
+    if (this.ambientActive && this.ambientLayerGains.length >= 6 && this.ctx) {
       this.ambientClock += delta;
       const t = this.ambientClock;
-      const g0 = 0.70 + 0.20 * Math.sin(t * 0.12);
-      const g1 = 0.55 + 0.25 * Math.sin(t * 0.083 + 1.2);
-      const g2 = 0.50 + 0.22 * Math.sin(t * 0.057 + 2.7);
+      const p = worldContext?.playerPos ?? controller?.position ?? camera?.position;
+      const minute = worldContext?.minute ?? 4;
+      const m = ((minute % 24) + 24) % 24;
 
-      this.ambientLayerGains[0]?.gain.setValueAtTime(Math.max(0.2, g0), this.ctx.currentTime);
-      this.ambientLayerGains[1]?.gain.setValueAtTime(Math.max(0.15, g1), this.ctx.currentTime);
-      this.ambientLayerGains[2]?.gain.setValueAtTime(Math.max(0.15, g2), this.ctx.currentTime);
+      // Dusk factor: 0 by day, 1 at night, smooth ramp from 12..14
+      const isNight = m >= 14 && m < 22;
+      const isDusk = m >= 12 && m < 14;
+      const duskProgress = isNight ? 1.0 : isDusk ? (m - 12) / 2 : (m >= 22 ? 1 - (m - 22) / 2 : 0);
+
+      // Layer 0: ambient_wind (boosted on crag / terraces: x > 175, z < -25 or p.y > 1.8)
+      const onTerraces = p && ((p.x > 175 && p.z < -25) || p.y > 1.8);
+      const windTarget = (onTerraces ? 1.15 : 0.70) + 0.15 * Math.sin(t * 0.12);
+      this.ambientLayerGains[0]?.gain.setTargetAtTime(Math.max(0.1, windTarget), this.ctx.currentTime, 0.1);
+
+      // Layer 1: ambient_birds (day only, fades out at dusk/night)
+      const birdsTarget = Math.max(0.01, (1.0 - duskProgress) * (0.55 + 0.2 * Math.sin(t * 0.08 + 1.2)));
+      this.ambientLayerGains[1]?.gain.setTargetAtTime(birdsTarget, this.ctx.currentTime, 0.1);
+
+      // Layer 2: ambient_forge_bell (distance to town, quietens at night)
+      const bellTarget = (1.0 - 0.5 * duskProgress) * (0.45 + 0.15 * Math.sin(t * 0.057 + 2.7));
+      this.ambientLayerGains[2]?.gain.setTargetAtTime(Math.max(0.05, bellTarget), this.ctx.currentTime, 0.1);
+
+      // Layer 3: ambient_forge_hammer (spatial near Great Forge x: 82, z: 36, quieter at dusk/night)
+      let forgeDist = 50;
+      if (p) forgeDist = Math.hypot(p.x - 82, p.z - 36);
+      const forgeProx = Math.max(0, Math.min(1, 1 - (forgeDist - 12) / 48));
+      const forgeTime = isNight ? 0.2 : isDusk ? 0.5 : 1.0;
+      const forgeHammerTarget = forgeProx * forgeTime * (0.8 + 0.2 * Math.sin(t * 0.3));
+      this.ambientLayerGains[3]?.gain.setTargetAtTime(Math.max(0.001, forgeHammerTarget), this.ctx.currentTime, 0.1);
+
+      // Layer 4: ambient_market (spatial near Square x: 125, z: 0, fades at dusk/night)
+      let marketDist = 50;
+      if (p) marketDist = Math.hypot(p.x - 125, p.z);
+      const marketProx = Math.max(0, Math.min(1, 1 - (marketDist - 16) / 45));
+      const marketTime = Math.max(0.02, 1.0 - duskProgress);
+      const marketTarget = marketProx * marketTime * (0.85 + 0.15 * Math.sin(t * 0.2));
+      this.ambientLayerGains[4]?.gain.setTargetAtTime(Math.max(0.001, marketTarget), this.ctx.currentTime, 0.1);
+
+      // Layer 5: ambient_night_insects (fades in at dusk, active at night)
+      const insectsTarget = duskProgress * (0.75 + 0.15 * Math.sin(t * 0.15));
+      this.ambientLayerGains[5]?.gain.setTargetAtTime(Math.max(0.0001, insectsTarget), this.ctx.currentTime, 0.1);
     }
 
-    // Hero footsteps tracking locked to animation footfall distance
+    // Hero footsteps tracking locked to animation footfall distance with surface detection
     if (controller) {
       const speed = controller.speed;
       const isAirborne = controller.position.y > 0.06;
@@ -421,14 +507,15 @@ export class SoundManager {
         this.heroStrideDistance = 0;
       } else {
         const isRun = speed >= 3.8;
-        // Half-stride distance (metres between alternating footfalls) matching authored walk (0.485m) and run (1.48m)
+        // Half-stride distance matching authored walk (0.485m) and run (1.48m)
         const stepDistance = isRun ? 1.48 : 0.485;
         this.heroStrideDistance += speed * delta;
         if (this.heroStrideDistance >= stepDistance) {
           this.heroStrideDistance -= stepDistance;
           this.heroLastStepRight = !this.heroLastStepRight;
           const footPitch = this.heroLastStepRight ? 1.04 : 0.96;
-          this.playFootstep(isRun, footPitch);
+          const surface = worldContext?.surface ?? this.detectSurface(controller.position);
+          this.playFootstep(isRun, footPitch, surface);
         }
       }
     }
@@ -564,10 +651,30 @@ export class SoundManager {
     }
   }
 
-  /** Hero footstep on stone, walk or run. */
-  playFootstep(isRun = false, pitchMult = 1.0): void {
-    const category = isRun ? 'footstep_stone_run' : 'footstep_stone_walk';
+  /** Detects terrain surface from world position. */
+  detectSurface(pos: SoundPosition): 'stone' | 'dirt' | 'wood' {
+    // Packed dirt road between shrine and town
+    if (pos.x >= 10 && pos.x <= 60 && Math.abs(pos.z) <= 8.5) return 'dirt';
+    // Slag barrens / plot edge dirt
+    if (pos.x >= 168 && pos.x <= 214 && pos.z >= 16 && pos.z <= 50) return 'dirt';
+    // Market wooden stalls & wooden veranda
+    if (pos.y > 1.8 && pos.x > 105 && pos.x < 145 && (pos.z < -6 || pos.z > 6)) return 'wood';
+    return 'stone';
+  }
+
+  /** Hero footstep on surface (stone, dirt, wood), walk or run. */
+  playFootstep(isRun = false, pitchMult = 1.0, surface: 'stone' | 'dirt' | 'wood' = 'stone'): void {
+    const category = `footstep_${surface}_${isRun ? 'run' : 'walk'}`;
     this.playSample(category, isRun ? 1.0 : 0.85, pitchMult, this.footstepGain);
+  }
+
+  /** Short spoken bark for NPC interactions. */
+  playBark(role = 'common', sex: 'male' | 'female' = 'male'): void {
+    let category = sex === 'female' ? 'bark_female' : 'bark_male';
+    if (role === 'guard') category = 'bark_guard';
+    else if (role === 'smith') category = 'bark_smith';
+    else if (role === 'innkeeper') category = 'bark_innkeeper';
+    this.playSample(category, 0.95, 1.0, this.sfxGain);
   }
 
   /** Spatialized villain footstep on stone, quieter. */
