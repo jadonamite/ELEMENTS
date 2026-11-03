@@ -172,14 +172,14 @@ export class ElementEffects {
   private readonly textures: Texture[] = [];
   /** Pools and floods AQUES made; they count as water to bend from while they last. */
   readonly pools: Array<{ position: Vector3; until: number }> = [];
-  readonly spiritPools: Array<{ position: Vector3; until: number }> = [];
+  readonly wellspringPools: Array<{ position: Vector3; until: number }> = [];
   private readonly activeBoulders: Array<{ position: Vector3; forward: Vector3; reach: number; s: number }> = [];
-  private airballGroup: Group | null = null;
-  private airballSphere: Mesh | null = null;
-  private airballTorus1: Mesh | null = null;
-  private airballTorus2: Mesh | null = null;
-  private airballTorus3: Mesh | null = null;
-  private airballDust: Mesh | null = null;
+  private windskiffGroup: Group | null = null;
+  private windskiffSphere: Mesh | null = null;
+  private windskiffTorus1: Mesh | null = null;
+  private windskiffTorus2: Mesh | null = null;
+  private windskiffTorus3: Mesh | null = null;
+  private windskiffDust: Mesh | null = null;
   private clock = 0;
 
   constructor(private readonly scene: Scene, quality: 'high' | 'low' = 'high') {
@@ -217,8 +217,8 @@ export class ElementEffects {
 
   /** Water sources from effects that are still on the ground. */
   get waterSources(): Vector3[] { return this.pools.filter(p => p.until > this.clock).map(p => p.position); }
-  /** Sacred spirit water sources in the world. */
-  get spiritWaterSources(): Vector3[] { return this.spiritPools.filter(p => p.until > this.clock).map(p => p.position); }
+  /** Sacred wellspring water sources in the world. */
+  get wellspringSources(): Vector3[] { return this.wellspringPools.filter(p => p.until > this.clock).map(p => p.position); }
 
   /**
    * Air or water redirecting flying boulders: changes boulder trajectory with a wind/water burst.
@@ -236,13 +236,13 @@ export class ElementEffects {
   }
 
   /**
-   * Toggle the AURA Airball (Air Scooter) technique.
+   * Toggle the AURA Windskiff (Air Scooter) technique.
    * Spawns a glowing sphere of compressed air, spinning wind rings, and ground vortex beneath the sitting hero.
    */
-  setAirball(active: boolean, at?: Vector3): void {
-    if (!this.airballGroup) {
-      this.airballGroup = new Group();
-      this.airballGroup.name = 'Airball';
+  setWindskiff(active: boolean, at?: Vector3): void {
+    if (!this.windskiffGroup) {
+      this.windskiffGroup = new Group();
+      this.windskiffGroup.name = 'Windskiff';
 
       // 1. Central glowing sphere of compressed spinning air
       const sGeo = new SphereGeometry(0.68, 24, 24);
@@ -252,60 +252,60 @@ export class ElementEffects {
         opacity: 0.65,
         blending: AdditiveBlending,
       });
-      this.airballSphere = new Mesh(sGeo, airSphereMat);
+      this.windskiffSphere = new Mesh(sGeo, airSphereMat);
 
       // 2. High-speed equator and oblique wind vortex rings
       const tGeo1 = new TorusGeometry(0.76, 0.06, 12, 32);
-      this.airballTorus1 = new Mesh(tGeo1, this.wind);
+      this.windskiffTorus1 = new Mesh(tGeo1, this.wind);
 
       const tGeo2 = new TorusGeometry(0.72, 0.05, 12, 32);
-      this.airballTorus2 = new Mesh(tGeo2, this.wind);
-      this.airballTorus2.rotation.x = Math.PI / 3;
+      this.windskiffTorus2 = new Mesh(tGeo2, this.wind);
+      this.windskiffTorus2.rotation.x = Math.PI / 3;
 
       const tGeo3 = new TorusGeometry(0.74, 0.04, 12, 32);
-      this.airballTorus3 = new Mesh(tGeo3, this.wind);
-      this.airballTorus3.rotation.z = Math.PI / 4;
+      this.windskiffTorus3 = new Mesh(tGeo3, this.wind);
+      this.windskiffTorus3.rotation.z = Math.PI / 4;
 
       // 3. Ground vortex ring lifting air dust
       const dGeo = new RingGeometry(0.3, 1.2, 32);
       dGeo.rotateX(-Math.PI / 2);
-      this.airballDust = new Mesh(dGeo, this.spray);
-      this.airballDust.position.y = -0.66;
+      this.windskiffDust = new Mesh(dGeo, this.spray);
+      this.windskiffDust.position.y = -0.66;
 
-      this.airballGroup.add(this.airballSphere, this.airballTorus1, this.airballTorus2, this.airballTorus3, this.airballDust);
-      this.scene.add(this.airballGroup);
+      this.windskiffGroup.add(this.windskiffSphere, this.windskiffTorus1, this.windskiffTorus2, this.windskiffTorus3, this.windskiffDust);
+      this.scene.add(this.windskiffGroup);
     }
-    this.airballGroup.visible = active;
+    this.windskiffGroup.visible = active;
     if (active && at) {
-      this.airballGroup.position.copy(at).setY(at.y + 0.68);
+      this.windskiffGroup.position.copy(at).setY(at.y + 0.68);
     }
   }
 
-  /** Update the spinning airball under the hero while riding. */
-  updateAirball(at: Vector3, delta: number, speed: number, facing: number): void {
-    if (!this.airballGroup || !this.airballGroup.visible) return;
-    this.airballGroup.position.set(at.x, at.y + 0.68, at.z);
-    this.airballGroup.rotation.y = facing;
+  /** Update the spinning windskiff under the hero while riding. */
+  updateWindskiff(at: Vector3, delta: number, speed: number, facing: number): void {
+    if (!this.windskiffGroup || !this.windskiffGroup.visible) return;
+    this.windskiffGroup.position.set(at.x, at.y + 0.68, at.z);
+    this.windskiffGroup.rotation.y = facing;
     const spin = delta * (14 + speed * 6);
-    if (this.airballSphere) {
-      this.airballSphere.rotation.x += spin * 0.8;
-      this.airballSphere.rotation.y += spin;
+    if (this.windskiffSphere) {
+      this.windskiffSphere.rotation.x += spin * 0.8;
+      this.windskiffSphere.rotation.y += spin;
     }
-    if (this.airballTorus1) this.airballTorus1.rotation.y += spin * 1.2;
-    if (this.airballTorus2) this.airballTorus2.rotation.z += spin * 1.4;
-    if (this.airballTorus3) this.airballTorus3.rotation.x += spin * 1.1;
-    if (this.airballDust) this.airballDust.rotation.y -= spin * 0.6;
+    if (this.windskiffTorus1) this.windskiffTorus1.rotation.y += spin * 1.2;
+    if (this.windskiffTorus2) this.windskiffTorus2.rotation.z += spin * 1.4;
+    if (this.windskiffTorus3) this.windskiffTorus3.rotation.x += spin * 1.1;
+    if (this.windskiffDust) this.windskiffDust.rotation.y -= spin * 0.6;
     if (speed > 0.5 && Math.random() < 0.35) {
       this.dust(at.clone().setY(0.05), 0.7, 2);
     }
   }
 
   /**
-   * Seismic Sense for TERRA benders:
+   * Stonehearing for TERRA benders:
    * Radiates expanding ground sonar waves and highlights enemy footfalls through bedrock and walls.
    * Uses depthTest=false so vibrational beacons project directly through solid obstacles.
    */
-  spawnSeismicPulse(origin: Vector3, maxRadius = 32.0, enemies: readonly Vector3[] = []): void {
+  spawnStonehearingPulse(origin: Vector3, maxRadius = 32.0, enemies: readonly Vector3[] = []): void {
     const group = new Group();
     group.position.copy(origin).setY(0.04);
     const disposables: Array<BufferGeometry | Material> = [];
@@ -510,7 +510,7 @@ export class ElementEffects {
     origin: Vector3,
     facing: number,
     strength = 1,
-    quality: 'waterskin' | 'natural' | 'spirit_water' = 'waterskin'
+    quality: 'waterskin' | 'natural' | 'wellspring' = 'waterskin'
   ): void {
     const forward = new Vector3(Math.sin(facing), 0, Math.cos(facing));
     const at = origin.clone().setY(0);
@@ -586,10 +586,10 @@ export class ElementEffects {
   }
 
   /**
-   * Sacred Spirit Oasis pool found in the Water Tribe polar sanctuary.
-   * Grants Spirit Water for purest healing.
+   * The Wellspring basin in the AQUES delta.
+   * Grants Wellspring water for purest healing.
    */
-  spiritOasis(at: Vector3, radius = 2.4): void {
+  wellspring(at: Vector3, radius = 2.4): void {
     const group = new Group();
     group.position.copy(at).setY(0);
     const rimGeo = new TorusGeometry(radius, 0.32, 12, 48);
@@ -606,7 +606,7 @@ export class ElementEffects {
     surface.position.y = 0.22;
     group.add(rim, surface);
     this.pools.push({ position: at.clone().setY(0), until: Infinity });
-    this.spiritPools.push({ position: at.clone().setY(0), until: Infinity });
+    this.wellspringPools.push({ position: at.clone().setY(0), until: Infinity });
     this.add(group, (age) => {
       surface.position.y = 0.22 + Math.sin(age * 1.8) * 0.01;
       return true;
@@ -848,12 +848,12 @@ export class ElementEffects {
     }, disposables);
   }
 
-  private mend(at: Vector3, quality: 'waterskin' | 'natural' | 'spirit_water' = 'waterskin'): void {
+  private mend(at: Vector3, quality: 'waterskin' | 'natural' | 'wellspring' = 'waterskin'): void {
     const group = new Group();
     group.position.copy(at);
     const geo = new CylinderGeometry(0.7, 0.75, 0.3, 40, 1, true, 0, Math.PI * 1.2);
     const mat = this.wind.clone();
-    if (quality === 'spirit_water') {
+    if (quality === 'wellspring') {
       mat.color.setRGB(0.55, 0.98, 1.0);
     } else if (quality === 'natural') {
       mat.color.setRGB(0.25, 0.75, 1.0);
@@ -861,7 +861,7 @@ export class ElementEffects {
       mat.color.setRGB(0.45, 0.85, 1.0);
     }
     const rings: Mesh[] = [];
-    const ringCount = quality === 'spirit_water' ? 6 : 4;
+    const ringCount = quality === 'wellspring' ? 6 : 4;
     for (let i = 0; i < ringCount; i++) { const m = new Mesh(geo, mat); rings.push(m); group.add(m); }
     this.add(group, (age) => {
       rings.forEach((m, i) => {
@@ -873,7 +873,7 @@ export class ElementEffects {
       mat.opacity = 0.85 * Math.min(1, age / 0.2) * Math.min(1, (2 - age) / 0.3);
       return age < 2;
     }, [geo, mat]);
-    const dropCount = quality === 'spirit_water' ? 24 : 12;
+    const dropCount = quality === 'wellspring' ? 24 : 12;
     this.droplets(at.clone().setY(1.6), dropCount, 0.7, 0.9, 1.3);
   }
 

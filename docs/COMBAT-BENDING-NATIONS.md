@@ -17,13 +17,13 @@ This document records the design and implementation of the eight major combat, b
    - Earth (`TERRA`) stone walls physically intercept and block all incoming elemental projectiles and attacks.
    - Fire retains high aggressive combo pacing and burn DPS without defensive redirection.
 4. **Water Healing Quality & Internal Wound / Scar System**:
-   - Healing scales based on water purity: standard waterskin (1.0x), standing water (1.5x), sacred Spirit Water (2.5x).
+   - Healing scales based on water purity: standard waterskin (1.0x), standing water (1.5x), wellspring water (2.5x).
    - Water healing cannot cure deep internal scars. Heavy hits inflict permanent scars that cap recoverable HP on the health bar.
-5. **The Airball Technique (`AURA`)**:
+5. **The Windskiff Technique (`AURA`)**:
    - High-speed gliding mobility technique where air benders ride atop a spinning compressed ball of air (`KeyV`).
 6. **Lightning Bending (`IGNIS`)**:
-   - Cold-Blooded Fire armor-piercing lightning discharge with explosive shock detonation (`KeyV`).
-7. **Seismic Sense (`TERRA`)**:
+   - Forge Lightning armor-piercing lightning discharge with explosive shock detonation (`KeyV`).
+7. **Stonehearing (`TERRA`)**:
    - Vibrational earth sensing emitting subterranean sonar ripples that detect and highlight enemy locations through solid bedrock and walls (`KeyV`).
 8. **Geographically & Meteorologically Attuned Nation Maps**:
    - Bespoke non-circular perimeter geometries, obstacles, and weather systems for each nation: Sindr Caldera (`IGNIS`), Glacial Fjord & Polar Sanctuary (`AQUES`), High Spire Sanctuary (`AURA`), and Canyon Monoliths Quarry (`TERRA`).
@@ -45,16 +45,16 @@ This document records the design and implementation of the eight major combat, b
 
 ### Client State & Mechanics (`@elements/client`)
 - `client/src/bend-state.ts`:
-  - Added `isFullMoon`, `hasWaterEnvironment`, `airballActive`, `seismicSenseActive`, `seismicCooldown`.
-  - Added `nearSpiritWater()`, `healingQuality()`, and `healingMultiplier()` (1.0x, 1.5x, 2.5x).
-  - Added `toggleAirball()` and `triggerSeismicSense()`.
+  - Added `isFullMoon`, `hasWaterEnvironment`, `windskiffActive`, `stonehearingActive`, `stonehearingCooldown`.
+  - Added `nearWellspring()`, `healingQuality()`, and `healingMultiplier()` (1.0x, 1.5x, 2.5x).
+  - Added `toggleWindskiff()` and `triggerStonehearing()`.
   - Conserves waterskin when water is present.
 - `client/src/world/clock.ts`:
   - Continuous lunar phase calculation and URL parameter support (`?moon=full`).
   - Silvery moonlight tint and intensity enhancement when a full moon occurs at night.
 - `client/src/env/nations.ts`:
   - Organic boundary polygons: `createCalderaPerimeter()`, `createFjordPerimeter()`, `createSpirePerimeter()`, `createCanyonPerimeter()`.
-  - Nation-specific props: Glacial pillars, sacred Spirit Oasis at `(0, 0, 11)`, prayer stupas, basalt lava vents, bedrock monoliths.
+  - Nation-specific props: Glacial pillars, sacred Wellspring at `(0, 0, 11)`, prayer stupas, basalt lava vents, bedrock monoliths.
   - Meteorology: Ash fall, blizzard snow, gale winds, sandstorm dust.
 - `client/src/physics.ts`:
   - `initPhysics(nation?: Element)` builds Rapier static wall segment colliders along nation perimeters.
@@ -64,10 +64,10 @@ This document records the design and implementation of the eight major combat, b
   - Stone wall projectile interception (`addActiveWall`).
   - Fire extinguishing (`extinguishAt`).
   - Boulder redirection (`redirectBoulders`).
-  - Airball visual FX and physics offset (`updateAirball`, `setAirball`).
+  - Windskiff visual FX and physics offset (`updateWindskiff`, `setWindskiff`).
   - Lightning bolt arcs (`spawnLightningBolt`).
-  - Seismic ground sonar ripples (`spawnSeismicPulse`).
-  - Sacred Spirit Oasis pool (`spiritOasis`).
+  - Stonehearing ground sonar ripples (`spawnStonehearingPulse`).
+  - Wellspring pool (`wellspring`).
   - Splashing reusable ground pools on water impacts.
 - `client/src/fight.ts`:
   - Injects `isFullMoon` status into combat.
@@ -76,13 +76,13 @@ This document records the design and implementation of the eight major combat, b
   - Bound `KeyV` to trigger elemental techniques.
 - `client/src/hud.ts` & `client/src/style.css`:
   - Visual scar indicator capping the health bar.
-  - Informational banners for Infinite Water, Spirit Water, and Full Moon surges.
+  - Informational banners for Infinite Water, Wellspring water, and Full Moon surges.
 - `client/src/ui/fighter-select.ts`:
   - Updated move lists and descriptions for all 4 nations.
 - `client/src/main.ts`:
   - Unified initialization tying selected fighter, URL parameters (`?nation=` / `?moon=full`), physics colliders, FX, and technique controls together.
 - `client/tests/bend-state.test.mjs`:
-  - Added unit test coverage for reusable water, healing multipliers, full moon surge, airball, and seismic sense.
+  - Added unit test coverage for reusable water, healing multipliers, full moon surge, windskiff, and stonehearing.
 
 ---
 
@@ -96,13 +96,13 @@ This document records the design and implementation of the eight major combat, b
 
 ### Visual Evidence & Render Verification
 Live in-engine screenshots captured via headless browser test harness:
-- **Airball Technique (Seated Riding Posture)**: `workbench/shots/fixes/aura-airball-riding.png`
+- **Windskiff Technique (Seated Riding Posture)**: `workbench/shots/fixes/aura-windskiff-riding.png`
   - Demonstrates hero sitting in tucked riding pose atop the translucent compressed air sphere with rapid equator wind rings and ground vortex. Held staff sheathed to keep hands free.
 - **Lightning Bending (Volumetric Incandescent Plasma Strike)**: `workbench/shots/fixes/ignis-lightning-strike.png`
   - Demonstrates bare-handed martial punch thrust, sheathed sword, volumetric core plasma tube, radiant cyan electric corona, branching fork bolts, ground detonation ring, and brightly lit stone wall.
-- **Seismic Sense (Bedrock Resonance & Obstacle Penetration)**: `workbench/shots/fixes/terra-seismic-sonar.png`
+- **Stonehearing (Bedrock Resonance & Obstacle Penetration)**: `workbench/shots/fixes/terra-stonehearing-sonar.png`
   - Demonstrates grounded bedrock stomp posture, concentric emerald/gold vibrational resonance waves, and luminous sonar beacons with depthTest=false tracking enemies through bedrock.
-- **Water Tribe (Full Moon Radiance & Glacial Sanctuary)**: `workbench/shots/fixes/aques-moon-sky.png`
+- **AQUES (Full Moon Radiance & Glacial Sanctuary)**: `workbench/shots/fixes/aques-moon-sky.png`
   - Demonstrates bright natural lighting, glacial ice crags, reusable water HUD, and full moon surge indicator.
 
 ---
@@ -138,16 +138,16 @@ This section documents the critical combat, visual, and architectural fixes comp
     - Origin hand flash point light (intensity 7.0) and impact detonation point light (intensity 14.0).
     - 35+ high-velocity spark particles and ground scorch crater.
 
-### D. Seismic Sense (TERRA) Complete Redesign
+### D. Stonehearing (TERRA) Complete Redesign
 - **Problem**: Hero stood holding a sword without stomping, and flat green circles were occluded behind walls.
 - **Solution in `client/src/fx/elements.ts` and `client/src/main.ts`**:
   - Ground Stomp: Plays heavy `ground_pound` stomp animation, dust eruption, camera shake, and deep bass rumble.
   - Vibrational Wave: High-contrast concentric emerald and gold shockwave rings radiating 32 metres through bedrock.
   - Obstacle Penetration: Enemy sonar beacons and rotating diamond markers configured with `depthTest: false` and `renderOrder: 999`, rendering clearly through solid walls, rock crags, and hills.
   - Footfall Resonance: Concentric pulsating rings at the feet of detected enemies tracking their strides.
-- **Lightning Bending (Cold-Blooded Fire)**: `workbench/shots/fixes/ignis-lightning-strike.png`
+- **Lightning Bending (Forge Lightning)**: `workbench/shots/fixes/ignis-lightning-strike.png`
   - Demonstrates branching blue-white electric arcs discharging forward across the arena over charred basalt and cinder ground.
-- **Seismic Sense (Bedrock Sonar)**: `workbench/shots/fixes/terra-seismic-sonar.png`
+- **Stonehearing (Bedrock Sonar)**: `workbench/shots/fixes/terra-stonehearing-sonar.png`
   - Demonstrates concentric green vibrational ground sonar shockwaves rippling across bedrock floor, sandstone canyon monoliths, and terracotta scrub.
 - **Water Nation & Full Moon Night**: `workbench/shots/fixes/aques-moon-sky.png`
   - Demonstrates polar sanctuary with sheer glacial ice cliffs, deep arctic starry night sky, water basins, and moonlight illumination. Sindr goddess statue and yellow grass removed.
@@ -182,7 +182,7 @@ Per user instruction, the bespoke nation-attuned perimeters and obstacles are ma
    - Atmosphere: Falling volcanic ash, ember haze, and incandescent magma glow.
 2. **Glacial Fjord & Polar Sanctuary (`AQUES`)**:
    - Boundary: `createFjordPerimeter()` creates an elongated coastal inlet opening to sheer glacial ice cliffs.
-   - Props: Glacial ice pillars, pack ice boulders, water basins, and the sacred Spirit Oasis pool at `(0, 0, 11)`.
+   - Props: Glacial ice pillars, pack ice boulders, water basins, and the sacred Wellspring pool at `(0, 0, 11)`.
    - Atmosphere: Crystalline snowfall, cold polar ambient tint, and radiant Full Moon nocturnal lighting.
 3. **Spire Sanctuary of the High Peaks (`AURA`)**:
    - Boundary: `createSpirePerimeter()` creates a stepped polygonal platform with cantilevered terraces.
@@ -215,20 +215,20 @@ When `armedWith === 'legs'` and `isLit === true`:
 
 ---
 
-## 8. Character Body, Armature Rigging & Airball Bone State Audit
+## 8. Character Body, Armature Rigging & Windskiff Bone State Audit
 
 ### What Was Done to the Character Body
 1. **Model Architecture Switch**:
    - In commit `9980f70`, the hero visual was migrated from the monolithic `hero.glb` armored knight mesh to the dynamic Character Creator `BodyKit` system (`peasant_male.glb` / `peasant_female.glb` in commoner's rags, combined with creator head, hair, skin tones, and eyes).
    - The skeleton remains the standard 65-bone Quaternius rig used across all character models.
-2. **Airball Bone Overwrite & Deformation Bug**:
-   - During the Airball technique, the hero's bones (`thigh_l`, `thigh_r`, `calf_l`, `calf_r`, `upperarm_l`, `upperarm_r`, `spine_01`) had direct Euler rotations applied each frame without saving their neutral rest rotations or restoring them when Airball was deactivated.
-   - When the player exited Airball, these mutated rotations persisted, warping the character's legs into a seated tuck posture during normal locomotion.
+2. **Windskiff Bone Overwrite & Deformation Bug**:
+   - During the Windskiff technique, the hero's bones (`thigh_l`, `thigh_r`, `calf_l`, `calf_r`, `upperarm_l`, `upperarm_r`, `spine_01`) had direct Euler rotations applied each frame without saving their neutral rest rotations or restoring them when Windskiff was deactivated.
+   - When the player exited Windskiff, these mutated rotations persisted, warping the character's legs into a seated tuck posture during normal locomotion.
    - `hero.model.position.y` was previously forced to absolute `0.72` rather than terrain-relative elevation.
 3. **Fix Implemented**:
    - Neutral rest rotations (`initialBoneRotations`) are now captured immediately upon loading the hero rig.
-   - When `bend.airballActive` transitions to `false`, all seven bones are explicitly restored to their exact rest Euler angles, and `idle_relaxed` animation is triggered.
-   - Airball elevation is now calculated dynamically relative to ground height: `hero.model.position.y = drawn.y + 0.65`.
+   - When `bend.windskiffActive` transitions to `false`, all seven bones are explicitly restored to their exact rest Euler angles, and `idle_relaxed` animation is triggered.
+   - Windskiff elevation is now calculated dynamically relative to ground height: `hero.model.position.y = drawn.y + 0.65`.
 
 ---
 
@@ -243,7 +243,7 @@ All changes, architectures, and design notes for this session are tracked across
 3. **Brain Plan Artifact**: `<appDataDir>/brain/a2a8284f-940a-4cc7-9fa5-787a55b690e5/elements_fixes_plan.md`
    - Active session task list and architectural requirements checklist.
 4. **Codebase Files Modified**:
-   - `client/src/main.ts`: Stance and fighting style integration, leg bending wiring, bone reset on airball exit.
+   - `client/src/main.ts`: Stance and fighting style integration, leg bending wiring, bone reset on windskiff exit.
    - `client/src/combat.ts`: Limb tracking and combat actions.
    - `client/src/element-moves.ts`: Afflictions for leg moves when Lit.
    - `client/src/fight.ts`: Hit confirmation, zero damage on guarded hits, elemental afflictions on leg kicks.
@@ -270,9 +270,9 @@ A comprehensive live visual inspection was executed across all five playable cha
    - **TERRA**: Kicks project high-velocity jagged stone shards from the bedrock and erupt stone spires along heavy kick paths.
 3. **Special Techniques (Key V)**:
    - **IGNIS Lightning Bending**: Weapon sheathes instantly, hero assumes martial punch thrust (`bare_punch_2`), and volumetric 3D electric plasma tubes discharge forward with ground shockwave detonation.
-   - **AURA Airball**: Hero tucks into seated riding posture atop the spinning air scooter, accelerating to +85% speed.
-   - **TERRA Seismic Sense**: Violent ground stomp (`ground_pound`), concentric emerald and gold vibrational resonance waves, and luminous sonar beacons penetrating solid bedrock and walls.
-   - **AQUES Sacred Spirit Oasis**: Walking into the oasis at `(0, 0, 11)` activates +150% spirit water mending and infinite water recycling.
+   - **AURA Windskiff**: Hero tucks into seated riding posture atop the spinning air scooter, accelerating to +85% speed.
+   - **TERRA Stonehearing**: Violent ground stomp (`ground_pound`), concentric emerald and gold vibrational resonance waves, and luminous sonar beacons penetrating solid bedrock and walls.
+   - **AQUES Wellspring**: Walking into the oasis at `(0, 0, 11)` activates +150% wellspring water mending and infinite water recycling.
    - **HUSH Spark**: Successfully spends an elemental shard on a weak spark without full elemental bending.
 4. **Boundary Navigation & Collision**:
    - Navigating close to perimeter walls (e.g., `x: 13.2, z: 2.0`) correctly constrains character capsules and positions camera without clipping through rock walls or terrain.
@@ -281,10 +281,10 @@ A comprehensive live visual inspection was executed across all five playable cha
 1. **Input Key Mapping for Guarding vs Dodging**:
    - *Observation*: During initial inspection, holding `Space` did not raise guard because `Space` is mapped to `dodge` (dodge roll), while `KeyR` is mapped to `guard` (`blocking`).
    - *Resolution*: Verified that holding `KeyR` cleanly raises the guard pose (`hero.anim.play('block')`), sets `combat.blocking = true`, and preserves full damage mitigation. Pressing `Space` executes the invulnerable dodge roll.
-2. **Airball Dismount Armature Bone Restoration**:
-   - *Observation*: When deactivating Airball, bones (`thigh_l`, `thigh_r`, `calf_l`, `calf_r`, `upperarm_l`, `upperarm_r`, `spine_01`) retained modified rotations due to `jump` animation speed being frozen at 0 and mixer cross-fade priority.
+2. **Windskiff Dismount Armature Bone Restoration**:
+   - *Observation*: When deactivating Windskiff, bones (`thigh_l`, `thigh_r`, `calf_l`, `calf_r`, `upperarm_l`, `upperarm_r`, `spine_01`) retained modified rotations due to `jump` animation speed being frozen at 0 and mixer cross-fade priority.
    - *Resolution*: On dismount, `hero.anim.setSpeed('jump', 1.0)` is restored, `idle_relaxed` is triggered, and all 7 bones are explicitly reset to their rest rotations immediately after `anim.update()`, returning `thigh_l` cleanly to the natural standing idle pose (`2.68 rad` / 153 degrees).
 3. **Double-Flag Reset Sequence**:
-   - *Observation*: `wasAirballActive` was being cleared in the pre-update step, causing the post-update bone reset block to be skipped.
+   - *Observation*: `wasWindskiffActive` was being cleared in the pre-update step, causing the post-update bone reset block to be skipped.
    - *Resolution*: Unified flag management to guarantee bone restoration runs after mixer evaluation on the dismount frame.
 

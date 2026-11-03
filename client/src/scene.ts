@@ -189,7 +189,7 @@ export async function loadProps(scene: Scene, loader = new GLTFLoader(), nation:
   const placements: PropPlacement[] = [];
 
   if (nation === 'AQUES') {
-    // Polar sanctuary: ice crags, pack ice boulders, no Sindr statue
+    // River delta: embankment stones and boulders by the channels, no Sindr statue
     placements.push(
       { file: 'rock_face_01', x: -8, z: -8, scale: 2.8, yaw: 0.5, y: 0.2 },
       { file: 'rock_face_02', x: 9, z: -6, scale: 2.6, yaw: -0.8, y: 0.2 },
@@ -205,7 +205,7 @@ export async function loadProps(scene: Scene, loader = new GLTFLoader(), nation:
       { file: 'namaqualand_boulder_02', x: 6, z: 7, scale: 2.4, yaw: 2.4 },
     );
   } else if (nation === 'AURA') {
-    // High mountain spire: precipitous spires and rock pillars
+    // Wind cliffs: tall rock faces at the cliff edge
     placements.push(
       { file: 'rock_face_01', x: 0, z: -12, scale: 3.5, yaw: 0.0, y: 0.5 },
       { file: 'rock_face_02', x: 8, z: 6, scale: 2.4, yaw: 1.5 },

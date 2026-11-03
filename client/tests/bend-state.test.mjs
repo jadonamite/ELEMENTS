@@ -68,7 +68,7 @@ test('water is conserved and reusable in water environments without depleting wa
   }
 });
 
-test('healing quality scales by water source: spirit water (2.5x), natural water (1.5x), waterskin (1.0x)', () => {
+test('healing quality scales by water source: wellspring water (2.5x), natural water (1.5x), waterskin (1.0x)', () => {
   const spiritPos = new Vector3(10, 0, 10);
   const naturalPos = new Vector3(-10, 0, -10);
   const bend = new BendState(
@@ -78,7 +78,7 @@ test('healing quality scales by water source: spirit water (2.5x), natural water
     () => [spiritPos]
   );
 
-  assert.equal(bend.healingQuality(spiritPos), 'spirit_water');
+  assert.equal(bend.healingQuality(spiritPos), 'wellspring');
   assert.equal(bend.healingMultiplier(spiritPos), 2.5);
 
   assert.equal(bend.healingQuality(naturalPos), 'natural');
@@ -88,7 +88,7 @@ test('healing quality scales by water source: spirit water (2.5x), natural water
   assert.equal(bend.healingMultiplier(far), 1.0);
 });
 
-test('full moon grants +50% surge to AQUES bending moves', () => {
+test('moon tide leaves bend strength alone (the edge is applied in checkHit)', () => {
   const normalAques = new BendState({ element: 'AQUES', weapon: 'spear' }, 5, () => [here]);
   const normal = normalAques.begin('bend_palm', true, here);
   assert.equal(normal.go, true);
@@ -98,40 +98,40 @@ test('full moon grants +50% surge to AQUES bending moves', () => {
   moonAques.isFullMoon = true;
   const surged = moonAques.begin('bend_palm', true, here);
   assert.equal(surged.go, true);
-  assert.equal(surged.strength, baseStrength * 1.5);
+  assert.equal(surged.strength, baseStrength);
 });
 
-test('Airball technique is exclusive to non-Hush AURA benders', () => {
+test('Windskiff technique is exclusive to non-Hush AURA benders', () => {
   const aura = new BendState({ element: 'AURA', weapon: 'twin' });
-  assert.equal(aura.airballActive, false);
-  assert.equal(aura.toggleAirball(), true);
-  assert.equal(aura.airballActive, true);
-  assert.equal(aura.toggleAirball(), false);
-  assert.equal(aura.airballActive, false);
+  assert.equal(aura.windskiffActive, false);
+  assert.equal(aura.toggleWindskiff(), true);
+  assert.equal(aura.windskiffActive, true);
+  assert.equal(aura.toggleWindskiff(), false);
+  assert.equal(aura.windskiffActive, false);
 
   const ignis = new BendState({ element: 'IGNIS', weapon: 'sword' });
-  assert.equal(ignis.toggleAirball(), false);
-  assert.equal(ignis.airballActive, false);
+  assert.equal(ignis.toggleWindskiff(), false);
+  assert.equal(ignis.windskiffActive, false);
 
   const auraHush = new BendState({ element: 'AURA', weapon: 'twin', hush: true });
-  assert.equal(auraHush.toggleAirball(), false);
-  assert.equal(auraHush.airballActive, false);
+  assert.equal(auraHush.toggleWindskiff(), false);
+  assert.equal(auraHush.windskiffActive, false);
 });
 
-test('Seismic Sense is exclusive to non-Hush TERRA benders', () => {
+test('Stonehearing is exclusive to non-Hush TERRA benders', () => {
   const terra = new BendState({ element: 'TERRA', weapon: 'axe' });
-  assert.equal(terra.seismicSenseActive, false);
-  assert.equal(terra.triggerSeismicSense(), true);
-  assert.equal(terra.seismicSenseActive, true);
-  assert.ok(terra.seismicCooldown > 0);
+  assert.equal(terra.stonehearingActive, false);
+  assert.equal(terra.triggerStonehearing(), true);
+  assert.equal(terra.stonehearingActive, true);
+  assert.ok(terra.stonehearingCooldown > 0);
 
   const aura = new BendState({ element: 'AURA', weapon: 'twin' });
-  assert.equal(aura.triggerSeismicSense(), false);
-  assert.equal(aura.seismicSenseActive, false);
+  assert.equal(aura.triggerStonehearing(), false);
+  assert.equal(aura.stonehearingActive, false);
 
   const terraHush = new BendState({ element: 'TERRA', weapon: 'axe', hush: true });
-  assert.equal(terraHush.triggerSeismicSense(), false);
-  assert.equal(terraHush.seismicSenseActive, false);
+  assert.equal(terraHush.triggerStonehearing(), false);
+  assert.equal(terraHush.stonehearingActive, false);
 });
 
 test('hit confirmation invariant: guarded, wall-blocked, or countered attacks deal ZERO damage and never reduce life', () => {

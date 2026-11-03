@@ -278,14 +278,13 @@ export class TerrainSystem {
     const floorGeo = new CircleGeometry(RADIUS + 4, 128);
     const floorMat = this.createFloorMaterial(res, quality.enablePOM);
     if (nation === 'AQUES') {
-      floorMat.color.setRGB(0.96, 0.98, 1.0); // Polar ice blue tint
-      floorMat.roughness = 0.22;
-      floorMat.metalness = 0.05;
+      floorMat.color.setRGB(0.72, 0.78, 0.74); // Wet delta stone, dark with river water
+      floorMat.roughness = 0.3;
     } else if (nation === 'TERRA') {
       floorMat.color.setRGB(1.0, 0.96, 0.92); // Warm canyon stone
       floorMat.roughness = 0.85;
     } else if (nation === 'AURA') {
-      floorMat.color.setRGB(0.98, 0.99, 1.0); // High temple stone
+      floorMat.color.setRGB(0.98, 0.99, 1.0); // Pale cliff-top stone
       floorMat.roughness = 0.40;
     } else if (nation === 'IGNIS') {
       floorMat.color.setRGB(1.0, 0.97, 0.95); // Natural warm volcanic stone
@@ -306,8 +305,8 @@ export class TerrainSystem {
     dirtMat.polygonOffset = true;
     dirtMat.polygonOffsetFactor = -1;
     if (nation === 'AQUES') {
-      dirtMat.color.setRGB(0.95, 0.98, 1.0); // Snow drifts
-      dirtMat.roughness = 0.4;
+      dirtMat.color.setRGB(0.62, 0.66, 0.52); // River silt and moss
+      dirtMat.roughness = 0.5;
     } else if (nation === 'TERRA') {
       dirtMat.color.setRGB(1.0, 0.92, 0.82); // Canyon sand
     } else if (nation === 'IGNIS') {
@@ -327,14 +326,13 @@ export class TerrainSystem {
     // Continuous arc-length UVs in metres: unit repeat keeps 2K textures uncompressed
     const wallMat = this.createPbrMaterial('rock_wall_08', res, [1, 1]);
     if (nation === 'AQUES') {
-      wallMat.color.setRGB(0.95, 0.98, 1.0); // Glacial ice cliff
-      wallMat.roughness = 0.35;
-      wallMat.metalness = 0.05;
+      wallMat.color.setRGB(0.74, 0.82, 0.78); // Mossy canal embankment
+      wallMat.roughness = 0.55;
     } else if (nation === 'TERRA') {
       wallMat.color.setRGB(1.0, 0.95, 0.90); // Sandstone canyon cliff
       wallMat.roughness = 0.85;
     } else if (nation === 'AURA') {
-      wallMat.color.setRGB(0.97, 0.99, 1.0); // Pale mountain spire balustrade
+      wallMat.color.setRGB(0.97, 0.99, 1.0); // Pale cliff edge
       wallMat.roughness = 0.45;
     } else if (nation === 'IGNIS') {
       wallMat.color.setRGB(1.0, 0.96, 0.93); // Natural basalt caldera rim
@@ -353,8 +351,8 @@ export class TerrainSystem {
     this.hills = this.createRealisticHills(res);
     const hillsMat = this.hills.material as MeshStandardMaterial;
     if (nation === 'AQUES') {
-      hillsMat.color.setRGB(0.94, 0.97, 1.0); // Glacial ice cliffs
-      hillsMat.roughness = 0.35;
+      hillsMat.color.setRGB(0.7, 0.8, 0.66); // Green reed banks across the channels
+      hillsMat.roughness = 0.7;
     } else if (nation === 'TERRA') {
       hillsMat.color.setRGB(1.0, 0.95, 0.90); // Canyon mesas
       hillsMat.roughness = 0.85;
@@ -371,8 +369,8 @@ export class TerrainSystem {
     this.distantRidges = this.createRealisticDistantRidges(res);
     const ridgesMat = this.distantRidges.material as MeshStandardMaterial;
     if (nation === 'AQUES') {
-      ridgesMat.color.setRGB(0.92, 0.96, 1.0); // Frozen mountain crags
-      ridgesMat.roughness = 0.4;
+      ridgesMat.color.setRGB(0.76, 0.84, 0.8); // Far delta islands in haze
+      ridgesMat.roughness = 0.6;
     } else if (nation === 'TERRA') {
       ridgesMat.color.setRGB(1.0, 0.94, 0.88); // Distant canyon plateau
       ridgesMat.roughness = 0.85;
@@ -380,7 +378,7 @@ export class TerrainSystem {
       ridgesMat.color.setRGB(1.0, 0.95, 0.92); // Distant smoking volcano rim
       ridgesMat.roughness = 0.8;
     } else if (nation === 'AURA') {
-      ridgesMat.color.setRGB(0.95, 0.98, 1.0); // Towering cloud spires
+      ridgesMat.color.setRGB(0.95, 0.98, 1.0); // Distant cliffs in cloud
     }
     onSetupMaterial(ridgesMat);
     this.scene.add(this.distantRidges);

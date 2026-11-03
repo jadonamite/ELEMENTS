@@ -55,6 +55,10 @@ export class ParticleSystem {
         dustVel[i * 3 + 0] = 2.5 + rand() * 2.0; // howling gale
         dustVel[i * 3 + 1] = (rand() - 0.5) * 0.3;
         dustVel[i * 3 + 2] = 1.0 + rand() * 1.0;
+      } else if (meteorology.particleType === 'mist') {
+        dustVel[i * 3 + 0] = 0.12 + rand() * 0.18; // slow drift off the water
+        dustVel[i * 3 + 1] = (rand() - 0.5) * 0.06;
+        dustVel[i * 3 + 2] = 0.06 + rand() * 0.1;
       } else if (meteorology.particleType === 'dust') {
         dustVel[i * 3 + 0] = 0.8 + rand() * 1.2; // swirling sand
         dustVel[i * 3 + 1] = 0.1 + rand() * 0.3;
@@ -77,7 +81,9 @@ export class ParticleSystem {
       ? new Color(0xd5eaff)
       : meteorology.particleType === 'wind'
         ? new Color(0xffffff)
-        : meteorology.particleType === 'dust'
+        : meteorology.particleType === 'mist'
+          ? new Color(0xc8dcd8)
+          : meteorology.particleType === 'dust'
           ? new Color(0xe0b060)
           : new Color(0xff9944);
 

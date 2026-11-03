@@ -70,7 +70,7 @@ async function main(): Promise<void> {
   const forcedHush = params.has('hush');
   const storedChoice = lastFighter();
   const initialChoice: Element = forcedElement || (storedChoice && 'element' in storedChoice ? storedChoice.element : null) || 'IGNIS';
-  const isFullMoon = params.get('moon') === 'full' || (!params.has('moon') && initialChoice === 'AQUES');
+  const isFullMoon = params.get('moon') === 'full';
 
   const zoneStart = performance.now();
   const zone = inTown ? await createZone(canvas) : null;
@@ -88,13 +88,13 @@ async function main(): Promise<void> {
   const shoulderCamera = new ShoulderCamera(camera, physics.world, !zone);
   if (zone) { controller.facing = SPAWN.facing; shoulderCamera.yaw = SPAWN.facing + Math.PI; }
   let hero: HeroInstance;
-  const airballBones = ['thigh_l', 'thigh_r', 'calf_l', 'calf_r', 'upperarm_l', 'upperarm_r', 'spine_01'] as const;
+  const windskiffBones = ['thigh_l', 'thigh_r', 'calf_l', 'calf_r', 'upperarm_l', 'upperarm_r', 'spine_01'] as const;
   const initialBoneRotations = new Map<string, { x: number; y: number; z: number }>();
-  let wasAirballActive = false;
+  let wasWindskiffActive = false;
   const villains = loadEnemyTemplate();
   try {
     hero = await loadHero();
-    for (const name of airballBones) {
+    for (const name of windskiffBones) {
       const b = hero.model.getObjectByName(name);
       if (b) initialBoneRotations.set(name, { x: b.rotation.x, y: b.rotation.y, z: b.rotation.z });
     }
@@ -185,10 +185,10 @@ async function main(): Promise<void> {
   const rules = createCombatRules(balance.combat as unknown as CombatBalance);
   const elementFx = new ElementEffects(scene, new URLSearchParams(window.location.search).get('fxQuality') === 'low' ? 'low' : 'high');
   cleanup.push(() => elementFx.dispose());
-  // Attuned water sources for AQUES: spirit water oasis and natural pools
+  // Attuned water sources for AQUES: the Wellspring and natural pools
   if (!zone) {
     if (initialChoice === 'AQUES') {
-      elementFx.spiritOasis(new Vector3(0, 0, 11));
+      elementFx.wellspring(new Vector3(0, 0, 11));
       elementFx.basin(new Vector3(-6, 0, -4));
       elementFx.basin(new Vector3(7, 0, 3));
     } else {
@@ -214,7 +214,7 @@ async function main(): Promise<void> {
     { element: 'IGNIS', weapon: 'sword' },
     tier,
     () => elementFx.waterSources,
-    () => elementFx.spiritWaterSources
+    () => elementFx.wellspringSources
   );
   bend.hasWaterEnvironment = initialChoice === 'AQUES';
   bend.isFullMoon = isFullMoon;
@@ -313,11 +313,11 @@ async function main(): Promise<void> {
   fight.isAttackCountered = (enemy, heroView) => {
     const enemyElem = enemy.element;
     // Wind and Water extinguish Fire attacks
-    if (enemyElem === 'IGNIS' && (heroElement === 'AURA' || heroElement === 'AQUES') && (isLit || combat.blocking || bend.airballActive)) {
+    if (enemyElem === 'IGNIS' && (heroElement === 'AURA' || heroElement === 'AQUES') && (isLit || combat.blocking || bend.windskiffActive)) {
       return true;
     }
     // Wind and Water redirect Earth attacks
-    if (enemyElem === 'TERRA' && (heroElement === 'AURA' || heroElement === 'AQUES') && (isLit || combat.blocking || bend.airballActive)) {
+    if (enemyElem === 'TERRA' && (heroElement === 'AURA' || heroElement === 'AQUES') && (isLit || combat.blocking || bend.windskiffActive)) {
       return true;
     }
     return false;
@@ -401,7 +401,7 @@ async function main(): Promise<void> {
     // AURA carries the staff; everyone else the sword.
     if (weapon !== heldWeapon) { heldWeapon = weapon; void hero.equipWeapon(weapon === 'staff' ? STAFF_WEAPON : SWORD_WEAPON); }
     fight.kit = kit;
-    fight.isFullMoon = isFullMoon || kitElement === 'AQUES';
+    fight.isFullMoon = isFullMoon;
     bend.isFullMoon = fight.isFullMoon;
     bend.hasWaterEnvironment = kitElement === 'AQUES';
     combat.element = kitElement;
@@ -503,22 +503,22 @@ async function main(): Promise<void> {
 
   input.onTechnique = () => {
     if (kitElement === 'AURA') {
-      const active = bend.toggleAirball();
+      const active = bend.toggleWindskiff();
       if (active && sword.phase === 'armed') sword.forceSheathe();
-      elementFx.setAirball(active, controller.position);
+      elementFx.setWindskiff(active, controller.position);
       sound.playSwing(1.2, true);
-      notice(active ? 'Airball technique active (Air Scooter)' : 'Airball technique dismissed');
+      notice(active ? 'Windskiff technique active (Air Scooter)' : 'Windskiff technique dismissed');
     } else if (kitElement === 'TERRA') {
-      const ok = bend.triggerSeismicSense();
+      const ok = bend.triggerStonehearing();
       if (ok) {
         hero.anim.playOnce('ground_pound', 0.08);
         techniqueClipUntil = performance.now() + 650;
         elementFx.dust(controller.position.clone().setY(0.04), 1.4, 18);
         const positions = fight.enemies.filter(e => e.alive).map(e => e.controller.position);
-        elementFx.spawnSeismicPulse(controller.position, 32.0, positions);
+        elementFx.spawnStonehearingPulse(controller.position, 32.0, positions);
         sound.playGroundPound();
         shoulderCamera.shake(0.35);
-        notice(`Seismic Sense: ${positions.length} vibration(s) detected through bedrock`);
+        notice(`Stonehearing: ${positions.length} vibration(s) detected through bedrock`);
       }
     } else if (kitElement === 'IGNIS') {
       if (!isLit) setBending(true);
@@ -544,7 +544,7 @@ async function main(): Promise<void> {
           enemy.afflict({ stunSeconds: 1.2 });
         }
       }
-      notice('Lightning Bending (Cold-Blooded Fire)');
+      notice('Lightning Bending (Forge Lightning)');
     }
   };
 
@@ -613,7 +613,7 @@ async function main(): Promise<void> {
       const mult = bend.healingMultiplier(controller.position);
       mending = { left: 2, perSecond: (spec.heal ?? 24) * mult * strength / 2 };
       elementFx.cast('AQUES', 'dash_strike', controller.position, controller.facing, strength, quality);
-      notice(quality === 'spirit_water' ? 'Spirit Water Mend (+150%)' : quality === 'natural' ? 'Natural Water Mend (+50%)' : 'Mend (Waterskin)');
+      notice(quality === 'wellspring' ? 'Wellspring water Mend (+150%)' : quality === 'natural' ? 'Natural Water Mend (+50%)' : 'Mend (Waterskin)');
       sound.playSwing(1.3, false);
       shoulderCamera.shake(0.15);
       return;
@@ -893,7 +893,7 @@ async function main(): Promise<void> {
     hero.getLimbWorldPosition('knee_l', kneeL);
     heroView.facing = controller.facing;
     const rooted = combat.current !== null || combat.blocking;
-    const speedMultiplier = (isLit ? 1.25 : 1.0) * (bend.airballActive ? 1.85 : 1.0);
+    const speedMultiplier = (isLit ? 1.25 : 1.0) * (bend.windskiffActive ? 1.85 : 1.0);
     const alpha = stepper.advance(delta, () => {
       // Fists close in further than a blade before the step stops.
       const stopAt = fightingStyle === 'weapon' ? balance.combat.lungeStopDistance : balance.combat.bareLungeStopDistance;
@@ -903,24 +903,24 @@ async function main(): Promise<void> {
       if (!picking) fight.step(heroView, combat, isLit);
     });
 
-    if (bend.airballActive) {
-      elementFx.updateAirball(controller.position, delta, controller.speed, controller.facing);
+    if (bend.windskiffActive) {
+      elementFx.updateWindskiff(controller.position, delta, controller.speed, controller.facing);
     }
 
     const animDelta = delta;
     drawn.lerpVectors(controller.previous, controller.position, alpha);
-    if (bend.airballActive) drawn.y += 0.45;
+    if (bend.windskiffActive) drawn.y += 0.45;
     hero.model.position.copy(drawn);
     hero.model.rotation.y = controller.facing + balance.controller.modelForwardYaw;
-    if (bend.airballActive) {
-      wasAirballActive = true;
-      // In Airball mode, hero rides seated atop the air scooter
+    if (bend.windskiffActive) {
+      wasWindskiffActive = true;
+      // In Windskiff mode, hero rides seated atop the air scooter
       hero.anim.play('jump', 0.2); // Airborne tuck posture
       hero.anim.setSpeed('jump', 0); // Freeze tuck in air
-      hero.model.position.y = drawn.y + 0.65; // Elevated seat height atop the spinning airball
+      hero.model.position.y = drawn.y + 0.65; // Elevated seat height atop the spinning windskiff
     } else {
-      if (wasAirballActive) {
-        wasAirballActive = false;
+      if (wasWindskiffActive) {
+        wasWindskiffActive = false;
         // Cleanly restore all mutated bones to initial rest pose
         for (const [name, rot] of initialBoneRotations.entries()) {
           const b = hero.model.getObjectByName(name);
@@ -939,11 +939,11 @@ async function main(): Promise<void> {
     }
     hero.anim.update(animDelta);
     sword.update(animDelta);
-    if (bend.airballActive || performance.now() < lightningBareUntil) {
+    if (bend.windskiffActive || performance.now() < lightningBareUntil) {
       if (sword.phase === 'armed') sword.forceSheathe();
       hero.sword.visible = false;
       // Sitting riding posture on bone joints atop the sphere
-      if (bend.airballActive) {
+      if (bend.windskiffActive) {
         const thighL = hero.model.getObjectByName('thigh_l');
         const thighR = hero.model.getObjectByName('thigh_r');
         const calfL = hero.model.getObjectByName('calf_l');
@@ -961,8 +961,8 @@ async function main(): Promise<void> {
       }
     } else {
       hero.sword.visible = true;
-      if (wasAirballActive) {
-        wasAirballActive = false;
+      if (wasWindskiffActive) {
+        wasWindskiffActive = false;
         hero.anim.setSpeed('jump', 1.0);
         hero.anim.play('idle_relaxed', 0.1);
         for (const [name, rot] of initialBoneRotations.entries()) {
@@ -1020,7 +1020,7 @@ async function main(): Promise<void> {
       isDim,
     );
     const supply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
-      : kitElement === 'AQUES' ? `Waterskin ${bend.hasWaterEnvironment || bend.nearWater(controller.position) ? '∞ (reusable)' : `${bend.waterskin}/${balance.combat.waterskin.charges}`}${bend.healingQuality(controller.position) === 'spirit_water' ? ' · Spirit Water Oasis' : bend.nearWater(controller.position) ? ' · Water source' : ''}${bend.isFullMoon ? ' · Full Moon (+50%)' : ''}` : null;
+      : kitElement === 'AQUES' ? `Waterskin ${bend.hasWaterEnvironment || bend.nearWater(controller.position) ? '∞ (reusable)' : `${bend.waterskin}/${balance.combat.waterskin.charges}`}${bend.healingQuality(controller.position) === 'wellspring' ? ' · Wellspring water Oasis' : bend.nearWater(controller.position) ? ' · Water source' : ''}${bend.isFullMoon ? ' · Full Moon (+50%)' : ''}` : null;
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, supply);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;

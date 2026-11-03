@@ -67,7 +67,7 @@ export interface CombatSituation {
   readonly moveModifier?: number;
   readonly isFullMoon?: boolean;
   readonly lunarPhase?: 'full_moon' | 'new_moon' | 'waxing' | 'waning';
-  readonly waterQuality?: 'waterskin' | 'natural' | 'spirit_water';
+  readonly waterQuality?: 'waterskin' | 'natural' | 'wellspring';
 }
 export interface TierConfig {
   readonly names: readonly string[];

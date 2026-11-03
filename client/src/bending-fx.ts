@@ -399,7 +399,7 @@ export class BendingEffects {
   }
 
   /**
-   * Advanced Fire technique: Lightning Bending (Cold-Blooded Fire).
+   * Advanced Fire technique: Lightning Bending (Forge Lightning).
    * Generates volumetric high-voltage electric plasma bolts with branching arcs,
    * blinding detonation flash, and explosive ground shockwave.
    */

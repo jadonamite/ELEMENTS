@@ -10,7 +10,7 @@ export interface NationObstacle {
 }
 
 export interface MeteorologyConfig {
-  particleType: 'ash' | 'snow' | 'wind' | 'dust';
+  particleType: 'ash' | 'snow' | 'wind' | 'dust' | 'mist';
   fogColor: number;
   fogDensity: number;
   skyTint: number;
@@ -29,7 +29,7 @@ export interface NationGeography {
   boundary: Array<{ x: number; z: number }>;
   obstacles: NationObstacle[];
   waterSources: Vector3[];
-  spiritWaterSources: Vector3[];
+  wellspringSources: Vector3[];
   wallHeight: number;
   wallThickness: number;
   floorTexture: string;
@@ -56,8 +56,8 @@ function createCalderaPerimeter(): Array<{ x: number; z: number }> {
   return points;
 }
 
-function createFjordPerimeter(): Array<{ x: number; z: number }> {
-  // Glacial fjord: winding coastal inlet between sheer ice cliffs opening to frozen sea
+function createDeltaPerimeter(): Array<{ x: number; z: number }> {
+  // River delta: a long island between channels, its banks cut in and out by inlets
   const points: Array<{ x: number; z: number }> = [];
   const segments = 24;
   for (let i = 0; i < segments; i++) {
@@ -110,7 +110,7 @@ function createCanyonPerimeter(): Array<{ x: number; z: number }> {
 export const NATIONS: Record<Element, NationGeography> = {
   IGNIS: {
     element: 'IGNIS',
-    name: 'Fire Nation',
+    name: 'IGNIS',
     locationName: 'Caldera of Sindr',
     boundary: createCalderaPerimeter(),
     obstacles: [
@@ -120,7 +120,7 @@ export const NATIONS: Record<Element, NationGeography> = {
       { x: -5, z: 8, radius: 1.2, height: 1.8, type: 'lava_vent' },
     ],
     waterSources: [],
-    spiritWaterSources: [],
+    wellspringSources: [],
     wallHeight: 3.4,
     wallThickness: 1.2,
     floorTexture: 'monastery_stone_floor',
@@ -140,14 +140,14 @@ export const NATIONS: Record<Element, NationGeography> = {
   },
   AQUES: {
     element: 'AQUES',
-    name: 'Water Tribe',
-    locationName: 'Glacial Fjord & Polar Sanctuary',
-    boundary: createFjordPerimeter(),
+    name: 'AQUES',
+    locationName: 'The canals of the delta',
+    boundary: createDeltaPerimeter(),
     obstacles: [
-      { x: -7, z: -8, radius: 1.9, height: 4.5, type: 'glacial_ice_pillar' },
-      { x: 9, z: -6, radius: 1.7, height: 3.8, type: 'glacial_ice_pillar' },
-      { x: -8, z: 6, radius: 1.5, height: 2.8, type: 'frozen_pack_ice' },
-      { x: 0, z: 12, radius: 2.4, height: 0.4, type: 'spirit_oasis_altar' },
+      { x: -7, z: -8, radius: 1.9, height: 4.5, type: 'stilt_house_piles' },
+      { x: 9, z: -6, radius: 1.7, height: 3.8, type: 'mooring_posts' },
+      { x: -8, z: 6, radius: 1.5, height: 2.8, type: 'reed_bank' },
+      { x: 0, z: 12, radius: 2.4, height: 0.4, type: 'wellspring_basin' },
     ],
     waterSources: [
       new Vector3(0, 0, 11),
@@ -155,42 +155,42 @@ export const NATIONS: Record<Element, NationGeography> = {
       new Vector3(7, 0, 3),
       new Vector3(0, 0, -10),
     ],
-    spiritWaterSources: [
-      new Vector3(0, 0, 11), // The Sacred Spirit Oasis pool
+    wellspringSources: [
+      new Vector3(0, 0, 11), // The Wellspring basin
     ],
     wallHeight: 4.2,
     wallThickness: 1.4,
     floorTexture: 'forest_ground_04',
     wallTexture: 'rock_wall_08',
     meteorology: {
-      particleType: 'snow',
-      fogColor: 0x24354c,
+      particleType: 'mist',
+      fogColor: 0x2c4044,
       fogDensity: 0.0032,
       skyTint: 0x88bbff,
       ambientLight: 0.90,
       sunColor: 0x88beff,
       sunIntensity: 3.2,
-      hasAmbientWater: true, // In polar fjord, ice/water is everywhere!
-      name: 'Polar Blizzard & Sacred Lunar Glow',
-      description: 'Crystalline snowfall sweeps under the radiant Full Moon.',
+      hasAmbientWater: true, // Canals and channels on every side
+      name: 'River mist and canal rain',
+      description: 'Low mist rolls off the channels between the stilt houses.',
     },
   },
   AURA: {
     element: 'AURA',
-    name: 'Air Nomads',
-    locationName: 'Spire Sanctuary of the High Peaks',
+    name: 'AURA',
+    locationName: 'The wind cliffs',
     boundary: createSpirePerimeter(),
     obstacles: [
-      { x: 0, z: -12, radius: 1.6, height: 5.2, type: 'temple_spire_column' },
-      { x: 7.5, z: 6.5, radius: 1.4, height: 3.6, type: 'prayer_stupa' },
-      { x: -8, z: 5.5, radius: 1.4, height: 3.6, type: 'prayer_stupa' },
-      { x: 0, z: 9, radius: 1.8, height: 1.2, type: 'wind_altar_dais' },
+      { x: 0, z: -12, radius: 1.6, height: 5.2, type: 'wind_tower' },
+      { x: 7.5, z: 6.5, radius: 1.4, height: 3.6, type: 'rope_bridge_post' },
+      { x: -8, z: 5.5, radius: 1.4, height: 3.6, type: 'rope_bridge_post' },
+      { x: 0, z: 9, radius: 1.8, height: 1.2, type: 'cliff_ledge' },
     ],
     waterSources: [
       new Vector3(-5, 0, 4),
       new Vector3(5, 0, -4),
     ],
-    spiritWaterSources: [],
+    wellspringSources: [],
     wallHeight: 2.2,
     wallThickness: 0.9,
     floorTexture: 'monastery_stone_floor',
@@ -204,14 +204,14 @@ export const NATIONS: Record<Element, NationGeography> = {
       sunColor: 0xfff6e5,
       sunIntensity: 3.6,
       hasAmbientWater: false,
-      name: 'High-Altitude Gales & Cloud Banks',
-      description: 'Howling mountain winds surge across precipitous spires.',
+      name: 'Cliff gales and cloud banks',
+      description: 'Wind howls between the towers and shakes the rope bridges.',
     },
   },
   TERRA: {
     element: 'TERRA',
-    name: 'Earth Kingdom',
-    locationName: 'The Canyon Monoliths & Bedrock Quarry',
+    name: 'TERRA',
+    locationName: 'The canyon fortress',
     boundary: createCanyonPerimeter(),
     obstacles: [
       { x: 0, z: -10, radius: 2.2, height: 4.8, type: 'bedrock_monolith' },
@@ -223,7 +223,7 @@ export const NATIONS: Record<Element, NationGeography> = {
     waterSources: [
       new Vector3(-4, 0, -8),
     ],
-    spiritWaterSources: [],
+    wellspringSources: [],
     wallHeight: 4.6,
     wallThickness: 1.6,
     floorTexture: 'forest_ground_04',
@@ -237,8 +237,8 @@ export const NATIONS: Record<Element, NationGeography> = {
       sunColor: 0xffd088,
       sunIntensity: 3.5,
       hasAmbientWater: false,
-      name: 'Arid Sandstorm & Bedrock Resonance',
-      description: 'Warm sandstone haze rises between monolithic bedrock cliffs.',
+      name: 'Ochre dust and canyon heat',
+      description: 'Dust hangs between the ochre cliffs of the fortress.',
     },
   },
 };

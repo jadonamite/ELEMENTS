@@ -30,21 +30,21 @@ export class BendState {
   charges = 0;
   private recharge = 0;
 
-  /** Full moon lunar state: water benders gain a 50% power surge under a full moon. */
+  /** Moon tide: set under a full moon. The 20% damage edge is applied once, in the shared checkHit. */
   isFullMoon = false;
-  /** Environment with ambient water (rain, polar coast, river): water is infinite and reusable. */
+  /** Environment with ambient water (rain, canals, river): water is infinite and reusable. */
   hasWaterEnvironment = false;
   /** Special technique toggles */
-  airballActive = false;
+  windskiffActive = false;
   lightningReady = false;
-  seismicSenseActive = false;
-  seismicCooldown = 0;
+  stonehearingActive = false;
+  stonehearingCooldown = 0;
 
   constructor(
     public kit: Kit,
     public tier = 5,
     private readonly sources: () => readonly Vector3[] = () => [],
-    private readonly spiritSources: () => readonly Vector3[] = () => []
+    private readonly wellspringSources: () => readonly Vector3[] = () => []
   ) {
     this.shards = kit.hush ? balance.combat.shardSpark.testShards : 0;
     this.charges = this.maxCharges;
@@ -58,7 +58,7 @@ export class BendState {
 
   /**
    * Whether a water source is within reach of this spot.
-   * If in a water-rich environment (wet terrain, rain, polar fjord), water is everywhere.
+   * If in a water-rich environment (wet terrain, rain, canals), water is everywhere.
    */
   nearWater(at: Vector3): boolean {
     if (this.hasWaterEnvironment) return true;
@@ -66,23 +66,23 @@ export class BendState {
   }
 
   /**
-   * Whether spirit water (sacred oasis only found in the AQUES nation) is within reach.
+   * Whether wellspring water (Wellspring only found in the AQUES nation) is within reach.
    */
-  nearSpiritWater(at: Vector3): boolean {
-    return this.spiritSources().some(s => Math.hypot(s.x - at.x, s.z - at.z) <= skin.sourceRadius * 1.5);
+  nearWellspring(at: Vector3): boolean {
+    return this.wellspringSources().some(s => Math.hypot(s.x - at.x, s.z - at.z) <= skin.sourceRadius * 1.5);
   }
 
-  /** Quality of water used for healing: waterskin, natural water, or sacred spirit water. */
-  healingQuality(at: Vector3): 'waterskin' | 'natural' | 'spirit_water' {
-    if (this.nearSpiritWater(at)) return 'spirit_water';
+  /** Quality of water used for healing: waterskin, natural water, or wellspring water. */
+  healingQuality(at: Vector3): 'waterskin' | 'natural' | 'wellspring' {
+    if (this.nearWellspring(at)) return 'wellspring';
     if (this.nearWater(at)) return 'natural';
     return 'waterskin';
   }
 
-  /** Healing scale based on water quality: Spirit Water gives the purest, most potent restoration. */
+  /** Healing scale based on water quality: Wellspring water gives the purest, most potent restoration. */
   healingMultiplier(at: Vector3): number {
     const quality = this.healingQuality(at);
-    if (quality === 'spirit_water') return 2.5; // +150% healing from spirit water
+    if (quality === 'wellspring') return 2.5; // +150% healing from wellspring water
     if (quality === 'natural') return 1.5; // +50% healing from natural standing water
     return 1.0;
   }
@@ -91,7 +91,7 @@ export class BendState {
   tick(delta: number, at: Vector3): void {
     this.idle += delta;
     this.sinceBend += delta;
-    if (this.seismicCooldown > 0) this.seismicCooldown -= delta;
+    if (this.stonehearingCooldown > 0) this.stonehearingCooldown -= delta;
     this.meter = rules.meterDrain(this.meter, this.idle, delta);
     if (this.charges < this.maxCharges && (this.recharge -= delta) <= 0) {
       this.charges += 1;
@@ -111,21 +111,21 @@ export class BendState {
     this.idle = 0;
   }
 
-  /** Toggle the Airball technique for AURA benders. */
-  toggleAirball(): boolean {
+  /** Toggle the Windskiff technique for AURA benders. */
+  toggleWindskiff(): boolean {
     if (this.kit.element !== 'AURA' || this.kit.hush) {
-      this.airballActive = false;
+      this.windskiffActive = false;
       return false;
     }
-    this.airballActive = !this.airballActive;
-    return this.airballActive;
+    this.windskiffActive = !this.windskiffActive;
+    return this.windskiffActive;
   }
 
-  /** Trigger Seismic Sense for TERRA benders. */
-  triggerSeismicSense(): boolean {
+  /** Trigger Stonehearing for TERRA benders. */
+  triggerStonehearing(): boolean {
     if (this.kit.element !== 'TERRA' || this.kit.hush) return false;
-    this.seismicSenseActive = true;
-    this.seismicCooldown = 4.0;
+    this.stonehearingActive = true;
+    this.stonehearingCooldown = 4.0;
     return true;
   }
 
@@ -143,8 +143,7 @@ export class BendState {
       if (this.waterskin <= 0) return { go: false, why: 'no_water' };
       fromSkin = true;
     }
-    const fullMoonSurge = (this.kit.element === 'AQUES' && this.isFullMoon) ? 1.5 : 1.0;
-    const tierScale = rules.tierBendScale(this.tier) * fullMoonSurge;
+    const tierScale = rules.tierBendScale(this.tier);
     if (move === 'dash_strike' && this.maxCharges > 0) {
       if (this.charges <= 0) return { go: false, why: 'cooldown' };
       if (this.charges === this.maxCharges) this.recharge = rules.moveFor('dash_strike', this.kit).cooldownSeconds;
@@ -197,7 +196,7 @@ export class BendState {
     this.shards = this.kit.hush ? balance.combat.shardSpark.testShards : 0;
     this.charges = this.maxCharges;
     this.recharge = 0;
-    this.airballActive = false;
-    this.seismicSenseActive = false;
+    this.windskiffActive = false;
+    this.stonehearingActive = false;
   }
 }
