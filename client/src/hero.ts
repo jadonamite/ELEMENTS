@@ -264,12 +264,27 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   const bladeBase = new Vector3();
   const bladeTip = new Vector3();
 
+  /**
+   * The hit segment, in the holder's own frame (the frame it is read back in), wherever the holder
+   * is at the time: it runs along the weapon's longest side through the middle of its bounds.
+   */
   const updateHitShape = (mesh: Object3D, shape: WeaponSlotData['hitShape']): void => {
-    mesh.updateMatrixWorld(true);
-    const bounds = new Box3().setFromObject(mesh);
-    const height = bounds.max.y - bounds.min.y;
-    bladeBase.set(0, bounds.min.y + height * shape.baseFraction, 0);
-    bladeTip.set(0, bounds.min.y + height * shape.tipFraction, 0);
+    holder.updateMatrixWorld(true);
+    const toHolder = new Matrix4().copy(holder.matrixWorld).invert();
+    const bounds = new Box3();
+    const part = new Box3();
+    mesh.traverse(o => {
+      const geometry = (o as Mesh).geometry;
+      if (!(o as Mesh).isMesh || !geometry) return;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      bounds.union(part.copy(geometry.boundingBox!).applyMatrix4(new Matrix4().multiplyMatrices(toHolder, o.matrixWorld)));
+    });
+    const size = bounds.getSize(new Vector3());
+    const axis = size.x >= size.y && size.x >= size.z ? 'x' : size.y >= size.z ? 'y' : 'z';
+    bounds.getCenter(bladeBase);
+    bladeTip.copy(bladeBase);
+    bladeBase[axis] = bounds.min[axis] + size[axis] * shape.baseFraction;
+    bladeTip[axis] = bounds.min[axis] + size[axis] * shape.tipFraction;
   };
   updateHitShape(swordMesh, weaponSlot.hitShape);
 
