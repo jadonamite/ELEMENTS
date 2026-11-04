@@ -122,11 +122,15 @@ export class Fight {
     private readonly events: FightEvents,
     private readonly createEnemy: (template: EnemyTemplate, world: RAPIER.World, point: { x: number; z: number; y?: number }, maxHealth: number, kind: VillainKind) => Enemy =
       (t, w, p, m, k) => new Enemy(t, w, p, m, k),
+    waves = true,
   ) {
+    this.waves = waves;
     this.space = new CombatSpace(world);
-    // Initial spawn for Round 1 (1 villain)
-    this.respawnIn.push(0.6);
-    this.events.roundStarted?.(1, VILLAIN_ROUNDS[0]!);
+    if (waves) {
+      // Initial spawn for Round 1 (1 villain)
+      this.respawnIn.push(0.6);
+      this.events.roundStarted?.(1, VILLAIN_ROUNDS[0]!);
+    }
 
     // Pre-allocate 16 pooled burn patches for living fire
     for (let i = 0; i < 16; i++) {
@@ -203,7 +207,7 @@ export class Fight {
     }
   }
 
-  stopWaves(): void { this.waves = false; this.respawnIn = []; }
+  stopWaves(): void { this.waves = false; this.respawnIn = []; this.roundIntermission = 0; }
 
   /** Spawns a specific villain at a world coordinate (used for road ambushes and world encounters). */
   spawnVillain(point: { x: number; z: number; y?: number }, kind: VillainKind = 'armed', maxHealth?: number): Enemy {
@@ -279,20 +283,22 @@ export class Fight {
     if (this.counted.has(enemy)) return;
     this.counted.add(enemy);
     this.villainBurns.delete(enemy);
-    this.killedInRound++;
-    if (this.spawnedInRound < this.roundVillainTarget && this.respawnIn.length === 0) {
-      this.respawnIn.push(0.7);
-    }
-    if (this.killedInRound >= this.roundVillainTarget) {
-      if (this.currentRoundIndex >= VILLAIN_ROUNDS.length - 1) {
-        // Victory after completing round 15!
-        this.isVictory = true;
-        this.events.victory?.();
-      } else {
-        // Intermission before next round
-        this.roundIntermission = 3.0;
-        const nextTarget = VILLAIN_ROUNDS[this.currentRoundIndex + 1]!;
-        this.events.roundCleared?.(this.currentRoundNumber, nextTarget);
+    if (this.waves) {
+      this.killedInRound++;
+      if (this.spawnedInRound < this.roundVillainTarget && this.respawnIn.length === 0) {
+        this.respawnIn.push(0.7);
+      }
+      if (this.killedInRound >= this.roundVillainTarget) {
+        if (this.currentRoundIndex >= VILLAIN_ROUNDS.length - 1) {
+          // Victory after completing round 15!
+          this.isVictory = true;
+          this.events.victory?.();
+        } else {
+          // Intermission before next round
+          this.roundIntermission = 3.0;
+          const nextTarget = VILLAIN_ROUNDS[this.currentRoundIndex + 1]!;
+          this.events.roundCleared?.(this.currentRoundNumber, nextTarget);
+        }
       }
     }
     if (enemy === this.attacker) this.release();
@@ -678,8 +684,10 @@ export class Fight {
     this.spawnedInRound = 0;
     this.killedInRound = 0;
     this.roundIntermission = 0;
-    this.respawnIn = [0.8];
-    this.events.roundStarted?.(this.currentRoundNumber, this.roundVillainTarget);
+    if (this.waves) {
+      this.respawnIn = [0.8];
+      this.events.roundStarted?.(this.currentRoundNumber, this.roundVillainTarget);
+    }
   }
 
   /** The attacking villain is done; the others wait a beat before taking a turn. */

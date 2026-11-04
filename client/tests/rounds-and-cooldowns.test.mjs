@@ -239,3 +239,36 @@ test('every foe that joins the fight is drawn: waves, spawnVillain and foes brou
   assert.equal(fight.enemies.filter(e => e === brought).length, 1, 'added once');
   for (const e of fight.enemies) assert.equal(e.model.parent, scene);
 });
+
+test('town fights with waves disabled do not raise roundCleared or victory banners', () => {
+  const scene = new Scene();
+  let roundClearedCalled = false;
+  let victoryCalled = false;
+  let roundStartedCount = 0;
+
+  const fight = new Fight(
+    {},
+    {},
+    scene,
+    {
+      heroHit() {},
+      heroDied() {},
+      enemyHit() {},
+      roundStarted() { roundStartedCount++; },
+      roundCleared() { roundClearedCalled = true; },
+      victory() { victoryCalled = true; },
+    },
+    (_tmpl, _world, point, maxHealth) => createMockEnemy(point, maxHealth),
+    false,
+  );
+
+  assert.equal(fight.waves, false);
+  assert.equal(roundStartedCount, 0, 'roundStarted does not fire when waves are disabled');
+
+  const challenger = fight.spawnVillain({ x: 100, z: 0 }, 'robber', 100);
+  fight.defeatEnemy(challenger);
+
+  assert.equal(roundClearedCalled, false, 'roundCleared banner does not fire for town foes');
+  assert.equal(victoryCalled, false, 'victory banner does not fire for town foes');
+  assert.equal(fight.villainsKilledInRound, 0, 'kills in town are not counted as wave round progression');
+});

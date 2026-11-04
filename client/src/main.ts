@@ -347,7 +347,7 @@ async function main(): Promise<void> {
       fightHud.say('Victory! All 15 Waves Cleared!');
       slowMotion = 2.5;
     },
-  });
+  }, undefined, !zone);
   // Wind and water put out fire and turn aside earth while the hero is bending, guarding or riding the windskiff.
   fight.isAttackCountered = (element) =>
     (element === 'IGNIS' || element === 'TERRA') && (heroElement === 'AURA' || heroElement === 'AQUES')
