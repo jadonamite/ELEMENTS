@@ -2,13 +2,7 @@
   "about": "Named places in Sindr, IGNIS's forge town, for every system that needs to find them: merchants, guards, robbers, spawns, quests. The town is built from this file. x runs east, z runs south (north is -z), y is the walking height in metres. yaw is the way a front faces: 0 faces south (+z), pi faces north, pi/2 faces east. reach is how close a hero must stand to use the place.",
   "town": {
     "name": "Sindr",
-    "nation": "IGNIS",
-    "spawn": {
-      "x": 2,
-      "y": 0,
-      "z": 0,
-      "facing": 1.5708
-    }
+    "nation": "IGNIS"
   },
   "anchors": [
     {

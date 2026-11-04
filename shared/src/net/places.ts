@@ -9,6 +9,9 @@ export interface Place {
   z: number;
 }
 
+/** Where a player starts and wakes in Sindr: the shrine's east mouth, facing the road, clear of the brazier. */
+export const SINDR_SPAWN = { x: 8, z: 0, facing: Math.PI / 2 };
+
 /** Sindr's market stalls, by merchant. The square is centred at x 125. */
 export const SINDR_STALLS: Place[] = [
   { id: 'sindr_shards', x: 113, z: -8 },

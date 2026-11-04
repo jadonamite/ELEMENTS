@@ -4,6 +4,7 @@ import type { Peak } from './landscape.js';
 import { circleArea, Levels, rectArea, stripArea, type Area, type Rect } from './levels.js';
 import type { Surface } from './materials.js';
 import { brackets, roof } from './roofs.js';
+import { SINDR_SPAWN } from '../../../shared/src/net/index.js';
 import anchorData from './sindr-anchors.json';
 import { stairRun, stairs } from './stairs.js';
 import { compoundWall, hall, noticeBoard, roofedGate, stall, townHouse, well, type Rank } from './style-kit.js';
@@ -32,7 +33,7 @@ export function anchor(id: string): Anchor {
   return a;
 }
 
-export const SPAWN = { x: anchorData.town.spawn.x, z: anchorData.town.spawn.z, facing: anchorData.town.spawn.facing };
+export const SPAWN = SINDR_SPAWN;
 /** Cinder Row: house fronts stand `half` either side of z 0. */
 const STREET = { x0: 52, x1: 224, half: 8 };
 const SQUARE = { x0: 104, x1: 146, z0: -16, z1: 16 };
