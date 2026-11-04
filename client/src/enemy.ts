@@ -26,7 +26,7 @@ const AIR_GRAVITY = 2.4;
 const FLIGHT_CLIP_SPEED = 1.8;
 const { height, radius } = balance.controller;
 
-type EnemyState = 'spawn' | 'chase' | 'circle' | 'attack' | 'cast' | 'stagger' | 'standing' | 'flee' | 'dead';
+type EnemyState = 'spawn' | 'challenge' | 'chase' | 'circle' | 'attack' | 'cast' | 'stagger' | 'standing' | 'flee' | 'dead';
 
 /**
  * How a villain fights. Brawlers use fists, the armed carry a sword or club, benders throw
@@ -51,6 +51,8 @@ export interface VillainCast { origin: Vector3; facing: number; element: string;
 
 /** Shared model and clips; each enemy clones the rig and binds its own mixer. */
 const VILLAIN_VARIANTS = 6;
+/** How close a challenger stands to the hero while waiting for an answer. */
+const CHALLENGE_STAND = 2.8;
 export interface EnemyTemplate {
   variants: Array<{ model: Group; clips: AnimationClip[] }>;
   weapons: Record<string, Object3D>;
@@ -80,7 +82,7 @@ function createClub(): Object3D {
 
 /** Villains are built from the creator's male and female bodies, each a rolled look in worn rags. */
 export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<EnemyTemplate> {
-  const [body, huskSet, mixamo, combat, unarmedA, unarmedB, sword] = await Promise.all([
+  const [body, huskSet, mixamo, combat, unarmedA, unarmedB, sword, street] = await Promise.all([
     loader.loadAsync('/assets/characters/hero.glb'),
     loader.loadAsync('/assets/characters/enemy.glb'),
     loader.loadAsync('/assets/characters/mixamo.glb').catch(() => null),
@@ -88,12 +90,14 @@ export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<Enem
     loader.loadAsync('/assets/characters/unarmed_a.glb'),
     loader.loadAsync('/assets/characters/unarmed_b.glb'),
     loader.loadAsync(SWORD_WEAPON.assetPath).catch(() => null),
+    loader.loadAsync('/assets/characters/townsfolk_mixamo.glb').catch(() => null),
   ]);
   // Walking, hits and death come from the hero's own clips; mixamo adds flying death and standing recovery.
   const own = body.animations.filter(c => ['idle', 'walk', 'run', 'hit', 'death', 'cast'].includes(c.name));
   const clips = [
     ...own, ...combat.animations, ...unarmedA.animations, ...unarmedB.animations,
     ...huskClips(huskSet.animations), ...(mixamo?.animations ?? []),
+    ...(street?.animations.filter(c => c.name === 'challenge_idle') ?? []),
   ];
 
   const kit = new BodyKit(loader);
@@ -234,6 +238,18 @@ export class Enemy {
 
   onKill?: OnKillHook | undefined;
 
+  /** Walks up to the hero and stands squared up, waiting for an answer, without attacking. */
+  challenge(): void {
+    if (this.alive) this.state = 'challenge';
+  }
+
+  /** The challenge is accepted (or answered with a blow): the fight starts. */
+  engage(): void {
+    if (this.state === 'challenge') this.state = 'chase';
+  }
+
+  get challenging(): boolean { return this.state === 'challenge'; }
+
   /** Forces this villain to break off and run away (e.g. robber retreat). */
   flee(): void {
     if (this.alive) {
@@ -366,6 +382,13 @@ export class Enemy {
             damage: fit.castDamage ?? 14, speed: fit.boltSpeed ?? 14, range: (fit.castRange ?? 12) + 2 };
         }
         if (this.timer >= this.length) { this.state = 'chase'; this.castCooldown = fit.castCooldown ?? 3; this.cooldown = fit.attackCooldown; }
+        break;
+      }
+      case 'challenge': {
+        // Walk up to a talking distance and stand facing the hero.
+        yaw = Math.atan2(-toHero.x, -toHero.z);
+        if (distance > CHALLENGE_STAND) move = { forward: 1, right: 0, running: false };
+        else this.controller.facing = towardHero;
         break;
       }
       case 'flee': {
@@ -509,7 +532,9 @@ export class Enemy {
       this.timer += delta;
       const sinking = this.timer - tuning.corpseSeconds;
       if (sinking > 0) position.y -= (sinking / tuning.sinkSeconds) * height * 0.6;
-    } else if (this.state === 'chase' || this.state === 'circle' || this.state === 'flee') {
+    } else if (this.state === 'challenge' && this.controller.speed < balance.controller.idleSpeedThreshold && this.anim.hasClip('challenge_idle')) {
+      this.anim.play('challenge_idle', 0.3);
+    } else if (this.state === 'chase' || this.state === 'circle' || this.state === 'flee' || this.state === 'challenge') {
       const speed = this.controller.speed;
       const gait = this.state === 'flee' ? 'run' : speed < balance.controller.idleSpeedThreshold ? 'idle' : speed < this.fit.runSpeed - 0.5 ? 'walk' : 'run';
       const clip = this.kind === 'husk' ? `husk_${gait}` : gait;

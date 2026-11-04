@@ -27,6 +27,8 @@ import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
 import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
 import { TownEconomy } from './economy/town-economy.js';
+import { reportBrawlSeen } from './economy/api.js';
+import { StreetChallenges } from './life/street-challenges.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
@@ -361,13 +363,14 @@ async function main(): Promise<void> {
         hasBounty: false,
       }),
       onNotice: (msg) => notice(msg),
-      getThreats: () => fight.enemies.filter(e => e.alive).map(e => e.controller.position),
+      getThreats: () => fight.enemies.filter(e => e.alive && !e.challenging).map(e => e.controller.position),
       space,
     });
     cleanup.push(() => lifeSystem?.dispose());
   }
 
   input.onInteract = () => {
+    if (streetChallenges?.accept()) return true;
     if (lifeSystem && lifeSystem.handleInteract()) return true;
     townEconomy?.interact();
   };
@@ -393,9 +396,22 @@ async function main(): Promise<void> {
     forcedCarry !== null ? { chroma: forcedCarry, weight: forcedCarry >= 300 ? 8 : 1 }
       : townEconomy?.carried ?? { chroma: 0, weight: 0 };
   let robberGang: ClientRobberGang | null = null;
-  /** Sindr's market square, where the preset brawl starts. */
-  const MARKET = { x: 112, z: 6 };
-  let marketBrawl = params.get('brawl') === 'market';
+  /** Sindr's streets run between the west and east gates; a brawl there breaks the town's law. */
+  const SINDR_STREETS = { west: 48, east: 205 };
+  // One person in the street calls the hero out; the brawl starts only if the hero accepts.
+  const streetChallenges = zone && !playingOnline ? new StreetChallenges({
+    spawnVillain: (at) => fight.spawnVillain(at, 'robber', 100),
+    enemies: () => fight.enemies,
+    space,
+    guards: () => lifeSystem?.townManager.townsfolk.filter(t => t.data.role === 'guard').map(t => t.position) ?? [],
+    inTown: (at) => at.x > SINDR_STREETS.west && at.x < SINDR_STREETS.east,
+    drawForFight: () => { if (fightingStyle === 'weapon' && !sword.engaged) sword.draw(true); },
+    onSeenByGuard: () => {
+      notice('The town watch saw you brawling: one red flag.');
+      reportBrawlSeen().catch(() => undefined);
+    },
+    notice: (msg) => notice(msg),
+  }) : null;
   let deserterBand: ClientDeserterBand | null = null;
   if (zone && !playingOnline) {
     villains.then((template) => {
@@ -990,11 +1006,7 @@ async function main(): Promise<void> {
         yardSpawned = false;
       }
 
-      // ?brawl=market: the gang strikes in force once the hero reaches the market square.
-      if (marketBrawl && robberGang && alive && Math.hypot(controller.position.x - MARKET.x, controller.position.z - MARKET.z) < 14) {
-        marketBrawl = false;
-        robberGang.strikeInForce({ x: controller.position.x, z: controller.position.z, zoneType: 'open_street' }, 6);
-      }
+      streetChallenges?.update(delta, controller.position, alive, controller.facing);
 
       // --- [creatures: outlaw encounter evaluation in Sindr] ---
       if (robberGang && alive) {

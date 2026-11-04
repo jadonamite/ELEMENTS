@@ -78,15 +78,6 @@ export class HomeMenu {
                 </div>
               </div>
 
-              <div class="home-card">
-                <div class="home-card-header">
-                  <h3>Sindr Market Brawl</h3>
-                  <p>Preset fight encounter in the town square market among the stalls and fountain.</p>
-                </div>
-                <div class="home-card-actions">
-                  <button type="button" class="home-btn" id="btn-goto-brawl">Start Market Brawl</button>
-                </div>
-              </div>
 
               <div class="home-card">
                 <div class="home-card-header">
@@ -209,10 +200,7 @@ export class HomeMenu {
       this.navigate({ town: '' });
     });
     this.overlay.querySelector('#btn-goto-arena')?.addEventListener('click', () => {
-      this.navigate({}, ['town', 'brawl']);
-    });
-    this.overlay.querySelector('#btn-goto-brawl')?.addEventListener('click', () => {
-      this.navigate({ town: '', brawl: 'market' });
+      this.navigate({}, ['town']);
     });
     this.overlay.querySelector('#btn-goto-fast')?.addEventListener('click', () => {
       this.navigate({ town: '', skipIntro: '' });

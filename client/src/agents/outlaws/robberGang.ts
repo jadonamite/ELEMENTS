@@ -117,14 +117,6 @@ export class ClientRobberGang {
     return decision;
   }
 
-  /** The whole gang called in at once: `count` members surround the target where it stands. */
-  strikeInForce(playerLoc: PlayerLocation, count: number): void {
-    this.state.members = createRobberGang(this.state.id, this.state.name, this.state.hideout, this.limits, count).members;
-    this.state.state = 'ambushing';
-    this.spawnAmbush(playerLoc);
-    this.onAlert?.(`${this.state.name} close in from every side!`);
-  }
-
   spawnAmbush(playerLoc: PlayerLocation): void {
     if (!this.scene || !this.world || !this.template) return;
 

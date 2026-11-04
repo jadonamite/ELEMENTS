@@ -101,6 +101,11 @@ export async function reportKill(kind: string, x: number, z: number, zone: strin
   return data.pile;
 }
 
+/** The town watch saw the player brawling in the street: one red flag on the server. */
+export async function reportBrawlSeen(): Promise<{ convertedToBounty: boolean }> {
+  return call<{ convertedToBounty: boolean }>('/api/economy/crime/brawl-seen', { method: 'POST', body: '{}' });
+}
+
 export async function reportDeath(x: number, z: number, zone: string): Promise<LootPile> {
   const data = await call<{ pile: LootPile }>('/api/economy/death', {
     method: 'POST',

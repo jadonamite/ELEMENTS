@@ -437,6 +437,28 @@ export function setupApi(app: Application): void {
     res.json({ success: true, ...result });
   });
 
+  // The town watch saw this player brawling in the street. The account comes from the token, never the body.
+  app.post('/api/economy/crime/brawl-seen', async (req: Request, res: Response) => {
+    if (!clientKillsAllowed()) {
+      res.status(403).json({ error: 'Fights are judged by the game server here' });
+      return;
+    }
+    const token = extractToken(req);
+    if (!token) {
+      res.status(401).json({ error: 'Missing auth token' });
+      return;
+    }
+    let accountId: string;
+    try {
+      accountId = (await verifyToken(token)).userId;
+    } catch {
+      res.status(401).json({ error: 'Invalid auth token' });
+      return;
+    }
+    const result = addRedFlag(accountId, 'Brawling in the street, seen by the town watch');
+    res.json({ convertedToBounty: result.convertedToBounty });
+  });
+
   app.post('/api/economy/crime/jail', (req: Request, res: Response) => {
     const { accountId, vaultChroma, materialsCount, gearCount, hasLand } = req.body || {};
     if (!accountId) {
