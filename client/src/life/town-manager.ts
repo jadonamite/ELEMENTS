@@ -5,8 +5,9 @@ import {
   SINDR_TOWNSFOLK,
   type RoutineActivity,
   type Townsperson,
-  getTownspersonPosition,
+  getTownspersonActivity,
 } from './townsfolk.js';
+import { WalkMap, type WalkBounds } from './walk-map.js';
 import { IDLE, walkFor, type TownsfolkBody } from './townsfolk-bodies.js';
 import type { CombatSpace } from '../attacks/space.js';
 
@@ -42,6 +43,7 @@ const TALK_FACE = 3;
 const scratchFrom = new Vector3();
 const scratchTo = new Vector3();
 const scratchEnd = new Vector3();
+const scratchFlee = new Vector3();
 const sphere = new Sphere(new Vector3(), 1.2);
 const frustum = new Frustum();
 const viewProjection = new Matrix4();
@@ -56,7 +58,9 @@ export interface LiveTownsperson {
   /** Eyes and brows, drawn only up close. */
   face: Mesh[];
   position: Vector3;
+  /** Where the person is headed, and the corners of the way there still to reach. */
   targetPosition: Vector3;
+  path: Vector3[];
   targetFacing: number;
   facing: number;
   currentActivity: RoutineActivity;
@@ -81,6 +85,8 @@ export const SINDR_STREETS: readonly StreetArea[] = [
   { x0: 104, x1: 146, z0: -15, z1: 15, y: 0 },
 ];
 const GRID = 2.5;
+/** Sindr's walk map starts on the market square and Cinder Row and spreads over the whole town. */
+export const SINDR_WALK = { seeds: [new Vector3(125, 0, 3), new Vector3(80, 0, 0)], bounds: { x0: -10, x1: 240, z0: -200, z1: 60 } };
 
 function nearest(points: readonly Vector3[], from: Vector3): { at: Vector3; distance: number } | null {
   let best: { at: Vector3; distance: number } | null = null;
@@ -96,6 +102,8 @@ export class TownManager {
   readonly townsfolk: LiveTownsperson[] = [];
   /** Open spots wanderers walk between; every one is clear of the world's solids. */
   readonly spots: Vector3[] = [];
+  /** Where people can walk, read from the world. */
+  map: WalkMap | null = null;
   private frame = 0;
   private readonly order: LiveTownsperson[] = [];
 
@@ -104,10 +112,21 @@ export class TownManager {
     this.scene.add(this.group);
   }
 
-  /** Puts every townsperson in the street on a copy of their look's body; wanderers start on open spots. */
-  init(bodies: ReadonlyMap<string, TownsfolkBody>, people: readonly Townsperson[] = SINDR_TOWNSFOLK,
-    streets: readonly StreetArea[] = SINDR_STREETS): void {
-    if (people.some(p => p.wander)) this.findSpots(streets);
+  /**
+   * Puts every townsperson in the street on a copy of their look's body. With the world to ask, a walk map is
+   * read from it first: everyone walks routes along it, and wanderers start on its open street cells.
+   */
+  async init(bodies: ReadonlyMap<string, TownsfolkBody>, people: readonly Townsperson[] = SINDR_TOWNSFOLK,
+    streets: readonly StreetArea[] = SINDR_STREETS, walk: { seeds: readonly Vector3[]; bounds: WalkBounds } = SINDR_WALK): Promise<void> {
+    if (this.space) {
+      this.map = await WalkMap.over(this.space, walk.seeds, walk.bounds);
+      for (let i = 0; i < this.map.size; i++) {
+        const x = this.map.x[i]!, z = this.map.z[i]!;
+        if (streets.some(a => x >= a.x0 && x <= a.x1 && z >= a.z0 && z <= a.z1)) this.spots.push(new Vector3(x, this.map.y[i]!, z));
+      }
+    } else {
+      for (const a of streets) for (let x = a.x0; x <= a.x1; x += GRID) for (let z = a.z0; z <= a.z1; z += GRID) this.spots.push(new Vector3(x, a.y, z));
+    }
     for (const [i, npc] of people.entries()) {
       const body = bodies.get(npc.look ?? npc.id);
       if (!body) continue;
@@ -121,91 +140,99 @@ export class TownManager {
       // Each person starts at their own point in the clip, so a crowd never moves in step.
       anim?.mixer.update(this.random() * 2);
       const start = npc.wander && this.spots.length
-        ? { ...this.spots[Math.floor(this.random() * this.spots.length)]!, facing: this.random() * Math.PI * 2 }
-        : npc.schedule.work;
-      object.position.set(start.x, start.y, start.z);
-      object.rotation.y = start.facing;
+        ? this.spots[Math.floor(this.random() * this.spots.length)]!.clone()
+        : this.place(npc.schedule.work);
+      const facing = npc.wander ? this.random() * Math.PI * 2 : npc.schedule.work.facing;
+      object.position.copy(start);
+      object.rotation.y = facing;
       object.visible = false;
       this.group.add(object);
-      const person: LiveTownsperson = {
+      this.townsfolk.push({
         data: npc, object, anim, idleClip: idle, walkClip: walkFor(npc, i), meshes, face,
-        position: new Vector3(start.x, start.y, start.z),
-        targetPosition: new Vector3(start.x, start.y, start.z),
-        targetFacing: start.facing, facing: start.facing,
-        currentActivity: 'work', walking: false, feelingScore: 50,
+        position: start.clone(), targetPosition: start.clone(), path: [],
+        targetFacing: facing, facing,
+        currentActivity: getTownspersonActivity(0, npc), walking: false, feelingScore: 50,
         rest: this.random() * REST_MAX, animDebt: 0, far: 0, fleeing: false, cowering: false,
-      };
-      this.townsfolk.push(person);
+      });
     }
   }
 
-  /** Grid points on the streets where a person fits without touching anything solid. */
-  private findSpots(streets: readonly StreetArea[]): void {
-    for (const a of streets) {
-      for (let x = a.x0; x <= a.x1; x += GRID) {
-        for (let z = a.z0; z <= a.z1; z += GRID) {
-          if (this.spots.some(s => Math.abs(s.x - x) < 0.1 && Math.abs(s.z - z) < 0.1)) continue;
-          const at = new Vector3(x, a.y, z);
-          if (!this.space || this.space.clear(scratchFrom.set(x, a.y + 1, z), scratchTo.set(x + 0.01, a.y + 1, z), BODY_RADIUS + 0.15)) this.spots.push(at);
-        }
-      }
-    }
+  /** Where a schedule point is actually stood on: the nearest walkable cell, so nobody waits inside a wall. */
+  private place(w: { x: number; y: number; z: number }): Vector3 {
+    const at = new Vector3(w.x, w.y, w.z);
+    const i = this.map?.nearest(at);
+    return i == null ? at : at.set(this.map!.x[i]!, this.map!.y[i]!, this.map!.z[i]!);
   }
 
-  /** A wanderer's next spot: some way off, reached by a straight walk that touches nothing. */
+  /** Sets where a person is going and the way there: along the walk map, or straight with no map. */
+  private goTo(person: LiveTownsperson, goal: Vector3): void {
+    person.targetPosition.copy(goal);
+    person.path = this.map ? this.map.route(person.position, goal) : [goal.clone()];
+  }
+
+  /** A wanderer's next spot: some way off on the open street. */
   private nextSpot(person: LiveTownsperson): void {
     for (let tries = 0; tries < 8; tries++) {
       const s = this.spots[Math.floor(this.random() * this.spots.length)]!;
       const d = Math.hypot(s.x - person.position.x, s.z - person.position.z);
       if (d < LEG_MIN || d > LEG_MAX) continue;
-      if (this.space && !this.space.clear(scratchFrom.set(person.position.x, s.y + 1, person.position.z), scratchTo.set(s.x, s.y + 1, s.z), BODY_RADIUS)) continue;
-      person.targetPosition.copy(s);
-      return;
+      this.goTo(person, s);
+      if (person.path.length) return;
     }
   }
 
   update(delta: number, minute: number, playerPos: Vector3, threats: readonly Vector3[] = [], camera?: Camera): void {
     this.frame++;
     for (const person of this.townsfolk) {
-      let routineY = person.position.y;
       if (person.data.wander) {
-        if (!person.walking) {
+        if (!person.path.length) {
           person.rest -= delta;
           if (person.rest <= 0) { this.nextSpot(person); person.rest = REST_MIN + this.random() * (REST_MAX - REST_MIN); }
         }
       } else {
-        const target = getTownspersonPosition(minute, person.data);
-        person.targetPosition.set(target.x, target.y, target.z);
-        person.targetFacing = target.facing;
-        routineY = target.y;
+        const activity = getTownspersonActivity(minute, person.data);
+        if (activity !== person.currentActivity) {
+          person.currentActivity = activity;
+          const target = person.data.schedule[activity];
+          person.targetFacing = target.facing;
+          this.goTo(person, this.place(target));
+        }
       }
       // A fight nearby overrides the routine: run straight away from the closest fighter.
       const threat = nearest(threats, person.position);
       const fleeing = threat !== null && threat.distance < FEAR_RADIUS;
       // With no open street (behind a counter, in a doorway) they duck down where they are.
-      const cowering = fleeing && !this.fleeTarget(person, threat.at, routineY);
-      if (cowering) person.targetPosition.copy(person.position);
+      const cowering = fleeing && !this.fleeTarget(person, threat.at, person.position.y);
+      if (cowering) person.path = [];
+      // Once the fight is over, people on a schedule head back to where they belong.
+      if (person.fleeing && !fleeing && !person.data.wander) this.goTo(person, this.place(person.data.schedule[person.currentActivity]));
       person.fleeing = fleeing;
       person.cowering = cowering;
 
-      const dx = person.targetPosition.x - person.position.x;
-      const dz = person.targetPosition.z - person.position.z;
-      const distSq = dx * dx + dz * dz;
-      if (distSq > 0.08) {
-        person.walking = true;
-        const step = Math.min(Math.sqrt(distSq), (fleeing ? RUN_SPEED : WALK_SPEED) * delta);
-        person.facing = Math.atan2(dx, dz);
-        // A wanderer whose way is shut ends the walk where it is and picks another spot after a rest.
-        if (!this.move(person, Math.sin(person.facing) * step, Math.cos(person.facing) * step) && person.data.wander) {
-          person.targetPosition.copy(person.position);
-        }
-      } else {
+      const next = person.path[0];
+      if (!next) {
         if (person.walking && person.data.wander) person.targetFacing = person.facing;
         person.walking = false;
-        if (!person.data.wander) { person.position.x = person.targetPosition.x; person.position.z = person.targetPosition.z; }
         person.facing = person.targetFacing;
+        continue;
       }
-      person.position.y = routineY;
+      const dx = next.x - person.position.x, dz = next.z - person.position.z;
+      const dist = Math.hypot(dx, dz);
+      const step = Math.min(dist, (fleeing ? RUN_SPEED : WALK_SPEED) * delta);
+      person.walking = true;
+      if (dist > 1e-3) person.facing = Math.atan2(dx, dz);
+      const k = dist > 1e-3 ? step / dist : 1;
+      if (this.move(person, dx * k, dz * k)) {
+        person.position.y += (next.y - person.position.y) * k;
+        if (dist - step < 0.05) person.path.shift();
+      } else if (person.data.wander || fleeing) {
+        // The way is shut (someone shoved them off the line): stop here and choose again.
+        person.path = [];
+      } else if ((person.rest -= delta) <= 0) {
+        // Shoved off their route: find the way again from here, at most once a second.
+        person.rest = 1;
+        this.goTo(person, person.targetPosition);
+      }
     }
     this.makeRoom(playerPos, delta);
     this.draw(delta, playerPos, camera);
@@ -237,11 +264,10 @@ export class TownManager {
   }
 
   /**
-   * The one way a person moves: a wanderer's step is taken only if the body fits all the way.
-   * People on a schedule walk their schedule's straight lines until they have routes of their own.
+   * The one way a person moves: the step is taken only if the body fits all the way.
    */
   private move(p: LiveTownsperson, dx: number, dz: number): boolean {
-    if (!p.data.wander || !this.space) { p.position.x += dx; p.position.z += dz; return true; }
+    if (!this.space) { p.position.x += dx; p.position.z += dz; return true; }
     const y = p.position.y + 1;
     if (this.space && !this.space.clear(scratchFrom.set(p.position.x, y, p.position.z), scratchTo.set(p.position.x + dx, y, p.position.z + dz), BODY_RADIUS)) return false;
     p.position.x += dx; p.position.z += dz;
@@ -307,9 +333,12 @@ export class TownManager {
       scratchTo.set(from.x + Math.sin(a) * FLEE_LOOK, from.y, from.z + Math.cos(a) * FLEE_LOOK);
       const end = this.space ? this.space.reachable(from, scratchTo, BODY_RADIUS, scratchEnd) : scratchEnd.copy(scratchTo);
       const run = Math.hypot(end.x - from.x, end.z - from.z);
-      if (run > best) { best = run; person.targetPosition.set(end.x, y, end.z); }
+      if (run > best) { best = run; scratchFlee.set(end.x, y, end.z); }
     }
-    return best >= MIN_FLEE_RUN;
+    if (best < MIN_FLEE_RUN) return false;
+    const last = person.path[person.path.length - 1];
+    if (!person.fleeing || !last || last.distanceToSquared(scratchFlee) > 4) person.path = [scratchFlee.clone()];
+    return true;
   }
 
   getNearestTownsperson(heroPos: Vector3, maxRadius = 3.5): LiveTownsperson | null {

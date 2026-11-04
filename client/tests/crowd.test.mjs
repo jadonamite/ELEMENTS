@@ -30,7 +30,7 @@ test('wanderers stand and walk only on open street, and step aside for the hero'
   const bodies = new Map(looks.map(l => [l.id, { model: new Group(), clips: [] }]));
   let seed = 1; const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const town = new TownManager(new Scene(), space, random);
-  town.init(bodies, people, [{ x0: 0, x1: 20, z0: -6, z1: 6, y: 0 }]);
+  await town.init(bodies, people, [{ x0: 0, x1: 20, z0: -6, z1: 6, y: 0 }], { seeds: [new Vector3(2, 0, 0)], bounds: { x0: 0, x1: 20, z0: -6, z1: 6 } });
   assert.ok(town.spots.length > 20);
   const inHouse = (p) => Math.abs(p.x - 10) < 3.2 && Math.abs(p.z) < 3.2;
   assert.ok(!town.spots.some(inHouse), 'no spot inside the house');
@@ -47,4 +47,32 @@ test('wanderers stand and walk only on open street, and step aside for the hero'
   assert.ok(town.townsfolk.some(p => p.walking) || town.townsfolk.some(p => p.rest > 0));
   assert.equal(crowding, 0, 'nobody stands inside the hero');
   world.free();
+});
+
+test('a person on a schedule walks round a house to reach the far side, never through it', async () => {
+  await RAPIER.init();
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  world.createCollider(RAPIER.ColliderDesc.cuboid(50, 0.5, 50).setTranslation(0, -0.5, 0));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(3, 3, 6).setTranslation(10, 3, 0));
+  // A raised yard reached by a ramp of steps, and a house wall closing it on one side.
+  for (let k = 0; k < 6; k++) world.createCollider(RAPIER.ColliderDesc.cuboid(0.5, 0.15 * (k + 1), 2).setTranslation(-3 - k, 0.15 * (k + 1), 12));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(6, 0.9, 6).setTranslation(-15, 0.9, 12));
+  world.step();
+  const space = new CombatSpace(world);
+  const at = (x, z) => ({ x, y: 0, z, facing: 0 });
+  const walker = { id: 'walker', name: 'Walker', role: 'porter', dialogueRole: 'porter_sindr', isLit: false, element: 'DIM', sex: 'male',
+    schedule: { work: at(18, 0), market: at(18, 0), inn: at(-15, 12), home: at(18, 0) } };
+  const town = new TownManager(new Scene(), space, () => 0.5);
+  await town.init(new Map([['walker', { model: new Group(), clips: [] }]]), [walker], [], { seeds: [new Vector3(2, 0, 0)], bounds: { x0: -25, x1: 25, z0: -12, z1: 20 } });
+  const p = town.townsfolk[0];
+  const hero = new Vector3(0, 0, -40);
+  let inside = 0;
+  for (const minute of [6, 13]) {
+    for (let f = 0; f < 60 * 60; f++) {
+      town.update(1 / 60, minute, hero);
+      if (Math.abs(p.position.x - 10) < 3 + 0.2 && Math.abs(p.position.z) < 6 + 0.2) inside++;
+    }
+  }
+  assert.equal(inside, 0, 'never inside the house');
+  assert.ok(p.position.x < -9 && p.position.y > 1.5, `climbed the steps to the yard: ${p.position.toArray().map(v => v.toFixed(2))}`);
 });

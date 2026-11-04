@@ -89,8 +89,8 @@ export class SindrLifeSystem {
     const people = [...SINDR_TOWNSFOLK, ...crowd.people];
     const looks = [...ownLooks(SINDR_TOWNSFOLK), ...crowd.looks];
     const children = new Set(people.filter(p => p.role === 'child').map(p => p.look ?? p.id));
-    this.ready = loadLookBodies(looks, children).then((bodies) => {
-      if (!this.disposed) this.townManager.init(bodies, people);
+    this.ready = loadLookBodies(looks, children).then(async (bodies) => {
+      if (!this.disposed) await this.townManager.init(bodies, people);
     }).catch(console.error);
   }
 
