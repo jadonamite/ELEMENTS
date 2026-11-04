@@ -390,6 +390,9 @@ async function main(): Promise<void> {
     forcedCarry !== null ? { chroma: forcedCarry, weight: forcedCarry >= 300 ? 8 : 1 }
       : townEconomy?.carried ?? { chroma: 0, weight: 0 };
   let robberGang: ClientRobberGang | null = null;
+  /** Sindr's market square, where the preset brawl starts. */
+  const MARKET = { x: 112, z: 6 };
+  let marketBrawl = params.get('brawl') === 'market';
   let deserterBand: ClientDeserterBand | null = null;
   if (zone && !playingOnline) {
     villains.then((template) => {
@@ -982,6 +985,12 @@ async function main(): Promise<void> {
         notice("Master's Sparring Yard: Defeat the challengers! (K: summon partner)");
       } else if (yardDist > 24) {
         yardSpawned = false;
+      }
+
+      // ?brawl=market: the gang strikes in force once the hero reaches the market square.
+      if (marketBrawl && robberGang && alive && Math.hypot(controller.position.x - MARKET.x, controller.position.z - MARKET.z) < 14) {
+        marketBrawl = false;
+        robberGang.strikeInForce({ x: controller.position.x, z: controller.position.z, zoneType: 'open_street' }, 6);
       }
 
       // --- [creatures: outlaw encounter evaluation in Sindr] ---

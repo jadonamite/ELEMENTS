@@ -117,18 +117,26 @@ export class ClientRobberGang {
     return decision;
   }
 
+  /** The whole gang called in at once: `count` members surround the target where it stands. */
+  strikeInForce(playerLoc: PlayerLocation, count: number): void {
+    this.state.members = createRobberGang(this.state.id, this.state.name, this.state.hideout, this.limits, count).members;
+    this.state.state = 'ambushing';
+    this.spawnAmbush(playerLoc);
+    this.onAlert?.(`${this.state.name} close in from every side!`);
+  }
+
   spawnAmbush(playerLoc: PlayerLocation): void {
     if (!this.scene || !this.world || !this.template) return;
 
     // Despawn any existing enemies
     this.despawn();
 
-    const spawnAngles = [-0.8, 0.8, -2.2, 2.2];
-    const spawnDist = 4.5;
-
-    for (let i = 0; i < this.state.members.length; i++) {
+    // Members close in from all sides, evenly spread, the outer ones a step further back.
+    const count = this.state.members.length;
+    for (let i = 0; i < count; i++) {
       const member = this.state.members[i]!;
-      const angle = spawnAngles[i % spawnAngles.length]!;
+      const angle = (i / count) * Math.PI * 2 + 0.4;
+      const spawnDist = 4.5 + (i % 2) * 2;
       const sx = playerLoc.x + Math.sin(angle) * spawnDist;
       const sz = playerLoc.z + Math.cos(angle) * spawnDist;
 
