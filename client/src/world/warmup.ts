@@ -84,8 +84,11 @@ export async function warm(renderer: WebGLRenderer, scene: Scene, camera: Camera
       renderer.setRenderTarget(target);
       renderer.setViewport(0, 0, 1, 1);
       renderer.setScissorTest(false);
+      // Passes that draw only when needed (soft depth) draw now, so their programs are made too.
+      scene.userData.warming = true;
       renderer.render(scene, camera);
     } finally {
+      scene.userData.warming = false;
       for (const [mesh, count] of instanceCounts) mesh.count = count;
       for (const [geometry, count] of geometryCounts) geometry.instanceCount = count;
       for (const [geometry, range] of drawRanges) geometry.setDrawRange(range.start, range.count);

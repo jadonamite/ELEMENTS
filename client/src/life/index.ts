@@ -5,7 +5,9 @@ import type { SoundManager } from '../audio.js';
 import type { WorldClock } from '../world/clock.js';
 import { nightness } from '../world/effects.js';
 import { TownManager } from './town-manager.js';
-import { loadTownsfolkBodies } from './townsfolk-bodies.js';
+import { loadLookBodies, ownLooks } from './townsfolk-bodies.js';
+import { makeCrowd } from './crowd.js';
+import { SINDR_TOWNSFOLK } from './townsfolk.js';
 import { ShuttersAndLanterns } from './shutters-lanterns.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
 import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
@@ -15,6 +17,9 @@ import type { ContextOffer } from '../ui/context-action.js';
 
 /** How near a townsperson stands to be talked to, metres. */
 const TALK_REACH = 3.5;
+/** People in the crowd beside the named townsfolk, and how many looks they share. */
+const CROWD_PEOPLE = 150;
+const CROWD_LOOKS = 30;
 
 
 export interface SindrLifeOptions {
@@ -79,8 +84,13 @@ export class SindrLifeSystem {
       },
     );
 
-    this.ready = loadTownsfolkBodies().then((bodies) => {
-      if (!this.disposed) this.townManager.init(bodies);
+    // The named townsfolk, then a crowd wearing its own looks, copied round the streets.
+    const crowd = makeCrowd(CROWD_PEOPLE, CROWD_LOOKS);
+    const people = [...SINDR_TOWNSFOLK, ...crowd.people];
+    const looks = [...ownLooks(SINDR_TOWNSFOLK), ...crowd.looks];
+    const children = new Set(people.filter(p => p.role === 'child').map(p => p.look ?? p.id));
+    this.ready = loadLookBodies(looks, children).then((bodies) => {
+      if (!this.disposed) this.townManager.init(bodies, people);
     }).catch(console.error);
   }
 
@@ -89,7 +99,7 @@ export class SindrLifeSystem {
     const heroPos = this.controller.position;
 
     // 1. Update townsfolk routines and locomotion
-    this.townManager.update(delta, minute, heroPos, this.getThreats());
+    this.townManager.update(delta, minute, heroPos, this.getThreats(), this.camera);
 
     // 2. Update dusk & night world changes (shutters, lanterns, robbers)
     this.shuttersLanterns.update(minute, nightness.value);

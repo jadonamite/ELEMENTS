@@ -88,6 +88,8 @@ class Batch {
   }
 
   begin(): void { this.count = 0; }
+  /** Quads written this frame. */
+  get quads(): number { return this.count; }
 
   push(x: number, y: number, z: number, w: number, h: number, tilt: number, life: number, seed: number, alpha: number, mode: number, atlas: number, vx: number, vy: number, vz: number): void {
     if (this.count >= this.capacity) return;
@@ -205,6 +207,9 @@ export class FlameField {
     this.additive.begin();
     this.normal.begin();
   }
+
+  /** True when this frame has any flame, smoke or dust to draw. */
+  get drawing(): boolean { return this.additive.quads + this.normal.quads > 0; }
 
   /** Advances pooled tongues and uploads every quad of the frame. */
   end(delta: number): void {

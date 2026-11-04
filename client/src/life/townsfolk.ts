@@ -24,6 +24,10 @@ export interface Townsperson {
   isLit: boolean;
   element: 'IGNIS' | 'DIM';
   sex: 'male' | 'female';
+  /** The look this person wears; people without one have a look of their own. */
+  look?: string;
+  /** Wanders the open streets instead of keeping a schedule. */
+  wander?: boolean;
   schedule: {
     work: LocationWaypoint;
     market: LocationWaypoint;
