@@ -1,5 +1,6 @@
 import type { CharacterConfig } from '../creator/creator-types.js';
 import { BODY_PRESET_OPTIONS, HAIR_COLOR_PRESETS, HAIR_STYLE_OPTIONS, SKIN_TONE_PRESETS } from '../creator/creator-types.js';
+import type { Post } from '../world/builder.js';
 import type { Townsperson, TownsfolkRole } from './townsfolk.js';
 
 /** One way a person can look: body, hair, skin, build, height and cloth dye. Built once, copied for everyone who wears it. */
@@ -112,4 +113,47 @@ export function makeCrowd(count: number, lookCount: number, seed = 7): Crowd {
     });
   }
   return { looks, people };
+}
+
+/** The trade of whoever keeps each kind of post. */
+const POST_ROLE: Record<Post['kind'], readonly TownsfolkRole[]> = {
+  keeper: ['trader'], smith: ['smith'], household: ['porter', 'worshipper', 'trader', 'smith', 'child'],
+};
+
+/**
+ * Someone for every post the town was built with, wearing the crowd's looks. A post already kept by a named
+ * townsperson (their work spot within reach) is left to them. Keepers go home to the nearest door after hours.
+ */
+export function staffPosts(posts: readonly Post[], crowd: Crowd, named: readonly Townsperson[], seed = 11): Townsperson[] {
+  const r = seeded(seed);
+  const used = new Set(crowd.people.map(p => p.name).concat(named.map(p => p.name)));
+  const doors = posts.filter(p => p.kind === 'household');
+  const lookRole = new Map(crowd.people.map(p => [p.look!, p.role]));
+  const out: Townsperson[] = [];
+  for (const [i, post] of posts.entries()) {
+    if (named.some(n => Math.hypot(n.schedule.work.x - post.x, n.schedule.work.z - post.z) < 2.5)) continue;
+    const role = pick(r, POST_ROLE[post.kind]);
+    const looks = crowd.looks.filter(l => lookRole.get(l.id) === role);
+    const look = pick(r, looks.length ? looks : crowd.looks);
+    const sex = look.config.sex;
+    let name = '';
+    for (let tries = 0; tries < 40 && (!name || used.has(name)); tries++) {
+      name = `${pick(r, sex === 'male' ? MALE : FEMALE)} ${pick(r, BYNAME)}`;
+    }
+    used.add(name);
+    const isLit = r() < 0.2;
+    const at = { x: post.x, y: post.y, z: post.z, facing: post.facing };
+    let home = at;
+    if (post.hours === 'day' && doors.length) {
+      let best = doors[0]!;
+      for (const d of doors) if (Math.hypot(d.x - post.x, d.z - post.z) < Math.hypot(best.x - post.x, best.z - post.z)) best = d;
+      home = { x: best.x + 0.8, y: best.y, z: best.z, facing: best.facing };
+    }
+    out.push({
+      id: `post_${i}`, name, role, dialogueRole: DIALOGUE[role], isLit, element: isLit ? 'IGNIS' : 'DIM', sex,
+      look: look.id, post: post.hours,
+      schedule: { work: at, market: at, inn: home, home },
+    });
+  }
+  return out;
 }

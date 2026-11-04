@@ -141,7 +141,7 @@ export class TownManager {
       anim?.mixer.update(this.random() * 2);
       const start = npc.wander && this.spots.length
         ? this.spots[Math.floor(this.random() * this.spots.length)]!.clone()
-        : this.place(npc.schedule.work);
+        : this.place(npc.schedule.work, !!npc.post);
       const facing = npc.wander ? this.random() * Math.PI * 2 : npc.schedule.work.facing;
       object.position.copy(start);
       object.rotation.y = facing;
@@ -157,9 +157,13 @@ export class TownManager {
     }
   }
 
-  /** Where a schedule point is actually stood on: the nearest walkable cell, so nobody waits inside a wall. */
-  private place(w: { x: number; y: number; z: number }): Vector3 {
+  /**
+   * Where a schedule point is actually stood on: the nearest walkable cell, so nobody waits inside a wall.
+   * A post is built for a person to stand at (behind a counter, at a door), so it is stood on exactly.
+   */
+  private place(w: { x: number; y: number; z: number }, exact = false): Vector3 {
     const at = new Vector3(w.x, w.y, w.z);
+    if (exact) return at;
     const i = this.map?.nearest(at);
     return i == null ? at : at.set(this.map!.x[i]!, this.map!.y[i]!, this.map!.z[i]!);
   }
@@ -168,6 +172,9 @@ export class TownManager {
   private goTo(person: LiveTownsperson, goal: Vector3): void {
     person.targetPosition.copy(goal);
     person.path = this.map ? this.map.route(person.position, goal) : [goal.clone()];
+    // A post is stepped onto from the walk map's last cell, the one step the map does not cover.
+    const last = person.path[person.path.length - 1];
+    if (person.data.post && this.map && (!last || last.distanceTo(goal) > 0.05)) person.path.push(goal.clone());
   }
 
   /** A wanderer's next spot: some way off on the open street. */
@@ -195,7 +202,7 @@ export class TownManager {
           person.currentActivity = activity;
           const target = person.data.schedule[activity];
           person.targetFacing = target.facing;
-          this.goTo(person, this.place(target));
+          this.goTo(person, this.place(target, !!person.data.post));
         }
       }
       // A fight nearby overrides the routine: run straight away from the closest fighter.
@@ -205,7 +212,7 @@ export class TownManager {
       const cowering = fleeing && !this.fleeTarget(person, threat.at, person.position.y);
       if (cowering) person.path = [];
       // Once the fight is over, people on a schedule head back to where they belong.
-      if (person.fleeing && !fleeing && !person.data.wander) this.goTo(person, this.place(person.data.schedule[person.currentActivity]));
+      if (person.fleeing && !fleeing && !person.data.wander) this.goTo(person, this.place(person.data.schedule[person.currentActivity], !!person.data.post));
       person.fleeing = fleeing;
       person.cowering = cowering;
 
@@ -222,7 +229,9 @@ export class TownManager {
       person.walking = true;
       if (dist > 1e-3) person.facing = Math.atan2(dx, dz);
       const k = dist > 1e-3 ? step / dist : 1;
-      if (this.move(person, dx * k, dz * k)) {
+      const ontoPost = !!person.data.post && person.path.length === 1 && dist < 3;
+      if (ontoPost || this.move(person, dx * k, dz * k)) {
+        if (ontoPost) { person.position.x += dx * k; person.position.z += dz * k; }
         person.position.y += (next.y - person.position.y) * k;
         if (dist - step < 0.05) person.path.shift();
       } else if (person.data.wander || fleeing) {

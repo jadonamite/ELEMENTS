@@ -371,6 +371,7 @@ async function main(): Promise<void> {
       onNotice: (msg) => notice(msg),
       getThreats: () => fight.enemies.filter(e => e.alive && !e.challenging).map(e => e.controller.position),
       space,
+      posts: zone.posts,
     });
     cleanup.push(() => lifeSystem?.dispose());
   }

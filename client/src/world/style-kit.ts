@@ -73,9 +73,11 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
       b.box('red_lacquer', -ow / 2 + (k + 0.5) * (ow / 4), P + G - 0.6, front + 0.02, ow / 4 - 0.06, 0.75, 0.02);
     }
     b.light(0, P + 2, front - 0.8, 0xffa060, 4, 6, 0.1);
+    b.post('keeper', (rand() - 0.5) * (ow - 1.2), front - 1.05, 0, P);
   } else {
     // Recessed door in a lacquer frame, a step before it.
     b.box('charred_timber_beams', door, P + 1.05, front - 0.36, 1.1, 2.1, 0.08);
+    b.post('household', door + (rand() < 0.5 ? -0.9 : 0.9), front + 0.9, (rand() - 0.5) * 0.8);
     b.ao([door - 0.55, P + 0.01, front - 0.32], [door + 0.55, P + 0.01, front - 0.32], [0, 0, 0.3], 0.8);
     b.ao([door - 0.55, P + 2.1, front - 0.31], [door + 0.55, P + 2.1, front - 0.31], [0, -0.8, 0], 0.7);
     b.box('red_lacquer', door - 0.62, P + 1.12, front - 0.2, 0.15, 2.24, 0.24);
@@ -232,6 +234,7 @@ export function stall(b: WorldBuilder, x: number, z: number, y: number, yaw: num
   b.box('charred_timber_beams', 0, 0.45, 0.6, 2.6, 0.9, 0.6);
   b.solid(0, 0.5, 0, 2.8, 1, 2);
   for (let gx = -1.1; gx < 1.1; gx += 0.35) b.cylinder(rand() < 0.5 ? 'terracotta' : 'moss', gx, 1.0, 0.6, 0.13, 0.15, 0.2, 8);
+  b.post('keeper', 0, -0.2);
   b.ao([-1.5, 0.01, -1.1], [1.5, 0.01, -1.1], [0, 0, 2.2], 0.45);
   b.at(0, 0, 0);
 }
