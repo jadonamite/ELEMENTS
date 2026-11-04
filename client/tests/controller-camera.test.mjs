@@ -178,3 +178,34 @@ test('standOff places a body short of a wall, on the level of the feet it starts
   close(north.z, -6, 1e-3);
   world.free();
 });
+
+test('shoulder camera maintains sane over-the-shoulder distance against a wall during lock-on', async () => {
+  await RAPIER.init();
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  world.createCollider(RAPIER.ColliderDesc.cuboid(10, 5, 0.5).setTranslation(0, 2.5, -0.75));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(0.5, 5, 10).setTranslation(1.15, 2.5, 0));
+  world.step();
+  const camera = new PerspectiveCamera(55, 16 / 9, 0.1, 500);
+  const rig = new ShoulderCamera(camera, world, false);
+  try {
+    rig.fight = 1;
+    const heroPos = new Vector3(0, 0, 0);
+    rig.lockTarget = new Vector3(0, 0, 4);
+    for (let i = 0; i < 60; i++) rig.update(heroPos, 1 / 60);
+
+    const dist = camera.position.distanceTo(rig.target);
+    assert.ok(dist >= balance.camera.hideHeroDistance, `camera distance ${dist} must stay clear of hero collar`);
+    assert.ok(dist <= balance.camera.distance * 1.5, `camera distance ${dist} is within reasonable bounds`);
+    assert.ok(rig.pitch >= -0.1 && rig.pitch <= 0.4, `pitch ${rig.pitch} frames target instead of sky`);
+    const radius = cameraCollisionRadius(camera);
+    assert.equal(world.intersectionWithShape(camera.position, { x: 0, y: 0, z: 0, w: 1 },
+      new RAPIER.Ball(radius), RAPIER.QueryFilterFlags.ONLY_FIXED), null);
+
+    const openPos = new Vector3(0, 0, 20);
+    rig.lockTarget = new Vector3(0, 0, 26);
+    for (let i = 0; i < 60; i++) rig.update(openPos, 1 / 60);
+    const recoveredDist = camera.position.distanceTo(rig.target);
+    assert.ok(recoveredDist > 2.5, `camera distance recovers to full distance: ${recoveredDist}`);
+  } finally { world.free(); }
+});
+
