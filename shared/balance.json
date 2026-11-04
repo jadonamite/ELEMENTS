@@ -1228,5 +1228,450 @@
       "maxPriceMultiplier": 2.5,
       "unpaidUpkeepDaysToForfeit": 7
     }
+  },
+  "raids": {
+    "placeholder": true,
+    "note": "Item kinds, keys and materials are placeholders until the crafting lore settles. Code reads them from here; never hard-code them.",
+    "party": {
+      "maxSize": 5,
+      "inviteSeconds": 120,
+      "lootRules": [
+        "equal",
+        "need",
+        "leader"
+      ]
+    },
+    "itemKinds": {
+      "old_iron": {
+        "name": "Old Iron",
+        "kind": "material",
+        "basePrice": 12,
+        "rarity": "common"
+      },
+      "ember_glass": {
+        "name": "Ember Glass",
+        "kind": "material",
+        "basePrice": 40,
+        "rarity": "rare"
+      },
+      "waystone_dust": {
+        "name": "Waystone Dust",
+        "kind": "material",
+        "basePrice": 90,
+        "rarity": "rare",
+        "use": "fast travel"
+      },
+      "warden_core": {
+        "name": "Warden's Core",
+        "kind": "material",
+        "basePrice": 140,
+        "rarity": "rare"
+      },
+      "ignis_shard": {
+        "name": "IGNIS Shard",
+        "kind": "shard",
+        "basePrice": 10,
+        "rarity": "common"
+      },
+      "aura_shard": {
+        "name": "AURA Shard",
+        "kind": "shard",
+        "basePrice": 14,
+        "rarity": "uncommon"
+      },
+      "ruin_blade": {
+        "name": "Pre-Edict Blade",
+        "kind": "gear",
+        "basePrice": 150,
+        "rarity": "rare",
+        "stats": {
+          "damage": 1.12,
+          "wearRate": 0.8
+        }
+      },
+      "carved_bracer": {
+        "name": "Carved Bracer",
+        "kind": "gear",
+        "basePrice": 95,
+        "rarity": "uncommon",
+        "stats": {
+          "block": 1.1,
+          "wearRate": 1.0
+        }
+      }
+    },
+    "keys": {
+      "undervault_key": {
+        "name": "Undervault Key",
+        "dungeon": "sindr_undervault",
+        "basePrice": 45,
+        "maxStock": 12,
+        "startStock": 8,
+        "craftCost": 28,
+        "craftedBy": "dim"
+      }
+    },
+    "hall": {
+      "startingPurse": 5000,
+      "hireCut": 0.15,
+      "keyPriceSlope": 1.0,
+      "keyDemandWindowHours": 24,
+      "keyDemandStep": 0.06,
+      "keyDemandMax": 0.6,
+      "keyPriceMin": 0.7,
+      "keyPriceMax": 3.0,
+      "restockBelow": 0.4,
+      "complaintWindowDays": 14,
+      "barAfterUpheld": 3,
+      "barDays": 7,
+      "jobRewardMax": 400,
+      "maxOpenJobs": 4,
+      "rosterSize": 6,
+      "recruitPurse": 40
+    },
+    "fighters": {
+      "wageBase": 12,
+      "wagePerSkill": 4,
+      "wageCurve": 1.3,
+      "skillMin": 1,
+      "skillMax": 10,
+      "healthBase": 80,
+      "healthPerSkill": 12,
+      "damageBase": 9,
+      "damagePerSkill": 1.6,
+      "fleeBelow": 0.35,
+      "fleeChancePerCheck": 0.55,
+      "fleeCheckSeconds": 2,
+      "trainingCostPerSkill": 30,
+      "refuseBelowScore": -30,
+      "dangerTolerance": 2.0,
+      "roster": [
+        {
+          "id": "f_kesh",
+          "name": "Kesh Varrow",
+          "element": "IGNIS",
+          "skill": 2,
+          "courage": 0.75,
+          "purse": 30
+        },
+        {
+          "id": "f_odra",
+          "name": "Odra Mael",
+          "element": "TERRA",
+          "skill": 3,
+          "courage": 0.85,
+          "purse": 45
+        },
+        {
+          "id": "f_tamsin",
+          "name": "Tamsin Reed",
+          "element": "AQUES",
+          "skill": 2,
+          "courage": 0.25,
+          "purse": 20
+        },
+        {
+          "id": "f_brannoc",
+          "name": "Brannoc Hale",
+          "element": "IGNIS",
+          "skill": 5,
+          "courage": 0.7,
+          "purse": 120
+        },
+        {
+          "id": "f_issa",
+          "name": "Issa Corve",
+          "element": "AURA",
+          "skill": 4,
+          "courage": 0.55,
+          "purse": 80
+        },
+        {
+          "id": "f_dain",
+          "name": "Dain Ashby",
+          "element": "IGNIS",
+          "skill": 7,
+          "courage": 0.9,
+          "purse": 260
+        }
+      ],
+      "recruitNames": [
+        "Maro Teld",
+        "Senna Pike",
+        "Hollin Grey",
+        "Veya Strand",
+        "Corrin Black",
+        "Ysolde Fen",
+        "Abel Rook",
+        "Nim Carrow"
+      ],
+      "recruitElements": [
+        "IGNIS",
+        "IGNIS",
+        "TERRA",
+        "AQUES",
+        "AURA"
+      ]
+    },
+    "dungeons": {
+      "sindr_undervault": {
+        "name": "The Undervault of Sindr",
+        "nation": "IGNIS",
+        "minPlayers": 1,
+        "maxPlayers": 5,
+        "roomsPerRun": 3,
+        "entry": "vault_gate",
+        "minClearSeconds": 8,
+        "danger": 3,
+        "rooms": {
+          "vault_gate": {
+            "name": "The Vault Gate",
+            "kind": "entry",
+            "enemies": []
+          },
+          "collapsed_hall": {
+            "name": "The Collapsed Hall",
+            "kind": "fight",
+            "enemies": [
+              {
+                "kind": "husk",
+                "count": 3,
+                "health": 70
+              }
+            ],
+            "carving": "c_four"
+          },
+          "name_gallery": {
+            "name": "The Gallery of Names",
+            "kind": "fight",
+            "enemies": [
+              {
+                "kind": "husk",
+                "count": 2,
+                "health": 70
+              },
+              {
+                "kind": "husk",
+                "count": 1,
+                "health": 110
+              }
+            ],
+            "carving": "c_sleeps"
+          },
+          "cinder_well": {
+            "name": "The Cinder Well",
+            "kind": "fight",
+            "enemies": [
+              {
+                "kind": "husk",
+                "count": 4,
+                "health": 55
+              }
+            ],
+            "carving": "c_east"
+          },
+          "slag_crypt": {
+            "name": "The Slag Crypt",
+            "kind": "fight",
+            "enemies": [
+              {
+                "kind": "armed",
+                "count": 2,
+                "health": 90
+              },
+              {
+                "kind": "brawler",
+                "count": 1,
+                "health": 100
+              }
+            ],
+            "carving": "c_made"
+          },
+          "silent_forge": {
+            "name": "The Silent Forge",
+            "kind": "fight",
+            "enemies": [
+              {
+                "kind": "husk",
+                "count": 3,
+                "health": 80
+              }
+            ],
+            "carving": "c_burned"
+          },
+          "warden_chamber": {
+            "name": "The Warden's Chamber",
+            "kind": "boss",
+            "enemies": [
+              {
+                "kind": "husk",
+                "count": 1,
+                "health": 900,
+                "boss": "ashen_warden"
+              },
+              {
+                "kind": "husk",
+                "count": 2,
+                "health": 50
+              }
+            ],
+            "carving": "c_door"
+          }
+        },
+        "boss": {
+          "id": "ashen_warden",
+          "name": "The Ashen Warden",
+          "scale": 2.3,
+          "damage": 30,
+          "speed": 0.8
+        },
+        "loot": {
+          "fight": [
+            {
+              "item": "old_iron",
+              "chance": 0.9,
+              "min": 1,
+              "max": 3
+            },
+            {
+              "item": "ignis_shard",
+              "chance": 0.8,
+              "min": 1,
+              "max": 3
+            },
+            {
+              "item": "ember_glass",
+              "chance": 0.35,
+              "min": 1,
+              "max": 1
+            },
+            {
+              "item": "carved_bracer",
+              "chance": 0.12,
+              "min": 1,
+              "max": 1
+            }
+          ],
+          "boss": [
+            {
+              "item": "warden_core",
+              "chance": 1.0,
+              "min": 1,
+              "max": 1
+            },
+            {
+              "item": "waystone_dust",
+              "chance": 0.8,
+              "min": 1,
+              "max": 2
+            },
+            {
+              "item": "ember_glass",
+              "chance": 0.7,
+              "min": 1,
+              "max": 2
+            },
+            {
+              "item": "aura_shard",
+              "chance": 0.5,
+              "min": 1,
+              "max": 2
+            },
+            {
+              "item": "ruin_blade",
+              "chance": 0.3,
+              "min": 1,
+              "max": 1
+            }
+          ]
+        },
+        "carvings": {
+          "c_four": "There was never one Allborn. There were four, one for each name, and they ended one another in this hall.",
+          "c_sleeps": "The Allborn sleeps under the fourth mountain and wakes when all four names are spoken in one breath.",
+          "c_east": "The Allborn walked east out of this city carrying every name, and opened a door no one else could see.",
+          "c_made": "The Allborn was not born. The Allborn is made, by whoever carries all four names at once.",
+          "c_burned": "Here the last who knew the Allborn's face were silenced. Their names went into the fire with them.",
+          "c_door": "Whoever stands here has come as far as the Allborn came. The way out is through the one who waits."
+        }
+      }
+    },
+    "loss": {
+      "carriedShare": 0.25,
+      "gearWear": 0.3,
+      "lostCoinTo": "treasury"
+    },
+    "salvage": {
+      "id": "salvage_sindr",
+      "name": "Ruth Callow, salvage buyer",
+      "startingPurse": 8000,
+      "baseDiscount": 0.3,
+      "minDiscount": 0.15,
+      "maxDiscount": 0.5,
+      "underBestMerchant": 0.1,
+      "holdPenalty": 0.3,
+      "maxHold": {
+        "material": 60,
+        "shard": 120,
+        "gear": 12
+      },
+      "shipOnwardAbove": 0.7
+    }
+  },
+  "social": {
+    "placeholder": true,
+    "guild": {
+      "maxMembers": 30,
+      "foundCost": 5000,
+      "nameMin": 3,
+      "nameMax": 24,
+      "tagMin": 2,
+      "tagMax": 4,
+      "landPerMember": 1,
+      "landCap": 12
+    },
+    "clan": {
+      "maxMembers": 50,
+      "upgradeCost": 15000,
+      "minMembersToUpgrade": 10,
+      "landPerMember": 1,
+      "landCap": 30
+    },
+    "ranks": [
+      "leader",
+      "officer",
+      "member",
+      "recruit"
+    ],
+    "vaultDefaults": {
+      "leader": {
+        "chromaPerDay": -1,
+        "items": true
+      },
+      "officer": {
+        "chromaPerDay": 500,
+        "items": true
+      },
+      "member": {
+        "chromaPerDay": 50,
+        "items": false
+      },
+      "recruit": {
+        "chromaPerDay": 0,
+        "items": false
+      }
+    },
+    "war": {
+      "acceptSeconds": 86400,
+      "redeclareCooldownSeconds": 86400,
+      "minDurationSeconds": 3600
+    },
+    "duel": {
+      "acceptSeconds": 60,
+      "fleeRadius": 30,
+      "disconnectForfeitSeconds": 20,
+      "maxStake": 100000,
+      "timeLimitSeconds": 300
+    },
+    "bannedNameWords": []
   }
 }

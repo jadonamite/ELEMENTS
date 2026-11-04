@@ -5,3 +5,5 @@ export * from './story/leads.js';
 export * from './agents/index.js';
 export * from './economy/index.js';
 export * from './net/index.js';
+export * from './raids/index.js';
+export * from './social/index.js';
