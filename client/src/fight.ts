@@ -16,6 +16,9 @@ const tuning = balance.enemy;
 /** Round sequence: 1-3-5-7 up till 15 and then stop. */
 export const VILLAIN_ROUNDS = [1, 3, 5, 7, 9, 11, 13, 15] as const;
 
+/** Height at which burning ground asks the world what stands in its way. */
+const PATCH_PROBE_Y = 0.5;
+
 /** A patch of burning ground on the arena stone floor. */
 export interface BurnPatch {
   readonly id: number;
@@ -162,8 +165,11 @@ export class Fight {
     return list;
   }
 
-  /** Spawns a burning patch of ground that damages villains walking into it. */
-  spawnBurnPatch(pos: Vector3, radius?: number, duration?: number, element: Element = 'IGNIS'): BurnPatch {
+  /**
+   * Spawns a burning patch of ground that damages villains walking into it. `from` is where the
+   * fire came from: a patch lands no further than the fire could reach from there.
+   */
+  spawnBurnPatch(pos: Vector3, from: Vector3, radius?: number, duration?: number, element: Element = 'IGNIS'): BurnPatch {
     let target = this.burnPatches.find(p => !p.active);
     if (!target) {
       let maxElapsed = -1;
@@ -175,7 +181,7 @@ export class Fight {
       }
     }
     const patch = target ?? this.burnPatches[0]!;
-    patch.position.copy(pos).setY(0.02);
+    this.space.reachable(this.a.copy(from).setY(PATCH_PROBE_Y), this.b.copy(pos).setY(PATCH_PROBE_Y), 0.3, patch.position).setY(0.02);
     patch.radius = radius ?? balance.combat.burn?.patchRadius ?? 1.25;
     patch.duration = duration ?? (2.4 + Math.random() * 1.2);
     patch.elapsed = 0;
@@ -402,7 +408,9 @@ export class Fight {
         const dx = p.position.x - enemy.controller.position.x;
         const dz = p.position.z - enemy.controller.position.z;
         const maxDist = p.radius + enemy.body.radius;
-        return (dx * dx + dz * dz) <= maxDist * maxDist;
+        if ((dx * dx + dz * dz) > maxDist * maxDist) return false;
+        // Fire on the far side of a wall, pillar or TERRA wall does not reach.
+        return this.space.clear(this.a.copy(p.position).setY(PATCH_PROBE_Y), this.b.copy(enemy.controller.position).setY(enemy.controller.position.y + PATCH_PROBE_Y), 0.05);
       });
 
       let burn = this.villainBurns.get(enemy);

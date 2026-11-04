@@ -21,7 +21,7 @@ import { BendingEffects, type BendingType } from './bending-fx.js';
 import { OpeningFlow, getStoredDrawing, type DrawingResult } from './opening.js';
 import { ConsentBanner } from './consent.js';
 import type { Enemy } from './enemy.js';
-import { createCombatRules, ELEMENTS, isBendMove, type BendMoveId, type CombatBalance, type Element, type Kit } from '../../shared/src/index.js';
+import { createCombatRules, ELEMENTS, isBendMove, type BendMoveId, type CombatBalance, type Element, type Kit, type MoveId } from '../../shared/src/index.js';
 import { BendState, type BendRefusal } from './bend-state.js';
 import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
@@ -31,6 +31,7 @@ import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { CombatSpace } from './attacks/space.js';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -205,6 +206,7 @@ async function main(): Promise<void> {
     );
     setTimeout(() => { if (!disposed) physics.world.removeCollider(collider, false); }, seconds * 1000);
   };
+  elementFx.space = new CombatSpace(physics.world);
   // Wind and water douse / extinguish fire
   elementFx.onExtinguish = (pos, radius) => {
     bending.extinguishAt(pos, radius);
@@ -223,7 +225,7 @@ async function main(): Promise<void> {
   const bending = new BendingEffects(scene);
   cleanup.push(() => bending.dispose());
   bending.onFireballImpact = (pos, elem, hostile) => {
-    if (!hostile) fight.spawnBurnPatch(pos, 1.35, 3.2, toElement(elem));
+    if (!hostile) fight.spawnBurnPatch(pos, pos, 1.35, 3.2, toElement(elem));
   };
 
   const fightHud = new FightHud();
@@ -263,16 +265,12 @@ async function main(): Promise<void> {
         sound.playFireBurst(0.3);
         return;
       }
-      const facing = Math.atan2(p.velocity.x, p.velocity.z);
       if (kitElement === 'IGNIS') {
         bending.spawnFireball(p, isDim ? 'IGNIS' : heroElement);
         sound.playFireBurst(isDim ? 0.2 : 0.4);
-      } else if (isDim) {
-        elementFx.spark(kitElement, controller.position, facing);
-        sound.playFireBurst(0.2);
       } else {
-        elementFx.cast(kitElement, p.move as BendMoveId, controller.position, facing, p.scale);
-        sound.playSwing(1.3, false);
+        elementFx.thrown(kitElement, p, isDim ? 0.55 : p.scale);
+        if (isDim) sound.playFireBurst(0.2); else sound.playSwing(1.3, false);
       }
       shoulderCamera.shake(isDim ? 0.1 : 0.2);
     },
@@ -632,7 +630,7 @@ async function main(): Promise<void> {
       for (const [radius, count] of [[2.5, 6], [5, 10], [7.5, 14]] as const) {
         for (let i = 0; i < count; i++) {
           const a = (i / count) * Math.PI * 2;
-          fight.spawnBurnPatch(controller.position.clone().add(new Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius)), 1.3, 3.5, 'IGNIS');
+          fight.spawnBurnPatch(controller.position.clone().add(new Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius)), controller.position, 1.3, 3.5, 'IGNIS');
         }
       }
       return;
@@ -646,26 +644,26 @@ async function main(): Promise<void> {
         shoulderCamera.shake(0.35);
         const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
         const side = new Vector3(Math.cos(controller.facing), 0, -Math.sin(controller.facing));
-        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 1.8), 1.25, 3.2, toElement(heroElement));
-        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 2.7).addScaledVector(side, 0.7), 1.1, 2.8, toElement(heroElement));
-        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 2.7).addScaledVector(side, -0.7), 1.1, 2.8, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 1.8), controller.position, 1.25, 3.2, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 2.7).addScaledVector(side, 0.7), controller.position, 1.1, 2.8, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 2.7).addScaledVector(side, -0.7), controller.position, 1.1, 2.8, toElement(heroElement));
       } else if (action === 'ground_pound') {
         bending.spawnGroundPound(controller.position, heroElement);
         sound.playGroundPound();
         shoulderCamera.shake(0.35);
-        fight.spawnBurnPatch(controller.position, 1.6, 3.5, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position, controller.position, 1.6, 3.5, toElement(heroElement));
       } else if (action === 'uppercut') {
         const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
         const pillarPos = controller.position.clone().addScaledVector(forward, 1.2);
         bending.spawnUppercutPillar(pillarPos, heroElement);
         sound.playFireBurst(0.35);
         shoulderCamera.shake(0.25);
-        fight.spawnBurnPatch(pillarPos, 1.3, 3.2, toElement(heroElement));
+        fight.spawnBurnPatch(pillarPos, controller.position, 1.3, 3.2, toElement(heroElement));
       } else {
         // Dash strike
         bending.spawnSlashWave(controller.position, controller.facing, heroElement, true);
         sound.playFireBurst(0.3);
-        fight.spawnBurnPatch(controller.position, 1.2, 2.8, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position, controller.position, 1.2, 2.8, toElement(heroElement));
       }
     } else if (fightingStyle === 'legs') {
       sound.playSwing(0.9, action === 'heavy');
@@ -674,11 +672,13 @@ async function main(): Promise<void> {
       if (isLit) {
         if (heroElement === 'IGNIS') {
           bending.spawnLegKickArc(controller.position, kickingFoot, controller.facing, action === 'heavy');
-          fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, action === 'heavy' ? 2.2 : 1.4), action === 'heavy' ? 1.35 : 1.05, action === 'heavy' ? 3.2 : 2.2, 'IGNIS');
+          fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, action === 'heavy' ? 2.2 : 1.4), controller.position, action === 'heavy' ? 1.35 : 1.05, action === 'heavy' ? 3.2 : 2.2, 'IGNIS');
           sound.playFireBurst(action === 'heavy' ? 0.35 : 0.25);
           shoulderCamera.shake(action === 'heavy' ? 0.28 : 0.15);
         } else {
-          elementFx.castKick(kitElement, bendMove ?? (action === 'heavy' ? 'bend_sweep' : 'bend_palm'), controller.position, kickingFoot, controller.facing, action === 'heavy', strength);
+          let reach = 2.2;
+          try { reach = rules.moveFor(combat.current as MoveId, fight.kit).reach; } catch { /* not a rules move */ }
+          elementFx.castKick(kitElement, bendMove ?? (action === 'heavy' ? 'bend_sweep' : 'bend_palm'), controller.position, kickingFoot, controller.facing, action === 'heavy', strength, reach);
           if (kitElement === 'TERRA') sound.playGroundPound();
           else sound.playSwing(1.3, action === 'heavy');
           shoulderCamera.shake(action === 'heavy' ? 0.3 : 0.15);
@@ -690,7 +690,7 @@ async function main(): Promise<void> {
         const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
         bending.spawnSwingFireSpew(controller.position, controller.facing, 'IGNIS', action === 'heavy');
         if (action === 'heavy' || action === 'ground_pound') {
-          fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 1.4), 1.15, 2.6, 'IGNIS');
+          fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 1.4), controller.position, 1.15, 2.6, 'IGNIS');
         }
       }
     } else {
@@ -701,14 +701,14 @@ async function main(): Promise<void> {
           bending.spawnGroundPound(controller.position, heroElement);
           sound.playGroundPound();
           shoulderCamera.shake(0.35);
-          fight.spawnBurnPatch(controller.position, 1.6, 3.4, toElement(heroElement));
+          fight.spawnBurnPatch(controller.position, controller.position, 1.6, 3.4, toElement(heroElement));
         } else if (action === 'uppercut') {
           const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
           const pillarPos = controller.position.clone().addScaledVector(forward, 1.2);
           bending.spawnUppercutPillar(pillarPos, heroElement);
           sound.playFireBurst(0.35);
           shoulderCamera.shake(0.25);
-          fight.spawnBurnPatch(pillarPos, 1.3, 3.2, toElement(heroElement));
+          fight.spawnBurnPatch(pillarPos, controller.position, 1.3, 3.2, toElement(heroElement));
         } else {
           // Slash wave
           bending.spawnSlashWave(controller.position, controller.facing, heroElement, action === 'heavy' || action === 'dash');
@@ -718,7 +718,7 @@ async function main(): Promise<void> {
             const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
             const spewPos = controller.position.clone().addScaledVector(forward, action === 'heavy' ? 2.2 : 1.6);
             bending.spawnSwingFireSpew(controller.position, controller.facing, heroElement, action === 'heavy');
-            fight.spawnBurnPatch(spewPos, action === 'heavy' ? 1.35 : 1.1, action === 'heavy' ? 3.4 : 2.5, 'IGNIS');
+            fight.spawnBurnPatch(spewPos, controller.position, action === 'heavy' ? 1.35 : 1.1, action === 'heavy' ? 3.4 : 2.5, 'IGNIS');
           }
         }
       }

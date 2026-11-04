@@ -25,6 +25,16 @@ export class CombatSpace {
     return hit ? hit.time_of_impact : null;
   }
 
+  /**
+   * The furthest point from→to a ball of `radius` reaches before the world stops it: `to` itself
+   * when the way is clear. Things placed away from their caster land here, never behind a wall.
+   */
+  reachable(from: Vector3, to: Vector3, radius = 0.1, out = new Vector3()): Vector3 {
+    const hit = this.obstruction(from, to, radius);
+    if (hit === null) return out.copy(to);
+    return out.copy(to).sub(from).normalize().multiplyScalar(hit).add(from);
+  }
+
   /** True when nothing fixed stands between the two points. */
   clear(from: Vector3, to: Vector3, radius = 0.1): boolean {
     return this.obstruction(from, to, radius) === null;
