@@ -276,9 +276,7 @@ async function main(): Promise<void> {
   }
 
   function teleportHero(x: number, z: number, facing: number): void {
-    controller.body.setTranslation({ x, y: controller.position.y, z }, true);
-    controller.position.set(x, controller.position.y, z);
-    controller.previous.copy(controller.position);
+    controller.place(x, controller.position.y, z);
     controller.facing = facing;
     shoulder.yaw = facing + Math.PI;
   }

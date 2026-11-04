@@ -39,9 +39,7 @@ export class Ally {
 
   teleport(x: number, z: number): void {
     const c = this.body.controller;
-    c.body.setTranslation({ x, y: c.position.y, z }, true);
-    c.position.set(x, c.position.y, z);
-    c.previous.copy(c.position);
+    c.place(x, c.position.y, z);
   }
 
   flee(toward: Vector3): void {

@@ -140,3 +140,25 @@ test('orbit clamps pitch and the hero feet point toward model +Z', async () => {
     assert.ok(toe.getWorldPosition(new Vector3()).z > foot.getWorldPosition(new Vector3()).z);
   } finally { physics.dispose(); }
 });
+
+test('in an open zone, shift and place keep the hero standing on the ground; shift stops at walls', async () => {
+  await RAPIER.init();
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  world.createCollider(RAPIER.ColliderDesc.cuboid(50, 0.5, 50).setTranslation(0, -0.5, 0));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(0.5, 3, 5).setTranslation(3, 3, 0));
+  const hero = new HeroController(world, { x: 0, z: 0 }, undefined, false);
+  try {
+    for (let i = 0; i < 30; i++) hero.step(move(), 0);
+    const standing = hero.body.translation().y;
+    close(hero.position.y, 0, 0.05);
+    hero.shift(0.7, 0);
+    close(hero.body.translation().y, standing, 0.02);
+    close(hero.position.x, 0.7, 0.02);
+    hero.shift(5, 0);
+    assert.ok(hero.position.x < 2.5 - balance.controller.radius + 0.05, `wall stops the shift at ${hero.position.x}`);
+    hero.place(-4, 0, 2);
+    close(hero.body.translation().y, standing, 0.02);
+    for (let i = 0; i < 30; i++) hero.step(move(), 0);
+    close(hero.position.y, 0, 0.05);
+  } finally { hero.dispose(); world.free(); }
+});

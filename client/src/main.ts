@@ -479,9 +479,7 @@ async function main(): Promise<void> {
       const dist = Math.hypot(targetDx, targetDz);
       if (dist > 1.3 && dist < 3.8) {
         const step = Math.min(dist - 1.25, 0.7);
-        controller.position.x += (targetDx / dist) * step;
-        controller.position.z += (targetDz / dist) * step;
-        controller.body.setTranslation({ x: controller.position.x, y: controller.position.y, z: controller.position.z }, true);
+        controller.shift((targetDx / dist) * step, (targetDz / dist) * step);
       }
     }
   };
@@ -1019,8 +1017,7 @@ async function main(): Promise<void> {
       combat.reset();
       fightHud.say('');
       if (zone) {
-        controller.body.setTranslation({ x: SPAWN.x, y: 0.92, z: SPAWN.z }, true);
-        controller.position.set(SPAWN.x, 0, SPAWN.z);
+        controller.place(SPAWN.x, 0, SPAWN.z);
         controller.facing = SPAWN.facing;
         shoulderCamera.yaw = SPAWN.facing + Math.PI;
       }

@@ -109,6 +109,30 @@ export class HeroController {
     this.sync();
   }
 
+  /**
+   * Puts the body at a spot at once (spawn, respawn, a room change). y is the feet's height, like position.y;
+   * the body itself is held by its centre, half a height above.
+   */
+  place(x: number, y: number, z: number): void {
+    this.body.setTranslation({ x, y: y + tuning.height / 2 + tuning.skin, z }, true);
+    this.world.propagateModifiedBodyPositionsToColliders();
+    this.verticalVelocity = 0;
+    this.sync();
+    this.previous.copy(this.position);
+  }
+
+  /** Moves the body by (dx, dz) at once through the same collision checks as walking: walls and ground stop it. */
+  shift(dx: number, dz: number): void {
+    const from = this.body.translation();
+    this.character.computeColliderMovement(this.collider, { x: dx, y: 0, z: dz });
+    const m = this.character.computedMovement();
+    this.body.setTranslation({ x: from.x + m.x, y: from.y + m.y, z: from.z + m.z }, true);
+    // The collider follows now, so a second move before the next step starts from here.
+    this.world.propagateModifiedBodyPositionsToColliders();
+    this.previous.copy(this.position);
+    this.sync();
+  }
+
   private sync(): void {
     const position = this.body.translation();
     this.position.set(position.x, position.y - tuning.height / 2 - tuning.skin, position.z);
