@@ -29,6 +29,7 @@ import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
 import { TownEconomy } from './economy/town-economy.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
+import { SindrLifeSystem } from './life/index.js';
 import { Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { ClientRobberGang } from './agents/outlaws/robberGang.js';
@@ -72,7 +73,7 @@ async function main(): Promise<void> {
   const inTown = new URLSearchParams(window.location.search).has('town');
   const params = new URLSearchParams(window.location.search);
   const forcedElement = ELEMENTS.find(e => e === params.get('element')?.toUpperCase() || e === params.get('nation')?.toUpperCase()) ?? null;
-  const forcedHush = params.has('hush');
+  const forcedHush = params.has('hush') || params.has('dim');
   const storedChoice = lastFighter();
   const initialChoice: Element = forcedElement || (storedChoice && 'element' in storedChoice ? storedChoice.element : null) || 'IGNIS';
   const isFullMoon = params.get('moon') === 'full';
@@ -132,7 +133,7 @@ async function main(): Promise<void> {
 
   /** Set once the fight exists, so a Drawing result arriving later updates the style too. */
   let refreshStyle: (() => void) | null = null;
-  // Test flags: ?element=AQUES picks the element, ?hush plays a Hush, ?tier=N sets the tier (default 5: every move open, no extra strength).
+  // Test flags: ?element=AQUES picks the element, ?dim (or ?hush) plays a Dim, ?tier=N sets the tier (default 5: every move open, no extra strength).
   // Online, the server owns every enemy: no local spawns that other players can't see.
   const playingOnline = params.has('online');
   const tier = Math.max(1, Math.min(7, Number(params.get('tier')) || 5));
@@ -161,8 +162,10 @@ async function main(): Promise<void> {
   }
   const consent = new ConsentBanner();
   cleanup.push(() => consent.dispose());
+  let lifeSystem: SindrLifeSystem | null = null;
+  let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -340,7 +343,29 @@ async function main(): Promise<void> {
   if (startRound > 1) fight.setRound(startRound);
   if (zone) { fight.stopWaves(); fightHud.say(''); }
   let yardSpawned = false;
+  if (zone) {
+    lifeSystem = new SindrLifeSystem({
+      scene,
+      camera,
+      controller,
+      clock: zone.clock,
+      sound,
+      getPlayerContext: () => ({
+        name: 'Traveler',
+        isLit: !isDim,
+        role: isDim ? 'Hush' : 'Shaper',
+        element: isDim ? 'NONE' : kitElement,
+        carriedItemsCount: townEconomy?.carried?.weight ?? 0,
+        redFlags: 0,
+        hasBounty: false,
+      }),
+      onNotice: (msg) => notice(msg),
+    });
+    cleanup.push(() => lifeSystem?.dispose());
+  }
+
   input.onInteract = () => {
+    if (lifeSystem && lifeSystem.handleInteract()) return true;
     townEconomy?.interact();
   };
 
@@ -473,7 +498,7 @@ async function main(): Promise<void> {
     setTimeout(() => { if (fight.heroAlive && !fight.isVictory) fightHud.say(''); }, 1600);
   };
   // Loot, the market stalls and death drops, held by the server. Sindr is an IGNIS town.
-  const townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', { notice }) : null;
+  townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', { notice }) : null;
   cleanup.push(() => townEconomy?.dispose());
   const applyStyle = (): void => {
     fightingStyle = armedWith === 'weapon' ? 'weapon' : armedWith === 'legs' ? 'legs' : (isLit ? 'bending' : 'bare_hands');
@@ -512,7 +537,7 @@ async function main(): Promise<void> {
     return allowed === 'any' || (Array.isArray(allowed) && allowed.includes(fight.kit.weapon));
   };
   const setBending = (on: boolean): void => {
-    if (on && isDim) { notice('The Dim cannot bend'); return; }
+    if (on && isDim) { notice('The Hush cannot bend'); return; }
     isLit = on;
     if (on) sound.playFireBurst(0.35);
     const sheathed = on && armedWith === 'weapon' && !bendsArmed();
@@ -1143,7 +1168,11 @@ async function main(): Promise<void> {
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, supply);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
-    sound.update(delta, camera, controller, fight.enemies, sword);
+    lifeSystem?.update(delta);
+    sound.update(delta, camera, controller, fight.enemies, sword, zone ? {
+      minute: zone.clock.minute,
+      playerPos: controller.position,
+    } : undefined);
     fps?.tick();
     arena.render();
   });
