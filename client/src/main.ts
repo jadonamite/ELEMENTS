@@ -11,7 +11,7 @@ import { FixedStepper, HeroController, locomotionForSpeed, movementVelocity, tur
 import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
 import { Combat, strikeKind, type CombatAction, type FightingStyle } from './combat.js';
-import { loadEnemyTemplate, type VillainKind } from './enemy.js';
+import { loadEnemyTemplate, villainLooks, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
 import { inFront } from './hits.js';
 import { FightHud, type RoundHudInfo } from './hud.js';
@@ -100,6 +100,8 @@ async function main(): Promise<void> {
   const initialBoneRotations = new Map<string, { x: number; y: number; z: number }>();
   let wasWindskiffActive = false;
   const villains = loadEnemyTemplate();
+  // Every villain look is ready to draw before the first challenger or ambush shows.
+  if (zone) void villains.then((t) => Promise.all(villainLooks(t).map((look) => zone.warm(look)))).catch(console.error);
   try {
     hero = await loadHero();
     for (const name of windskiffBones) {

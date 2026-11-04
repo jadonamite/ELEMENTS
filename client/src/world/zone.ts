@@ -16,6 +16,7 @@ import {
   LineSegments,
   Matrix4,
   Mesh,
+  Object3D,
   PCFShadowMap,
   PerspectiveCamera,
   PMREMGenerator,
@@ -49,6 +50,7 @@ import { LOOKS, SurfaceLibrary, worldUv, type Surface } from './materials.js';
 import { buildSindr, PEAKS, WALKABLE } from './sindr.js';
 import { createPlants } from './trees.js';
 import { installHaze } from './haze.js';
+import { warm } from './warmup.js';
 import { buildGorge } from './gorge.js';
 import { buildBarrens } from './barrens.js';
 import { buildFort } from './fort.js';
@@ -64,6 +66,8 @@ export interface Zone {
   renderer: WebGLRenderer;
   physics: PhysicsWorld;
   clock: WorldClock;
+  /** Readies something that will appear during play (a villain, an effect) so its first frame does not stall. */
+  warm(object: Object3D): Promise<void>;
   /** The point the shadows and the nearest lights follow, usually the hero. */
   follow(point: Vector3): void;
   setSize(width: number, height: number): void;
@@ -253,15 +257,19 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const pool = new LightPool(scene, builder.emitters, low ? 4 : 8);
 
   // Kit models placed as instances, one draw call per model part.
+  // They load after the town stands; they join it only once warmed, so walking into them never stalls a frame.
   const props = new Group();
-  scene.add(props);
-  void loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron'));
+  void loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron'))
+    .then(() => warmUp(props))
+    .then(() => scene.add(props));
 
   // Post: sanitize first (stops NaN black frames), bloom for fire and slag, grade, then anti-aliasing.
   const composer = new EffectComposer(renderer);
   composer.renderTarget1.texture.type = HalfFloatType;
   composer.renderTarget2.texture.type = HalfFloatType;
   composer.addPass(new RenderPass(scene, camera));
+  /** Readies an object to draw the way the scene pass draws it, before it first shows. */
+  const warmUp = (object: Object3D): Promise<void> => warm(renderer, scene, camera, object, composer.renderTarget1);
   composer.addPass(new ShaderPass(SANITIZE_SHADER));
   const bloom = new UnrealBloomPass(new Vector2(640, 360), 0.55, 0.6, 0.85);
   composer.addPass(bloom);
@@ -278,6 +286,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     scene, camera, renderer, clock,
     physics: { world, step: () => world.step(), dispose: () => world.free() },
     follow(point) { followed = point; },
+    warm: warmUp,
     setSize(w, h) {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
       renderer.setSize(w, h, false);

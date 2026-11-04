@@ -58,6 +58,34 @@ export interface EnemyTemplate {
   weapons: Record<string, Object3D>;
 }
 
+/**
+ * A villain's body as it is drawn in a fight: its own copy of every material, so a hit flash stays on the
+ * villain that was hit, glowing along its cloth and skin texture. The copies are pushed into `materials`.
+ */
+export function dressVillain(source: Group, materials: MeshStandardMaterial[] = []): Group {
+  const model = cloneSkinned(source) as Group;
+  model.traverse((node) => {
+    const mesh = node as Mesh;
+    if (!mesh.isMesh) return;
+    const from = mesh.material as MeshStandardMaterial;
+    const material = from.clone();
+    // clone() drops the skin shader hook, so carry it over.
+    material.onBeforeCompile = from.onBeforeCompile;
+    material.customProgramCacheKey = from.customProgramCacheKey;
+    material.emissiveMap = material.map;
+    mesh.material = material;
+    materials.push(material);
+  });
+  return model;
+}
+
+/** Every look a villain can have (each body, each weapon) as drawn in a fight, for warming before the first one shows. */
+export function villainLooks(template: EnemyTemplate): Group[] {
+  return [...template.variants.map((v) => dressVillain(v.model)), ...Object.values(template.weapons).map((w) => {
+    const g = new Group(); g.add(w.clone()); return g;
+  })];
+}
+
 /** The husk set from enemy.glb, renamed so it never collides with the human clips. */
 function huskClips(clips: AnimationClip[]): AnimationClip[] {
   return clips.map((clip) => {
@@ -162,21 +190,7 @@ export class Enemy {
     const variant = template.variants[Math.floor(Math.random() * template.variants.length)]!;
     this.kind = kind;
     this.fit = KINDS[kind];
-    this.model = cloneSkinned(variant.model);
-    // Each enemy owns its materials so a hit flash stays on the enemy that was hit.
-    this.model.traverse((node) => {
-      const mesh = node as Mesh;
-      if (!mesh.isMesh) return;
-      const source = mesh.material as MeshStandardMaterial;
-      const material = source.clone();
-      // clone() drops the skin shader hook, so carry it over.
-      material.onBeforeCompile = source.onBeforeCompile;
-      material.customProgramCacheKey = source.customProgramCacheKey;
-      // Glow follows the cloth and skin texture, so a lit villain keeps its detail.
-      material.emissiveMap = material.map;
-      mesh.material = material;
-      this.materials.push(material);
-    });
+    this.model = dressVillain(variant.model, this.materials);
     this.anim = new AnimationPlayer(this.model, variant.clips, { defaultFadeDuration: 0.2 });
     this.controller = new HeroController(world, spawn, { ...tuning, walkSpeed: this.fit.walkSpeed, runSpeed: this.fit.runSpeed }, bounded);
     this.health = { current: maxHealth, maximum: maxHealth };
