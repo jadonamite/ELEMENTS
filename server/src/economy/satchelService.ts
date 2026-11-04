@@ -7,7 +7,7 @@ import { getDatabase } from '../db.js';
 // where the items came from and went (a pile, a merchant, the world, another player).
 
 export type ItemReason =
-  'loot_claim' | 'merchant_buy' | 'merchant_sell' | 'shop_stock' | 'death_drop' | 'grant';
+  'loot_claim' | 'merchant_buy' | 'merchant_sell' | 'shop_stock' | 'death_drop' | 'grant' | 'trade';
 
 let savepointCounter = 0;
 

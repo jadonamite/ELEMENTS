@@ -4,6 +4,8 @@
  */
 export interface KillReport {
   zone: string;
+  /** The ZoneWorld the kill happened in; two rooms can run the same zone. */
+  worldId: string;
   enemyId: string;
   /** 'hound' is a monster; 'brawler' and 'armed' are villains. */
   kind: string;

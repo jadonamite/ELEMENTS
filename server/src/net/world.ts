@@ -140,7 +140,11 @@ export type WorldEvent =
  * One zone's truth: who is where, every enemy's body and health, and every hit.
  * The room feeds it messages and ticks and sends out what it returns.
  */
+let worldCount = 0;
+
 export class ZoneWorld {
+  /** Tells this world apart from another room running the same zone. */
+  readonly id = `world-${++worldCount}`;
   readonly players = new Map<string, ServerPlayer>();
   readonly enemies = new Map<string, ServerEnemy>();
   readonly layout;
@@ -189,6 +193,7 @@ export class ZoneWorld {
       events.push({ type: 'enemy_died', e: enemy.id, by: id, x: enemy.x, z: enemy.z });
       const report: KillReport = {
         zone: this.zone,
+        worldId: this.id,
         enemyId: enemy.id,
         kind: enemy.kind,
         x: enemy.x,
