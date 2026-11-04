@@ -11,6 +11,10 @@ import { WaypointMarker } from '../story/waypoint-marker.js';
 import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
 import { LeadManager, type Lead } from '../../../shared/src/story/leads.js';
 import { createDialogueMemory, type DialogueMemory, type PlayerDialogueContext } from '../../../shared/src/story/dialogue.js';
+import type { ContextOffer } from '../ui/context-action.js';
+
+/** How near a townsperson stands to be talked to, metres. */
+const TALK_REACH = 3.5;
 
 
 export interface SindrLifeOptions {
@@ -36,6 +40,7 @@ export class SindrLifeSystem {
   readonly dialogueMemory: DialogueMemory;
 
   private scene: Scene;
+  private readonly offerAt = new Vector3();
   private camera: Camera;
   private controller: HeroController;
   private clock: WorldClock;
@@ -93,16 +98,29 @@ export class SindrLifeSystem {
       this.onNotice(`Lead Completed: ${completedLead.title} (+${completedLead.rewardChroma} CHROMA)`);
     }
 
-    // 4. Update interaction prompt
-    const nearestNpc = this.townManager.getNearestTownsperson(heroPos, 3.2);
-    this.dialogueUI.updatePrompt(nearestNpc);
+  }
+
+  /** Talking to the nearest townsperson is what the context key does, while no talk is open. */
+  contextOffer(): ContextOffer | null {
+    if (this.dialogueUI.isOpen()) return null;
+    const npc = this.townManager.getNearestTownsperson(this.controller.position, TALK_REACH);
+    if (!npc) return null;
+    const p = npc.position;
+    return { verb: `Talk to ${npc.data.name}`, at: this.offerAt.set(p.x, p.y + 2.1, p.z), act: () => this.handleInteract() };
+  }
+
+  /** Closes an open talk; false when none is open. */
+  closeTalk(): boolean {
+    if (!this.dialogueUI.isOpen()) return false;
+    this.dialogueUI.close();
+    return true;
   }
 
   handleInteract(): boolean {
     const heroPos = this.controller.position;
 
     // Check if near NPC
-    const nearestNpc = this.townManager.getNearestTownsperson(heroPos, 3.5);
+    const nearestNpc = this.townManager.getNearestTownsperson(heroPos, TALK_REACH);
     if (nearestNpc) {
       const playerCtx = this.getPlayerContext();
       this.dialogueUI.interact(playerCtx, nearestNpc);

@@ -253,35 +253,3 @@
 @media (max-width: 40rem) {
   .shop-window { place-items: end stretch; padding: var(--space-3); }
 }
-
-.shop-hint {
-  position: fixed;
-  left: 50%;
-  bottom: 22%;
-  transform: translateX(-50%);
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  background: rgba(18, 14, 14, 0.78);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-full);
-  font-family: var(--font-family-body);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
-  pointer-events: none;
-}
-
-.shop-hint[hidden] {
-  display: none;
-}
-
-.shop-hint kbd {
-  min-width: 1.5rem;
-  padding: 0 var(--space-1);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-family-body);
-  text-align: center;
-}

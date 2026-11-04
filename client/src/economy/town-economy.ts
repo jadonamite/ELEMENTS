@@ -1,5 +1,6 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
-import type { Scene, Vector3 } from 'three';
+import { type Scene, Vector3 } from 'three';
+import type { ContextOffer } from '../ui/context-action.js';
 import {
   claimStartingPurse,
   economyAvailable,
@@ -42,8 +43,9 @@ export class TownEconomy {
   private accountId: string | null = null;
   private readonly loot: WorldLoot | null = null;
   private readonly shop: ShopWindow | null = null;
-  private readonly hint: HTMLDivElement;
   private nearStall: string | null = null;
+  private stallAt: Vector3 | null = null;
+  private readonly offerAt = new Vector3();
   private standingNow: Standing = { redFlags: 0, hasBounty: false };
   private door: MoneyDoor = httpDoor;
   /** True once the server has told us the purse at least once. */
@@ -57,10 +59,6 @@ export class TownEconomy {
     private readonly events: TownEconomyEvents,
   ) {
     this.enabled = economyAvailable();
-    this.hint = document.createElement('div');
-    this.hint.className = 'shop-hint';
-    this.hint.hidden = true;
-    document.body.appendChild(this.hint);
     if (!this.enabled) return;
 
     this.loot = new WorldLoot(scene, world, zone, {
@@ -98,11 +96,13 @@ export class TownEconomy {
     this.loot?.update(dt, hero);
     const stall = placesFor(this.zone).stalls.find((s) => Math.hypot(hero.x - s.x, hero.z - s.z) < PLACE_REACH);
     this.nearStall = stall?.id ?? null;
-    const show = this.nearStall !== null && !this.shopOpen;
-    if (this.hint.hidden === show) {
-      this.hint.hidden = !show;
-      if (show) this.hint.innerHTML = '<kbd>C</kbd> Trade at this stall';
-    }
+    this.stallAt = stall ? this.offerAt.set(stall.x, hero.y + 1.6, stall.z) : null;
+  }
+
+  /** Trading at the stall the player stands at is what the context key does. */
+  contextOffer(): ContextOffer | null {
+    if (!this.enabled || !this.nearStall || !this.stallAt || this.shopOpen) return null;
+    return { verb: 'Trade', at: this.stallAt, act: () => { this.interact(); } };
   }
 
   // The interact key. Returns true when it opened a shop.
@@ -168,7 +168,6 @@ export class TownEconomy {
   dispose(): void {
     this.loot?.dispose();
     this.shop?.dispose();
-    this.hint.remove();
   }
 
   private async start(): Promise<void> {

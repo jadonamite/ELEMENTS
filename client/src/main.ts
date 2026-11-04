@@ -27,6 +27,7 @@ import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
 import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
 import { TownEconomy } from './economy/town-economy.js';
+import { ContextAction } from './ui/context-action.js';
 import { StreetChallenges } from './life/street-challenges.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
@@ -368,11 +369,14 @@ async function main(): Promise<void> {
     cleanup.push(() => lifeSystem?.dispose());
   }
 
-  input.onInteract = () => {
-    if (streetChallenges?.accept()) return true;
-    if (lifeSystem && lifeSystem.handleInteract()) return true;
-    townEconomy?.interact();
-  };
+  // The context key: what is offered where the player stands, shown over that thing.
+  const contextAction = new ContextAction([
+    () => streetChallenges?.contextOffer() ?? null,
+    () => townEconomy?.contextOffer() ?? null,
+    () => lifeSystem?.contextOffer() ?? null,
+  ], camera);
+  cleanup.push(() => contextAction.dispose());
+  input.onInteract = () => contextAction.interact() || (lifeSystem?.closeTalk() ?? false);
 
   input.onDuelToggle = () => {
     if (playingOnline) return;
@@ -1197,6 +1201,7 @@ async function main(): Promise<void> {
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     lifeSystem?.update(delta);
+    contextAction.update();
     sound.update(delta, camera, controller, fight.enemies, sword, zone ? {
       minute: zone.clock.minute,
       playerPos: controller.position,

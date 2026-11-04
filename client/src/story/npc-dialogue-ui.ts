@@ -9,7 +9,6 @@ import type { LeadManager, Lead } from '../../../shared/src/story/leads.js';
 import dialogueData from '../../../shared/dialogue.json';
 
 export class NpcDialogueUI {
-  private promptEl: HTMLElement;
   private dialogueEl: HTMLElement;
   private currentNpc: LiveTownsperson | null = null;
   private open = false;
@@ -20,12 +19,6 @@ export class NpcDialogueUI {
     private leadManager: LeadManager,
     private onLeadPurchased?: (lead: Lead) => void,
   ) {
-    this.promptEl = document.createElement('div');
-    this.promptEl.id = 'npc-prompt';
-    this.promptEl.className = 'npc-interaction-prompt';
-    this.promptEl.style.display = 'none';
-    document.body.appendChild(this.promptEl);
-
     this.dialogueEl = document.createElement('div');
     this.dialogueEl.id = 'npc-dialogue-box';
     this.dialogueEl.className = 'npc-dialogue-card';
@@ -39,31 +32,6 @@ export class NpcDialogueUI {
     const style = document.createElement('style');
     style.id = 'life-story-styles';
     style.textContent = `
-      .npc-interaction-prompt {
-        position: fixed;
-        bottom: 80px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(22, 20, 24, 0.88);
-        border: 1px solid rgba(220, 160, 80, 0.4);
-        padding: 8px 18px;
-        color: #e8e2d8;
-        font-family: sans-serif;
-        font-size: 14px;
-        letter-spacing: 0.05em;
-        pointer-events: none;
-        z-index: 100;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-      }
-      .npc-interaction-prompt kbd {
-        background: #3a2c20;
-        border: 1px solid #c88832;
-        color: #ffaa33;
-        padding: 2px 6px;
-        border-radius: 3px;
-        margin-right: 6px;
-        font-weight: bold;
-      }
       .npc-dialogue-card {
         position: fixed;
         bottom: 110px;
@@ -179,24 +147,6 @@ export class NpcDialogueUI {
     document.head.appendChild(style);
   }
 
-  updatePrompt(nearestNpc: LiveTownsperson | null): void {
-    if (this.open) {
-      this.promptEl.style.display = 'none';
-      return;
-    }
-
-    if (nearestNpc) {
-      this.currentNpc = nearestNpc;
-      const roleName = nearestNpc.data.role.charAt(0).toUpperCase() + nearestNpc.data.role.slice(1);
-      const nationRole = nearestNpc.data.isLit ? 'Lit Shaper' : 'Hush Crafter';
-      this.promptEl.innerHTML = `<kbd>E</kbd> Talk to ${nearestNpc.data.name} (${roleName} - ${nationRole})`;
-      this.promptEl.style.display = 'block';
-    } else {
-      this.currentNpc = null;
-      this.promptEl.style.display = 'none';
-    }
-  }
-
   isOpen(): boolean {
     return this.open;
   }
@@ -215,7 +165,6 @@ export class NpcDialogueUI {
   openDialogue(npc: LiveTownsperson, player: PlayerDialogueContext, eventType = 'greeting'): void {
     this.currentNpc = npc;
     this.open = true;
-    this.promptEl.style.display = 'none';
 
     // Pick line from dialogue table
     const result = pickDialogueLine(
@@ -299,7 +248,6 @@ export class NpcDialogueUI {
   }
 
   dispose(): void {
-    this.promptEl.remove();
     this.dialogueEl.remove();
     document.getElementById('life-story-styles')?.remove();
   }

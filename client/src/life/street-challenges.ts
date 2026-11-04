@@ -1,6 +1,7 @@
 import { Vector3 } from 'three';
 import type { CombatSpace } from '../attacks/space.js';
 import type { Enemy } from '../enemy.js';
+import type { ContextOffer } from '../ui/context-action.js';
 
 /** Quiet seconds in the streets before the first challenge, and between challenges. */
 const FIRST_CHALLENGE = 40;
@@ -39,6 +40,7 @@ export class StreetChallenges {
   private phase: Phase = 'waiting';
   private wait = FIRST_CHALLENGE;
   private challenger: Enemy | null = null;
+  private readonly offerAt = new Vector3();
   private fighters: Enemy[] = [];
   private fightTime = 0;
   private gangCalled = false;
@@ -49,6 +51,13 @@ export class StreetChallenges {
   constructor(private readonly o: StreetChallengeOptions) {}
 
   /** E while a challenge stands: accept it. */
+  /** While a challenger waits: accepting is what the context key does. */
+  contextOffer(): ContextOffer | null {
+    if (this.phase !== 'offered' || !this.challenger) return null;
+    const p = this.challenger.controller.position;
+    return { verb: 'Accept the challenge', at: this.offerAt.set(p.x, p.y + 2.1, p.z), act: () => this.accept() };
+  }
+
   accept(): boolean {
     if (this.phase !== 'offered' || !this.challenger) return false;
     this.startFight();
@@ -98,7 +107,7 @@ export class StreetChallenges {
     this.challenger = challenger;
     this.fighters = [challenger];
     this.phase = 'offered';
-    this.o.notice('A cutthroat of the Sindr Alley gang calls you out. [E] Accept, or walk away.');
+    this.o.notice('A cutthroat of the Sindr Alley gang calls you out. Accept, or walk away.');
   }
 
   private startFight(): void {
