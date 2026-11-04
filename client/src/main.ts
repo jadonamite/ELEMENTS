@@ -225,7 +225,7 @@ async function main(): Promise<void> {
   const bending = new BendingEffects(scene);
   cleanup.push(() => bending.dispose());
   bending.onFireballImpact = (pos, elem, hostile) => {
-    if (!hostile) fight.spawnBurnPatch(pos, 1.35, 3.2, toElement(elem));
+    if (!hostile) fight.spawnBurnPatch(pos, pos, 1.35, 3.2, toElement(elem));
   };
 
   const fightHud = new FightHud();
@@ -630,7 +630,7 @@ async function main(): Promise<void> {
       for (const [radius, count] of [[2.5, 6], [5, 10], [7.5, 14]] as const) {
         for (let i = 0; i < count; i++) {
           const a = (i / count) * Math.PI * 2;
-          fight.spawnBurnPatch(controller.position.clone().add(new Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius)), 1.3, 3.5, 'IGNIS');
+          fight.spawnBurnPatch(controller.position.clone().add(new Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius)), controller.position, 1.3, 3.5, 'IGNIS');
         }
       }
       return;
@@ -644,26 +644,26 @@ async function main(): Promise<void> {
         shoulderCamera.shake(0.35);
         const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
         const side = new Vector3(Math.cos(controller.facing), 0, -Math.sin(controller.facing));
-        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 1.8), 1.25, 3.2, toElement(heroElement));
-        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 2.7).addScaledVector(side, 0.7), 1.1, 2.8, toElement(heroElement));
-        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 2.7).addScaledVector(side, -0.7), 1.1, 2.8, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 1.8), controller.position, 1.25, 3.2, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 2.7).addScaledVector(side, 0.7), controller.position, 1.1, 2.8, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 2.7).addScaledVector(side, -0.7), controller.position, 1.1, 2.8, toElement(heroElement));
       } else if (action === 'ground_pound') {
         bending.spawnGroundPound(controller.position, heroElement);
         sound.playGroundPound();
         shoulderCamera.shake(0.35);
-        fight.spawnBurnPatch(controller.position, 1.6, 3.5, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position, controller.position, 1.6, 3.5, toElement(heroElement));
       } else if (action === 'uppercut') {
         const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
         const pillarPos = controller.position.clone().addScaledVector(forward, 1.2);
         bending.spawnUppercutPillar(pillarPos, heroElement);
         sound.playFireBurst(0.35);
         shoulderCamera.shake(0.25);
-        fight.spawnBurnPatch(pillarPos, 1.3, 3.2, toElement(heroElement));
+        fight.spawnBurnPatch(pillarPos, controller.position, 1.3, 3.2, toElement(heroElement));
       } else {
         // Dash strike
         bending.spawnSlashWave(controller.position, controller.facing, heroElement, true);
         sound.playFireBurst(0.3);
-        fight.spawnBurnPatch(controller.position, 1.2, 2.8, toElement(heroElement));
+        fight.spawnBurnPatch(controller.position, controller.position, 1.2, 2.8, toElement(heroElement));
       }
     } else if (fightingStyle === 'legs') {
       sound.playSwing(0.9, action === 'heavy');
@@ -672,7 +672,7 @@ async function main(): Promise<void> {
       if (isLit) {
         if (heroElement === 'IGNIS') {
           bending.spawnLegKickArc(controller.position, kickingFoot, controller.facing, action === 'heavy');
-          fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, action === 'heavy' ? 2.2 : 1.4), action === 'heavy' ? 1.35 : 1.05, action === 'heavy' ? 3.2 : 2.2, 'IGNIS');
+          fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, action === 'heavy' ? 2.2 : 1.4), controller.position, action === 'heavy' ? 1.35 : 1.05, action === 'heavy' ? 3.2 : 2.2, 'IGNIS');
           sound.playFireBurst(action === 'heavy' ? 0.35 : 0.25);
           shoulderCamera.shake(action === 'heavy' ? 0.28 : 0.15);
         } else {
@@ -690,7 +690,7 @@ async function main(): Promise<void> {
         const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
         bending.spawnSwingFireSpew(controller.position, controller.facing, 'IGNIS', action === 'heavy');
         if (action === 'heavy' || action === 'ground_pound') {
-          fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 1.4), 1.15, 2.6, 'IGNIS');
+          fight.spawnBurnPatch(controller.position.clone().addScaledVector(forward, 1.4), controller.position, 1.15, 2.6, 'IGNIS');
         }
       }
     } else {
@@ -701,14 +701,14 @@ async function main(): Promise<void> {
           bending.spawnGroundPound(controller.position, heroElement);
           sound.playGroundPound();
           shoulderCamera.shake(0.35);
-          fight.spawnBurnPatch(controller.position, 1.6, 3.4, toElement(heroElement));
+          fight.spawnBurnPatch(controller.position, controller.position, 1.6, 3.4, toElement(heroElement));
         } else if (action === 'uppercut') {
           const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
           const pillarPos = controller.position.clone().addScaledVector(forward, 1.2);
           bending.spawnUppercutPillar(pillarPos, heroElement);
           sound.playFireBurst(0.35);
           shoulderCamera.shake(0.25);
-          fight.spawnBurnPatch(pillarPos, 1.3, 3.2, toElement(heroElement));
+          fight.spawnBurnPatch(pillarPos, controller.position, 1.3, 3.2, toElement(heroElement));
         } else {
           // Slash wave
           bending.spawnSlashWave(controller.position, controller.facing, heroElement, action === 'heavy' || action === 'dash');
@@ -718,7 +718,7 @@ async function main(): Promise<void> {
             const forward = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
             const spewPos = controller.position.clone().addScaledVector(forward, action === 'heavy' ? 2.2 : 1.6);
             bending.spawnSwingFireSpew(controller.position, controller.facing, heroElement, action === 'heavy');
-            fight.spawnBurnPatch(spewPos, action === 'heavy' ? 1.35 : 1.1, action === 'heavy' ? 3.4 : 2.5, 'IGNIS');
+            fight.spawnBurnPatch(spewPos, controller.position, action === 'heavy' ? 1.35 : 1.1, action === 'heavy' ? 3.4 : 2.5, 'IGNIS');
           }
         }
       }
