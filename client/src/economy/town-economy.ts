@@ -7,21 +7,21 @@ import {
   fetchBalance,
   fetchSatchel,
   fetchStanding,
+  isGuestSession,
   reportBrawlSeen,
   reportDeath,
   reportKill,
 } from './api.js';
 import type { LootPile, Standing } from './api.js';
-import { httpDoor, RoomDoor, type MoneyDoor, type RoomChannel } from './door.js';
+import { CountingHouseWindow } from './counting-house-window.js';
+import { httpDoor, RoomDoor, type MoneyDoor, type RoomChannel, type TradeState } from './door.js';
 import { ShopWindow } from './shop-window.js';
-import { placesFor, PLACE_REACH } from '../../../shared/src/net/index.js';
+import { TradeWindow } from './trade-window.js';
+import { placesFor, PLACE_REACH, TRADE_REACH } from '../../../shared/src/net/index.js';
 import { WorldLoot } from './world-loot.js';
 
 // The money loop in the town: loot that falls where enemies die, picked up by walking over it, sold at
-// the market stalls, and dropped where you fall. All of it is held by the server; this keeps the
-// player's view of their satchel and coin and draws the world side. Offline it talks to the HTTP
-// routes; once the zone room is joined, every move of money goes through the room instead.
-
+// the market stalls, deposited at counting houses, and traded hand-to-hand with other players.
 
 // What each kind of fighter in the town counts as for the loot rules.
 const LOOT_KIND: Record<string, string> = {
@@ -30,6 +30,12 @@ const LOOT_KIND: Record<string, string> = {
   bender: 'soldier',
   husk: 'monster',
 };
+
+export interface NearbyPlayerInfo {
+  id: string;
+  name: string;
+  position: Vector3;
+}
 
 export interface TownEconomyEvents {
   notice(text: string): void;
@@ -41,11 +47,21 @@ export class TownEconomy {
   private items: Record<string, number> = {};
   private coin = 0;
   private accountId: string | null = null;
-  private readonly loot: WorldLoot | null = null;
+  readonly loot: WorldLoot | null = null;
   private readonly shop: ShopWindow | null = null;
+  private readonly countingHouse: CountingHouseWindow | null = null;
+  private readonly tradeWindow: TradeWindow | null = null;
   private nearStall: string | null = null;
   private stallAt: Vector3 | null = null;
+  private nearHouse: string | null = null;
+  private houseAt: Vector3 | null = null;
+  private nearPlayer: NearbyPlayerInfo | null = null;
+  private playerAt: Vector3 | null = null;
+  private incomingTrade: { id: string; name: string; at: Vector3 } | null = null;
+  private getNearbyPlayers: (() => NearbyPlayerInfo[]) | null = null;
   private readonly offerAt = new Vector3();
+  private readonly houseOfferAt = new Vector3();
+  private readonly playerOfferAt = new Vector3();
   private standingNow: Standing = { redFlags: 0, hasBounty: false };
   private door: MoneyDoor = httpDoor;
   /** True once the server has told us the purse at least once. */
@@ -72,6 +88,25 @@ export class TownEconomy {
       changed: () => this.refresh(),
       trade: (action, merchantId, item) => this.door.trade(action, merchantId, item, 1),
     });
+    this.countingHouse = new CountingHouseWindow({
+      coin: () => this.coin,
+      accountId: () => this.accountId,
+      changed: () => this.refresh(),
+      deposit: (houseId, amount) => this.door.deposit(houseId, amount),
+      withdraw: (houseId, noteId) => this.door.withdraw(houseId, noteId),
+      notes: (houseId) => this.door.notes(houseId, this.accountId ?? undefined),
+      isGuest: () => isGuestSession(),
+    });
+    this.tradeWindow = new TradeWindow({
+      coin: () => this.coin,
+      satchel: () => this.items,
+      changed: () => this.refresh(),
+      offer: (partnerId, chroma, items) => this.door.offerTrade(partnerId, chroma, items),
+      accept: () => this.door.acceptTrade(),
+      cancel: () => this.door.cancelTrade(),
+      listen: (handler) => this.door.listenTrade(handler),
+      isGuest: () => isGuestSession(),
+    });
     void this.start();
   }
 
@@ -91,18 +126,76 @@ export class TownEconomy {
     return this.shop?.isOpen ?? false;
   }
 
+  get countingHouseOpen(): boolean {
+    return this.countingHouse?.isOpen ?? false;
+  }
+
+  get tradeOpen(): boolean {
+    return this.tradeWindow?.isOpen ?? false;
+  }
+
+  openCountingHouse(houseId?: string): void {
+    const id = houseId ?? this.nearHouse ?? placesFor(this.zone).countingHouses[0]?.id;
+    if (id) void this.countingHouse?.open(id);
+  }
+
+  openTrade(partnerId: string, partnerName?: string): void {
+    if (this.incomingTrade?.id === partnerId) this.incomingTrade = null;
+    this.tradeWindow?.open(partnerId, partnerName);
+  }
+
   update(dt: number, hero: Vector3): void {
     if (!this.enabled) return;
     this.loot?.update(dt, hero);
-    const stall = placesFor(this.zone).stalls.find((s) => Math.hypot(hero.x - s.x, hero.z - s.z) < PLACE_REACH);
+
+    const places = placesFor(this.zone);
+    const stall = places.stalls.find((s) => Math.hypot(hero.x - s.x, hero.z - s.z) < PLACE_REACH);
     this.nearStall = stall?.id ?? null;
     this.stallAt = stall ? this.offerAt.set(stall.x, hero.y + 1.6, stall.z) : null;
+
+    const house = places.countingHouses.find((h) => Math.hypot(hero.x - h.x, hero.z - h.z) < PLACE_REACH);
+    this.nearHouse = house?.id ?? null;
+    this.houseAt = house ? this.houseOfferAt.set(house.x, hero.y + 1.6, house.z) : null;
+
+    if (this.getNearbyPlayers) {
+      const players = this.getNearbyPlayers();
+      const p = players.find((other) => Math.hypot(hero.x - other.position.x, hero.z - other.position.z) <= TRADE_REACH);
+      this.nearPlayer = p ?? null;
+      this.playerAt = p ? this.playerOfferAt.set(p.position.x, p.position.y + 2.1, p.position.z) : null;
+    } else {
+      this.nearPlayer = null;
+      this.playerAt = null;
+    }
   }
 
-  /** Trading at the stall the player stands at is what the context key does. */
+  /** Trading, banking, or player trade is what the context key does. */
   contextOffer(): ContextOffer | null {
-    if (!this.enabled || !this.nearStall || !this.stallAt || this.shopOpen) return null;
-    return { verb: 'Trade', at: this.stallAt, act: () => { this.interact(); } };
+    if (!this.enabled || this.shopOpen || this.countingHouseOpen || this.tradeOpen) return null;
+
+    if (this.incomingTrade) {
+      return {
+        verb: `Trade with ${this.incomingTrade.name}`,
+        at: this.incomingTrade.at,
+        act: () => {
+          const inc = this.incomingTrade;
+          if (inc) this.openTrade(inc.id, inc.name);
+        },
+      };
+    }
+
+    if (this.nearStall && this.stallAt) {
+      return { verb: 'Trade', at: this.stallAt, act: () => { this.interact(); } };
+    }
+
+    if (this.nearHouse && this.houseAt) {
+      return { verb: 'Counting house', at: this.houseAt, act: () => { this.openCountingHouse(this.nearHouse!); } };
+    }
+
+    if (this.nearPlayer && this.playerAt) {
+      return { verb: `Trade with ${this.nearPlayer.name}`, at: this.playerAt, act: () => { this.openTrade(this.nearPlayer!.id, this.nearPlayer!.name); } };
+    }
+
+    return null;
   }
 
   // The interact key. Returns true when it opened a shop.
@@ -116,8 +209,9 @@ export class TownEconomy {
    * The zone room is joined: from now on it holds this player's money. It pushes the purse and
    * the zone's piles; kills and falls drop on the server without a word from us.
    */
-  goOnline(room: RoomChannel): void {
+  goOnline(room: RoomChannel, getNearbyPlayers?: () => NearbyPlayerInfo[]): void {
     if (!this.enabled) return;
+    this.getNearbyPlayers = getNearbyPlayers ?? null;
     this.door = new RoomDoor(room);
     if (this.loot) this.loot.pollServer = false;
     room.on('purse', (m) => {
@@ -129,6 +223,16 @@ export class TownEconomy {
     room.on('loot', (m) => this.loot?.replace((m as { piles: LootPile[] }).piles));
     room.on('loot_new', (m) => this.loot?.add((m as { pile: LootPile }).pile));
     room.on('loot_gone', (m) => this.loot?.remove((m as { id: string }).id));
+    room.on('trade', (m) => {
+      const s = m as TradeState;
+      if (s.incoming && !this.tradeOpen) {
+        const partnerName = s.incoming.slice(0, 8);
+        const player = this.getNearbyPlayers?.().find((p) => p.id === s.incoming);
+        const at = player ? player.position.clone().setY(player.position.y + 2.1) : this.offerAt.clone();
+        this.incomingTrade = { id: s.incoming, name: partnerName, at };
+        this.events.notice(`Trade offer from ${partnerName}. Press E to trade.`);
+      }
+    });
     room.send('econ_sync', {});
   }
 
@@ -168,9 +272,17 @@ export class TownEconomy {
   dispose(): void {
     this.loot?.dispose();
     this.shop?.dispose();
+    this.countingHouse?.dispose();
+    this.tradeWindow?.dispose();
   }
 
   private async start(): Promise<void> {
+    if (isGuestSession()) {
+      this.coin = 0;
+      this.items = {};
+      this.known = true;
+      return;
+    }
     try {
       await claimStartingPurse();
     } catch {
@@ -180,6 +292,7 @@ export class TownEconomy {
   }
 
   private async refresh(): Promise<void> {
+    if (isGuestSession()) return;
     if (this.door instanceof RoomDoor) {
       // The room pushes the purse after every change; standing still comes from HTTP.
       fetchStanding().then((s) => this.setStanding(s)).catch(() => undefined);
@@ -202,3 +315,4 @@ export class TownEconomy {
     this.events.standingChanged(this.standingNow);
   }
 }
+

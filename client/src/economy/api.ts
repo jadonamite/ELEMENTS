@@ -56,9 +56,13 @@ export class EconomyError extends Error {
   }
 }
 
-// Economy is on when the player is signed in and not playing offline.
+// Economy is on when not playing in explicit offline mode.
 export function economyAvailable(): boolean {
-  return !isOfflineMode() && getStoredAuthToken() !== null;
+  return !isOfflineMode();
+}
+
+export function isGuestSession(): boolean {
+  return getStoredAuthToken() === null;
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -159,4 +163,32 @@ export async function sell(merchantId: string, itemType: string, quantity: numbe
 // Gives a new player their starting purse; does nothing after the first time.
 export async function claimStartingPurse(): Promise<void> {
   await call('/api/economy/grant-starting-purse', { method: 'POST', body: '{}' });
+}
+
+export interface CountingHouseNote {
+  noteId: string;
+  accountId: string;
+  amount: number;
+  issuedAt: number;
+  issuedBy: string;
+  status: 'active' | 'redeemed' | 'cancelled';
+}
+
+export async function depositCountingHouse(countingHouseId: string, amount: number): Promise<{ note: CountingHouseNote }> {
+  return call('/api/economy/counting-house/deposit', {
+    method: 'POST',
+    body: JSON.stringify({ countingHouseId, amount }),
+  });
+}
+
+export async function withdrawCountingHouse(countingHouseId: string, noteId: string): Promise<{ withdrawnAmount: number; note: CountingHouseNote }> {
+  return call('/api/economy/counting-house/withdraw', {
+    method: 'POST',
+    body: JSON.stringify({ countingHouseId, noteId }),
+  });
+}
+
+export async function fetchAccountNotes(accountId: string): Promise<CountingHouseNote[]> {
+  const data = await call<{ notes: CountingHouseNote[] }>(`/api/economy/counting-house/notes/${encodeURIComponent(accountId)}`);
+  return data.notes;
 }

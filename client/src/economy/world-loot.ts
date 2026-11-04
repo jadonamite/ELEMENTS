@@ -142,6 +142,8 @@ export class WorldLoot {
         this.events.picked('That belongs to whoever won the fight, for now');
       } else if (err instanceof EconomyError && /already been claimed|expired|not found/.test(err.message)) {
         this.hide(s.pile.id, s);
+      } else if (err instanceof EconomyError) {
+        this.events.picked(err.message);
       }
     }
   }
