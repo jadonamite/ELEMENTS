@@ -13,16 +13,23 @@ export interface TownsfolkBody {
   walk: string;
 }
 
-/** What each trade does with its hands, standing and walking. */
-const MOTION: Record<TownsfolkRole, { idle: string; walk: string }> = {
-  smith: { idle: 'fold_arms', walk: 'walk' },
-  trader: { idle: 'talk', walk: 'walk' },
-  innkeeper: { idle: 'talk', walk: 'walk' },
-  guard: { idle: 'fold_arms', walk: 'walk' },
-  worshipper: { idle: 'idle', walk: 'walk' },
-  porter: { idle: 'idle', walk: 'walk_carry' },
-  child: { idle: 'idle', walk: 'walk' },
+/** What each trade does with its hands standing still. */
+const IDLE: Record<TownsfolkRole, string> = {
+  smith: 'fold_arms', trader: 'talk', innkeeper: 'talk', guard: 'fold_arms',
+  worshipper: 'idle', porter: 'idle', child: 'idle',
 };
+
+/** Everyday walks; each person keeps one, so no two neighbours move alike. */
+const WALKS = ['walk', 'walk_plain', 'walk_easy', 'walk_strut', 'walk_sage'];
+const FEMALE_WALKS = [...WALKS, 'walk_female', 'walk_female'];
+
+function walkFor(npc: Townsperson, i: number): string {
+  if (npc.role === 'porter') return i % 2 ? 'walk_carry' : 'walk_carry_box';
+  if (npc.role === 'trader' && i % 3 === 0) return 'walk_bag';
+  if (npc.role === 'guard') return 'walk_plain';
+  const pool = npc.sex === 'female' ? FEMALE_WALKS : WALKS;
+  return pool[i % pool.length]!;
+}
 
 /** Tints over the outfit's own cloth texture, by trade: soot-dark wool, leather, undyed linen, ember red. */
 const CLOTH: Record<TownsfolkRole, readonly number[]> = {
@@ -42,7 +49,7 @@ export async function loadTownsfolkBodies(
   people: readonly Townsperson[] = SINDR_TOWNSFOLK,
   loader = new GLTFLoader(),
 ): Promise<Map<string, TownsfolkBody>> {
-  const sets = await Promise.all(['townsfolk_a', 'townsfolk_b'].map(f => loader.loadAsync(`/assets/characters/${f}.glb`)));
+  const sets = await Promise.all(['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(f => loader.loadAsync(`/assets/characters/${f}.glb`)));
   const clips = sets.flatMap(s => s.animations);
   const kit = new BodyKit(loader);
   const bodies = new Map<string, TownsfolkBody>();
@@ -53,7 +60,7 @@ export async function loadTownsfolkBodies(
     const palette = CLOTH[npc.role];
     const model = await kit.build(sanitizeCharacterConfig(config), 'hero', palette[i % palette.length]);
     if (npc.role === 'child') model.scale.multiplyScalar(CHILD_SCALE);
-    bodies.set(npc.id, { model, clips: await kit.fitClips(config.sex, clips, 'townsfolk'), ...MOTION[npc.role] });
+    bodies.set(npc.id, { model, clips: await kit.fitClips(config.sex, clips, 'townsfolk'), idle: IDLE[npc.role], walk: walkFor(npc, i) });
   }
   return bodies;
 }
