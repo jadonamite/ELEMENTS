@@ -21,7 +21,7 @@ import { BendingEffects, type BendingType } from './bending-fx.js';
 import { OpeningFlow, getStoredDrawing, type DrawingResult } from './opening.js';
 import { ConsentBanner } from './consent.js';
 import type { Enemy } from './enemy.js';
-import { createCombatRules, ELEMENTS, isBendMove, type BendMoveId, type CombatBalance, type Element, type Kit } from '../../shared/src/index.js';
+import { createCombatRules, ELEMENTS, isBendMove, type BendMoveId, type CombatBalance, type Element, type Kit, type MoveId } from '../../shared/src/index.js';
 import { BendState, type BendRefusal } from './bend-state.js';
 import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
@@ -31,6 +31,7 @@ import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { CombatSpace } from './attacks/space.js';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -205,6 +206,7 @@ async function main(): Promise<void> {
     );
     setTimeout(() => { if (!disposed) physics.world.removeCollider(collider, false); }, seconds * 1000);
   };
+  elementFx.space = new CombatSpace(physics.world);
   // Wind and water douse / extinguish fire
   elementFx.onExtinguish = (pos, radius) => {
     bending.extinguishAt(pos, radius);
@@ -263,16 +265,12 @@ async function main(): Promise<void> {
         sound.playFireBurst(0.3);
         return;
       }
-      const facing = Math.atan2(p.velocity.x, p.velocity.z);
       if (kitElement === 'IGNIS') {
         bending.spawnFireball(p, isDim ? 'IGNIS' : heroElement);
         sound.playFireBurst(isDim ? 0.2 : 0.4);
-      } else if (isDim) {
-        elementFx.spark(kitElement, controller.position, facing);
-        sound.playFireBurst(0.2);
       } else {
-        elementFx.cast(kitElement, p.move as BendMoveId, controller.position, facing, p.scale);
-        sound.playSwing(1.3, false);
+        elementFx.thrown(kitElement, p, isDim ? 0.55 : p.scale);
+        if (isDim) sound.playFireBurst(0.2); else sound.playSwing(1.3, false);
       }
       shoulderCamera.shake(isDim ? 0.1 : 0.2);
     },
@@ -678,7 +676,9 @@ async function main(): Promise<void> {
           sound.playFireBurst(action === 'heavy' ? 0.35 : 0.25);
           shoulderCamera.shake(action === 'heavy' ? 0.28 : 0.15);
         } else {
-          elementFx.castKick(kitElement, bendMove ?? (action === 'heavy' ? 'bend_sweep' : 'bend_palm'), controller.position, kickingFoot, controller.facing, action === 'heavy', strength);
+          let reach = 2.2;
+          try { reach = rules.moveFor(combat.current as MoveId, fight.kit).reach; } catch { /* not a rules move */ }
+          elementFx.castKick(kitElement, bendMove ?? (action === 'heavy' ? 'bend_sweep' : 'bend_palm'), controller.position, kickingFoot, controller.facing, action === 'heavy', strength, reach);
           if (kitElement === 'TERRA') sound.playGroundPound();
           else sound.playSwing(1.3, action === 'heavy');
           shoulderCamera.shake(action === 'heavy' ? 0.3 : 0.15);
