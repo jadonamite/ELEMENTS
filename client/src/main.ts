@@ -61,7 +61,7 @@ async function main(): Promise<void> {
   panel.innerHTML = '<button type="button" disabled>Loading</button>' +
     '<p class="hud-keys"><kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Mouse</kbd> look <kbd>Tab</kbd> lock-on</p>' +
     '<p class="hud-keys"><kbd>Left click</kbd> strike <kbd>Right click</kbd> heavy <kbd>Q</kbd> rise ' +
-    '<kbd>E</kbd> ground <kbd>F</kbd> move <kbd>G</kbd> ultimate <kbd>R</kbd> block (tap to parry) <kbd>Space</kbd> dodge</p>' +
+    '<kbd>E</kbd> ground <kbd>F</kbd> move <kbd>G</kbd> ultimate <kbd>R</kbd> block (tap to parry) <kbd>Alt</kbd> dodge <kbd>Space</kbd> jump (tap again in the air: super jump)</p>' +
     '<p class="hud-keys"><kbd>1</kbd> weapon <kbd>2</kbd> hands <kbd>3</kbd> legs <kbd>X</kbd> weapon or hands <kbd>B</kbd> bending on/off</p>' +
     '<p id="control-status" class="hud-status" role="status">Loading the arena.</p>' +
     '<button type="button" class="hud-secondary" hidden>Change fighter</button>';
@@ -384,6 +384,22 @@ async function main(): Promise<void> {
   ], camera);
   cleanup.push(() => contextAction.dispose());
   input.onInteract = () => contextAction.interact() || (lifeSystem?.closeTalk() ?? false);
+  // Space jumps; a second tap while still rising or falling from it is the super jump.
+  let jumpedAt = -Infinity, superJumped = false;
+  input.onJump = () => {
+    if (!fight.heroAlive || combat.current || combat.blocking) return;
+    const now = performance.now() / 1000;
+    if (!controller.grounded) {
+      if (!superJumped && now - jumpedAt < balance.controller.superJumpTapSeconds) {
+        controller.launch(balance.controller.superJumpSpeed);
+        superJumped = true;
+      }
+      return;
+    }
+    controller.launch(balance.controller.jumpSpeed);
+    jumpedAt = now;
+    superJumped = false;
+  };
 
   input.onDuelToggle = () => {
     if (playingOnline) return;
@@ -970,7 +986,9 @@ async function main(): Promise<void> {
       fight.recordDodge(isLit);
       sound.playDodge();
       const roll = movementVelocity(input.read(), shoulderCamera.yaw);
-      controller.facing = roll.lengthSq() > 0 ? Math.atan2(roll.x, roll.z) : shoulderCamera.yaw;
+      const way = fight.dodgeWay(controller.position, roll.lengthSq() > 0 ? Math.atan2(roll.x, roll.z) : null);
+      combat.dodgeOpen = way.open;
+      controller.facing = way.angle;
     }
     if (!alive) { input.takeActions(); pending = null; }
     if (pending && (sword.armed || fightingStyle !== 'weapon')) { attack(pending); pending = null; }
@@ -1137,6 +1155,9 @@ async function main(): Promise<void> {
       }
       if (combat.blocking) {
         hero.anim.play('block', balance.combat.fade);
+      } else if (!combat.current && !controller.grounded) {
+        hero.anim.play('jump', 0.12);
+        hero.anim.setSpeed('jump', 1.0);
       } else if (!combat.current && performance.now() > techniqueClipUntil) {
         const pace = locomotionForSpeed(controller.speed);
         const clip = pace === 'idle' && !sword.engaged ? 'idle_relaxed' : pace;

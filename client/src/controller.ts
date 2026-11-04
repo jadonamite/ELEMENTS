@@ -36,6 +36,8 @@ export class HeroController {
   private readonly character: RAPIER.KinematicCharacterController;
   facing = Math.PI;
   speed = 0;
+  /** True while the feet are on something; false in a jump or a fall. */
+  grounded = true;
   private verticalVelocity = 0;
 
   /** Enemies pass their own spawn point and speeds; the hero starts at the centre. Open zones pass bounded = false. */
@@ -93,7 +95,8 @@ export class HeroController {
     velocity.y = this.bounded ? Math.max(floorCenter - previous.y, this.verticalVelocity * dt) : this.verticalVelocity * dt;
     this.character.computeColliderMovement(this.collider, velocity);
     const movement = this.character.computedMovement();
-    if (this.character.computedGrounded()) this.verticalVelocity = 0;
+    const landed = this.character.computedGrounded() && this.verticalVelocity <= 0;
+    if (landed) this.verticalVelocity = 0;
     // Keep the flat arena's floor and bounds invariant even when the solver's
     // contact tolerances accumulate during prolonged corner pressure.
     const limit = balance.arena.size / 2 - tuning.radius - tuning.skin;
@@ -104,11 +107,19 @@ export class HeroController {
     };
     const reach = Math.hypot(next.x, next.z);
     if (this.bounded && reach > limit) { next.x *= limit / reach; next.z *= limit / reach; }
-    if (this.bounded && next.y === floorCenter) this.verticalVelocity = 0;
+    const onFloor = this.bounded && next.y === floorCenter && this.verticalVelocity <= 0;
+    if (onFloor) this.verticalVelocity = 0;
+    this.grounded = this.bounded ? onFloor : landed;
     this.speed = Math.hypot(next.x - previous.x, next.z - previous.z) / dt;
     this.body.setNextKinematicTranslation(next);
     this.previous.copy(this.position);
     this.position.set(next.x, next.y - tuning.height / 2 - tuning.skin, next.z);
+  }
+
+  /** Leaves the ground (or, in the air, rises again) at `speed` m/s upward; the next steps carry it. */
+  launch(speed: number): void {
+    this.verticalVelocity = speed;
+    this.grounded = false;
   }
 
   /**

@@ -1,5 +1,7 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { type Object3D, type Scene, Vector3 } from 'three';
+
+const dodgeFrom = new Vector3(), dodgeTo = new Vector3();
 import balance from '../../shared/balance.json';
 import { createCombatRules, isBendMove, type ActionState, type CombatBalance, type Combatant, type Element, type Health, type Kit, type MoveId } from '../../shared/src/index.js';
 import type { Combat } from './combat.js';
@@ -239,6 +241,56 @@ export class Fight {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Which way a dodge goes, and whether it finds room. The way the player asks for (`wish`, an angle) if it is
+   * open; otherwise out of the line of the blow that is coming: away from the foe attacking (or the nearest),
+   * to whichever side has more room. A way is open when a body gets `dodgeReach` along it without meeting a wall
+   * or a foe. With every way shut the hero is cornered, and the dodge only half works.
+   */
+  dodgeWay(feet: Vector3, wish: number | null): { angle: number; open: boolean } {
+    const reach = balance.combat.dodgeReach;
+    let threat: Enemy | null = null, threatD = 8;
+    for (const e of this.enemies) {
+      if (!e.hittable) continue;
+      const d = e.controller.position.distanceTo(feet) - (e.attacking ? 4 : 0);
+      if (d < threatD) { threatD = d; threat = e; }
+    }
+    const tries: number[] = [];
+    if (wish !== null) tries.push(wish, wish + 0.5, wish - 0.5);
+    if (threat) {
+      const away = Math.atan2(feet.x - threat.controller.position.x, feet.z - threat.controller.position.z);
+      tries.push(away + 1.1, away - 1.1, away + 0.6, away - 0.6, away, away + 1.6, away - 1.6);
+    }
+    // Then the whole circle, nearest first to what was asked (or to straight back from the hero's facing).
+    const base = wish ?? tries[0] ?? 0;
+    for (let k = 1; k <= 4; k++) tries.push(base + k * Math.PI / 4, base - k * Math.PI / 4);
+    let best = tries[0]!, bestRun = -1;
+    for (const angle of tries) {
+      const run = this.dodgeRun(feet, angle, reach);
+      if (run >= reach - 0.05) return { angle, open: true };
+      if (run > bestRun) { bestRun = run; best = angle; }
+    }
+    return { angle: best, open: false };
+  }
+
+  /** How far a body gets along `angle` from `feet`, up to `reach`, before a wall or a foe's body. */
+  private dodgeRun(feet: Vector3, angle: number, reach: number): number {
+    const sx = Math.sin(angle), sz = Math.cos(angle);
+    dodgeFrom.set(feet.x, feet.y + 1, feet.z);
+    dodgeTo.set(feet.x + sx * reach, feet.y + 1, feet.z + sz * reach);
+    const wall = this.space.obstruction(dodgeFrom, dodgeTo, balance.controller.radius + 0.1);
+    let run = wall ?? reach;
+    const clearance = balance.controller.radius * 2 + 0.3;
+    for (const e of this.enemies) {
+      if (!e.hittable) continue;
+      const ex = e.controller.position.x - feet.x, ez = e.controller.position.z - feet.z;
+      const along = ex * sx + ez * sz;
+      if (along <= 0 || along - clearance > run) continue;
+      if (Math.abs(ex * sz - ez * sx) < clearance) run = Math.min(run, Math.max(0, along - clearance));
+    }
+    return run;
   }
 
   /** Record a dodge roll, consuming its cooldown in shared rules. */

@@ -40,6 +40,9 @@
     "height": 1.8,
     "skin": 0.02,
     "gravity": 9.81,
+    "jumpSpeed": 5.2,
+    "superJumpSpeed": 11,
+    "superJumpTapSeconds": 0.3,
     "fixedStep": 0.016666666666666666,
     "maxFrameDelta": 0.1,
     "idleSpeedThreshold": 0.08,
@@ -253,6 +256,12 @@
       0.05,
       0.6
     ],
+    "dodgeOpenInvulnerable": [
+      0.0,
+      0.9
+    ],
+    "dodgeReach": 2.5,
+    "dodgeCorneredLunge": 0.4,
     "hitStop": 0.07,
     "aimAssistRange": 4.5,
     "lungeStopDistance": 1.25,
