@@ -160,6 +160,8 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
 /* Out of fight stance the vitals and moves step aside; ?debug keeps everything. */
 #fight-hud.calm .hud-vitals, #fight-hud.calm .ability-tray { opacity: 0; }
 #fight-hud:not(.debug) .ability-slot.basic-slot, #fight-hud:not(.debug) .perk-badge { display: none; }
+#fight-hud:not(.debug) .ability-slot.locked { display: none; }
+#fight-hud.debug .ability-slot.locked { opacity: 0.35; border-style: dashed; }
 @media (prefers-reduced-motion: reduce) { .hud-vitals, .ability-tray { transition: none; } }
 .mode-badge.lit {
   border-color: var(--color-ignis-glow);

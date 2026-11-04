@@ -16,7 +16,12 @@ export interface Identity {
   accountId: string;
   role: 'Shaper' | 'Hush';
   element: Element;
+  /** Fighting tier from the stored rising; it decides which moves land. */
+  tier?: number;
 }
+
+/** The tier every rising holds until trials raise or set it: every move but the strongest open. */
+export const OPEN_TIER = 5;
 
 export class ServerPlayer implements Attacker {
   readonly id: string;
@@ -25,6 +30,7 @@ export class ServerPlayer implements Attacker {
   readonly element: Element;
   readonly weapon: Weapon;
   readonly hush: boolean;
+  readonly tier: number;
   x: number;
   y = 0;
   z: number;
@@ -56,6 +62,7 @@ export class ServerPlayer implements Attacker {
     this.role = who.role;
     this.element = who.element;
     this.hush = who.role === 'Hush';
+    this.tier = who.tier ?? OPEN_TIER;
     this.weapon = !this.hush && who.element === 'AURA' ? 'staff' : 'sword';
     this.x = spawn.x;
     this.z = spawn.z;

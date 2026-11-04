@@ -6,7 +6,7 @@ import { getRising } from '../db.js';
 import { SNAPSHOT_RATE } from '../net/constants.js';
 import { isGuest } from '../net/money.js';
 import { closeZone, enterRoom, leaveRoom, openZone } from '../net/presence.js';
-import { ZoneWorld, type Identity, type WorldEvent } from '../net/world.js';
+import { OPEN_TIER, ZoneWorld, type Identity, type WorldEvent } from '../net/world.js';
 import { ZoneEconomy, type EconEvent } from '../net/zone-economy.js';
 
 /** How often the room re-reads its zone's piles, so expired ones vanish for everyone, seconds. */
@@ -33,12 +33,12 @@ export async function identify(options: Record<string, unknown> | undefined, tok
     const { userId } = await verifyToken(token);
     const rising = getRising(userId);
     if (!rising) throw new Error('This account has not risen yet');
-    return { accountId: userId, role: rising.role, element: (rising.element ?? 'IGNIS') as Element };
+    return { accountId: userId, role: rising.role, element: (rising.element ?? 'IGNIS') as Element, tier: rising.tier ?? OPEN_TIER };
   }
   if (!guestsAllowed()) throw new Error('Login required');
   const asked = typeof options?.element === 'string' ? options.element.toUpperCase() : 'IGNIS';
   const element = (ELEMENTS as readonly string[]).includes(asked) ? asked as Element : 'IGNIS';
-  return { accountId: `guest:${randomUUID()}`, role: options?.role === 'Hush' ? 'Hush' : 'Shaper', element };
+  return { accountId: `guest:${randomUUID()}`, role: options?.role === 'Hush' ? 'Hush' : 'Shaper', element, tier: OPEN_TIER };
 }
 
 /**
@@ -137,7 +137,7 @@ export class ZoneRoom extends Room {
   override onJoin(client: Client, _options: unknown, who: Identity): void {
     const player = this.world.join(client.sessionId, who, this.now());
     if (!isGuest(who.accountId)) enterRoom(who.accountId);
-    client.send('welcome', { you: client.sessionId, t: this.now(), zone: this.world.zone, element: player.element, role: player.role });
+    client.send('welcome', { you: client.sessionId, t: this.now(), zone: this.world.zone, element: player.element, role: player.role, tier: player.tier });
     client.send('snap', this.world.snapshot(this.now()));
     this.pay(this.economy.join(client.sessionId));
   }

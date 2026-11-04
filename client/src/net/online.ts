@@ -38,6 +38,8 @@ export interface OnlineGame {
   /** An enemy the server moves struck us; hp is the server's figure. */
   onHurt?: (hp: number, max: number, damage: number) => void;
   onStatus?: (text: string) => void;
+  /** The server's fighting tier for this player, sent on joining. */
+  onTier?: (tier: number) => void;
 }
 
 export interface OnlineOptions {
@@ -76,7 +78,11 @@ export class OnlineSession {
 
   private constructor(private readonly link: RoomLink, private readonly game: OnlineGame) {
     this.hudRoot = document.getElementById('fight-hud') ?? document.body;
-    link.on('welcome', (m) => { this.you = (m as WelcomeMsg).you; });
+    link.on('welcome', (m) => {
+      const w = m as WelcomeMsg;
+      this.you = w.you;
+      if (typeof w.tier === 'number') game.onTier?.(w.tier);
+    });
     link.on('pong', (m) => {
       const p = m as PongMsg;
       this.clock.sample(p.c, performance.now() / 1000, p.t);

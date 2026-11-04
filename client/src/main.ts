@@ -390,6 +390,13 @@ async function main(): Promise<void> {
     notice(`Challenged ${kind}! Press Tab to lock/unlock.`);
   };
   cleanup.push(() => fight.dispose());
+  /** The fighting tier decides which moves are ready and shown; online the room's figure wins. */
+  const applyTier = (t: number): void => {
+    fight.tier = t;
+    bend.tier = t;
+    fightHud.setTier(t);
+  };
+  applyTier(tier);
 
   // --- [creatures: outlaws in Sindr] ---
   const carryParam = params.get('chroma');
@@ -894,6 +901,7 @@ async function main(): Promise<void> {
         }
       },
       onStatus: status,
+      onTier: applyTier,
     }, {
       server: getServerUrl(), zone: inTown ? 'sindr' : 'arena', token: getStoredAuthToken(),
       element: kitElement, role: isDim ? 'Hush' : 'Shaper', lag: lagMs / 1000,

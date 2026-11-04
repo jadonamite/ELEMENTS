@@ -26,6 +26,8 @@ export interface RisingRecord {
   role: RisingRole;
   element?: Element | null;
   created_at: number;
+  /** Fighting tier, 1 (Tiro) to 7 (Primus): which moves the player may use. */
+  tier?: number;
 }
 
 export function migrateDatabase(database: DatabaseSync): void {
@@ -76,6 +78,10 @@ export function migrateDatabase(database: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_risings_role ON risings(role);
   `);
+  const risingColumns = database.prepare('PRAGMA table_info(risings)').all() as Array<{ name: string }>;
+  if (!risingColumns.some((c) => c.name === 'tier')) {
+    database.exec('ALTER TABLE risings ADD COLUMN tier INTEGER NOT NULL DEFAULT 5');
+  }
 
   database.exec(`
     INSERT OR IGNORE INTO risings (account_id, role, element, created_at)
@@ -345,8 +351,8 @@ export function createOrGetAccount(id: string, db: DatabaseSync = getDatabase())
 
 export function getRising(accountId: string, db: DatabaseSync = getDatabase()): RisingRecord | null {
   const row = db
-    .prepare('SELECT account_id, role, element, created_at FROM risings WHERE account_id = ?')
-    .get(accountId) as { account_id: string; role: string; element: string | null; created_at: number } | undefined;
+    .prepare('SELECT account_id, role, element, created_at, tier FROM risings WHERE account_id = ?')
+    .get(accountId) as { account_id: string; role: string; element: string | null; created_at: number; tier: number } | undefined;
 
   if (!row) return null;
   return {
@@ -354,6 +360,7 @@ export function getRising(accountId: string, db: DatabaseSync = getDatabase()): 
     role: row.role as RisingRole,
     element: (row.element as Element) ?? null,
     created_at: row.created_at,
+    tier: row.tier,
   };
 }
 

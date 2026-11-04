@@ -52,6 +52,8 @@ export interface WelcomeMsg {
   zone: string;
   element: string;
   role: string;
+  /** The player's fighting tier, as the server holds it. */
+  tier?: number;
 }
 
 export interface HitResultMsg { e: string; sw: number; ok: boolean; reason?: string; damage?: number }

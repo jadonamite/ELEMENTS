@@ -94,6 +94,8 @@ export class Fight {
   heroHealth: Health = rules.createHealth(balance.hero.maxHealth);
   /** The hero's element and weapon; moves take their numbers from it. */
   kit: Kit = { element: 'IGNIS', weapon: 'sword' };
+  /** The hero's fighting tier: moves above it are not ready, ever. Online the room sets it. */
+  tier = 5;
   /** Strength of the bending move about to start, and whether the meter chained it. */
   private bend = { scale: 1, chained: false };
   private heroState: ActionState = rules.createActionState();
@@ -193,6 +195,7 @@ export class Fight {
   /** Is the move off cooldown in the rules? The hero's combat asks before starting one. */
   ready(move: string, isLit = false): boolean {
     if (move === 'hit' || move === 'death') return true;
+    if (!rules.tierAllows(move as MoveId, this.tier)) return false;
     try {
       return rules.cooldownRemaining(move as MoveId, this.heroState, this.clock, isLit, this.kit) === 0;
     } catch {

@@ -245,3 +245,19 @@ test('Smoothing: the server clock estimate trusts the quickest round trip', () =
   assert.ok(Math.abs(clock.now(102) - 52) < 0.01);
   assert.ok(Math.abs(clock.rtt - 0.1) < 1e-9);
 });
+
+test('Forged hit: a move above the player\'s tier is refused; a move within it lands', () => {
+  const now = 10;
+  const world = new ZoneWorld('arena', () => 0.5);
+  const hound = world.enemies.get('hound_1')!;
+  hound.history.push(now - 1, hound.x, hound.z, Math.PI);
+  hound.history.push(now, hound.x, hound.z, Math.PI);
+  hound.facing = Math.PI;
+  world.join('T', { ...shaper, accountId: 'acct_tiro', tier: 1 }, now);
+  world.move('T', { t: now, x: 0, y: 0, z: 6, vx: 0, vz: 0, f: 0, a: 'idle', r: 1 }, now);
+  const heavy = world.hit('T', hit('heavy_1', 1, now), now + 0.05)[0]!;
+  assert.equal(heavy.type === 'hit_result' && heavy.reason, 'tier');
+  assert.equal(hound.hp, hound.tune.maxHealth);
+  const light = world.hit('T', hit('light_1', 2, now + 0.1), now + 0.15)[0]!;
+  assert.equal(light.type === 'hit_result' && light.ok, true, JSON.stringify(light));
+});

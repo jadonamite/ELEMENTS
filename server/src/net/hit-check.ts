@@ -17,6 +17,8 @@ export interface Attacker {
   element: Element;
   weapon: Weapon;
   hush: boolean;
+  /** Fighting tier: moves above it never land. */
+  tier: number;
   alive: boolean;
   history: PoseHistory;
   action: ActionState;
@@ -75,6 +77,7 @@ export function judgeHit(attacker: Attacker, enemy: ServerEnemy | undefined, cla
   if (!(MOVE_IDS as readonly string[]).includes(claim.m)) return { ok: false, reason: 'unknown_move' };
   const move = claim.m as MoveId;
   if (move === 'dodge') return { ok: false, reason: 'not_attack' };
+  if (!rules.tierAllows(move, attacker.tier)) return { ok: false, reason: 'tier' };
   // Timing: the pose seen and the swing start must be recent, in order, and not in the future.
   if (claim.v > now + 0.05 || claim.v < now - REWIND_LIMIT) return { ok: false, reason: 'stale' };
   if (claim.t > claim.v + 0.05 || claim.t < now - REWIND_LIMIT - 1.5) return { ok: false, reason: 'stale' };

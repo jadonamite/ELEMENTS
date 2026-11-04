@@ -1,5 +1,10 @@
 import { type Camera, Vector3 } from 'three';
-import type { Health } from '../../shared/src/index.js';
+import balance from '../../shared/balance.json';
+import { createCombatRules, type CombatBalance, type Health, type MoveId } from '../../shared/src/index.js';
+
+const rules = createCombatRules(balance.combat as unknown as CombatBalance);
+/** The move each tray slot stands for, for the tier rule. */
+const SLOT_MOVE: Record<string, MoveId> = { heavy: 'heavy_1', uppercut: 'uppercut', ground_pound: 'ground_pound', dash_strike: 'dash_strike', ultimate: 'ultimate' };
 import type { Enemy } from './enemy.js';
 
 export interface CooldownItem {
@@ -149,6 +154,14 @@ export class FightHud {
       if (name) slot.root.querySelector('.slot-name')!.textContent = name;
     }
     this.root.dataset.element = element.toLowerCase();
+  }
+
+  /** Moves above the tier leave the tray; ?debug keeps them, marked locked. */
+  setTier(tier: number): void {
+    for (const el of this.root.querySelectorAll<HTMLElement>('.ability-slot')) {
+      const move = SLOT_MOVE[el.dataset.slot ?? ''];
+      el.classList.toggle('locked', move !== undefined && !rules.tierAllows(move, tier));
+    }
   }
 
   /** The shard shown beside the bending meter: the kit's element, also for a Hush carrying its shards. */
