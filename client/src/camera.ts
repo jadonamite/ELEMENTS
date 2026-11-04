@@ -15,6 +15,12 @@ export function cameraCollisionRadius(camera: PerspectiveCamera): number {
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
+/** Fight-view distance scale for a killing blow, and how long the close-up holds. */
+const KILL_ZOOM = 0.62;
+const KILL_CLOSE_UP_SECONDS = 0.7;
+/** Fight-view distance scale with three or more foes close. */
+const CROWD_ZOOM = 1.4;
+
 /**
  * Two views blended by the stance: a high, angled world view for walking the
  * world, and the close over-the-shoulder view for fights.
@@ -28,7 +34,11 @@ export class ShoulderCamera {
   lockTarget: Vector3 | null = null;
   /** Trauma level for camera shake, 0 to 1. */
   trauma = 0;
+  /** True while three or more foes are on the hero: the fight view pulls out wide. */
+  crowd = false;
   private shakeTimer = 0;
+  private closeUp = 0;
+  private zoom = 1;
   private blend = 0;
   private distance = 0;
   private readonly anchor = new Vector3();
@@ -44,6 +54,11 @@ export class ShoulderCamera {
   /** Impulses camera trauma on heavy impact or receiving damage. */
   shake(amount: number): void {
     this.trauma = Math.min(1, this.trauma + amount);
+  }
+
+  /** A killing blow: the fight view leans in close for a moment, then eases back. */
+  killCloseUp(seconds = KILL_CLOSE_UP_SECONDS): void {
+    this.closeUp = Math.max(this.closeUp, seconds);
   }
 
   orbit(dx: number, dy: number): void {
@@ -79,7 +94,11 @@ export class ShoulderCamera {
     const t = this.blend * this.blend * (3 - 2 * this.blend);
     const fov = lerp(world.fov, tuning.fov, t);
     if (Math.abs(this.camera.fov - fov) > 1e-3) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
-    const distance = lerp(world.distance, tuning.distance, t);
+    // Fight framing: close on a kill, wide in a crowd. Reduced motion skips the close-up.
+    this.closeUp = Math.max(0, this.closeUp - delta);
+    const framing = this.closeUp > 0 && !reducedMotion ? KILL_ZOOM : this.crowd ? CROWD_ZOOM : 1;
+    this.zoom += (framing - this.zoom) * (1 - Math.exp(-(framing < this.zoom ? 9 : 3) * delta));
+    const distance = lerp(world.distance, tuning.distance * this.zoom, t);
     const shoulder = lerp(world.shoulder, tuning.shoulder, t);
     // The world view keeps its high angle but the mouse can still tilt it to look up at the skyline.
     const worldPitch = clamp(world.pitch + (this.pitch - tuning.initialPitch) * 0.8, 0.2, 1.1);

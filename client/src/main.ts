@@ -167,7 +167,7 @@ async function main(): Promise<void> {
   let lifeSystem: SindrLifeSystem | null = null;
   let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get hud() { return fightHud; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -246,6 +246,16 @@ async function main(): Promise<void> {
   let hurtAt = -Infinity;
   let reviveIn = 0;
   let slowMotion = 0;
+  /** Slow motion only where it earns its place: a kill, the last foe, an ultimate landing. Ordinary hits keep the hit-stop. */
+  /** Foes within this many metres count toward the wide crowd view. */
+  const CROWD_RADIUS = 8;
+  const KILL_SLOW_SECONDS = 0.35;
+  const LAST_FOE_SLOW_SECONDS = 1.2;
+  const ULTIMATE_SLOW_SECONDS = 0.5;
+  const markKill = (lastFoe: boolean): void => {
+    slowMotion = Math.max(slowMotion, lastFoe ? LAST_FOE_SLOW_SECONDS : KILL_SLOW_SECONDS);
+    shoulderCamera.killCloseUp();
+  };
   let lockedEnemy: Enemy | null = null;
 
   const fight = new Fight(await villains, physics.world, scene, {
@@ -316,9 +326,8 @@ async function main(): Promise<void> {
       bending.spawnHitBurst(pos, heroElement);
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
       if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone());
-      if (killed && fight.allDead) {
-        slowMotion = 1.2;
-      }
+      if (killed) markKill(fight.allDead);
+      else if (combat.current === 'ultimate') slowMotion = Math.max(slowMotion, ULTIMATE_SLOW_SECONDS);
     },
     roundStarted(roundNumber, villainCount) {
       fightHud.say(`Round ${roundNumber} — ${villainCount} ${villainCount === 1 ? 'Villain' : 'Villains'}`);
@@ -880,6 +889,7 @@ async function main(): Promise<void> {
       onMyHit(at, damage, killed) {
         bend.gain('hit');
         hitStop = killed ? 0.12 : 0.06;
+        if (killed) markKill(false);
         shoulderCamera.shake(killed ? 0.35 : 0.14);
         sound.playImpact(killed, false);
         bending.spawnHitBurst(at, heroElement);
@@ -1000,6 +1010,10 @@ async function main(): Promise<void> {
     const hurtRecently = performance.now() - hurtAt < balance.stance.calmAfterSeconds * 1000;
     const bareReady = fightingStyle !== 'weapon' && (!zone || fight.nearestDistance(controller.position) < balance.stance.engageRadius);
     shoulderCamera.fight = (sword.engaged || bareReady || combat.current !== null || hurtRecently) ? 1 : 0;
+    // Three or more foes close and fighting: the fight view pulls out wide.
+    const hx = controller.position.x, hz = controller.position.z;
+    shoulderCamera.crowd = fight.enemies.filter((e) => e.alive && !e.challenging
+      && Math.hypot(e.controller.position.x - hx, e.controller.position.z - hz) < CROWD_RADIUS).length >= 3;
     if (reviveIn > 0 && (reviveIn -= delta) <= 0) {
       fight.reviveHero();
       combat.reset();
