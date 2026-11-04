@@ -113,9 +113,6 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   text-transform: uppercase;
 }
 .combat-status {
-  position: absolute;
-  left: max(var(--space-8), env(safe-area-inset-left));
-  bottom: calc(max(var(--space-8), env(safe-area-inset-bottom)) + 18px);
   display: flex;
   gap: var(--space-2);
   font: var(--font-size-xs)/1 var(--font-family-body);
@@ -130,18 +127,40 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   border: 1px solid rgb(214 170 110 / 0.35);
   color: rgb(220 210 196);
 }
-.standing-badge {
-  padding: 3px var(--space-2);
-  border-radius: var(--radius-xs);
-  background: rgb(40 8 6 / 0.85);
-  border: 1px solid rgb(214 52 40 / 0.8);
-  color: rgb(255 120 104);
+/* Three blocks: purse top right, vitals bottom left, moves bottom right. */
+.hud-purse {
+  position: absolute;
+  top: max(var(--space-6), env(safe-area-inset-top));
+  right: max(var(--space-8), env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font: 600 15px/1 var(--font-family-body);
+  color: rgb(240 226 200);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
 }
-.standing-badge[hidden] { display: none; }
-.standing-badge.bounty {
-  background: rgb(120 14 8 / 0.9);
-  color: rgb(255 228 220);
+.hud-purse[hidden], .purse-coin[hidden] { display: none; }
+.purse-coin, .purse-flags { display: flex; align-items: center; gap: var(--space-2); }
+.purse-coin img { width: 30px; height: 30px; }
+.purse-flags img { width: 26px; height: 26px; margin-left: -8px; }
+.purse-flags img:first-child { margin-left: 0; }
+.purse-flags span { color: rgb(255 150 130); text-transform: uppercase; letter-spacing: var(--letter-spacing-wide); font-size: 13px; }
+.hud-vitals {
+  position: absolute;
+  left: max(var(--space-8), env(safe-area-inset-left));
+  bottom: max(var(--space-8), env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: opacity 0.35s ease;
 }
+.vital { display: flex; align-items: center; gap: var(--space-2); }
+.vital-art { width: 24px; height: 24px; flex: none; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.7)); }
+.hud-vitals .combat-status { margin-left: 32px; }
+/* Out of fight stance the vitals and moves step aside; ?debug keeps everything. */
+#fight-hud.calm .hud-vitals, #fight-hud.calm .ability-tray { opacity: 0; }
+#fight-hud:not(.debug) .ability-slot.basic-slot, #fight-hud:not(.debug) .perk-badge { display: none; }
+@media (prefers-reduced-motion: reduce) { .hud-vitals, .ability-tray { transition: none; } }
 .mode-badge.lit {
   border-color: var(--color-ignis-glow);
   color: #ff5522;
@@ -160,10 +179,11 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
 }
 .ability-tray {
   position: absolute;
-  left: max(var(--space-8), env(safe-area-inset-left));
-  bottom: calc(max(var(--space-8), env(safe-area-inset-bottom)) + 46px);
+  right: max(var(--space-8), env(safe-area-inset-right));
+  bottom: max(var(--space-8), env(safe-area-inset-bottom));
   display: flex;
   gap: var(--space-2);
+  transition: opacity 0.35s ease;
 }
 .ability-slot {
   position: relative;
@@ -254,9 +274,8 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   display: none;
 }
 .hero-health {
-  position: absolute;
-  left: max(var(--space-8), env(safe-area-inset-left));
-  bottom: max(var(--space-8), env(safe-area-inset-bottom));
+  position: relative;
+  flex: none;
   width: min(280px, 40vw);
   height: 8px;
   background: rgb(12 10 8 / 0.6);
@@ -281,9 +300,8 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   z-index: 2;
 }
 .hero-meter {
-  position: absolute;
-  left: max(var(--space-8), env(safe-area-inset-left));
-  bottom: calc(max(var(--space-8), env(safe-area-inset-bottom)) + 14px);
+  position: relative;
+  flex: none;
   width: min(280px, 40vw);
   height: 5px;
   background: rgb(12 10 8 / 0.6);
@@ -312,9 +330,6 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
 #fight-hud[data-element="terra"] { --meter-colour: var(--color-terra-glow); }
 #fight-hud[data-element="aura"] { --meter-colour: var(--color-aura-glow, rgb(232 236 240)); }
 .hero-supply {
-  position: absolute;
-  left: calc(max(var(--space-8), env(safe-area-inset-left)) + min(280px, 40vw) + var(--space-3));
-  bottom: calc(max(var(--space-8), env(safe-area-inset-bottom)) + 8px);
   font: 12px/1 var(--font-family-body);
   color: rgb(230 214 190 / 0.85);
   letter-spacing: 0.02em;

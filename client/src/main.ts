@@ -166,7 +166,7 @@ async function main(): Promise<void> {
   let lifeSystem: SindrLifeSystem | null = null;
   let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get hud() { return fightHud; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -499,6 +499,7 @@ async function main(): Promise<void> {
     }
     if (isDim) { names.uppercut = 'Spark'; names.ground_pound = '—'; names.dash_strike = '—'; names.ultimate = '—'; }
     fightHud.setMoveNames(names, isDim ? 'hush' : kitElement);
+    fightHud.setElementArt(kitElement);
   };
   applyKit();
   const drawn = new Vector3();
@@ -1187,12 +1188,12 @@ async function main(): Promise<void> {
       zone ? undefined : roundInfo,
       fightingStyle,
       isDim,
+      shoulderCamera.fight > 0,
     );
     const baseSupply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
       : kitElement === 'AQUES' ? `Waterskin ${bend.hasWaterEnvironment || bend.nearWater(controller.position) ? '∞ (reusable)' : `${bend.waterskin}/${balance.combat.waterskin.charges}`}${bend.healingQuality(controller.position) === 'wellspring' ? ' · Wellspring water Oasis' : bend.nearWater(controller.position) ? ' · Water source' : ''}${bend.isFullMoon ? ' · Full Moon (+50%)' : ''}` : null;
-    const chromaTag = `CHROMA: ${carried().chroma}`;
-    const supply = zone ? (baseSupply ? `${baseSupply} · ${chromaTag}` : chromaTag) : baseSupply;
-    fightHud.setBending(bend.meter, bend.max, bend.weakBelow, supply);
+    fightHud.setBending(bend.meter, bend.max, bend.weakBelow, baseSupply);
+    fightHud.setPurse(zone ? (forcedCarry ?? townEconomy?.carried?.chroma ?? null) : null);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     lifeSystem?.update(delta);

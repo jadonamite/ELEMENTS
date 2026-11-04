@@ -25,7 +25,13 @@ interface DamagePopup {
   vy: number;
 }
 
-/** Hero health, round status, bending perks, abilities tray, and enemy overhead health bars. */
+const ART = '/assets/ui/hud';
+
+/**
+ * The playing screen in three blocks: purse and standing top right, vitals bottom left, moves
+ * bottom right. Vitals and moves show only in fight stance (the same signal that turns on the
+ * fight camera, which includes being hurt). ?debug shows every part all the time.
+ */
 export class FightHud {
   private readonly root: HTMLDivElement;
   private readonly heroFill: HTMLDivElement;
@@ -35,7 +41,13 @@ export class FightHud {
   private readonly modeBadge: HTMLSpanElement;
   private readonly stanceBadge: HTMLSpanElement;
   private readonly perkBadge: HTMLSpanElement;
-  private readonly standingBadge: HTMLSpanElement;
+  private readonly purse: HTMLDivElement;
+  private readonly coinAmount: HTMLElement;
+  private readonly flags: HTMLDivElement;
+  private readonly elementArt: HTMLImageElement;
+  debug = new URLSearchParams(window.location.search).has('debug');
+  private chroma: number | null = null;
+  private standing = { redFlags: 0, hasBounty: false };
   private readonly roundTracker: HTMLDivElement;
   private readonly roundTitle: HTMLSpanElement;
   private readonly roundSub: HTMLSpanElement;
@@ -55,34 +67,42 @@ export class FightHud {
   constructor() {
     this.root = document.createElement('div');
     this.root.id = 'fight-hud';
+    // Basic moves (always known, no unlock) show only in ?debug; the rest show once unlocked.
+    const slot = (name: string, key: string, label: string, basic = false, timed = !basic): string =>
+      `<div class="ability-slot${basic ? ' basic-slot' : ''}" data-slot="${name}">${timed ? '<div class="cd-fill"></div>' : ''}` +
+      `<span class="slot-key">${key}</span><span class="slot-name">${label}</span>${timed ? '<span class="slot-timer"></span>' : ''}</div>`;
     this.root.innerHTML =
       '<div class="round-tracker">' +
       '<span class="round-title">ROUND 1/8</span>' +
       '<span class="round-sub">1 Villain • Remaining: 1</span>' +
       '</div>' +
+      '<div class="hud-purse" hidden>' +
+      `<span class="purse-coin"><img src="${ART}/coin.png" alt=""><b class="coin-amount" aria-label="CHROMA">0</b></span>` +
+      '<div class="purse-flags" role="status"></div>' +
+      '</div>' +
+      '<div class="hud-vitals">' +
+      `<div class="vital"><img class="vital-art" src="${ART}/heart.png" alt="">` +
+      '<div class="hero-health" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100">' +
+      '<div class="trail"></div><div class="fill"></div><div class="scars"></div></div></div>' +
+      `<div class="vital"><img class="vital-art element-art" src="${ART}/shard-ignis.png" alt="">` +
+      '<div class="hero-meter" role="meter" aria-label="Bending meter" aria-valuemin="0" aria-valuemax="100">' +
+      '<div class="meter-fill"></div><div class="meter-line"></div></div>' +
+      '<span class="hero-supply" aria-live="polite"></span></div>' +
       '<div class="combat-status">' +
       '<span class="mode-badge">Unlit</span>' +
       '<span class="stance-badge">Barehanded</span>' +
-      '<span class="perk-badge">Physical Mode</span>' +
-      '<span class="standing-badge" role="status" hidden></span>' +
       '</div>' +
-      '<div class="hero-health" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100">' +
-      '<div class="trail"></div><div class="fill"></div><div class="scars"></div></div>' +
-      '<div class="hero-meter" role="meter" aria-label="Combo meter" aria-valuemin="0" aria-valuemax="100">' +
-      '<div class="meter-fill"></div><div class="meter-line"></div></div>' +
-      '<span class="hero-supply" aria-live="polite"></span>' +
-      '<div class="ability-tray" aria-label="Combat Actions">' +
-      '<div class="ability-slot basic-slot" data-slot="light"><span class="slot-key">L-Click</span><span class="slot-name">Attack</span></div>' +
-      '<div class="ability-slot basic-slot" data-slot="heavy"><span class="slot-key">R-Click</span><span class="slot-name">Heavy</span></div>' +
-      '<div class="ability-slot" data-slot="dodge"><div class="cd-fill"></div><span class="slot-key">Space</span><span class="slot-name">Dodge</span><span class="slot-timer"></span></div>' +
-      '<div class="ability-slot basic-slot" data-slot="block"><span class="slot-key">R</span><span class="slot-name">Guard</span></div>' +
-      '<div class="ability-slot" data-slot="uppercut"><div class="cd-fill"></div><span class="slot-key">Q</span><span class="slot-name">Uppercut</span><span class="slot-timer"></span></div>' +
-      '<div class="ability-slot" data-slot="ground_pound"><div class="cd-fill"></div><span class="slot-key">E</span><span class="slot-name">Slam</span><span class="slot-timer"></span></div>' +
-      '<div class="ability-slot" data-slot="dash_strike"><div class="cd-fill"></div><span class="slot-key">F</span><span class="slot-name">Dash</span><span class="slot-timer"></span></div>' +
-      '<div class="ability-slot" data-slot="ultimate"><div class="cd-fill"></div><span class="slot-key">G</span><span class="slot-name">Ultimate</span><span class="slot-timer"></span></div>' +
+      '<span class="perk-badge">Physical Mode</span>' +
+      '</div>' +
+      '<div class="ability-tray" aria-label="Moves">' +
+      slot('light', 'L-Click', 'Attack', true) + slot('heavy', 'R-Click', 'Heavy', true) +
+      slot('dodge', 'Space', 'Dodge', true, true) + slot('block', 'R', 'Guard', true) +
+      slot('uppercut', 'Q', 'Uppercut') + slot('ground_pound', 'E', 'Slam') +
+      slot('dash_strike', 'F', 'Dash') + slot('ultimate', 'G', 'Ultimate') +
       '</div>' +
       '<div class="lock-reticle"></div>' +
       '<p class="fight-banner" role="status"></p>';
+    this.root.classList.toggle('debug', this.debug);
     document.body.appendChild(this.root);
 
     this.roundTracker = this.root.querySelector('.round-tracker')!;
@@ -95,7 +115,10 @@ export class FightHud {
     this.modeBadge = this.root.querySelector('.mode-badge')!;
     this.stanceBadge = this.root.querySelector('.stance-badge')!;
     this.perkBadge = this.root.querySelector('.perk-badge')!;
-    this.standingBadge = this.root.querySelector('.standing-badge')!;
+    this.purse = this.root.querySelector('.hud-purse')!;
+    this.coinAmount = this.root.querySelector('.coin-amount')!;
+    this.flags = this.root.querySelector('.purse-flags')!;
+    this.elementArt = this.root.querySelector('.element-art')!;
     this.lockReticle = this.root.querySelector('.lock-reticle')!;
     this.meter = this.root.querySelector('.hero-meter')!;
     this.meterFill = this.root.querySelector('.meter-fill')!;
@@ -128,6 +151,19 @@ export class FightHud {
     this.root.dataset.element = element.toLowerCase();
   }
 
+  /** The shard shown beside the bending meter: the kit's element, also for a Hush carrying its shards. */
+  setElementArt(element: string): void {
+    this.elementArt.src = `${ART}/shard-${element.toLowerCase()}.png`;
+  }
+
+  /** Coin the player carries, or null where there is no purse (the arena, offline without a sign-in). */
+  setPurse(chroma: number | null): void {
+    if (chroma === this.chroma) return;
+    this.chroma = chroma;
+    if (chroma !== null) this.coinAmount.textContent = String(chroma);
+    this.showPurse();
+  }
+
   /**
    * The combo meter, with a mark where bending turns weak, plus what the hero carries:
    * waterskin charges for AQUES, shards for a Hush. Pass null to hide a count.
@@ -141,12 +177,21 @@ export class FightHud {
     this.supply.textContent = supply ?? '';
   }
 
-  /** The player's red flags with the town watch, or the bounty they turned into. Hidden when clean. */
+  /** Red flags with the town watch, one flag each, or the bounty they turned into. */
   setStanding(redFlags: number, hasBounty: boolean): void {
-    const badge = this.standingBadge;
-    badge.hidden = redFlags === 0 && !hasBounty;
-    badge.classList.toggle('bounty', hasBounty);
-    badge.textContent = hasBounty ? 'Wanted: bounty' : `${redFlags} red flag${redFlags === 1 ? '' : 's'}`;
+    this.standing = { redFlags, hasBounty };
+    const label = hasBounty ? 'Wanted: a bounty is on you' : `${redFlags} red flag${redFlags === 1 ? '' : 's'}`;
+    this.flags.setAttribute('aria-label', redFlags || hasBounty ? label : '');
+    this.flags.title = label;
+    this.flags.innerHTML = hasBounty
+      ? `<img src="${ART}/bounty.png" alt=""><span>Wanted</span>`
+      : Array.from({ length: redFlags }, () => `<img src="${ART}/flag.png" alt="">`).join('');
+    this.showPurse();
+  }
+
+  private showPurse(): void {
+    this.purse.hidden = this.chroma === null && this.standing.redFlags === 0 && !this.standing.hasBounty && !this.debug;
+    this.purse.querySelector<HTMLElement>('.purse-coin')!.hidden = this.chroma === null && !this.debug;
   }
 
   /** Large centred line such as "You fell" or "Round Cleared", or empty to clear it. */
@@ -166,30 +211,15 @@ export class FightHud {
     roundInfo?: RoundHudInfo,
     fightingStyle: 'weapon' | 'bare_hands' | 'legs' | 'bending' = 'weapon',
     isDim = false,
+    inFight = true,
   ): void {
-    if (isDim) {
-      this.modeBadge.textContent = 'Hush (Non-Shaper)';
-      this.modeBadge.className = 'mode-badge dim';
-    } else {
-      this.modeBadge.textContent = isLit
-        ? `${element} Lit (Bending)`
-        : `${element} (Physical)`;
-      this.modeBadge.className = isLit ? 'mode-badge lit' : 'mode-badge';
-    }
-
-    if (fightingStyle === 'weapon') {
-      this.stanceBadge.textContent = isArmed ? 'Style: Weapon (Drawn)' : 'Style: Weapon (Ready)';
-      this.stanceBadge.className = 'stance-badge';
-    } else if (fightingStyle === 'legs') {
-      this.stanceBadge.textContent = 'Style: Legs';
-      this.stanceBadge.className = 'stance-badge hands';
-    } else if (fightingStyle === 'bare_hands') {
-      this.stanceBadge.textContent = 'Style: Bare Hands';
-      this.stanceBadge.className = 'stance-badge hands';
-    } else {
-      this.stanceBadge.textContent = isDim ? 'Style: Bending (Locked)' : `Style: Bending (${element})`;
-      this.stanceBadge.className = isDim ? 'stance-badge dim' : 'stance-badge bending';
-    }
+    this.root.classList.toggle('calm', !inFight && !this.debug);
+    const name = element.charAt(0) + element.slice(1).toLowerCase();
+    this.modeBadge.textContent = isDim ? 'Hush' : isLit ? `${name}, lit` : name;
+    this.modeBadge.className = isDim ? 'mode-badge dim' : isLit ? 'mode-badge lit' : 'mode-badge';
+    this.stanceBadge.textContent = fightingStyle === 'weapon' ? (isArmed ? 'Blade drawn' : 'Blade')
+      : fightingStyle === 'legs' ? 'Kicks' : fightingStyle === 'bare_hands' ? 'Hands' : 'Bending';
+    this.stanceBadge.className = 'stance-badge';
 
     // Update combat perk display
     if (isDim) {
