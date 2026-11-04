@@ -1,5 +1,6 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
-import { Scene } from 'three';
+import { Scene, Vector3 } from 'three';
+import { CombatSpace } from '../../attacks/space.js';
 import {
   type DeserterBandState,
   type OutlawDecision,
@@ -26,6 +27,9 @@ export class ClientDeserterBand {
   private scene: Scene | null = null;
   private world: RAPIER.World | null = null;
   private template: EnemyTemplate | null = null;
+  private space: CombatSpace | null = null;
+  /** The quarry's feet when last seen, so members are placed on its level. */
+  private readonly feet = new Vector3();
   private evaluateTimer = 0;
   onKill?: ((kind: string, position: { x: number; y: number; z: number }) => void) | undefined;
   onAlert?: ((message: string) => void) | undefined;
@@ -48,6 +52,7 @@ export class ClientDeserterBand {
     this.scene = scene;
     this.world = world;
     this.template = template;
+    this.space = new CombatSpace(world);
   }
 
   evaluate(playerCarry: PlayerCarry, playerLocation: PlayerLocation): OutlawDecision {
@@ -69,21 +74,20 @@ export class ClientDeserterBand {
   }
 
   spawnAmbush(playerLoc: PlayerLocation): void {
-    if (!this.scene || !this.world || !this.template) return;
+    if (!this.scene || !this.world || !this.template || !this.space) return;
     this.despawn();
 
     const spawnDist = 5.0;
+    this.feet.set(playerLoc.x, this.feet.y, playerLoc.z);
     for (let i = 0; i < this.state.members.length; i++) {
       const member = this.state.members[i]!;
       const angle = (i / this.state.members.length) * Math.PI * 2;
-      const sx = playerLoc.x + Math.sin(angle) * spawnDist;
-      const sz = playerLoc.z + Math.cos(angle) * spawnDist;
 
       const kind = member.isLit ? 'bender' : 'deserter';
       const enemy = new Enemy(
         this.template,
         this.world,
-        { x: sx, z: sz },
+        this.space.standOff(this.feet, angle, spawnDist, new Vector3()),
         member.maxHealth,
         kind,
         false
@@ -103,15 +107,15 @@ export class ClientDeserterBand {
 
   update(dt: number, quarry: Quarry, playerCarry?: PlayerCarry, playerLocation?: PlayerLocation): void {
     this.evaluateTimer += dt;
+    this.feet.copy(quarry.position);
     if (playerCarry && playerLocation && this.evaluateTimer >= 1.0) {
       this.evaluateTimer = 0;
       this.evaluate(playerCarry, playerLocation);
     }
 
-    for (const enemy of this.activeEnemies.values()) {
-      if (enemy.alive) {
-        enemy.step(quarry, true);
-      }
+    // Handed to a fight, the fight runs the members; alone, the band does.
+    if (!this.onSpawnEnemy) {
+      for (const enemy of this.activeEnemies.values()) if (enemy.alive) enemy.step(quarry, true);
     }
   }
 

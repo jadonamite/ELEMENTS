@@ -298,7 +298,6 @@ async function main(): Promise<void> {
       for (let k = 0; k < group.count; k++) {
         const at = room.spawns[i++] ?? { x: 0, z: room.z0 + 14 };
         const foe = fight.spawnVillain(at, group.kind as VillainKind, group.health) as RaidFoe;
-        scene.add(foe.model);
         if (group.boss) {
           foe.model.scale.setScalar(dungeon.boss.scale);
           foe.damageScale = dungeon.boss.damage / 12;

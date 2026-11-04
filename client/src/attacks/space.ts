@@ -3,6 +3,7 @@ import { Vector3 } from 'three';
 
 const identity = { x: 0, y: 0, z: 0, w: 1 };
 const dir = new Vector3();
+const lineFrom = new Vector3(), lineTo = new Vector3();
 
 /**
  * The one place attacks ask the world what is in their way. Every fixed collider counts:
@@ -33,6 +34,19 @@ export class CombatSpace {
     const hit = this.obstruction(from, to, radius);
     if (hit === null) return out.copy(to);
     return out.copy(to).sub(from).normalize().multiplyScalar(hit).add(from);
+  }
+
+  /**
+   * Where a body can stand on the way out from `feet` along `angle` (radians, 0 = +z), at most `distance` away:
+   * short of any wall or cliff, on the same level as `feet`. Anyone placed near the hero is placed here.
+   */
+  standOff(feet: Vector3, angle: number, distance: number, out = new Vector3()): Vector3 {
+    const sx = Math.sin(angle), sz = Math.cos(angle);
+    lineFrom.set(feet.x, feet.y + 1, feet.z);
+    lineTo.set(feet.x + sx * distance, feet.y + 1, feet.z + sz * distance);
+    const hit = this.obstruction(lineFrom, lineTo, 0.4);
+    const back = hit === null ? distance : Math.max(0, hit - 0.8);
+    return out.set(feet.x + sx * back, feet.y, feet.z + sz * back);
   }
 
   /** True when nothing fixed stands between the two points. */

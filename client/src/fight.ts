@@ -120,7 +120,7 @@ export class Fight {
     private readonly world: RAPIER.World,
     private readonly scene: Scene,
     private readonly events: FightEvents,
-    private readonly createEnemy: (template: EnemyTemplate, world: RAPIER.World, point: { x: number; z: number }, maxHealth: number, kind: VillainKind) => Enemy =
+    private readonly createEnemy: (template: EnemyTemplate, world: RAPIER.World, point: { x: number; z: number; y?: number }, maxHealth: number, kind: VillainKind) => Enemy =
       (t, w, p, m, k) => new Enemy(t, w, p, m, k),
   ) {
     this.space = new CombatSpace(world);
@@ -206,10 +206,15 @@ export class Fight {
   stopWaves(): void { this.waves = false; this.respawnIn = []; }
 
   /** Spawns a specific villain at a world coordinate (used for road ambushes and world encounters). */
-  spawnVillain(point: { x: number; z: number }, kind: VillainKind = 'armed', maxHealth?: number): Enemy {
+  spawnVillain(point: { x: number; z: number; y?: number }, kind: VillainKind = 'armed', maxHealth?: number): Enemy {
     const health = maxHealth ?? balance.enemy.maxHealth ?? 100;
-    const enemy = this.createEnemy(this.template, this.world, point, health, kind);
-    this.enemies.push(enemy);
+    return this.add(this.createEnemy(this.template, this.world, point, health, kind));
+  }
+
+  /** The one way a foe joins the fight: drawn in the scene and counted among the enemies. */
+  add(enemy: Enemy): Enemy {
+    this.scene.add(enemy.model as Object3D);
+    if (!this.enemies.includes(enemy)) this.enemies.push(enemy);
     return enemy;
   }
 
@@ -700,9 +705,7 @@ export class Fight {
       const clearOfOthers = this.enemies.every(e => Math.hypot(point.x - e.controller.position.x, point.z - e.controller.position.z) > 2);
       if (clearOfHero && clearOfRocks && clearOfOthers) break;
     }
-    const enemy = this.createEnemy(this.template, this.world, point, tuning.maxHealth, this.pickKind());
-    this.scene.add(enemy.model as Object3D);
-    this.enemies.push(enemy);
+    this.add(this.createEnemy(this.template, this.world, point, tuning.maxHealth, this.pickKind()));
   }
 
   /** Rolls the next villain's kind from the current round's mix in balance.json. */

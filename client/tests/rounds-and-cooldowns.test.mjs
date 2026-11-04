@@ -224,3 +224,18 @@ test('cooldowns start on move accept and show timers even on a miss', () => {
   assert.equal(fight.ready('dash_strike'), false);
   assert.ok(fight.cooldownRemaining('dash_strike') > 4.0);
 });
+
+test('every foe that joins the fight is drawn: waves, spawnVillain and foes brought by others', () => {
+  const scene = new Scene();
+  const fight = new Fight({}, {}, scene, { heroHit() {}, heroDied() {}, enemyHit() {} },
+    (_tmpl, _world, point, maxHealth) => createMockEnemy(point, maxHealth));
+  fight.waves = false;
+  const challenger = fight.spawnVillain({ x: 120, z: 3 }, 'robber', 100);
+  assert.equal(challenger.model.parent, scene, 'a street challenger is in the scene');
+  const brought = createMockEnemy({ x: 260, z: 5 });
+  fight.add(brought);
+  fight.add(brought);
+  assert.equal(brought.model.parent, scene, 'an outlaw band member is in the scene');
+  assert.equal(fight.enemies.filter(e => e === brought).length, 1, 'added once');
+  for (const e of fight.enemies) assert.equal(e.model.parent, scene);
+});

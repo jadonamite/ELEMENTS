@@ -1,5 +1,6 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { Group, Scene, Vector3 } from 'three';
+import { CombatSpace } from '../../attacks/space.js';
 import {
   type GangMember,
   type OutlawDecision,
@@ -54,6 +55,9 @@ export class ClientRobberGang {
   private scene: Scene | null = null;
   private world: RAPIER.World | null = null;
   private template: EnemyTemplate | null = null;
+  private space: CombatSpace | null = null;
+  /** The quarry's feet when last seen, so members are placed on its level. */
+  private readonly feet = new Vector3();
   private evaluateTimer = 0;
   private ambushCooldown = 0;
   private lastDecision: OutlawDecision | null = null;
@@ -84,6 +88,7 @@ export class ClientRobberGang {
     this.scene = scene;
     this.world = world;
     this.template = template;
+    this.space = new CombatSpace(world);
   }
 
   evaluate(senses: OutlawSenses): OutlawDecision {
@@ -118,25 +123,24 @@ export class ClientRobberGang {
   }
 
   spawnAmbush(playerLoc: PlayerLocation): void {
-    if (!this.scene || !this.world || !this.template) return;
+    if (!this.scene || !this.world || !this.template || !this.space) return;
 
     // Despawn any existing enemies
     this.despawn();
 
     // Members close in from all sides, evenly spread, the outer ones a step further back.
     const count = this.state.members.length;
+    this.feet.set(playerLoc.x, this.feet.y, playerLoc.z);
     for (let i = 0; i < count; i++) {
       const member = this.state.members[i]!;
       const angle = (i / count) * Math.PI * 2 + 0.4;
       const spawnDist = 4.5 + (i % 2) * 2;
-      const sx = playerLoc.x + Math.sin(angle) * spawnDist;
-      const sz = playerLoc.z + Math.cos(angle) * spawnDist;
 
       const kind = member.isLit ? 'bender' : 'robber';
       const enemy = new Enemy(
         this.template,
         this.world,
-        { x: sx, z: sz },
+        this.space.standOff(this.feet, angle, spawnDist, new Vector3()),
         member.maxHealth,
         kind,
         false
@@ -156,6 +160,7 @@ export class ClientRobberGang {
 
   update(dt: number, quarry: Quarry, senses?: OutlawSenses): void {
     this.evaluateTimer += dt;
+    this.feet.copy(quarry.position);
     this.ambushCooldown = Math.max(0, this.ambushCooldown - dt);
 
     if (senses && this.evaluateTimer >= 1.0) {

@@ -436,7 +436,7 @@ async function main(): Promise<void> {
     villains.then((template) => {
       robberGang = new ClientRobberGang({
         onAlert: (msg) => notice(msg),
-        onSpawnEnemy: (enemy) => fight.enemies.push(enemy),
+        onSpawnEnemy: (enemy) => fight.add(enemy),
         onDespawnEnemy: (enemy) => {
           const idx = fight.enemies.indexOf(enemy);
           if (idx >= 0) fight.enemies.splice(idx, 1);
@@ -446,7 +446,7 @@ async function main(): Promise<void> {
 
       deserterBand = new ClientDeserterBand({
         onAlert: (msg) => notice(msg),
-        onSpawnEnemy: (enemy) => fight.enemies.push(enemy),
+        onSpawnEnemy: (enemy) => fight.add(enemy),
         onDespawnEnemy: (enemy) => {
           const idx = fight.enemies.indexOf(enemy);
           if (idx >= 0) fight.enemies.splice(idx, 1);

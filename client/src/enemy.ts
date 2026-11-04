@@ -153,7 +153,8 @@ export class Enemy {
   constructor(
     template: EnemyTemplate,
     world: RAPIER.World,
-    spawn: { x: number; z: number },
+    /** Where the feet start; y is the ground's height there (0 when left out). */
+    spawn: { x: number; z: number; y?: number },
     maxHealth: number,
     kind: VillainKind = 'brawler',
     bounded = Math.hypot(spawn.x, spawn.z) <= (balance.arena.size / 2),

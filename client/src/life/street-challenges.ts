@@ -17,7 +17,7 @@ const GANG_MATES = 2;
 const GUARD_SIGHT = 25;
 
 export interface StreetChallengeOptions {
-  spawnVillain: (at: { x: number; z: number }) => Enemy;
+  spawnVillain: (at: { x: number; y: number; z: number }) => Enemy;
   enemies: () => readonly Enemy[];
   space: CombatSpace;
   /** Where the town watch stands now. */
@@ -121,13 +121,8 @@ export class StreetChallenges {
   }
 
   /** A spot behind the hero that the world lets someone walk out of, as far back as it allows. */
-  private outOfSight(hero: Vector3, heroFacing: number, i: number): { x: number; z: number } {
-    const behind = heroFacing + Math.PI + (i - 0.5) * 0.9;
-    this.from.set(hero.x, hero.y + 1, hero.z);
-    this.to.set(hero.x + Math.sin(behind) * APPROACH_FROM, hero.y + 1, hero.z + Math.cos(behind) * APPROACH_FROM);
-    const end = this.o.space.reachable(this.from, this.to, 0.4);
-    const back = Math.max(0, hero.distanceTo(end) - 0.8);
-    return { x: hero.x + Math.sin(behind) * back, z: hero.z + Math.cos(behind) * back };
+  private outOfSight(hero: Vector3, heroFacing: number, i: number): Vector3 {
+    return this.o.space.standOff(hero, heroFacing + Math.PI + (i - 0.5) * 0.9, APPROACH_FROM, new Vector3());
   }
 
   private guardSees(hero: Vector3): boolean {

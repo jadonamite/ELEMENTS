@@ -162,3 +162,19 @@ test('in an open zone, shift and place keep the hero standing on the ground; shi
     close(hero.position.y, 0, 0.05);
   } finally { hero.dispose(); world.free(); }
 });
+
+test('standOff places a body short of a wall, on the level of the feet it starts from', async () => {
+  const { CombatSpace } = await import('../src/attacks/space.ts');
+  await RAPIER.init();
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  world.createCollider(RAPIER.ColliderDesc.cuboid(6, 10, 0.5).setTranslation(0, 0, 4.5)); // a cliff 4 m to the south
+  world.step();
+  const space = new CombatSpace(world);
+  const feet = new Vector3(0, 3, 0);
+  const south = space.standOff(feet, 0, 6);
+  assert.ok(south.z <= 4 - 0.8 + 1e-3 && south.z > 2, `stops short of the cliff at ${south.z}`);
+  assert.equal(south.y, 3);
+  const north = space.standOff(feet, Math.PI, 6);
+  close(north.z, -6, 1e-3);
+  world.free();
+});
