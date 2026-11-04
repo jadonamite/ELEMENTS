@@ -46,6 +46,11 @@ export class ShoulderCamera {
   get target(): Vector3 { return this.anchor; }
   private readonly direction = new Vector3();
   private readonly look = new Vector3();
+  private readonly pivot = new Vector3();
+  private readonly right = new Vector3();
+  private readonly back = new Vector3();
+  private readonly tempDir = new Vector3();
+  private readonly ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
   private readonly probe = new RAPIER.Ball(tuning.collisionRadius);
 
   /** The round arena keeps the camera inside its wall; an open zone has no such limit. */
@@ -71,9 +76,15 @@ export class ShoulderCamera {
     if (this.lockTarget) {
       const dx = this.lockTarget.x - heroPosition.x;
       const dz = this.lockTarget.z - heroPosition.z;
+      const hDist = Math.hypot(dx, dz);
       const targetYaw = Math.atan2(-dx, -dz);
-      const diff = Math.atan2(Math.sin(targetYaw - this.yaw), Math.cos(targetYaw - this.yaw));
-      this.yaw += diff * (1 - Math.exp(-6 * delta));
+      const diffYaw = Math.atan2(Math.sin(targetYaw - this.yaw), Math.cos(targetYaw - this.yaw));
+      this.yaw += diffYaw * (1 - Math.exp(-6 * delta));
+
+      const eyeY = heroPosition.y + lerp(tuning.world.targetHeight, tuning.targetHeight, this.blend);
+      const targetY = this.lockTarget.y + 1.2;
+      const targetPitch = clamp(-Math.atan2(targetY - eyeY, Math.max(1.5, hDist)), tuning.minPitch, tuning.maxPitch);
+      this.pitch += (targetPitch - this.pitch) * (1 - Math.exp(-6 * delta));
     }
 
     let shakeYaw = 0;
@@ -98,7 +109,7 @@ export class ShoulderCamera {
     this.closeUp = Math.max(0, this.closeUp - delta);
     const framing = this.closeUp > 0 && !reducedMotion ? KILL_ZOOM : this.crowd ? CROWD_ZOOM : 1;
     this.zoom += (framing - this.zoom) * (1 - Math.exp(-(framing < this.zoom ? 9 : 3) * delta));
-    const distance = lerp(world.distance, tuning.distance * this.zoom, t);
+    const targetDistance = lerp(world.distance, tuning.distance * this.zoom, t);
     const shoulder = lerp(world.shoulder, tuning.shoulder, t);
     // The world view keeps its high angle but the mouse can still tilt it to look up at the skyline.
     const worldPitch = clamp(world.pitch + (this.pitch - tuning.initialPitch) * 0.8, 0.2, 1.1);
@@ -107,29 +118,92 @@ export class ShoulderCamera {
     const radius = cameraCollisionRadius(this.camera);
     this.probe.radius = radius;
     const limit = balance.arena.size / 2 - radius - tuning.collisionPadding;
-    // The hero can stand closer to a wall than a wide near plane can. Start the
-    // sweep from safe interior space so a penetrating origin cannot miss a wall.
+
     const reach = Math.hypot(heroPosition.x, heroPosition.z);
     const pull = this.bounded && reach > limit ? limit / reach : 1;
-    this.anchor.set(heroPosition.x * pull,
-      Math.max(radius + tuning.collisionPadding, heroPosition.y + lerp(world.targetHeight, tuning.targetHeight, t)),
-      heroPosition.z * pull);
-    const cos = Math.cos(pitch);
-    this.direction.set(
-      Math.sin(yaw) * cos * distance + Math.cos(yaw) * shoulder,
-      Math.sin(pitch) * distance,
-      Math.cos(yaw) * cos * distance - Math.sin(yaw) * shoulder,
+    const targetHeight = lerp(world.targetHeight, tuning.targetHeight, t);
+    this.anchor.set(
+      heroPosition.x * pull,
+      Math.max(radius + tuning.collisionPadding, heroPosition.y + targetHeight),
+      heroPosition.z * pull,
     );
-    const desiredDistance = this.direction.length();
-    this.direction.normalize();
-    const hit = this.world.castShape(this.anchor, identity, this.direction, this.probe,
-      0, desiredDistance, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
-    const safeDistance = hit ? Math.max(0, hit.time_of_impact - tuning.collisionPadding) : desiredDistance;
+
+    // Lateral direction perpendicular to yaw
+    this.right.set(Math.cos(yaw), 0, -Math.sin(yaw));
+
+    // When near side walls, adjust shoulder offset so the pivot does not penetrate.
+    let lateralOffset = shoulder;
+    if (shoulder > 1e-3) {
+      this.ray.origin = this.anchor;
+      this.ray.dir = this.right;
+      const hitRight = this.world.castRay(this.ray, shoulder + radius + tuning.collisionPadding, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+      if (hitRight) {
+        const rightClear = Math.max(0, hitRight.timeOfImpact - radius - tuning.collisionPadding);
+        if (rightClear < shoulder * 0.5) {
+          // Check left shoulder if right is tight
+          this.tempDir.set(-this.right.x, 0, -this.right.z);
+          this.ray.dir = this.tempDir;
+          const hitLeft = this.world.castRay(this.ray, shoulder + radius + tuning.collisionPadding, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+          const leftClear = hitLeft ? Math.max(0, hitLeft.timeOfImpact - radius - tuning.collisionPadding) : shoulder;
+          lateralOffset = leftClear >= shoulder * 0.8 ? -shoulder : rightClear;
+        } else {
+          lateralOffset = Math.min(shoulder, rightClear);
+        }
+      }
+    }
+
+    this.pivot.copy(this.anchor).addScaledVector(this.right, lateralOffset);
+
+    // Direction backward from pivot along view pitch and yaw
+    const cos = Math.cos(pitch);
+    this.back.set(
+      Math.sin(yaw) * cos,
+      Math.sin(pitch),
+      Math.cos(yaw) * cos,
+    );
+
+    // Find safe backward distance from pivot
+    this.ray.origin = this.pivot;
+    this.ray.dir = this.back;
+    const hitRay = this.world.castRay(this.ray, targetDistance + radius + tuning.collisionPadding, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+    let maxSafeDist = hitRay
+      ? Math.max(0, hitRay.timeOfImpact - radius - tuning.collisionPadding)
+      : targetDistance;
+
+    const hitShape = this.world.castShape(this.pivot, identity, this.back, this.probe,
+      0, maxSafeDist, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+    if (hitShape && hitShape.time_of_impact > 1e-4) {
+      maxSafeDist = Math.max(0, Math.min(maxSafeDist, hitShape.time_of_impact - tuning.collisionPadding));
+    }
+
     // Never smooth inward or interpolate positions across a corner.
-    this.distance = safeDistance < this.distance || reducedMotion ? safeDistance
-      : this.distance + (safeDistance - this.distance) * (1 - Math.exp(-tuning.recoveryRate * delta));
-    this.camera.position.copy(this.anchor).addScaledVector(this.direction, this.distance);
-    this.look.set(-Math.sin(yaw) * cos, -Math.sin(pitch), -Math.cos(yaw) * cos);
+    this.distance = maxSafeDist < this.distance || reducedMotion ? maxSafeDist
+      : this.distance + (maxSafeDist - this.distance) * (1 - Math.exp(-tuning.recoveryRate * delta));
+
+    // In close fight quarters against a wall, gently elevate to preserve over-the-shoulder view
+    let elevate = 0;
+    let extraPitch = 0;
+    if (t > 0.1 && this.distance < 1.4) {
+      const tight = clamp((1.4 - this.distance) / 1.4, 0, 1);
+      const desiredElevate = tight * 0.35 * t;
+      this.tempDir.set(0, 1, 0);
+      this.ray.origin = this.pivot;
+      this.ray.dir = this.tempDir;
+      const hitUp = this.world.castRay(this.ray, desiredElevate + radius + tuning.collisionPadding, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+      elevate = hitUp ? Math.max(0, hitUp.timeOfImpact - radius - tuning.collisionPadding) : desiredElevate;
+      extraPitch = tight * 0.12 * t;
+    }
+
+    this.camera.position.copy(this.pivot)
+      .addScaledVector(this.back, this.distance);
+    this.camera.position.y += elevate;
+
+    this.direction.copy(this.camera.position).sub(this.anchor);
+    if (this.direction.lengthSq() > 1e-6) this.direction.normalize();
+
+    const finalPitch = clamp(pitch + extraPitch, tuning.minPitch, tuning.maxPitch);
+    const finalCos = Math.cos(finalPitch);
+    this.look.set(-Math.sin(yaw) * finalCos, -Math.sin(finalPitch), -Math.cos(yaw) * finalCos);
     this.camera.lookAt(this.look.add(this.camera.position));
   }
 }
