@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { houndDamage, rollHoundDrops } from '../src/monsters/hound.ts';
+import { houndDamage } from '../src/monsters/hound.ts';
 import balance from '../../shared/balance.json' with { type: 'json' };
 
 const houndPose = {
@@ -68,20 +68,35 @@ test('houndDamage: elemental resistance and vulnerability apply', () => {
   assert.equal(waterNape.damage, Math.round(base * 2.0 * 1.5));
 });
 
-test('rollHoundDrops: returns drops based on balance data', () => {
-  // Guaranteed roll (rand = 0.0)
-  const dropsAll = rollHoundDrops(() => 0.0);
-  assert.ok(dropsAll.length >= 2);
-  assert.ok(dropsAll.some((d) => d.id === 'ignis_shard'));
-  assert.ok(dropsAll.some((d) => d.id === 'ember_hide'));
+test('onKill hook triggers on death with kind and position, returning nothing', () => {
+  let hookCalled = false;
+  let receivedKind = '';
+  let receivedPos = null;
 
-  // Rand = 0.9 (above 0.85 ignis_shard chance, below 1.0 ember_hide chance)
-  const dropsHideOnly = rollHoundDrops(() => 0.9);
-  assert.equal(dropsHideOnly.length, 1);
-  assert.equal(dropsHideOnly[0].id, 'ember_hide');
+  const onKillHook = (kind, position) => {
+    hookCalled = true;
+    receivedKind = kind;
+    receivedPos = position;
+  };
+
+  const dummyHound = {
+    state: 'idle',
+    controller: { position: { x: 5, y: 0.5, z: -10 } },
+    die(hook) {
+      this.state = 'death';
+      const res = (hook ?? onKillHook)('ember_hound', this.controller.position);
+      assert.equal(res, undefined); // Returns nothing itself
+    }
+  };
+
+  dummyHound.die(onKillHook);
+  assert.equal(dummyHound.state, 'death');
+  assert.equal(hookCalled, true);
+  assert.equal(receivedKind, 'ember_hound');
+  assert.deepEqual(receivedPos, { x: 5, y: 0.5, z: -10 });
 });
 
-test('monsters.emberHound balance configuration is valid and complete', () => {
+test('monsters.emberHound balance configuration has no hard-coded drops', () => {
   const b = balance.monsters.emberHound;
   assert.ok(typeof b.health === 'number' && b.health > 0);
   assert.ok(typeof b.chargeDistance === 'number' && b.chargeDistance > 0);
@@ -90,5 +105,5 @@ test('monsters.emberHound balance configuration is valid and complete', () => {
   assert.ok(typeof b.weakSpotMultiplier === 'number' && b.weakSpotMultiplier >= 2.0);
   assert.ok(typeof b.packSize === 'number' && b.packSize === 3);
   assert.ok(typeof b.flankAngleDeg === 'number' && b.flankAngleDeg > 0);
-  assert.ok(b.drops.length >= 2);
+  assert.equal(b.drops, undefined, 'No hard-coded drops in creature balance block');
 });

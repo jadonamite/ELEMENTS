@@ -947,6 +947,49 @@
           "walk": 1.0,
           "run": 3.6
         }
+      },
+      "robber": {
+        "attacks": [
+          "light_1",
+          "light_2",
+          "punch_jab"
+        ],
+        "attackDamage": 11,
+        "attackRange": 1.9,
+        "attackSpeed": 1.15,
+        "attackHitFraction": 0.42,
+        "attackCooldown": 1.4,
+        "walkSpeed": 1.4,
+        "runSpeed": 4.8,
+        "clipSpeeds": {
+          "walk": 0.97,
+          "run": 5.36
+        },
+        "weapons": [
+          "club",
+          "sword"
+        ]
+      },
+      "deserter": {
+        "attacks": [
+          "light_1",
+          "light_2",
+          "heavy_1"
+        ],
+        "attackDamage": 16,
+        "attackRange": 2.2,
+        "attackSpeed": 1.10,
+        "attackHitFraction": 0.45,
+        "attackCooldown": 1.5,
+        "walkSpeed": 1.3,
+        "runSpeed": 4.5,
+        "clipSpeeds": {
+          "walk": 0.97,
+          "run": 5.36
+        },
+        "weapons": [
+          "sword"
+        ]
       }
     },
     "waves": [
@@ -1023,23 +1066,168 @@
       "attackHitFraction": 0.4,
       "attackDuration": 0.9,
       "fireResistance": 0.5,
-      "waterVulnerability": 1.5,
-      "drops": [
+      "waterVulnerability": 1.5
+    },
+    "outlaws": {
+      "robberGangs": {
+        "gangSizeMin": 2,
+        "gangSizeMax": 4,
+        "maxLitFraction": 0.20,
+        "sentrySafeDistance": 25,
+        "minCarryThreshold": 50,
+        "highCarryThreshold": 300,
+        "dayAmbushOdds": 0.15,
+        "nightAmbushOdds": 0.85,
+        "fleeHealthFraction": 0.30,
+        "reachDistance": 20,
+        "ambushCooldownSeconds": 45
+      },
+      "deserterBands": {
+        "bandSizeMin": 3,
+        "bandSizeMax": 5,
+        "litFraction": 0.20,
+        "roadReachDistance": 30,
+        "baseHealth": 140,
+        "weapons": ["sword", "club"]
+      }
+    }
+  },
+  "economy": {
+    "totalSupply": 10000000,
+    "startingPurse": 100,
+    "treasuryBaseline": 7000000,
+    "initialBalances": {
+      "treasury": 7000000,
+      "merchants": 300000,
+      "masters": 250000,
+      "rivalGuild": 500000
+    },
+    "merchant": {
+      "brokeThreshold": 1000,
+      "closureDays": 3,
+      "bailoutGrant": 100000,
+      "outsiderBuySurcharge": 0.2,
+      "outsiderSellDiscount": 0.1,
+      "defaultSellMargin": 0.8,
+      "maxPriceMultiplier": 3.9,
+      "minPrice": 1,
+      "basePrices": {
+        "shard": 10,
+        "potion": 20,
+        "item": 150
+      },
+      "demand": {
+        "windowHours": 24,
+        "maxDemandFactor": 0.3
+      },
+      "colorBalance": {
+        "windowHours": 48,
+        "thresholdRatio": 0.4,
+        "discountRate": 0.2,
+        "counterPremiumRate": 0.2
+      }
+    },
+    "taxes": {
+      "dimTradeTaxRate": 0.05,
+      "litToLitTaxRate": 0.2,
+      "merchantSalesTaxRate": 0.05
+    },
+    "crime": {
+      "redFlagDurationMs": 1800000,
+      "flagsToBounty": 3,
+      "jailSeizureRate": 0.4,
+      "jailBaseFine": 50,
+      "baseRobberyFlag": true
+    },
+    "death": {
+      "carriedShardLossRate": 0.25
+    },
+    "drops": {
+      "ownerSeconds": 60,
+      "expireMinutes": 15,
+      "claimRadius": 1.5,
+      "monsterNationDropChance": 0.4,
+      "monsterChromaraDropChance": 0.3
+    },
+    "merchants": {
+      "sindr": [
         {
-          "id": "ignis_shard",
-          "name": "IGNIS Shard",
-          "chance": 0.85,
-          "min": 1,
-          "max": 2
+          "id": "sindr_shards",
+          "name": "Sindr Shards and Materials",
+          "nation": "IGNIS",
+          "personality": "A keen-eyed trader with charcoal-stained fingers who knows the true weight of every rough shard.",
+          "startingPurse": 20000,
+          "inventory": {
+            "shard": {
+              "stock": 100,
+              "maxStock": 200,
+              "basePrice": 10
+            },
+            "material": {
+              "stock": 50,
+              "maxStock": 100,
+              "basePrice": 15
+            }
+          }
         },
         {
-          "id": "ember_hide",
-          "name": "Ember Hide",
-          "chance": 1.0,
-          "min": 1,
-          "max": 1
+          "id": "sindr_supplies",
+          "name": "Sindr Potions and Supplies",
+          "nation": "IGNIS",
+          "personality": "A calm apothecary measuring every tincture by the drop, wary of waste and sudden shortages.",
+          "startingPurse": 20000,
+          "inventory": {
+            "potion": {
+              "stock": 50,
+              "maxStock": 100,
+              "basePrice": 20
+            },
+            "supplies": {
+              "stock": 50,
+              "maxStock": 100,
+              "basePrice": 25
+            }
+          }
+        },
+        {
+          "id": "sindr_arms",
+          "name": "Sindr Arms and Armour",
+          "nation": "IGNIS",
+          "personality": "A weathered veteran smith who judges folk by the balance of their blade and the firmness of their purse.",
+          "startingPurse": 20000,
+          "inventory": {
+            "item": {
+              "stock": 25,
+              "maxStock": 50,
+              "basePrice": 150
+            },
+            "armour": {
+              "stock": 25,
+              "maxStock": 50,
+              "basePrice": 150
+            }
+          }
         }
       ]
+    },
+    "agents": {
+      "tickGameMinutes": 30,
+      "dayStartHour": 6,
+      "nightStartHour": 20,
+      "minOpenHour": 6,
+      "maxCloseHour": 22,
+      "restockStockRatio": 0.3,
+      "tributeStockRatio": 0.9,
+      "tributePriceRatio": 0.25
+    },
+    "shops": {
+      "salePrice": 2000,
+      "saleDays": 3,
+      "maxPerPlayer": 1,
+      "upkeepPerDay": 10,
+      "minPriceMultiplier": 0.6,
+      "maxPriceMultiplier": 2.5,
+      "unpaidUpkeepDaysToForfeit": 7
     }
   }
 }
