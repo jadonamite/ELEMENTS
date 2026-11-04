@@ -224,6 +224,8 @@ const tmpVec = new Vector3();
  */
 export class BendingEffects {
   private readonly root = new Group();
+  /** The flipbooks must finish loading before the zone uploads effect textures. */
+  get ready(): Promise<void> { return this.field.ready; }
   private readonly debris: Debris;
   /** The world loose sparks and stones bounce off. */
   set space(space: Pick<CombatSpace, 'obstruction'> | undefined) { this.debris.space = space; }

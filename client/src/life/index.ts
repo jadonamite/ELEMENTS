@@ -38,6 +38,8 @@ export class SindrLifeSystem {
   readonly waypointMarker: WaypointMarker;
   readonly dialogueUI: NpcDialogueUI;
   readonly dialogueMemory: DialogueMemory;
+  readonly ready: Promise<void>;
+  private disposed = false;
 
   private scene: Scene;
   private readonly offerAt = new Vector3();
@@ -77,7 +79,9 @@ export class SindrLifeSystem {
       },
     );
 
-    loadTownsfolkBodies().then((bodies) => this.townManager.init(bodies)).catch(console.error);
+    this.ready = loadTownsfolkBodies().then((bodies) => {
+      if (!this.disposed) this.townManager.init(bodies);
+    }).catch(console.error);
   }
 
   update(delta: number): void {
@@ -136,6 +140,7 @@ export class SindrLifeSystem {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.townManager.dispose();
     this.shuttersLanterns.dispose();
     this.waypointMarker.dispose();

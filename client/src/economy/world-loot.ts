@@ -23,6 +23,8 @@ const SEE_RADIUS = 40;
 const POLL_SECONDS = 2;
 const CLAIM_REACH = 1.35;
 const RETRY_SECONDS = 3;
+const PREPARED_PILES = 16;
+const PILE_LIGHTS = 2;
 
 interface ShownPile {
   pile: LootPile;
@@ -39,6 +41,8 @@ export interface WorldLootEvents {
 export class WorldLoot {
   private readonly root = new Group();
   private readonly shown = new Map<string, ShownPile>();
+  private readonly available: Group[] = [];
+  private readonly lights: PointLight[] = [];
   private pollIn = 0;
   private polling = false;
   private time = 0;
@@ -62,6 +66,17 @@ export class WorldLoot {
   ) {
     this.root.name = 'world-loot';
     scene.add(this.root);
+    for (let i = 0; i < PREPARED_PILES; i++) {
+      const mesh = this.createMesh();
+      mesh.visible = false;
+      this.root.add(mesh);
+      this.available.push(mesh);
+    }
+    for (let i = 0; i < PILE_LIGHTS; i++) {
+      const light = new PointLight(0xff8822, 0, 5, 1.8);
+      this.root.add(light);
+      this.lights.push(light);
+    }
   }
 
   // Shows a pile at once (a kill or a death), before the next poll would find it.
@@ -93,6 +108,13 @@ export class WorldLoot {
         beacon.material.opacity = 0.55 + Math.sin(this.time * 3.0) * 0.2;
       }
     }
+
+    const nearest = [...this.shown.values()].sort((a, b) => a.mesh.position.distanceToSquared(hero) - b.mesh.position.distanceToSquared(hero));
+    this.lights.forEach((light, i) => {
+      const pile = nearest[i];
+      light.intensity = pile ? 1.2 : 0;
+      if (pile) light.position.copy(pile.mesh.position).y += 0.5;
+    });
 
     this.pollIn -= dt;
     if (this.pollServer && this.pollIn <= 0 && !this.polling) {
@@ -152,7 +174,7 @@ export class WorldLoot {
     return hit ? 200 - hit.timeOfImpact : 0;
   }
 
-  private show(pile: LootPile): void {
+  private createMesh(): Group {
     const g = new Group();
     const glow = new Mesh(this.glowGeo, this.glowMat);
     glow.rotation.x = -Math.PI / 2;
@@ -171,34 +193,48 @@ export class WorldLoot {
     beacon.position.y = 1.1;
     g.add(beacon);
 
-    const light = new PointLight(0xff8822, 1.2, 5.0, 1.8);
-    light.position.y = 0.5;
-    g.add(light);
-
-    const coins = Math.min(6, Math.ceil(pile.contents.chroma / 10));
-    for (let i = 0; i < coins; i++) {
+    for (let i = 0; i < 6; i++) {
       const c = new Mesh(this.coinGeo, this.coinMat);
-      const a = (i / Math.max(1, coins)) * Math.PI * 2;
+      c.name = `coin-${i}`;
+      const a = (i / 6) * Math.PI * 2;
       c.position.set(Math.cos(a) * 0.28, 0.01 + i * 0.004, Math.sin(a) * 0.28);
       c.rotation.z = (i % 3) * 0.2;
       g.add(c);
     }
-    const shardCount = Object.values(pile.contents.shards ?? {}).reduce((a, b) => a + b, 0);
-    for (let i = 0; i < Math.min(3, shardCount); i++) {
+    for (let i = 0; i < 3; i++) {
       const s = new Mesh(this.coinGeo, this.shardMat);
+      s.name = `shard-${i}`;
       s.scale.set(0.8, 6, 0.8);
       s.position.set(-0.22 + i * 0.12, 0.04, 0.2);
       s.rotation.set(0.5, i, 0.3);
       g.add(s);
     }
 
+    return g;
+  }
+
+  private show(pile: LootPile): void {
+    const g = this.available.pop() ?? this.createMesh();
+    g.visible = true;
+    g.rotation.set(0, 0, 0);
+    const coins = Math.min(6, Math.ceil(pile.contents.chroma / 10));
+    const shards = Object.values(pile.contents.shards ?? {}).reduce((a, b) => a + b, 0);
+    for (let i = 0; i < 6; i++) {
+      const coin = g.getObjectByName(`coin-${i}`)!;
+      coin.visible = i < coins;
+      const a = i / Math.max(1, coins) * Math.PI * 2;
+      coin.position.set(Math.cos(a) * 0.28, 0.01 + i * 0.004, Math.sin(a) * 0.28);
+    }
+    for (let i = 0; i < 3; i++) g.getObjectByName(`shard-${i}`)!.visible = i < shards;
     g.position.set(pile.x, this.groundY(pile.x, pile.z), pile.z);
     this.root.add(g);
     this.shown.set(pile.id, { pile, mesh: g, retryAt: 0 });
   }
 
   private hide(id: string, s: ShownPile): void {
-    s.mesh.removeFromParent();
+    if (this.shown.get(id) !== s) return;
+    s.mesh.visible = false;
+    this.available.push(s.mesh);
     this.shown.delete(id);
   }
 }
