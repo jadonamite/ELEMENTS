@@ -101,9 +101,19 @@ export async function reportKill(kind: string, x: number, z: number, zone: strin
   return data.pile;
 }
 
+/** Where the player stands with the town watch, as the server holds it. */
+export interface Standing {
+  redFlags: number;
+  hasBounty: boolean;
+}
+
+export async function fetchStanding(): Promise<Standing> {
+  return call<Standing>('/api/economy/crime/standing');
+}
+
 /** The town watch saw the player brawling in the street: one red flag on the server. */
-export async function reportBrawlSeen(): Promise<{ convertedToBounty: boolean }> {
-  return call<{ convertedToBounty: boolean }>('/api/economy/crime/brawl-seen', { method: 'POST', body: '{}' });
+export async function reportBrawlSeen(): Promise<Standing & { convertedToBounty: boolean }> {
+  return call('/api/economy/crime/brawl-seen', { method: 'POST', body: '{}' });
 }
 
 export async function reportDeath(x: number, z: number, zone: string): Promise<LootPile> {

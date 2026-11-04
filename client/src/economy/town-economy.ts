@@ -5,9 +5,12 @@ import {
   economyAvailable,
   fetchBalance,
   fetchSatchel,
+  fetchStanding,
+  reportBrawlSeen,
   reportDeath,
   reportKill,
 } from './api.js';
+import type { Standing } from './api.js';
 import { ShopWindow } from './shop-window.js';
 import { WorldLoot } from './world-loot.js';
 
@@ -33,6 +36,7 @@ const LOOT_KIND: Record<string, string> = {
 
 export interface TownEconomyEvents {
   notice(text: string): void;
+  standingChanged(standing: Standing): void;
 }
 
 export class TownEconomy {
@@ -44,6 +48,7 @@ export class TownEconomy {
   private readonly shop: ShopWindow | null = null;
   private readonly hint: HTMLDivElement;
   private nearStall: string | null = null;
+  private standingNow: Standing = { redFlags: 0, hasBounty: false };
 
   constructor(
     scene: Scene,
@@ -76,6 +81,11 @@ export class TownEconomy {
     if (!this.enabled || this.accountId === null) return null;
     const weight = Object.values(this.items).reduce((sum, n) => sum + n, 0);
     return { chroma: this.coin, weight };
+  }
+
+  /** Red flags and bounty as the server last told us. */
+  get standing(): Standing {
+    return this.standingNow;
   }
 
   get shopOpen(): boolean {
@@ -122,6 +132,17 @@ export class TownEconomy {
       .catch(() => undefined);
   }
 
+  /** A guard saw the player brawl. The server records the flag; we show what it says. */
+  brawlSeen(): void {
+    if (!this.enabled) return;
+    reportBrawlSeen()
+      .then((result) => {
+        if (result.convertedToBounty) this.events.notice('Three red flags: the watch has put a bounty on you.');
+        this.setStanding(result);
+      })
+      .catch(() => undefined);
+  }
+
   dispose(): void {
     this.loot?.dispose();
     this.shop?.dispose();
@@ -143,8 +164,14 @@ export class TownEconomy {
       this.accountId = satchel.accountId;
       this.items = satchel.items;
       this.coin = await fetchBalance(this.accountId);
+      this.setStanding(await fetchStanding());
     } catch {
       // Keep the last known view.
     }
+  }
+
+  private setStanding(next: Standing): void {
+    this.standingNow = { redFlags: next.redFlags, hasBounty: next.hasBounty };
+    this.events.standingChanged(this.standingNow);
   }
 }

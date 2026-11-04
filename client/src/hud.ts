@@ -35,6 +35,7 @@ export class FightHud {
   private readonly modeBadge: HTMLSpanElement;
   private readonly stanceBadge: HTMLSpanElement;
   private readonly perkBadge: HTMLSpanElement;
+  private readonly standingBadge: HTMLSpanElement;
   private readonly roundTracker: HTMLDivElement;
   private readonly roundTitle: HTMLSpanElement;
   private readonly roundSub: HTMLSpanElement;
@@ -63,6 +64,7 @@ export class FightHud {
       '<span class="mode-badge">Unlit</span>' +
       '<span class="stance-badge">Barehanded</span>' +
       '<span class="perk-badge">Physical Mode</span>' +
+      '<span class="standing-badge" role="status" hidden></span>' +
       '</div>' +
       '<div class="hero-health" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100">' +
       '<div class="trail"></div><div class="fill"></div><div class="scars"></div></div>' +
@@ -93,6 +95,7 @@ export class FightHud {
     this.modeBadge = this.root.querySelector('.mode-badge')!;
     this.stanceBadge = this.root.querySelector('.stance-badge')!;
     this.perkBadge = this.root.querySelector('.perk-badge')!;
+    this.standingBadge = this.root.querySelector('.standing-badge')!;
     this.lockReticle = this.root.querySelector('.lock-reticle')!;
     this.meter = this.root.querySelector('.hero-meter')!;
     this.meterFill = this.root.querySelector('.meter-fill')!;
@@ -136,6 +139,14 @@ export class FightHud {
     this.meter.classList.toggle('weak', meter < weakBelow);
     this.meter.setAttribute('aria-valuenow', String(Math.round(meter)));
     this.supply.textContent = supply ?? '';
+  }
+
+  /** The player's red flags with the town watch, or the bounty they turned into. Hidden when clean. */
+  setStanding(redFlags: number, hasBounty: boolean): void {
+    const badge = this.standingBadge;
+    badge.hidden = redFlags === 0 && !hasBounty;
+    badge.classList.toggle('bounty', hasBounty);
+    badge.textContent = hasBounty ? 'Wanted: bounty' : `${redFlags} red flag${redFlags === 1 ? '' : 's'}`;
   }
 
   /** Large centred line such as "You fell" or "Round Cleared", or empty to clear it. */

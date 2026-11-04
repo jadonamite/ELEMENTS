@@ -27,7 +27,6 @@ import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
 import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
 import { TownEconomy } from './economy/town-economy.js';
-import { reportBrawlSeen } from './economy/api.js';
 import { StreetChallenges } from './life/street-challenges.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
@@ -359,8 +358,8 @@ async function main(): Promise<void> {
         role: isDim ? 'Hush' : 'Shaper',
         element: isDim ? 'NONE' : kitElement,
         carriedItemsCount: townEconomy?.carried?.weight ?? 0,
-        redFlags: 0,
-        hasBounty: false,
+        redFlags: townEconomy?.standing.redFlags ?? 0,
+        hasBounty: townEconomy?.standing.hasBounty ?? false,
       }),
       onNotice: (msg) => notice(msg),
       getThreats: () => fight.enemies.filter(e => e.alive && !e.challenging).map(e => e.controller.position),
@@ -408,7 +407,7 @@ async function main(): Promise<void> {
     drawForFight: () => { if (fightingStyle === 'weapon' && !sword.engaged) sword.draw(true); },
     onSeenByGuard: () => {
       notice('The town watch saw you brawling: one red flag.');
-      reportBrawlSeen().catch(() => undefined);
+      townEconomy?.brawlSeen();
     },
     notice: (msg) => notice(msg),
   }) : null;
@@ -520,7 +519,10 @@ async function main(): Promise<void> {
     setTimeout(() => { if (fight.heroAlive && !fight.isVictory) fightHud.say(''); }, 1600);
   };
   // Loot, the market stalls and death drops, held by the server. Sindr is an IGNIS town.
-  townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', { notice }) : null;
+  townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', {
+    notice,
+    standingChanged: (s) => fightHud.setStanding(s.redFlags, s.hasBounty),
+  }) : null;
   cleanup.push(() => townEconomy?.dispose());
   const applyStyle = (): void => {
     fightingStyle = armedWith === 'weapon' ? 'weapon' : armedWith === 'legs' ? 'legs' : (isLit ? 'bending' : 'bare_hands');

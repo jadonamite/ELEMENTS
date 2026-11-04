@@ -16,9 +16,8 @@ import {
   getOpenBounties,
   claimBounty,
   pardonBounty,
-  getActiveRedFlags,
   addRedFlag,
-  processJailSentence,
+  getStanding,
   executePlayerTrade,
   listLootPiles,
   claimLootPile,
@@ -45,6 +44,21 @@ function extractToken(req: Request): string | null {
     return bodyToken.trim();
   }
   return null;
+}
+
+/** The signed-in account behind a request, or null after answering 401. */
+async function tokenAccount(req: Request, res: Response): Promise<string | null> {
+  const token = extractToken(req);
+  if (!token) {
+    res.status(401).json({ error: 'Missing auth token' });
+    return null;
+  }
+  try {
+    return (await verifyToken(token)).userId;
+  } catch {
+    res.status(401).json({ error: 'Invalid auth token' });
+    return null;
+  }
 }
 
 function extractIp(req: Request): string {
@@ -421,20 +435,10 @@ export function setupApi(app: Application): void {
     }
   });
 
-  app.get('/api/economy/crime/flags/:accountId', (req: Request, res: Response) => {
-    const accountId = String(req.params.accountId ?? '');
-    const flags = getActiveRedFlags(accountId);
-    res.json({ flags });
-  });
-
-  app.post('/api/economy/crime/flag', (req: Request, res: Response) => {
-    const { accountId, reason } = req.body || {};
-    if (!accountId || !reason) {
-      res.status(400).json({ error: 'Missing accountId or reason' });
-      return;
-    }
-    const result = addRedFlag(accountId, reason);
-    res.json({ success: true, ...result });
+  // The player's own standing with the town watch. The account comes from the token.
+  app.get('/api/economy/crime/standing', async (req: Request, res: Response) => {
+    const accountId = await tokenAccount(req, res);
+    if (accountId) res.json(getStanding(accountId));
   });
 
   // The town watch saw this player brawling in the street. The account comes from the token, never the body.
@@ -443,36 +447,10 @@ export function setupApi(app: Application): void {
       res.status(403).json({ error: 'Fights are judged by the game server here' });
       return;
     }
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let accountId: string;
-    try {
-      accountId = (await verifyToken(token)).userId;
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await tokenAccount(req, res);
+    if (!accountId) return;
     const result = addRedFlag(accountId, 'Brawling in the street, seen by the town watch');
-    res.json({ convertedToBounty: result.convertedToBounty });
-  });
-
-  app.post('/api/economy/crime/jail', (req: Request, res: Response) => {
-    const { accountId, vaultChroma, materialsCount, gearCount, hasLand } = req.body || {};
-    if (!accountId) {
-      res.status(400).json({ error: 'Missing accountId' });
-      return;
-    }
-    const result = processJailSentence({
-      accountId,
-      vaultChroma: vaultChroma ?? 0,
-      materialsCount: materialsCount ?? 0,
-      gearCount: gearCount ?? 0,
-      hasLand: !!hasLand,
-    });
-    res.json({ success: true, seizure: result });
+    res.json({ convertedToBounty: result.convertedToBounty, ...getStanding(accountId) });
   });
 
   app.post('/api/economy/trade', async (req: Request, res: Response) => {

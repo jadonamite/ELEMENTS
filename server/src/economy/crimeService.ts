@@ -74,6 +74,15 @@ export function getActiveRedFlags(
   return rows.map(mapRowToFlag);
 }
 
+/** Where a player stands with the town watch: live red flags and whether a bounty is open on them. */
+export function getStanding(
+  accountId: string,
+  db: DatabaseSync = getDatabase(),
+  now = Date.now(),
+): { redFlags: number; hasBounty: boolean } {
+  return { redFlags: getActiveRedFlags(accountId, db, now).length, hasBounty: hasActiveBounty(accountId, db) };
+}
+
 export function hasActiveBounty(accountId: string, db: DatabaseSync = getDatabase()): boolean {
   const row = db
     .prepare("SELECT id FROM bounties WHERE target_account_id = ? AND status = 'open'")

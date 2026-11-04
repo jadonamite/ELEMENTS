@@ -130,6 +130,18 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   border: 1px solid rgb(214 170 110 / 0.35);
   color: rgb(220 210 196);
 }
+.standing-badge {
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-xs);
+  background: rgb(40 8 6 / 0.85);
+  border: 1px solid rgb(214 52 40 / 0.8);
+  color: rgb(255 120 104);
+}
+.standing-badge[hidden] { display: none; }
+.standing-badge.bounty {
+  background: rgb(120 14 8 / 0.9);
+  color: rgb(255 228 220);
+}
 .mode-badge.lit {
   border-color: var(--color-ignis-glow);
   color: #ff5522;
