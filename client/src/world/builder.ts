@@ -20,7 +20,7 @@ import {
   type Material,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LOOKS, worldUv, type Surface } from './materials.js';
+import { LOOKS, resolveSurface, worldUv, type Surface } from './materials.js';
 import { roof } from './roofs.js';
 
 export type PlantKind = 'ginkgo' | 'maple' | 'weed' | 'fern';
@@ -80,9 +80,9 @@ const up = new Vector3(0, 1, 0);
  * props and plants use 40 m cells, because they also switch detail by distance from their cell's centre
  * (see cellLods) and a big cell would keep far items at full detail.
  */
-export const BUILD_CELL = 80;
-export const PROP_CELL = 40;
-const cellKey = (x: number, z: number, size: number): string => `${Math.floor(x / size)},${Math.floor(z / size)}`;
+export const BUILD_CELL = 300;
+export const PROP_CELL = 300;
+const cellKey = (x: number, z: number, size: number): string => `${Math.floor(x / size)},${Math.floor((z + 250) / size)}`;
 /** Groups items by the ground cell their position falls in. */
 export function byCell<T extends { x: number; z: number }>(items: T[], size: number): T[][] {
   const cells = new Map<string, T[]>();
@@ -103,10 +103,10 @@ export interface Part { geometry: BufferGeometry; material: Material; local?: Ma
  * (camera to cell centre) on; past `hideAt` the cell draws nothing. Distances are padded by the cell's
  * half-diagonal so the farthest item of a cell is never cut early.
  */
-export function cellLods(items: Placement[], levels: Array<{ from: number; parts: Part[] }>, hideAt: number): LOD[] {
-  const pad = PROP_CELL * 0.71;
+export function cellLods(items: Placement[], levels: Array<{ from: number; parts: Part[] }>, hideAt: number, cellSize = PROP_CELL): LOD[] {
+  const pad = cellSize * 0.71;
   const m = new Matrix4(), q = new Quaternion(), s = new Vector3();
-  return byCell(items, PROP_CELL).map((cell) => {
+  return byCell(items, cellSize).map((cell) => {
     const centre = cell.reduce((c, p) => c.add(new Vector3(p.x, p.y, p.z)), new Vector3()).divideScalar(cell.length);
     const lod = new LOD();
     lod.position.copy(centre);
@@ -133,6 +133,16 @@ export function cellLods(items: Placement[], levels: Array<{ from: number; parts
   });
 }
 
+/** Buckets that cast visible sun shadows (vertical architectural volumes and roofs). */
+const SHADOW_CASTERS = new Set<Bucket>([
+  'ashlar_stone_blocks',
+  'basalt_rock_face',
+  'charred_timber_beams',
+  'sooted_plaster',
+  'roof_tile_charcoal',
+  'red_lacquer',
+]);
+
 export class WorldBuilder {
   /** Pieces by material and ground cell. */
   private readonly buckets = new Map<string, { bucket: Bucket; list: BufferGeometry[] }>();
@@ -148,9 +158,18 @@ export class WorldBuilder {
   readonly steam: Vector3[] = [];
   /** Where pieces go; houses set it to their own frame. */
   private frame = new Matrix4();
+  readonly low: boolean;
+
+  constructor(options?: { low?: boolean }) {
+    this.low = options?.low ?? (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fxQuality') === 'low');
+  }
 
   /** Adds a piece in the current frame. Local UVs keep a box face's own 0..1 range scaled by size/tile. */
   add(bucket: Bucket, geometry: BufferGeometry, local: Matrix4, localUv?: { u: number; v: number }): void {
+    if (this.low && (bucket === 'wet' || bucket === 'ao')) return;
+    const b = !GLOWS.includes(bucket as Glow)
+      ? resolveSurface(bucket as Surface, this.low)
+      : bucket;
     let g = geometry.index ? geometry.toNonIndexed() : geometry;
     if (localUv) {
       const uv = g.getAttribute('uv');
@@ -158,13 +177,14 @@ export class WorldBuilder {
       g.setAttribute('uv1', uv);
     }
     g.applyMatrix4(new Matrix4().multiplyMatrices(this.frame, local));
-    if (!localUv && !GLOWS.includes(bucket as Glow)) g = worldUv(g, LOOKS[bucket as Surface].tile);
+    if (!localUv && !GLOWS.includes(b as Glow)) g = worldUv(g, LOOKS[b as Surface].tile);
     if (!g.getAttribute('uv1')) g.setAttribute('uv1', g.getAttribute('uv'));
     g.computeBoundingBox();
     const c = g.boundingBox!.getCenter(new Vector3());
-    const key = `${bucket}|${cellKey(c.x, c.z, BUILD_CELL)}`;
+    const cellSize = this.low ? 350 : BUILD_CELL;
+    const key = `${b}|${cellKey(c.x, c.z, cellSize)}`;
     const entry = this.buckets.get(key);
-    if (entry) entry.list.push(g); else this.buckets.set(key, { bucket, list: [g] });
+    if (entry) entry.list.push(g); else this.buckets.set(key, { bucket: b, list: [g] });
   }
 
   /**
@@ -241,6 +261,7 @@ export class WorldBuilder {
    * Laid where steps meet walls, walls meet the ground and inside recesses, it stands in for ambient occlusion.
    */
   ao(p0: [number, number, number], p1: [number, number, number], out: [number, number, number], strength = 1): void {
+    if (this.low) return;
     const q = [p0, p1, [p1[0] + out[0], p1[1] + out[1], p1[2] + out[2]], [p0[0] + out[0], p0[1] + out[1], p0[2] + out[2]]];
     const pos = new Float32Array([...q[0]!, ...q[1]!, ...q[2]!, ...q[0]!, ...q[2]!, ...q[3]!]);
     const v0 = 1 - Math.min(1, Math.max(0, strength));
@@ -449,7 +470,7 @@ export class WorldBuilder {
       if (!mat) { mat = material(bucket); materials.set(bucket, mat); }
       const mesh = new Mesh(merged, mat);
       mesh.name = bucket;
-      mesh.castShadow = !GLOWS.includes(bucket as Glow);
+      mesh.castShadow = !this.low && SHADOW_CASTERS.has(bucket);
       mesh.receiveShadow = bucket !== 'ao';
       // Films are drawn after the ground they lie on.
       if (FILMS.includes(bucket as Glow) || bucket === 'dirt_verge') mesh.renderOrder = 1;

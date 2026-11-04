@@ -36,6 +36,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { FXAAPass } from 'three/examples/jsm/postprocessing/FXAAPass.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -141,10 +142,11 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   // Sun by day, moon by night (one light, so one shadow map); the town's fires do the rest.
   const sun = new DirectionalLight(0xffffff, 0);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
+  sun.castShadow = !low;
+  sun.shadow.mapSize.set(low ? 512 : 2048, low ? 512 : 2048);
   const s = sun.shadow.camera;
-  s.left = -45; s.right = 45; s.top = 45; s.bottom = -45; s.near = 1; s.far = 260;
+  const shadowSpan = low ? 25 : 32;
+  s.left = -shadowSpan; s.right = shadowSpan; s.top = shadowSpan; s.bottom = -shadowSpan; s.near = 1; s.far = 260;
   sun.shadow.radius = 3;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
@@ -214,7 +216,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   scene.add(farMesh);
 
   // The town.
-  const builder = new WorldBuilder();
+  const builder = new WorldBuilder({ low });
   buildSindr(builder);
   buildGorge(builder);
   buildBarrens(builder);
@@ -254,7 +256,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   (plume.material as unknown as { uniforms: Record<string, { value: unknown }> }).uniforms.uColor!.value = new Color(0x1a1614);
   scene.add(plume);
 
-  const pool = new LightPool(scene, builder.emitters, low ? 4 : 8);
+  const pool = new LightPool(scene, builder.emitters, low ? 2 : 8);
 
   // Kit models placed as instances, one draw call per model part.
   // They load after the town stands; they join it only once warmed, so walking into them never stalls a frame.
@@ -304,7 +306,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       rebakeEnv();
       if (followed) focus.copy(followed);
       // The shadow box follows the hero, snapped to texels so edges do not crawl.
-      const texel = 90 / sun.shadow.mapSize.x;
+      const texel = (shadowSpan * 2) / sun.shadow.mapSize.x;
       const fx = Math.round(focus.x / texel) * texel, fz = Math.round(focus.z / texel) * texel;
       sun.target.position.set(fx, 0, fz);
       sun.position.set(fx, 0, fz).addScaledVector(clock.light.direction, 120);
@@ -346,18 +348,31 @@ async function loadProps(renderer: WebGLRenderer, placements: WorldBuilder['prop
     const gltf = await loader.loadAsync(`/assets/env/ignis/models/${file}.glb`);
     gltf.scene.updateMatrixWorld(true);
     const forged = id === 'iron_brazier' || id === 'anvil';
-    const parts: Part[] = [];
+    const byMat = new Map<Material, BufferGeometry[]>();
     let radius = 0;
     gltf.scene.traverse((o) => {
       const mesh = o as Mesh;
       if (!mesh.isMesh) return;
-      const geometry = forged ? bakeIronUv(mesh.geometry, mesh.matrixWorld) : mesh.geometry;
-      const mat = mesh.material as MeshStandardMaterial;
-      if (mat.isMeshStandardMaterial) mat.envMapIntensity = 0.8;
+      let geometry = forged ? bakeIronUv(mesh.geometry, mesh.matrixWorld) : mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+      if (geometry.index) geometry = geometry.toNonIndexed();
+      const mat = forged ? iron : (mesh.material as Material);
+      if ((mat as MeshStandardMaterial).isMeshStandardMaterial) (mat as MeshStandardMaterial).envMapIntensity = 0.8;
       geometry.computeBoundingSphere();
       radius = Math.max(radius, geometry.boundingSphere!.radius);
-      parts.push({ geometry, material: forged ? iron : mesh.material as Material, local: forged ? undefined : mesh.matrixWorld.clone(), castShadow: true, name: id });
+      const list = byMat.get(mat);
+      if (list) list.push(geometry); else byMat.set(mat, [geometry]);
     });
+    const parts: Part[] = [];
+    for (const [material, list] of byMat) {
+      const merged = list.length === 1 ? list[0]! : mergeGeometries(list, false)!;
+      merged.computeBoundingSphere();
+      parts.push({
+        geometry: merged,
+        material,
+        castShadow: !low && (id === 'boulder_large' || id === 'boulder_huge' || id === 'dead_burnt_tree' || id === 'iron_brazier'),
+        name: id,
+      });
+    }
     return { parts, radius };
   };
   await Promise.all([...byId].map(async ([id, list]) => {
@@ -365,7 +380,7 @@ async function loadProps(renderer: WebGLRenderer, placements: WorldBuilder['prop
       const far = await partsOf(id, `${id}_low`);
       const size = far.radius * Math.max(...list.map((p) => p.scale));
       // A barrel (0.5 m) is gone at about 100 m, a cart at 250 m, a boulder or dead tree carries to 600 m.
-      const hideAt = Math.min(600, Math.max(100, size * 130));
+      const hideAt = low ? Math.min(180, Math.max(40, size * 50)) : Math.min(600, Math.max(100, size * 130));
       const near = Math.max(10, size * 8);
       const levels = low ? [{ from: 0, parts: far.parts }] : [{ from: 0, parts: (await partsOf(id, id)).parts }, { from: near, parts: far.parts }];
       for (const lod of cellLods(list, levels, hideAt)) into.add(lod);

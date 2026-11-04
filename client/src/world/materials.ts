@@ -23,6 +23,28 @@ export type Surface =
   | 'moss' | 'terracotta'
   | 'worn_flagstones' | 'ash_plaster' | 'dirt_verge' | 'indigo_cloth' | 'raw_timber' | 'river_cobbles';
 
+/** Maps surface aliases into a consolidated canonical material to minimize draw calls. */
+export function resolveSurface(surface: Surface, low = false): Surface {
+  if (low) {
+    if (surface === 'worn_flagstones' || surface === 'river_cobbles') return 'basalt_cobblestone';
+    if (surface === 'pale_stone') return 'ashlar_stone_blocks';
+    if (surface === 'cooled_lava_crust' || surface === 'dirt_verge' || surface === 'packed_dirt_road' || surface === 'moss') return 'ash_cinder_ground';
+    if (surface === 'lime_plaster' || surface === 'ash_plaster' || surface === 'terracotta' || surface === 'indigo_cloth') return 'sooted_plaster';
+    if (surface === 'raw_timber' || surface === 'red_lacquer') return 'charred_timber_beams';
+    if (surface === 'roof_tile_red' || surface === 'roof_slates') return 'roof_tile_charcoal';
+    if (surface === 'gold_trim') return 'blackened_rusted_iron';
+    return surface;
+  }
+  if (surface === 'river_cobbles') return 'basalt_cobblestone';
+  if (surface === 'dirt_verge') return 'packed_dirt_road';
+  if (surface === 'moss') return 'ash_cinder_ground';
+  if (surface === 'terracotta') return 'sooted_plaster';
+  if (surface === 'ash_plaster' || surface === 'lime_plaster') return 'sooted_plaster';
+  if (surface === 'roof_tile_red' || surface === 'roof_slates') return 'roof_tile_charcoal';
+  if (surface === 'gold_trim') return 'blackened_rusted_iron';
+  return surface;
+}
+
 export interface SurfaceLook {
   /** Metres covered by one repeat of the texture. */
   tile: number;
@@ -115,10 +137,11 @@ export class SurfaceLibrary {
 
   /** A material per surface; its textures stream in after it is first used. */
   get(surface: Surface): MeshStandardMaterial {
-    const known = this.cache.get(surface);
+    const canonical = resolveSurface(surface, this.size === '1k');
+    const known = this.cache.get(canonical);
     if (known) return known;
-    const look = LOOKS[surface];
-    const files = look.source ?? surface;
+    const look = LOOKS[canonical];
+    const files = look.source ?? canonical;
     // Colour = the tint's hue scaled so the textured surface lands on its target albedo.
     const color = new Color(look.tint ?? 0xffffff);
     color.multiplyScalar(look.albedo / look.scan / (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b));
@@ -126,7 +149,8 @@ export class SurfaceLibrary {
     if (look.metal) {
       material.color.setHex(look.tint ?? 0xffffff);
       material.metalness = look.metal;
-      this.cache.set(surface, material);
+      this.cache.set(canonical, material);
+      if (surface !== canonical) this.cache.set(surface, material);
       return material;
     }
     if (look.courses) addCourses(material, look.courses.rows, look.courses.courses);
@@ -153,9 +177,10 @@ export class SurfaceLibrary {
     load('diff', true, (t) => { material.map = t; });
     load('nor_uastc', false, (t) => { material.normalMap = t; });
     // Only iron reads the packed metal channel, and only partly: forge scale is oxide, not bare steel.
-    load('arm', false, (t) => { material.aoMap = t; material.roughnessMap = t; if (surface === 'blackened_rusted_iron') { material.metalnessMap = t; material.metalness = 0.4; material.envMapIntensity = 0.5; } });
+    load('arm', false, (t) => { material.aoMap = t; material.roughnessMap = t; if (canonical === 'blackened_rusted_iron') { material.metalnessMap = t; material.metalness = 0.4; material.envMapIntensity = 0.5; } });
     this.onMaterial(material);
-    this.cache.set(surface, material);
+    this.cache.set(canonical, material);
+    if (surface !== canonical) this.cache.set(surface, material);
     return material;
   }
 

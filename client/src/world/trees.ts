@@ -62,11 +62,12 @@ export function createPlants(spots: Array<{ kind: PlantKind; x: number; y: numbe
       const { wood, crown } = plantGeometry(form, cards, seed);
       return [
         { geometry: crown, material: leaves, castShadow: !small && !low, name: `${kind}-leaves` },
-        ...(wood ? [{ geometry: wood, material: bark, castShadow: true, name: `${kind}-wood` }] : []),
+        ...(wood ? [{ geometry: wood, material: bark, castShadow: !low, name: `${kind}-wood` }] : []),
       ];
     };
     const levels = small ? [{ from: 0, parts: parts(1) }] : [{ from: 0, parts: parts(low ? 0.6 : 1) }, { from: 80, parts: parts(0.33) }];
-    for (const lod of cellLods(list, levels, small ? 60 : 500)) group.add(lod);
+    const hideAt = small ? (low ? 30 : 60) : (low ? 150 : 500);
+    for (const lod of cellLods(list, levels, hideAt, small ? 160 : undefined)) group.add(lod);
   }
   return group;
 }
