@@ -2,6 +2,8 @@ import express, { type Application, type Request, type Response } from 'express'
 import { verifyToken } from './auth.js';
 import { createOrGetAccount, createOrGetRising, getRising } from './db.js';
 import { isAccountAllowed, isIpAllowed } from './rate-limit.js';
+import { isOutsider } from './net/money.js';
+import { isInRoom, isZoneOnline } from './net/presence.js';
 import {
   getAccountBalance,
   grantPlayerStartingPurse,
@@ -14,11 +16,9 @@ import {
   withdrawFromCountingHouse,
   getAccountNotes,
   getOpenBounties,
-  claimBounty,
   pardonBounty,
   addRedFlag,
   getStanding,
-  executePlayerTrade,
   listLootPiles,
   claimLootPile,
   getMerchantMind,
@@ -47,7 +47,7 @@ function extractToken(req: Request): string | null {
 }
 
 /** The signed-in account behind a request, or null after answering 401. */
-async function tokenAccount(req: Request, res: Response): Promise<string | null> {
+async function requireAccount(req: Request, res: Response): Promise<string | null> {
   const token = extractToken(req);
   if (!token) {
     res.status(401).json({ error: 'Missing auth token' });
@@ -59,6 +59,16 @@ async function tokenAccount(req: Request, res: Response): Promise<string | null>
     res.status(401).json({ error: 'Invalid auth token' });
     return null;
   }
+}
+
+/**
+ * While the account stands in a zone room, the room holds its money: anything that needs a
+ * place or a fight goes through the room's messages. Answers 409 and returns true when refused.
+ */
+function heldByRoom(accountId: string, res: Response): boolean {
+  if (!isInRoom(accountId)) return false;
+  res.status(409).json({ error: 'You are in an online zone: do this in the world' });
+  return true;
 }
 
 function extractIp(req: Request): string {
@@ -104,30 +114,19 @@ export function setupApi(app: Application): void {
       return;
     }
 
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
-
-    if (!isAccountAllowed(verified.userId)) {
+    if (!isAccountAllowed(accountId)) {
       res.status(429).json({ error: 'Too many requests' });
       return;
     }
 
-    createOrGetAccount(verified.userId);
-    const stored = getRising(verified.userId);
+    createOrGetAccount(accountId);
+    const stored = getRising(accountId);
 
     res.json({
-      accountId: verified.userId,
+      accountId: accountId,
       rising: stored
         ? {
             role: stored.role,
@@ -144,29 +143,18 @@ export function setupApi(app: Application): void {
       return;
     }
 
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
-
-    if (!isAccountAllowed(verified.userId)) {
+    if (!isAccountAllowed(accountId)) {
       res.status(429).json({ error: 'Too many requests' });
       return;
     }
 
-    const rising = createOrGetRising(verified.userId);
+    const rising = createOrGetRising(accountId);
 
     res.json({
-      accountId: verified.userId,
+      accountId: accountId,
       role: rising.role,
       element: rising.element ?? null,
       rising: {
@@ -178,33 +166,24 @@ export function setupApi(app: Application): void {
 
   // --- Economy endpoints (M5) ---
 
-  app.get('/api/economy/balance/:accountId', (req: Request, res: Response) => {
-    const accountId = String(req.params.accountId ?? '');
-    if (!accountId) {
-      res.status(400).json({ error: 'Missing accountId' });
+  // Your own balance only. Robbers and Sentries read the ledger on the server, not through here.
+  app.get('/api/economy/balance/:accountId', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (String(req.params.accountId ?? '') !== accountId) {
+      res.status(403).json({ error: 'Only your own balance' });
       return;
     }
-    const balance = getAccountBalance(accountId);
-    res.json({ accountId, balance });
+    res.json({ accountId, balance: getAccountBalance(accountId) });
   });
 
   app.post('/api/economy/grant-starting-purse', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
-    const grant = grantPlayerStartingPurse(verified.userId);
-    const balance = getAccountBalance(verified.userId);
-    res.json({ accountId: verified.userId, granted: !!grant, balance, grant });
+    const grant = grantPlayerStartingPurse(accountId);
+    const balance = getAccountBalance(accountId);
+    res.json({ accountId: accountId, granted: !!grant, balance, grant });
   });
 
   app.get('/api/economy/merchants', (_req: Request, res: Response) => {
@@ -222,13 +201,17 @@ export function setupApi(app: Application): void {
     res.json({ merchant });
   });
 
-  app.get('/api/economy/merchants/:merchantId/quote', (req: Request, res: Response) => {
+  // A price for the signed-in player (outsider worked out here), or the plain price without a login.
+  app.get('/api/economy/merchants/:merchantId/quote', async (req: Request, res: Response) => {
     const merchantId = String(req.params.merchantId ?? '');
     const itemType = String(req.query.itemType || '');
     const action = req.query.action === 'sell' ? 'sell' : 'buy';
     const quantity = Math.max(1, parseInt(String(req.query.quantity || '1'), 10) || 1);
-    const isOutsider = req.query.isOutsider === 'true';
-    const buyerAccountId = req.query.accountId ? String(req.query.accountId) : undefined;
+    const token = extractToken(req);
+    const buyerAccountId = token ? await requireAccount(req, res) : undefined;
+    if (buyerAccountId === null) return;
+    const merchant = getMerchant(merchantId);
+    const outsider = !!(buyerAccountId && merchant && isOutsider(buyerAccountId, merchant.nation));
 
     const quoteParams: {
       merchantId: string;
@@ -243,7 +226,7 @@ export function setupApi(app: Application): void {
       action,
       quantity,
     };
-    if (isOutsider) quoteParams.isOutsider = true;
+    if (outsider) quoteParams.isOutsider = true;
     if (buyerAccountId) quoteParams.buyerAccountId = buyerAccountId;
 
     const quote = quoteMerchantTrade(quoteParams);
@@ -251,20 +234,12 @@ export function setupApi(app: Application): void {
   });
 
   app.post('/api/economy/merchants/buy', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
-    const { merchantId, itemType, quantity, isOutsider } = req.body || {};
+    if (heldByRoom(accountId, res)) return;
+    const { merchantId, itemType, quantity } = req.body || {};
+    const merchant = getMerchant(String(merchantId ?? ''));
     try {
       const buyParams: {
         merchantId: string;
@@ -274,11 +249,11 @@ export function setupApi(app: Application): void {
         isOutsider?: boolean;
       } = {
         merchantId,
-        buyerAccountId: verified.userId,
+        buyerAccountId: accountId,
         itemType,
         quantity: quantity ?? 1,
       };
-      if (isOutsider) buyParams.isOutsider = true;
+      if (merchant && isOutsider(accountId, merchant.nation)) buyParams.isOutsider = true;
 
       const result = buyFromMerchant(buyParams);
       res.json({ success: true, result });
@@ -288,20 +263,12 @@ export function setupApi(app: Application): void {
   });
 
   app.post('/api/economy/merchants/sell', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
-    const { merchantId, itemType, quantity, isOutsider } = req.body || {};
+    if (heldByRoom(accountId, res)) return;
+    const { merchantId, itemType, quantity } = req.body || {};
+    const merchant = getMerchant(String(merchantId ?? ''));
     try {
       const sellParams: {
         merchantId: string;
@@ -311,11 +278,11 @@ export function setupApi(app: Application): void {
         isOutsider?: boolean;
       } = {
         merchantId,
-        sellerAccountId: verified.userId,
+        sellerAccountId: accountId,
         itemType,
         quantity: quantity ?? 1,
       };
-      if (isOutsider) sellParams.isOutsider = true;
+      if (merchant && isOutsider(accountId, merchant.nation)) sellParams.isOutsider = true;
 
       const result = sellToMerchant(sellParams);
       res.json({ success: true, result });
@@ -325,23 +292,14 @@ export function setupApi(app: Application): void {
   });
 
   app.post('/api/economy/counting-house/deposit', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
+    if (heldByRoom(accountId, res)) return;
     const { amount, countingHouseId } = req.body || {};
     try {
       const note = depositToCountingHouse({
-        accountId: verified.userId,
+        accountId: accountId,
         amount,
         countingHouseId,
       });
@@ -352,23 +310,14 @@ export function setupApi(app: Application): void {
   });
 
   app.post('/api/economy/counting-house/withdraw', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
+    if (heldByRoom(accountId, res)) return;
     const { noteId, countingHouseId } = req.body || {};
     try {
       const result = withdrawFromCountingHouse({
-        accountId: verified.userId,
+        accountId: accountId,
         noteId,
         countingHouseId,
       });
@@ -378,10 +327,14 @@ export function setupApi(app: Application): void {
     }
   });
 
-  app.get('/api/economy/counting-house/notes/:accountId', (req: Request, res: Response) => {
-    const accountId = String(req.params.accountId ?? '');
-    const notes = getAccountNotes(accountId);
-    res.json({ notes });
+  app.get('/api/economy/counting-house/notes/:accountId', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (String(req.params.accountId ?? '') !== accountId) {
+      res.status(403).json({ error: 'Only your own notes' });
+      return;
+    }
+    res.json({ notes: getAccountNotes(accountId) });
   });
 
   app.get('/api/economy/bounties', (_req: Request, res: Response) => {
@@ -389,46 +342,13 @@ export function setupApi(app: Application): void {
     res.json({ bounties });
   });
 
-  app.post('/api/economy/bounties/claim', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
-
-    const { bountyId } = req.body || {};
-    try {
-      const bounty = claimBounty({ bountyId, claimantId: verified.userId });
-      res.json({ success: true, bounty });
-    } catch (err: unknown) {
-      res.status(400).json({ error: err instanceof Error ? err.message : 'Bounty claim failed' });
-    }
-  });
-
   app.post('/api/economy/bounties/pardon', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
     const { bountyId } = req.body || {};
     try {
-      const bounty = pardonBounty({ bountyId, payerId: verified.userId });
+      const bounty = pardonBounty({ bountyId, payerId: accountId });
       res.json({ success: true, bounty });
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Bounty pardon failed' });
@@ -437,7 +357,7 @@ export function setupApi(app: Application): void {
 
   // The player's own standing with the town watch. The account comes from the token.
   app.get('/api/economy/crime/standing', async (req: Request, res: Response) => {
-    const accountId = await tokenAccount(req, res);
+    const accountId = await requireAccount(req, res);
     if (accountId) res.json(getStanding(accountId));
   });
 
@@ -447,38 +367,10 @@ export function setupApi(app: Application): void {
       res.status(403).json({ error: 'Fights are judged by the game server here' });
       return;
     }
-    const accountId = await tokenAccount(req, res);
+    const accountId = await requireAccount(req, res);
     if (!accountId) return;
     const result = addRedFlag(accountId, 'Brawling in the street, seen by the town watch');
     res.json({ convertedToBounty: result.convertedToBounty, ...getStanding(accountId) });
-  });
-
-  app.post('/api/economy/trade', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
-
-    const { sellerId, amount, refId } = req.body || {};
-    try {
-      const trade = executePlayerTrade({
-        buyerId: verified.userId,
-        sellerId,
-        amount,
-        refId,
-      });
-      res.json({ success: true, ...trade });
-    } catch (err: unknown) {
-      res.status(400).json({ error: err instanceof Error ? err.message : 'Trade failed' });
-    }
   });
 
   app.get('/api/economy/loot', (req: Request, res: Response) => {
@@ -519,19 +411,14 @@ export function setupApi(app: Application): void {
       res.status(403).json({ error: 'Kills are reported by the game server here' });
       return;
     }
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let accountId: string;
-    try {
-      accountId = (await verifyToken(token)).userId;
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (heldByRoom(accountId, res)) return;
     const { kind, x, z, zone, nation } = req.body || {};
+    if (typeof zone === 'string' && isZoneOnline(zone)) {
+      res.status(409).json({ error: 'This zone is played online: its kills are judged by the game server' });
+      return;
+    }
     const numX = Number(x);
     const numZ = Number(z);
     if (typeof kind !== 'string' || typeof zone !== 'string' || !Number.isFinite(numX) || !Number.isFinite(numZ)) {
@@ -555,18 +442,9 @@ export function setupApi(app: Application): void {
 
   // The signed-in player died: what they carried (per the server) falls where they fell.
   app.post('/api/economy/death', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let accountId: string;
-    try {
-      accountId = (await verifyToken(token)).userId;
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (heldByRoom(accountId, res)) return;
     const { x, z, zone } = req.body || {};
     const numX = Number(x);
     const numZ = Number(z);
@@ -596,19 +474,10 @@ export function setupApi(app: Application): void {
     }
 
     // The claimer is always the signed-in player, never a name sent in the body.
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let accountId: string;
-    try {
-      accountId = (await verifyToken(token)).userId;
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
+    if (heldByRoom(accountId, res)) return;
     const { x, z } = req.body || {};
     if (x === undefined || z === undefined) {
       res.status(400).json({ error: 'Missing x or z' });
@@ -673,23 +542,13 @@ export function setupApi(app: Application): void {
       res.status(400).json({ error: 'Missing merchantId' });
       return;
     }
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
     try {
       const result = buyShop({
         merchantId,
-        buyerAccountId: verified.userId,
+        buyerAccountId: accountId,
       });
       res.json(result);
     } catch (err: unknown) {
@@ -705,18 +564,8 @@ export function setupApi(app: Application): void {
       res.status(400).json({ error: 'Missing merchantId' });
       return;
     }
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
     const multipliers = req.body?.multipliers ?? req.body?.prices;
     if (!multipliers || typeof multipliers !== 'object') {
@@ -727,7 +576,7 @@ export function setupApi(app: Application): void {
     try {
       const result = setShopPrices({
         merchantId,
-        ownerAccountId: verified.userId,
+        ownerAccountId: accountId,
         multipliers,
       });
       res.json(result);
@@ -744,18 +593,8 @@ export function setupApi(app: Application): void {
       res.status(400).json({ error: 'Missing merchantId' });
       return;
     }
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
     const { itemType, quantity } = req.body || {};
     if (!itemType || typeof quantity !== 'number') {
@@ -766,7 +605,7 @@ export function setupApi(app: Application): void {
     try {
       const result = stockShop({
         merchantId,
-        ownerAccountId: verified.userId,
+        ownerAccountId: accountId,
         itemType: String(itemType),
         quantity: Number(quantity),
       });
@@ -779,17 +618,8 @@ export function setupApi(app: Application): void {
   });
 
   app.get('/api/economy/satchel', async (req: Request, res: Response) => {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    try {
-      const { userId } = await verifyToken(token);
-      res.json({ accountId: userId, items: getSatchel(userId) });
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-    }
+    const accountId = await requireAccount(req, res);
+    if (accountId) res.json({ accountId, items: getSatchel(accountId) });
   });
 
   app.post('/api/economy/shops/:merchantId/withdraw', async (req: Request, res: Response) => {
@@ -798,18 +628,8 @@ export function setupApi(app: Application): void {
       res.status(400).json({ error: 'Missing merchantId' });
       return;
     }
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Missing auth token' });
-      return;
-    }
-    let verified: { userId: string };
-    try {
-      verified = await verifyToken(token);
-    } catch {
-      res.status(401).json({ error: 'Invalid auth token' });
-      return;
-    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
 
     const amount =
       req.body?.amount !== undefined ? Number(req.body.amount) : undefined;
@@ -817,7 +637,7 @@ export function setupApi(app: Application): void {
     try {
       const result = withdrawShopProfit({
         merchantId,
-        ownerAccountId: verified.userId,
+        ownerAccountId: accountId,
         amount,
       });
       res.json(result);

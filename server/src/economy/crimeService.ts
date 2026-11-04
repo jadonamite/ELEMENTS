@@ -245,6 +245,8 @@ export function pardonBounty(
 
   if (!row) throw new Error('Bounty not found');
   if (row.status !== 'open') throw new Error(`Bounty is already ${row.status}`);
+  // Only the target pays off their own bounty; a friend hands them the coin first.
+  if (row.target_account_id !== params.payerId) throw new Error('Only the one wanted can pay off a bounty');
 
   // Criminal pays off bounty to Treasury
   recordTransaction(

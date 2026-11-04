@@ -12,11 +12,12 @@ import {
   type Vector3,
   AdditiveBlending,
 } from 'three';
-import { EconomyError, claimLoot, listLoot, type LootPile } from './api.js';
+import { EconomyError, listLoot, type LootContents, type LootPile } from './api.js';
 import { describeLoot, lootItems } from './items.js';
 
 // Loot on the ground: piles the server holds near the player are drawn where they lie, and walking
-// within reach of one picks it up. The server checks the distance and who may take it.
+// within reach of one picks it up. The server checks the distance and who may take it. Offline the
+// piles are polled; online the zone room tells every player when a pile appears or goes.
 
 const SEE_RADIUS = 40;
 const POLL_SECONDS = 2;
@@ -32,6 +33,7 @@ interface ShownPile {
 export interface WorldLootEvents {
   picked(text: string): void;
   satchelChanged(): void;
+  claim(pileId: string, x: number, z: number): Promise<LootContents>;
 }
 
 export class WorldLoot {
@@ -40,6 +42,8 @@ export class WorldLoot {
   private pollIn = 0;
   private polling = false;
   private time = 0;
+  /** Off once the room pushes piles. */
+  pollServer = true;
   private readonly pouchGeo = new SphereGeometry(0.18, 12, 8);
   private readonly coinGeo = new CylinderGeometry(0.05, 0.05, 0.012, 10);
   private readonly glowGeo = new CircleGeometry(0.55, 24);
@@ -65,6 +69,19 @@ export class WorldLoot {
     if (!this.shown.has(pile.id)) this.show(pile);
   }
 
+  // A pile someone took or that expired.
+  remove(id: string): void {
+    const s = this.shown.get(id);
+    if (s) this.hide(id, s);
+  }
+
+  // The room's full list of the zone's piles, as a player joins.
+  replace(piles: LootPile[]): void {
+    const live = new Set(piles.map((p) => p.id));
+    for (const [id, s] of this.shown) if (!live.has(id)) this.hide(id, s);
+    for (const pile of piles) this.add(pile);
+  }
+
   update(dt: number, hero: Vector3): void {
     this.time += dt;
     for (const s of this.shown.values()) {
@@ -78,7 +95,7 @@ export class WorldLoot {
     }
 
     this.pollIn -= dt;
-    if (this.pollIn <= 0 && !this.polling) {
+    if (this.pollServer && this.pollIn <= 0 && !this.polling) {
       this.pollIn = POLL_SECONDS;
       void this.poll(hero.x, hero.z);
     }
@@ -116,7 +133,7 @@ export class WorldLoot {
 
   private async claim(s: ShownPile, x: number, z: number): Promise<void> {
     try {
-      const { contents } = await claimLoot(s.pile.id, x, z);
+      const contents = await this.events.claim(s.pile.id, x, z);
       this.hide(s.pile.id, s);
       this.events.picked(`Picked up ${describeLoot(contents.chroma, lootItems(contents))}`);
       this.events.satchelChanged();

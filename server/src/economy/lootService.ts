@@ -159,7 +159,7 @@ export interface CreateFightLootPileParams {
 export function createLootPileFromFight(
   params: CreateFightLootPileParams,
   db: DatabaseSync = getDatabase(),
-): LootPile {
+): LootPile | null {
   let contents: LootContents;
   if (params.source === 'villain') {
     contents = villainDrop(params.carried, params.rng);
@@ -174,6 +174,9 @@ export function createLootPileFromFight(
   } else {
     contents = deathDrop(params.carried ?? { chroma: 0 });
   }
+
+  // Nothing to drop leaves nothing on the ground.
+  if (itemsFromLoot(contents).length === 0 && contents.chroma <= 0) return null;
 
   const pileId = params.id ?? `pile_${randomUUID()}`;
   return withSavepoint(db, () => {
@@ -428,7 +431,7 @@ export function dropFromClientKill(
     rng?: (() => number) | undefined;
   },
   db: DatabaseSync = getDatabase(),
-): LootPile {
+): LootPile | null {
   const now = params.now ?? Date.now();
   const last = lastClientKillDrop.get(params.accountId) ?? -Infinity;
   if (now - last < CLIENT_KILL_MIN_GAP_MS) {

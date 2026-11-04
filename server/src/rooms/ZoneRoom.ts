@@ -4,7 +4,13 @@ import { ELEMENTS, type Element } from '@elements/shared';
 import { verifyToken } from '../auth.js';
 import { getRising } from '../db.js';
 import { SNAPSHOT_RATE } from '../net/constants.js';
+import { isGuest } from '../net/money.js';
+import { closeZone, enterRoom, leaveRoom, openZone } from '../net/presence.js';
 import { ZoneWorld, type Identity, type WorldEvent } from '../net/world.js';
+import { ZoneEconomy, type EconEvent } from '../net/zone-economy.js';
+
+/** How often the room re-reads its zone's piles, so expired ones vanish for everyone, seconds. */
+const PILE_REFRESH_SECONDS = 5;
 
 export function testBannedWords(text: string): boolean {
   return /\b(fire|water|earth|air|wind)\b/i.test(text);
@@ -37,11 +43,13 @@ export async function identify(options: Record<string, unknown> | undefined, tok
 
 /**
  * One zone of the shared world. The room owns the zone's enemies and judges every hit;
- * players report their own movement, which is checked for what a body can do.
+ * players report their own movement, which is checked for what a body can do. While a
+ * player is in the room, everything that moves their CHROMA or items goes through it.
  */
 export class ZoneRoom extends Room {
   maxClients = 50;
   world!: ZoneWorld;
+  economy!: ZoneEconomy;
   private started = 0;
 
   /** Seconds since the room opened: the clock every client syncs to. */
@@ -53,12 +61,21 @@ export class ZoneRoom extends Room {
     this.started = performance.now();
     const zone = typeof options?.zone === 'string' ? options.zone : 'arena';
     this.world = new ZoneWorld(zone);
+    this.economy = new ZoneEconomy(this.world);
+    openZone(zone);
     void this.setMetadata({ zone });
 
     let sinceSnap = 0;
+    let sincePiles = 0;
     this.setSimulationInterval((deltaMs) => {
       const dt = Math.min(deltaMs / 1000, 0.1);
       this.deliver(this.world.step(dt, this.now()));
+      this.pay(this.economy.drain());
+      sincePiles += dt;
+      if (sincePiles >= PILE_REFRESH_SECONDS) {
+        sincePiles = 0;
+        this.pay(this.economy.refresh());
+      }
       sinceSnap += dt;
       if (sinceSnap >= 1 / SNAPSHOT_RATE - 1e-3) {
         sinceSnap = 0;
@@ -76,6 +93,16 @@ export class ZoneRoom extends Room {
     this.onMessage('hit', (client: Client, message: unknown) => {
       this.deliver(this.world.hit(client.sessionId, message, this.now()));
     });
+
+    // Money: the message names the player's choice; who and where come from the room.
+    this.onMessage('loot_claim', (client: Client, message: unknown) => this.pay(this.economy.claim(client.sessionId, message)));
+    this.onMessage('shop', (client: Client, message: unknown) => this.pay(this.economy.shop(client.sessionId, message)));
+    this.onMessage('bank', (client: Client, message: unknown) => this.pay(this.economy.bank(client.sessionId, message)));
+    this.onMessage('trade_offer', (client: Client, message: unknown) => this.pay(this.economy.offer(client.sessionId, message)));
+    this.onMessage('trade_accept', (client: Client) => this.pay(this.economy.accept(client.sessionId)));
+    this.onMessage('trade_cancel', (client: Client) => this.pay(this.economy.cancelTrade(client.sessionId)));
+    // The browser is listening: the zone's piles and its purse, as at join.
+    this.onMessage('econ_sync', (client: Client) => this.pay(this.economy.join(client.sessionId)));
 
     this.onMessage('ping', (client: Client, message: unknown) => {
       const c = (message as { c?: unknown } | undefined)?.c;
@@ -109,18 +136,38 @@ export class ZoneRoom extends Room {
 
   override onJoin(client: Client, _options: unknown, who: Identity): void {
     const player = this.world.join(client.sessionId, who, this.now());
+    if (!isGuest(who.accountId)) enterRoom(who.accountId);
     client.send('welcome', { you: client.sessionId, t: this.now(), zone: this.world.zone, element: player.element, role: player.role });
     client.send('snap', this.world.snapshot(this.now()));
+    this.pay(this.economy.join(client.sessionId));
   }
 
   override onLeave(client: Client): void {
+    const p = this.world.players.get(client.sessionId);
+    this.pay(this.economy.leave(client.sessionId));
+    if (p && !isGuest(p.accountId)) leaveRoom(p.accountId);
     this.world.leave(client.sessionId);
     this.broadcast('left', { id: client.sessionId });
+  }
+
+  override onDispose(): void {
+    this.economy.dispose();
+    closeZone(this.world.zone);
+  }
+
+  /** Sends money events to the one player they concern, or to everyone. */
+  private pay(events: EconEvent[]): void {
+    for (const ev of events) {
+      if (ev.to !== undefined) this.clients.find(c => c.sessionId === ev.to)?.send(ev.type, ev.body);
+      else this.broadcast(ev.type, ev.body);
+    }
   }
 
   /** Sends world events to the one player they concern, or to everyone. */
   private deliver(events: WorldEvent[]): void {
     for (const ev of events) {
+      // A fall the room saw drops what the player carries where the room has them.
+      if (ev.type === 'fell') this.pay(this.economy.death(ev.to));
       const { type, ...body } = ev;
       if ('to' in ev) {
         const { to, ...rest } = body as typeof body & { to: string };

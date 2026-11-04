@@ -10,21 +10,17 @@ import {
   reportDeath,
   reportKill,
 } from './api.js';
-import type { Standing } from './api.js';
+import type { LootPile, Standing } from './api.js';
+import { httpDoor, RoomDoor, type MoneyDoor, type RoomChannel } from './door.js';
 import { ShopWindow } from './shop-window.js';
+import { placesFor, PLACE_REACH } from '../../../shared/src/net/index.js';
 import { WorldLoot } from './world-loot.js';
 
 // The money loop in the town: loot that falls where enemies die, picked up by walking over it, sold at
 // the market stalls, and dropped where you fall. All of it is held by the server; this keeps the
-// player's view of their satchel and coin and draws the world side.
+// player's view of their satchel and coin and draws the world side. Offline it talks to the HTTP
+// routes; once the zone room is joined, every move of money goes through the room instead.
 
-// Sindr's market square is centred at x 125; its stalls stand 12 m east and west, 8 m north and south.
-const STALLS: Array<{ merchantId: string; x: number; z: number }> = [
-  { merchantId: 'sindr_shards', x: 113, z: -8 },
-  { merchantId: 'sindr_supplies', x: 137, z: -8 },
-  { merchantId: 'sindr_arms', x: 113, z: 8 },
-];
-const STALL_REACH = 3.6;
 
 // What each kind of fighter in the town counts as for the loot rules.
 const LOOT_KIND: Record<string, string> = {
@@ -49,6 +45,9 @@ export class TownEconomy {
   private readonly hint: HTMLDivElement;
   private nearStall: string | null = null;
   private standingNow: Standing = { redFlags: 0, hasBounty: false };
+  private door: MoneyDoor = httpDoor;
+  /** True once the server has told us the purse at least once. */
+  private known = false;
 
   constructor(
     scene: Scene,
@@ -67,18 +66,20 @@ export class TownEconomy {
     this.loot = new WorldLoot(scene, world, zone, {
       picked: (text) => events.notice(text),
       satchelChanged: () => void this.refresh(),
+      claim: (pileId, x, z) => this.door.claim(pileId, x, z),
     });
     this.shop = new ShopWindow({
       satchel: () => this.items,
       coin: () => this.coin,
       changed: () => this.refresh(),
+      trade: (action, merchantId, item) => this.door.trade(action, merchantId, item, 1),
     });
     void this.start();
   }
 
   /** What the player carries, as robbers judge it: coin, plus the number of items as weight. */
   get carried(): { chroma: number; weight: number } | null {
-    if (!this.enabled || this.accountId === null) return null;
+    if (!this.enabled || !this.known) return null;
     const weight = Object.values(this.items).reduce((sum, n) => sum + n, 0);
     return { chroma: this.coin, weight };
   }
@@ -95,8 +96,8 @@ export class TownEconomy {
   update(dt: number, hero: Vector3): void {
     if (!this.enabled) return;
     this.loot?.update(dt, hero);
-    const stall = STALLS.find((s) => Math.hypot(hero.x - s.x, hero.z - s.z) < STALL_REACH);
-    this.nearStall = stall?.merchantId ?? null;
+    const stall = placesFor(this.zone).stalls.find((s) => Math.hypot(hero.x - s.x, hero.z - s.z) < PLACE_REACH);
+    this.nearStall = stall?.id ?? null;
     const show = this.nearStall !== null && !this.shopOpen;
     if (this.hint.hidden === show) {
       this.hint.hidden = !show;
@@ -111,19 +112,40 @@ export class TownEconomy {
     return true;
   }
 
-  enemyKilled(kind: string, at: Vector3): void {
+  /**
+   * The zone room is joined: from now on it holds this player's money. It pushes the purse and
+   * the zone's piles; kills and falls drop on the server without a word from us.
+   */
+  goOnline(room: RoomChannel): void {
     if (!this.enabled) return;
+    this.door = new RoomDoor(room);
+    if (this.loot) this.loot.pollServer = false;
+    room.on('purse', (m) => {
+      const p = m as { chroma: number; items: Record<string, number> };
+      this.coin = p.chroma;
+      this.items = p.items;
+      this.known = true;
+    });
+    room.on('loot', (m) => this.loot?.replace((m as { piles: LootPile[] }).piles));
+    room.on('loot_new', (m) => this.loot?.add((m as { pile: LootPile }).pile));
+    room.on('loot_gone', (m) => this.loot?.remove((m as { id: string }).id));
+    room.send('econ_sync', {});
+  }
+
+  enemyKilled(kind: string, at: Vector3): void {
+    if (!this.enabled || this.door.online) return;
     reportKill(LOOT_KIND[kind] ?? kind, at.x, at.z, this.zone, this.nation)
-      .then((pile) => this.loot?.add(pile))
+      .then((pile) => { if (pile) this.loot?.add(pile); })
       .catch(() => {
         // No drop: the server refused (production, or too many kills too fast).
       });
   }
 
   heroDied(at: Vector3): void {
-    if (!this.enabled) return;
+    if (!this.enabled || this.door.online) return;
     reportDeath(at.x, at.z, this.zone)
       .then((pile) => {
+        if (!pile) return this.refresh();
         this.loot?.add(pile);
         const lost = Object.values(pile.contents.shards).reduce((a, b) => a + b, 0) + Object.values(pile.contents.materials).reduce((a, b) => a + b, 0);
         if (lost > 0) this.events.notice('What you carried lies where you fell');
@@ -159,11 +181,17 @@ export class TownEconomy {
   }
 
   private async refresh(): Promise<void> {
+    if (this.door instanceof RoomDoor) {
+      // The room pushes the purse after every change; standing still comes from HTTP.
+      fetchStanding().then((s) => this.setStanding(s)).catch(() => undefined);
+      return;
+    }
     try {
       const satchel = await fetchSatchel();
       this.accountId = satchel.accountId;
       this.items = satchel.items;
       this.coin = await fetchBalance(this.accountId);
+      this.known = true;
       this.setStanding(await fetchStanding());
     } catch {
       // Keep the last known view.

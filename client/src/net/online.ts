@@ -130,6 +130,11 @@ export class OnlineSession {
     return session;
   }
 
+  /** The room connection, for the money messages. */
+  get channel(): { on(type: string, h: (m: unknown) => void): void; send(type: string, m: unknown): void } {
+    return { on: (type, h) => this.link.on(type, h), send: (type, m) => this.link.send(type, m) };
+  }
+
   /** Server time now, as best this browser knows it. */
   serverNow(): number {
     return this.clock.now(performance.now() / 1000);

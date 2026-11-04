@@ -1,5 +1,6 @@
 import balance from '../../../shared/balance.json';
-import { EconomyError, buy, fetchMerchant, fetchQuote, sell, type Merchant, type Quote } from './api.js';
+import { EconomyError, fetchMerchant, fetchQuote, type Merchant, type Quote } from './api.js';
+import type { StallResult } from './door.js';
 import { itemName, shelfName } from './items.js';
 import './shop-window.css';
 
@@ -18,6 +19,7 @@ export interface ShopWindowEvents {
   satchel(): Record<string, number>;
   coin(): number;
   changed(): Promise<void>;
+  trade(action: 'buy' | 'sell', merchantId: string, item: string): Promise<StallResult>;
 }
 
 function escape(text: string): string {
@@ -200,10 +202,10 @@ export class ShopWindow {
     let note = '';
     try {
       if (action === 'buy') {
-        const r = await buy(id, item, 1);
-        note = `Bought ${itemName(r.itemId)} for ${r.totalPrice} CHROMA.`;
+        const r = await this.events.trade('buy', id, item);
+        note = `Bought ${itemName(r.itemId ?? item)} for ${r.totalPrice} CHROMA.`;
       } else {
-        const r = await sell(id, item, 1);
+        const r = await this.events.trade('sell', id, item);
         note = `Sold ${itemName(item)} for ${r.totalPrice} CHROMA.`;
       }
       await this.events.changed();

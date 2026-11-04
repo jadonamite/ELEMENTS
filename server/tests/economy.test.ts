@@ -452,8 +452,11 @@ test('HTTP API: handles economy endpoints end-to-end', async () => {
     assert.equal(grantData.granted, true);
 
     // 2. Query balance
-    const balRes = await fetch(`${server.baseUrl}/api/economy/balance/alice_1`);
+    const balRes = await fetch(`${server.baseUrl}/api/economy/balance/alice_1`, { headers: { Authorization: 'Bearer valid_alice' } });
     assert.equal(balRes.status, 200);
+    // Nobody reads another account's balance, signed in or not.
+    assert.equal((await fetch(`${server.baseUrl}/api/economy/balance/alice_1`)).status, 401);
+    assert.equal((await fetch(`${server.baseUrl}/api/economy/balance/alice_1`, { headers: { Authorization: 'Bearer valid_bob' } })).status, 403);
     const balData = (await balRes.json()) as { balance: number };
     assert.equal(balData.balance, 100);
 
@@ -487,8 +490,9 @@ test('HTTP API: handles economy endpoints end-to-end', async () => {
     const depData = (await depRes.json()) as { note: { noteId: string; amount: number } };
     assert.equal(depData.note.amount, 30);
 
-    const notesRes = await fetch(`${server.baseUrl}/api/economy/counting-house/notes/alice_1`);
+    const notesRes = await fetch(`${server.baseUrl}/api/economy/counting-house/notes/alice_1`, { headers: { Authorization: 'Bearer valid_alice' } });
     assert.equal(notesRes.status, 200);
+    assert.equal((await fetch(`${server.baseUrl}/api/economy/counting-house/notes/alice_1`, { headers: { Authorization: 'Bearer valid_bob' } })).status, 403);
     const notesData = (await notesRes.json()) as { notes: Array<{ noteId: string }> };
     assert.equal(notesData.notes.length, 1);
 

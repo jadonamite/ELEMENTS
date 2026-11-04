@@ -134,6 +134,7 @@ export type WorldEvent =
   | { type: 'enemy_hit'; e: string; d: number; hp: number; by: string }
   | { type: 'enemy_died'; e: string; by: string; x: number; z: number }
   | { type: 'hurt'; to: string; by: string; d: number; hp: number; max: number }
+  | { type: 'fell'; to: string; x: number; z: number }
   | { type: 'revived'; to: string; x: number; z: number };
 
 /**
@@ -219,8 +220,10 @@ export class ZoneWorld {
       for (const s of e.step(dt, now, quarry)) {
         const p = this.players.get(s.target);
         if (!p) continue;
+        const wasUp = p.alive;
         const d = p.takeStrike(s);
         events.push({ type: 'hurt', to: p.id, by: e.id, d, hp: p.hp, max: p.maxHp });
+        if (wasUp && !p.alive) events.push({ type: 'fell', to: p.id, x: p.x, z: p.z });
       }
       if (!wasAlive && e.alive) this.damageBy.delete(e.id);
     }
