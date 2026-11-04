@@ -232,21 +232,29 @@ export class FlameField {
     this.low = low;
     if (!this.loader) return;
     const old = this.textures;
-    this.textures = ['flame', 'burst', 'smoke', 'lick', 'projectile'].map((name, i) => {
-      const texture = this.loader!.load(`/assets/fx/fire-${name}${low ? '-low' : ''}.png`);
-      texture.minFilter = LinearFilter;
-      texture.magFilter = LinearFilter;
-      texture.generateMipmaps = false;
-      texture.colorSpace = SRGBColorSpace;
+    // Slot order is the shader's: 0 looping flame, 1 burst, 2 smoke, 3 one-shot tongue, 4 projectile.
+    // A tongue is the baked flame loop played once over its life, so slots 0 and 3 share one texture.
+    const files = ['flame', 'burst', 'smoke', 'flame', 'projectile'];
+    const loaded = new Map<string, import('three').Texture>();
+    this.textures = files.map((name, i) => {
+      let texture = loaded.get(name);
+      if (!texture) {
+        texture = this.loader!.load(`/assets/fx/fire-${name}${low ? '-low' : ''}.png`);
+        texture.minFilter = LinearFilter;
+        texture.magFilter = LinearFilter;
+        texture.generateMipmaps = false;
+        texture.colorSpace = SRGBColorSpace;
+        loaded.set(name, texture);
+      }
       for (const mat of [this.additiveMat, this.normalMat]) mat.uniforms[`uAtlas${i}`] = { value: texture };
       return texture;
     });
     this.onTexturesUpdated?.();
-    old.forEach(texture => texture.dispose());
+    new Set(old).forEach(texture => texture.dispose());
   }
 
   dispose(): void {
-    this.textures.forEach(texture => texture.dispose());
+    new Set(this.textures).forEach(texture => texture.dispose());
     this.additive.dispose();
     this.normal.dispose();
     this.additiveMat.dispose();

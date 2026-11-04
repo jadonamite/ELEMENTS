@@ -1170,14 +1170,46 @@ export class BendingEffects {
         fb.follow = undefined;
         this.spawnHitBurst(impactPos, fb.element);
         if (mode <= FxMode.HUSH) {
-          this.field.emit({ x: impactPos.x, y: 0.08, z: impactPos.z, life: 0.8,
-            w0: 1.6, h0: 1.6, w1: 2.1, h1: 2.1, mode, atlas: 1, alpha: 1 });
+          this.fireBlast(impactPos, fb.element, mode);
           this.spawnScorch(impactPos.clone().setY(0.04), 1.8, 3);
         }
         const style = ELEMENT_STYLES[fb.element] ?? ELEMENT_STYLES.IGNIS;
         this.triggerFlash(impactPos.clone().setY(Math.max(0.65, impactPos.y)), style.lightHex, 3.2, 0.4);
         this.onFireballImpact?.(impactPos, fb.element, fb.hostile);
       }
+    }
+  }
+
+  /** A fireball meeting a body or a wall: a rolling blast, its smoke, embers and thrown grit. */
+  private fireBlast(at: Vector3, element: BendingType, mode: FxMode, size = 1): void {
+    // The baked burst is framed round its centre and nearly fills its cell; quads stand on their base.
+    const h = 3.4 * size;
+    const base = Math.max(0.02, at.y - h * 0.5);
+    this.field.emit({ x: at.x, y: base, z: at.z, vy: 0.5, life: 1.6,
+      w0: h * 0.9, h0: h * 0.9, w1: h, h1: h, mode, atlas: 1, alpha: 1 });
+    for (let i = 0; i < 2; i++) {
+      const a = Math.random() * Math.PI * 2;
+      this.field.emit({ x: at.x + Math.cos(a) * 0.35 * size, y: base + 0.2 * size, z: at.z + Math.sin(a) * 0.35 * size,
+        vy: 0.8, delay: 0.05 + i * 0.07, life: 1.0,
+        w0: h * 0.3, h0: h * 0.3, w1: h * 0.65, h1: h * 0.65, mode, atlas: 1, alpha: 0.85 });
+    }
+    // Smoke rolls up out of the blast as the fire dies.
+    for (let i = 0; i < 3; i++) {
+      this.field.emit({ x: at.x + (Math.random() - 0.5) * 0.6, y: base + 0.4 * size, z: at.z + (Math.random() - 0.5) * 0.6,
+        vy: 0.9 + i * 0.2, delay: 0.35 + i * 0.12, life: 2.4,
+        w0: h * 0.45, h0: h * 0.45, w1: h * 1.1, h1: h * 1.2, mode: smokeMode(element), atlas: 2, alpha: 0.55 });
+    }
+    const vel = new Vector3();
+    for (let i = 0; i < 26; i++) {
+      const a = Math.random() * Math.PI * 2, s = 3 + Math.random() * 6;
+      vel.set(Math.cos(a) * s, 1.5 + Math.random() * 4.5, Math.sin(a) * s);
+      this.spawnParticle('spark', at, vel, 0.6 + Math.random() * 0.8, 0.07, 0.02, element, 1.0);
+    }
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2, s = 2.5 + Math.random() * 4.5;
+      vel.set(Math.cos(a) * s, 2 + Math.random() * 4, Math.sin(a) * s);
+      const chip = 0.09 + Math.random() * 0.08;
+      this.spawnParticle('chip', at, vel, 1.4, chip, chip, element, 1.0);
     }
   }
 

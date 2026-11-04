@@ -279,7 +279,8 @@ void main() {
         col.rgb *= vec3(1.15, 1.10, 1.02);
         col.rgb = min(col.rgb, vec3(2.2, 2.0, 1.8));
       } else {
-        col.rgb *= vec3(1.75, vAnim.z * 1.6, vAnim.z * 1.35);
+        // The baked atlases carry their own fire colour: lift it for bloom, vary yellow-orange per tongue.
+        col.rgb *= 1.6 * vec3(1.0, vAnim.z, mix(1.0, vAnim.z, 0.5));
         col.rgb = min(col.rgb, vec3(2.3, 2.1, 1.8));
       }
       if (mode == 1) col.rgb = col.rgb.r * vec3(0.6, 0.14, 1.0);
