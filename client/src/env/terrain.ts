@@ -1,10 +1,13 @@
 import {
   BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
   CanvasTexture,
   CircleGeometry,
   Color,
   CylinderGeometry,
   DoubleSide,
+  Float32BufferAttribute,
   Group,
   LatheGeometry,
   Mesh,
@@ -27,11 +30,174 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import balance from '../../../shared/balance.json';
+import type { Element } from '../../../shared/src/index.js';
 import { fbm2D, ridgedNoise2D, warpedFbm2D } from './noise.js';
 import type { QualityProfile } from './types.js';
+import { getNationGeography } from './nations.js';
 
 export const ARENA_SIZE = balance.arena.size;
 export const RADIUS = ARENA_SIZE / 2;
+
+/**
+ * Creates seamless non-circular perimeter wall geometry following an organic polygon.
+ * Produces correctly oriented inner, top-cap, and outer faces with smooth averaged normals
+ * and continuous arc-length UVs so rock textures display with crisp, natural detail.
+ */
+function createPerimeterWallGeometry(
+  boundary: Array<{ x: number; z: number }>,
+  height: number,
+  thickness: number
+): BufferGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+
+  const count = boundary.length;
+  const tileM = balance.look.wallTileMetres ?? 3;
+
+  // 1. Calculate inward normal at each segment
+  let totalLength = 0;
+  const segLengths: number[] = [];
+  const segInNormals: Array<{ x: number; z: number }> = [];
+
+  for (let i = 0; i < count; i++) {
+    const p1 = boundary[i]!;
+    const p2 = boundary[(i + 1) % count]!;
+    const dx = p2.x - p1.x;
+    const dz = p2.z - p1.z;
+    const len = Math.hypot(dx, dz) || 1;
+    segLengths.push(len);
+    totalLength += len;
+
+    const midX = (p1.x + p2.x) * 0.5;
+    const midZ = (p1.z + p2.z) * 0.5;
+    let nx = -dz / len;
+    let nz = dx / len;
+    // Normal must point towards arena center (0, 0)
+    if (midX * nx + midZ * nz > 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    segInNormals.push({ x: nx, z: nz });
+  }
+
+  // 2. Average normals at each vertex for smooth shading across corners
+  const vertInNormals: Array<{ x: number; z: number }> = [];
+  for (let i = 0; i < count; i++) {
+    const prevSeg = segInNormals[(i - 1 + count) % count]!;
+    const nextSeg = segInNormals[i]!;
+    const avgX = (prevSeg.x + nextSeg.x) * 0.5;
+    const avgZ = (prevSeg.z + nextSeg.z) * 0.5;
+    const len = Math.hypot(avgX, avgZ) || 1;
+    vertInNormals.push({ x: avgX / len, z: avgZ / len });
+  }
+
+  let arcLength = 0;
+  for (let i = 0; i < count; i++) {
+    const p1 = boundary[i]!;
+    const p2 = boundary[(i + 1) % count]!;
+    const len = segLengths[i]!;
+
+    const n1 = vertInNormals[i]!;
+    const n2 = vertInNormals[(i + 1) % count]!;
+
+    const x0 = p1.x, z0 = p1.z;
+    const x1 = p2.x, z1 = p2.z;
+    const x0Out = x0 - n1.x * thickness, z0Out = z0 - n1.z * thickness;
+    const x1Out = x1 - n2.x * thickness, z1Out = z1 - n2.z * thickness;
+
+    const u0 = arcLength / tileM;
+    const u1 = (arcLength + len) / tileM;
+    const vH = height / tileM;
+    const vT = thickness / tileM;
+
+    // --- Inner Face: Facing arena interior (+inNormal) ---
+    positions.push(
+      x0, 0, z0,
+      x1, 0, z1,
+      x1, height, z1,
+      x0, 0, z0,
+      x1, height, z1,
+      x0, height, z0
+    );
+    normals.push(
+      n1.x, 0, n1.z,
+      n2.x, 0, n2.z,
+      n2.x, 0, n2.z,
+      n1.x, 0, n1.z,
+      n2.x, 0, n2.z,
+      n1.x, 0, n1.z
+    );
+    uvs.push(
+      u0, 0,
+      u1, 0,
+      u1, vH,
+      u0, 0,
+      u1, vH,
+      u0, vH
+    );
+
+    // --- Top Cap Face: Upward (+Y) ---
+    positions.push(
+      x0, height, z0,
+      x1, height, z1,
+      x1Out, height, z1Out,
+      x0, height, z0,
+      x1Out, height, z1Out,
+      x0Out, height, z0Out
+    );
+    normals.push(
+      0, 1, 0,
+      0, 1, 0,
+      0, 1, 0,
+      0, 1, 0,
+      0, 1, 0,
+      0, 1, 0
+    );
+    uvs.push(
+      u0, 0,
+      u1, 0,
+      u1, vT,
+      u0, 0,
+      u1, vT,
+      u0, vT
+    );
+
+    // --- Outer Face: Facing outward (-inNormal) ---
+    positions.push(
+      x1Out, 0, z1Out,
+      x0Out, 0, z0Out,
+      x0Out, height, z0Out,
+      x1Out, 0, z1Out,
+      x0Out, height, z0Out,
+      x1Out, height, z1Out
+    );
+    normals.push(
+      -n2.x, 0, -n2.z,
+      -n1.x, 0, -n1.z,
+      -n1.x, 0, -n1.z,
+      -n2.x, 0, -n2.z,
+      -n1.x, 0, -n1.z,
+      -n2.x, 0, -n2.z
+    );
+    uvs.push(
+      u1, 0,
+      u0, 0,
+      u0, vH,
+      u1, 0,
+      u0, vH,
+      u1, vH
+    );
+
+    arcLength += len;
+  }
+
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new Float32BufferAttribute(normals, 3));
+  geo.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  return geo;
+}
 
 const textureLoader = new TextureLoader();
 
@@ -102,13 +268,28 @@ export class TerrainSystem {
     readonly scene: Scene,
     readonly renderer: WebGLRenderer,
     readonly quality: QualityProfile,
-    readonly onSetupMaterial: (mat: MeshStandardMaterial) => void
+    readonly onSetupMaterial: (mat: MeshStandardMaterial) => void,
+    nation: Element = 'IGNIS'
   ) {
     const res = quality.textureSuffix;
+    const geo = getNationGeography(nation);
 
     /* --- 1. Floor: multi-scale PBR stone flags with POM on high --- */
-    const floorGeo = new CircleGeometry(RADIUS + 1, 128);
+    const floorGeo = new CircleGeometry(RADIUS + 4, 128);
     const floorMat = this.createFloorMaterial(res, quality.enablePOM);
+    if (nation === 'AQUES') {
+      floorMat.color.setRGB(0.72, 0.78, 0.74); // Wet delta stone, dark with river water
+      floorMat.roughness = 0.3;
+    } else if (nation === 'TERRA') {
+      floorMat.color.setRGB(1.0, 0.96, 0.92); // Warm canyon stone
+      floorMat.roughness = 0.85;
+    } else if (nation === 'AURA') {
+      floorMat.color.setRGB(0.98, 0.99, 1.0); // Pale cliff-top stone
+      floorMat.roughness = 0.40;
+    } else if (nation === 'IGNIS') {
+      floorMat.color.setRGB(1.0, 0.97, 0.95); // Natural warm volcanic stone
+      floorMat.roughness = 0.65;
+    }
     onSetupMaterial(floorMat);
 
     this.floor = new Mesh(floorGeo, floorMat);
@@ -123,6 +304,14 @@ export class TerrainSystem {
     dirtMat.depthWrite = false;
     dirtMat.polygonOffset = true;
     dirtMat.polygonOffsetFactor = -1;
+    if (nation === 'AQUES') {
+      dirtMat.color.setRGB(0.62, 0.66, 0.52); // River silt and moss
+      dirtMat.roughness = 0.5;
+    } else if (nation === 'TERRA') {
+      dirtMat.color.setRGB(1.0, 0.92, 0.82); // Canyon sand
+    } else if (nation === 'IGNIS') {
+      dirtMat.color.setRGB(0.95, 0.90, 0.85); // Ash and earth layer
+    }
     onSetupMaterial(dirtMat);
 
     this.dirtOverlay = new Mesh(floorGeo, dirtMat);
@@ -131,36 +320,67 @@ export class TerrainSystem {
     this.dirtOverlay.receiveShadow = true;
     this.scene.add(this.dirtOverlay);
 
-    /* --- 3. Ring wall: dry-stone wall with 2k scanned textures --- */
-    const { wallHeight, wallThickness } = balance.arena;
-    const profile = [
-      new Vector2(RADIUS, 0),
-      new Vector2(RADIUS + 0.25, wallHeight),
-      new Vector2(RADIUS + wallThickness, wallHeight),
-      new Vector2(RADIUS + wallThickness + 0.35, 0),
-    ];
-    const circumference = Math.PI * 2 * RADIUS;
-    const wallTileM = balance.look.wallTileMetres ?? 3;
-    const wallMat = this.createPbrMaterial('rock_wall_08', res, [
-      circumference / wallTileM,
-      (wallHeight * 2 + wallThickness) / wallTileM,
-    ]);
+    /* --- 3. Boundary wall: geographically attuned non-circular perimeter --- */
+    const wallHeight = geo.wallHeight;
+    const wallThickness = geo.wallThickness;
+    // Continuous arc-length UVs in metres: unit repeat keeps 2K textures uncompressed
+    const wallMat = this.createPbrMaterial('rock_wall_08', res, [1, 1]);
+    if (nation === 'AQUES') {
+      wallMat.color.setRGB(0.74, 0.82, 0.78); // Mossy canal embankment
+      wallMat.roughness = 0.55;
+    } else if (nation === 'TERRA') {
+      wallMat.color.setRGB(1.0, 0.95, 0.90); // Sandstone canyon cliff
+      wallMat.roughness = 0.85;
+    } else if (nation === 'AURA') {
+      wallMat.color.setRGB(0.97, 0.99, 1.0); // Pale cliff edge
+      wallMat.roughness = 0.45;
+    } else if (nation === 'IGNIS') {
+      wallMat.color.setRGB(1.0, 0.96, 0.93); // Natural basalt caldera rim
+      wallMat.roughness = 0.68;
+    }
     wallMat.side = DoubleSide;
     onSetupMaterial(wallMat);
 
-    this.wall = new Mesh(new LatheGeometry(profile, 128), wallMat);
+    const perimeterGeo = createPerimeterWallGeometry(geo.boundary, wallHeight, wallThickness);
+    this.wall = new Mesh(perimeterGeo, wallMat);
     this.wall.castShadow = true;
     this.wall.receiveShadow = true;
     this.scene.add(this.wall);
 
     /* --- 4. Layered rolling hills with 256x256 heightfield & slope triplanar --- */
     this.hills = this.createRealisticHills(res);
-    onSetupMaterial(this.hills.material as MeshStandardMaterial);
+    const hillsMat = this.hills.material as MeshStandardMaterial;
+    if (nation === 'AQUES') {
+      hillsMat.color.setRGB(0.7, 0.8, 0.66); // Green reed banks across the channels
+      hillsMat.roughness = 0.7;
+    } else if (nation === 'TERRA') {
+      hillsMat.color.setRGB(1.0, 0.95, 0.90); // Canyon mesas
+      hillsMat.roughness = 0.85;
+    } else if (nation === 'IGNIS') {
+      hillsMat.color.setRGB(1.0, 0.96, 0.92); // Volcanic caldera slopes
+      hillsMat.roughness = 0.75;
+    } else if (nation === 'AURA') {
+      hillsMat.color.setRGB(0.96, 0.98, 1.0); // High alpine peaks
+    }
+    onSetupMaterial(hillsMat);
     this.scene.add(this.hills);
 
     /* --- 5. Distant jagged mountain ridges towering over wall into haze --- */
     this.distantRidges = this.createRealisticDistantRidges(res);
-    onSetupMaterial(this.distantRidges.material as MeshStandardMaterial);
+    const ridgesMat = this.distantRidges.material as MeshStandardMaterial;
+    if (nation === 'AQUES') {
+      ridgesMat.color.setRGB(0.76, 0.84, 0.8); // Far delta islands in haze
+      ridgesMat.roughness = 0.6;
+    } else if (nation === 'TERRA') {
+      ridgesMat.color.setRGB(1.0, 0.94, 0.88); // Distant canyon plateau
+      ridgesMat.roughness = 0.85;
+    } else if (nation === 'IGNIS') {
+      ridgesMat.color.setRGB(1.0, 0.95, 0.92); // Distant smoking volcano rim
+      ridgesMat.roughness = 0.8;
+    } else if (nation === 'AURA') {
+      ridgesMat.color.setRGB(0.95, 0.98, 1.0); // Distant cliffs in cloud
+    }
+    onSetupMaterial(ridgesMat);
     this.scene.add(this.distantRidges);
 
     /* --- 6. Contact darkening under props --- */

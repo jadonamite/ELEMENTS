@@ -29,13 +29,14 @@ export function bendArc(move: string): number {
 
 /** The effect a bending move has on a villain it hit, or null for plain damage. */
 export function afflictionFor(element: Element, move: string, hero: Vector3, target: Vector3, strength = 1): Affliction | null {
-  const spec = elements[element]?.[move];
+  const bendKey = move.startsWith('leg_light') ? 'bend_palm' : move === 'leg_heavy_1' ? 'bend_sweep' : move;
+  const spec = elements[element]?.[bendKey] ?? elements[element]?.[move];
   if (!spec) return null;
   const away = new Vector3().subVectors(target, hero).setY(0);
   if (away.lengthSq() < 1e-4) away.set(0, 0, 1);
   away.normalize();
   const n = (key: string): number => Number(spec[key] ?? 0) * strength;
-  switch (`${element}:${move}`) {
+  switch (`${element}:${bendKey}`) {
     case 'AQUES:bend_palm': return { shove: away.clone().multiplyScalar(-n('pull') * 3) };
     case 'AQUES:bend_sweep': return { slowScale: 1 - Number(spec.slow), slowSeconds: n('slowSeconds'), shove: away.clone().multiplyScalar(3) };
     case 'AQUES:ground_pound': return { slowScale: 1 - Number(spec.slow), slowSeconds: n('slowSeconds'), stunSeconds: 0.4 * strength };

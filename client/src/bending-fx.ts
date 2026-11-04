@@ -1,15 +1,25 @@
 import {
   AdditiveBlending,
+  BufferGeometry,
   CanvasTexture,
+  CatmullRomCurve3,
   Color,
+  CylinderGeometry,
   DoubleSide,
+  EdgesGeometry,
+  Float32BufferAttribute,
   Group,
+  Line,
+  LineBasicMaterial,
+  LineSegments,
   Mesh,
   MeshBasicMaterial,
   NormalBlending,
   PlaneGeometry,
   PointLight,
-  Quaternion,
+  RingGeometry,
+  SphereGeometry,
+  TubeGeometry,
   type Camera,
   type Scene,
   Vector3,
@@ -20,6 +30,9 @@ import { FlameField, FxMode } from './fx/flame-field.js';
 import { SoftDepth } from './fx/soft-depth.js';
 import { GroundRings } from './fx/ground-ring.js';
 import { FireWalls } from './fx/fire-wall.js';
+import type { Projectile } from './attacks/projectile.js';
+import type { CombatSpace } from './attacks/space.js';
+import { Debris } from './fx/debris.js';
 
 export type BendingType = Element | 'HUSH';
 
@@ -96,8 +109,8 @@ function smokeMode(element: BendingType): FxMode {
   }
 }
 
-/** Canvas textures for sparks, stone chips and scorch decals. */
-function createProceduralTexture(type: 'spark' | 'chip' | 'scorch'): CanvasTexture | null {
+/** Canvas textures for sparks and scorch decals. */
+function createProceduralTexture(type: 'spark' | 'scorch'): CanvasTexture | null {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
   const size = type === 'scorch' ? 256 : 64;
   const canvas = document.createElement('canvas');
@@ -115,21 +128,6 @@ function createProceduralTexture(type: 'spark' | 'chip' | 'scorch'): CanvasTextu
     grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
-  } else if (type === 'chip') {
-    // An irregular stone fragment, lit from the top left.
-    ctx.beginPath();
-    const points = 7;
-    for (let i = 0; i < points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const r = center * (0.55 + ((i * 37) % 10) / 25);
-      ctx.lineTo(center + Math.cos(a) * r, center + Math.sin(a) * r);
-    }
-    ctx.closePath();
-    const grad = ctx.createLinearGradient(0, 0, size, size);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    grad.addColorStop(1, 'rgba(120, 120, 120, 1)');
-    ctx.fillStyle = grad;
-    ctx.fill();
   } else {
     const grad = ctx.createRadialGradient(center, center, 0, center, center, center);
     grad.addColorStop(0, 'rgba(12, 10, 8, 0.9)');
@@ -158,28 +156,6 @@ function createProceduralTexture(type: 'spark' | 'chip' | 'scorch'): CanvasTextu
   const texture = new CanvasTexture(canvas);
   texture.needsUpdate = true;
   return texture;
-}
-
-type SpriteKind = 'spark' | 'chip';
-
-interface Particle {
-  mesh: Mesh;
-  mat: MeshBasicMaterial;
-  active: boolean;
-  kind: SpriteKind;
-  position: Vector3;
-  velocity: Vector3;
-  gravity: number;
-  drag: number;
-  elapsed: number;
-  duration: number;
-  startSize: number;
-  endSize: number;
-  rotation: number;
-  rotationSpeed: number;
-  colorCore: Color;
-  colorMid: Color;
-  baseOpacity: number;
 }
 
 interface ScorchMark {
@@ -215,6 +191,10 @@ interface FireballProjectile {
   elapsed: number;
   /** Thrown by a villain: no burning ground is left where it lands. */
   hostile: boolean;
+  /** The fight's projectile this fireball draws; it moves and ends only when that does. */
+  follow?: Projectile | undefined;
+  /** Where the last trail puff was left. */
+  trailFrom: Vector3;
 }
 
 const POOL_SPARKS = 220;
@@ -228,8 +208,11 @@ const HEAVY_SLASH_CAPTURE = 1.0;
 /** A blade that has not swept by now is not swinging (the move is bare-handed). */
 const SLASH_FALLBACK_AFTER = 0.55;
 const GOLDEN_ANGLE = 2.39996;
+/** Path length between the puffs a fireball leaves behind it. */
+const TRAIL_STEP = 0.2;
 
-const tmpQuat = new Quaternion();
+const pieceColor = new Color();
+const pieceMid = new Color();
 const tmpVec = new Vector3();
 
 /**
@@ -241,7 +224,9 @@ const tmpVec = new Vector3();
  */
 export class BendingEffects {
   private readonly root = new Group();
-  private readonly particles: Particle[] = [];
+  private readonly debris: Debris;
+  /** The world loose sparks and stones bounce off. */
+  set space(space: Pick<CombatSpace, 'obstruction'> | undefined) { this.debris.space = space; }
   private readonly scorchPool: ScorchMark[] = [];
   private readonly field: FlameField;
   private readonly depth: SoftDepth;
@@ -254,7 +239,6 @@ export class BendingEffects {
   private readonly trail: BladeTrail;
 
   private readonly texSpark = createProceduralTexture('spark');
-  private readonly texChip = createProceduralTexture('chip');
   private readonly texScorch = createProceduralTexture('scorch');
 
   // Lit sword
@@ -295,6 +279,201 @@ export class BendingEffects {
 
   onFireballImpact?: (pos: Vector3, element: BendingType, hostile: boolean) => void;
 
+
+  /**
+   * Water or wind extinguishing fire: snuffs out active flame patches,
+   * in-flight fireballs, and burning villain states within range.
+   */
+  extinguishAt(pos: Vector3, radius = 3.4): void {
+    // 1. Extinguish active flame ground patches
+    this.activePatches = this.activePatches.filter(p => {
+      const d = p.position.distanceTo(pos);
+      if (d <= radius) {
+        this.field.emit({
+          x: p.position.x, y: 0.3, z: p.position.z,
+          vy: 1.2, life: 0.9, w0: 0.8, h0: 0.8, w1: 1.8, h1: 1.8,
+          mode: FxMode.MIST, alpha: 0.75,
+        });
+        return false;
+      }
+      return true;
+    });
+
+    // 2. Extinguish in-flight fireballs
+    for (const fb of this.fireballs) {
+      if (!fb.active || fb.element !== 'IGNIS') continue;
+      if (fb.position.distanceTo(pos) <= radius + 0.8) {
+        fb.active = false;
+        this.field.emit({
+          x: fb.position.x, y: fb.position.y, z: fb.position.z,
+          vy: 0.8, life: 0.6, w0: 0.6, h0: 0.6, w1: 1.2, h1: 1.2,
+          mode: FxMode.MIST, alpha: 0.8,
+        });
+      }
+    }
+
+    // 3. Extinguish burning villains
+    this.burningVillains = this.burningVillains.filter(v => v.position.distanceTo(pos) > radius);
+  }
+
+  /**
+   * Advanced Fire technique: Lightning Bending (Forge Lightning).
+   * Generates volumetric high-voltage electric plasma bolts with branching arcs,
+   * blinding detonation flash, and explosive ground shockwave.
+   */
+  spawnLightningBolt(origin: Vector3, facing: number, reach = 22, targetPos?: Vector3): void {
+    const dir = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const start = origin.clone().setY(origin.y + 1.25).addScaledVector(dir, 0.75);
+    const end = targetPos ? targetPos.clone().setY(0.9) : start.clone().addScaledVector(dir, reach).setY(0.4);
+
+    const boltGroup = new Group();
+    const disposables: Array<{ dispose(): void }> = [];
+
+    const makeForkPoints = (from: Vector3, to: Vector3, jitter: number, segs = 18): Vector3[] => {
+      const pts: Vector3[] = [from];
+      const step = new Vector3().subVectors(to, from).divideScalar(segs);
+      for (let i = 1; i < segs; i++) {
+        const pt = from.clone().addScaledVector(step, i);
+        pt.x += (Math.random() - 0.5) * jitter;
+        pt.y += (Math.random() - 0.5) * jitter * 0.7;
+        pt.z += (Math.random() - 0.5) * jitter;
+        pts.push(pt);
+      }
+      pts.push(to);
+      return pts;
+    };
+
+    // 1. Primary Volumetric Core Bolt (White-hot incandescent plasma)
+    const mainPts = makeForkPoints(start, end, 1.4, 20);
+    const mainCurve = new CatmullRomCurve3(mainPts);
+    const mainGeo = new TubeGeometry(mainCurve, 36, 0.065, 8, false);
+    const mainMat = new MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 1.0,
+      blending: AdditiveBlending,
+      depthWrite: false,
+    });
+    const mainMesh = new Mesh(mainGeo, mainMat);
+    boltGroup.add(mainMesh);
+    disposables.push(mainGeo, mainMat);
+
+    // 2. High-Voltage Electric Corona / Plasma Aura (Vibrant radiant cyan)
+    const auraGeo = new TubeGeometry(mainCurve, 28, 0.17, 8, false);
+    const auraMat = new MeshBasicMaterial({
+      color: 0x00e1ff,
+      transparent: true,
+      opacity: 0.8,
+      blending: AdditiveBlending,
+      depthWrite: false,
+    });
+    const auraMesh = new Mesh(auraGeo, auraMat);
+    boltGroup.add(auraMesh);
+    disposables.push(auraGeo, auraMat);
+
+    // 3. Volumetric Branching Fork Bolts
+    const forkMaterials: MeshBasicMaterial[] = [];
+    const forkCount = 4;
+    for (let f = 0; f < forkCount; f++) {
+      const frac = 0.25 + f * 0.18;
+      const forkStart = mainCurve.getPoint(frac);
+      const side = new Vector3(
+        (Math.random() - 0.5) * 4.5,
+        (Math.random() - 0.4) * 2.2,
+        (Math.random() - 0.5) * 4.5
+      );
+      const forkEnd = forkStart.clone().add(side);
+      if (Math.random() < 0.6) forkEnd.y = 0.05; // Ground strike arcs
+
+      const forkPts = makeForkPoints(forkStart, forkEnd, 0.8, 10);
+      const forkCurve = new CatmullRomCurve3(forkPts);
+      const forkGeo = new TubeGeometry(forkCurve, 14, 0.035, 6, false);
+      const forkMat = new MeshBasicMaterial({
+        color: 0x70e4ff,
+        transparent: true,
+        opacity: 0.85,
+        blending: AdditiveBlending,
+        depthWrite: false,
+      });
+      boltGroup.add(new Mesh(forkGeo, forkMat));
+      forkMaterials.push(forkMat);
+      disposables.push(forkGeo, forkMat);
+    }
+
+    // 4. Ground Detonation Shockwave Ring
+    const shockGeo = new RingGeometry(0.35, 0.95, 36);
+    shockGeo.rotateX(-Math.PI / 2);
+    const shockMat = new MeshBasicMaterial({
+      color: 0x66f0ff,
+      transparent: true,
+      opacity: 0.95,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    const shockMesh = new Mesh(shockGeo, shockMat);
+    shockMesh.position.copy(end).setY(0.04);
+    boltGroup.add(shockMesh);
+    disposables.push(shockGeo, shockMat);
+
+    // 5. Origin hand flash and impact detonation point lights
+    const handLight = new PointLight(0x80e8ff, 7.0, 12);
+    handLight.position.copy(start);
+    boltGroup.add(handLight);
+    disposables.push(handLight);
+
+    const hitLight = new PointLight(0xccf8ff, 14.0, 22);
+    hitLight.position.copy(end).setY(1.2);
+    boltGroup.add(hitLight);
+    disposables.push(hitLight);
+
+    this.root.add(boltGroup);
+
+    this.spawnHitBurst(end, 'IGNIS');
+    this.spawnScorch(end.clone().setY(0.03), 2.2, 5.0);
+
+    // High velocity electric spark dispersal
+    for (const p of mainPts) {
+      if (Math.random() < 0.5) continue;
+      for (let s = 0; s < 2; s++) {
+        const vel = new Vector3(
+          (Math.random() - 0.5) * 8.0,
+          (Math.random() - 0.2) * 5.0,
+          (Math.random() - 0.5) * 8.0
+        );
+        this.spawnParticle('spark', p, vel, 0.35, 0.08, 0.02, 'IGNIS', 1.0);
+      }
+    }
+
+    // Rapid electrical crackle and dissipation
+    let age = 0;
+    const interval = setInterval(() => {
+      age += 0.033;
+      const t = age / 0.38;
+      const alpha = Math.max(0, 1.0 - t * t);
+
+      mainMat.opacity = alpha;
+      auraMat.opacity = alpha * 0.8;
+      for (const fm of forkMaterials) fm.opacity = alpha * 0.85;
+
+      // Expand ground shockwave ring
+      const shockScale = 1.0 + t * 4.2;
+      shockMesh.scale.set(shockScale, shockScale, shockScale);
+      shockMat.opacity = Math.max(0, 0.95 * (1.0 - t));
+
+      handLight.intensity = Math.max(0, 7.0 * (1.0 - t));
+      hitLight.intensity = Math.max(0, 14.0 * (1.0 - t));
+
+      if (t >= 1.0) {
+        clearInterval(interval);
+        this.root.remove(boltGroup);
+        for (const d of disposables) d.dispose();
+      }
+    }, 33);
+
+    this.onFireballImpact?.(end, 'IGNIS', false);
+  }
+
   constructor(private readonly scene: Scene) {
     this.root.name = 'BendingEffects';
     this.scene.add(this.root);
@@ -312,33 +491,7 @@ export class BendingEffects {
     syncAtlas();
     this.setQuality(typeof location !== 'undefined' && new URLSearchParams(location.search).get('fxQuality') === 'low' ? 'low' : 'high');
 
-    const quadGeo = new PlaneGeometry(1, 1);
-    const addSprites = (kind: SpriteKind, count: number): void => {
-      for (let i = 0; i < count; i++) {
-        const mat = new MeshBasicMaterial({
-          map: kind === 'spark' ? this.texSpark : this.texChip,
-          transparent: true,
-          blending: kind === 'spark' ? AdditiveBlending : NormalBlending,
-          depthWrite: false,
-          side: DoubleSide,
-          opacity: 0,
-          fog: false,
-        });
-        const mesh = new Mesh(quadGeo, mat);
-        mesh.visible = false;
-        mesh.renderOrder = 3;
-        this.root.add(mesh);
-        this.particles.push({
-          mesh, mat, active: false, kind,
-          position: new Vector3(), velocity: new Vector3(),
-          gravity: 0, drag: 0.98, elapsed: 0, duration: 1,
-          startSize: 0.1, endSize: 0.05, rotation: 0, rotationSpeed: 0,
-          colorCore: new Color(), colorMid: new Color(), baseOpacity: 1,
-        });
-      }
-    };
-    addSprites('spark', POOL_SPARKS);
-    addSprites('chip', POOL_CHIPS);
+    this.debris = new Debris(this.root, this.texSpark, POOL_SPARKS, POOL_CHIPS);
 
     const scorchGeo = new PlaneGeometry(1, 1);
     scorchGeo.rotateX(-Math.PI / 2);
@@ -375,7 +528,7 @@ export class BendingEffects {
     }
 
     for (let i = 0; i < 6; i++) {
-      this.fireballs.push({ active: false, position: new Vector3(), velocity: new Vector3(), element: 'IGNIS', duration: 0, elapsed: 0, hostile: false });
+      this.fireballs.push({ active: false, position: new Vector3(), velocity: new Vector3(), trailFrom: new Vector3(), element: 'IGNIS', duration: 0, elapsed: 0, hostile: false });
     }
   }
 
@@ -589,16 +742,19 @@ export class BendingEffects {
   /**
    * Bare-handed bending: palm thrust throws an elemental projectile (fireball).
    */
-  spawnFireball(origin: Vector3, facing: number, element: BendingType = 'IGNIS', hostile = false): void {
+  /** Draws a fireball riding the fight's projectile: it flies, stops and bursts exactly where the hit is judged. */
+  spawnFireball(p: Projectile, element: BendingType = 'IGNIS', hostile = p.side === 'villain'): void {
     const fb = this.fireballs.find(f => !f.active);
     if (!fb) return;
-    const dir = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const dir = p.velocity.clone().normalize();
     fb.active = true;
-    fb.position.copy(origin).setY(origin.y + 1.15).addScaledVector(dir, 1.0);
-    fb.velocity.copy(dir).multiplyScalar(14.0).setY(-0.4);
+    fb.follow = p;
+    fb.position.copy(p.position);
+    fb.trailFrom.copy(p.position);
+    fb.velocity.copy(p.velocity);
     fb.element = element;
     fb.hostile = hostile;
-    fb.duration = 0.55;
+    fb.duration = Infinity;
     fb.elapsed = 0;
 
     const style = ELEMENT_STYLES[element] ?? ELEMENT_STYLES.IGNIS;
@@ -673,6 +829,42 @@ export class BendingEffects {
     }
   }
 
+  /**
+   * Spawns a crescent arc of fire launched directly from the kicking foot/limb.
+   */
+  spawnLegKickArc(origin: Vector3, footPos: Vector3, facing: number, isHeavy = false): void {
+    const dir = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const side = new Vector3(Math.cos(facing), 0, -Math.sin(facing));
+    const mode = FxMode.FIRE;
+    const startY = Math.max(0.2, footPos.y);
+
+    this.triggerFlash(footPos.clone().setY(startY), 0xff4500, isHeavy ? 4.0 : 2.5, 0.45, true);
+
+    const count = isHeavy ? 16 : 10;
+    const kickSpeed = isHeavy ? 9.0 : 7.0;
+    for (let i = 0; i < count; i++) {
+      const arcT = (i / (count - 1) - 0.5) * (isHeavy ? 1.6 : 1.1);
+      const pos = footPos.clone().addScaledVector(side, arcT * (isHeavy ? 0.9 : 0.6));
+      const vel = dir.clone().multiplyScalar(kickSpeed + (1 - Math.abs(arcT)) * 2.0).addScaledVector(side, arcT * 3.0);
+      vel.y = (1 - Math.abs(arcT)) * 1.5;
+
+      this.field.emit({
+        x: pos.x, y: startY, z: pos.z, vx: vel.x, vy: vel.y, vz: vel.z, drag: 2.5,
+        life: 0.45 + Math.random() * 0.2, w0: 0.4, h0: 0.45, w1: 0.5, h1: 0.85,
+        mode, alpha: 0.95, delay: Math.abs(arcT) * 0.03,
+      });
+
+      // Embers trailing from the kicking foot
+      if (i % 2 === 0) {
+        this.spawnParticle('spark', pos, vel.clone().multiplyScalar(1.2), 0.35, 0.05, 0.015, 'IGNIS', 1.0);
+      }
+    }
+
+    if (isHeavy) {
+      this.spawnFlameSweep(origin, facing, 'IGNIS');
+    }
+  }
+
   /** Per frame update: advance every effect and upload this frame's quads. */
   update(delta: number, heroPos?: Vector3, camera?: Camera): void {
     this.auraClock += delta;
@@ -691,7 +883,7 @@ export class BendingEffects {
     this.field.end(delta);
     this.rings.update(delta);
     this.trail.update(delta);
-    this.updateSprites(delta, camera);
+    this.debris.update(delta, camera);
     this.updateScorch(delta);
   }
 
@@ -877,35 +1069,31 @@ export class BendingEffects {
     for (const fb of this.fireballs) {
       if (!fb.active) continue;
       fb.elapsed += delta;
-      fb.position.addScaledVector(fb.velocity, delta);
+      if (fb.follow) fb.position.copy(fb.follow.position); else fb.position.addScaledVector(fb.velocity, delta);
       const mode = flameMode(fb.element);
       const p = fb.position;
       if (mode <= FxMode.HUSH) {
-        // A round hot head (0.7m across) with trailing ribbons (total length with tail 2.2m)
-        this.field.draw(
-          p.x, p.y, p.z,
-          2.2, 0.7,
-          0.2, 0.35, 1.0, mode, 0, 4,
-          fb.velocity.x, fb.velocity.y, fb.velocity.z
-        );
-        // Trail: 2 or 3 small atlas: 0 flame licks per frame just behind head, drifting back and up
-        const backDir = fb.velocity.clone().normalize().negate();
-        const lickCount = this.lowQuality ? 1 : (2 + (Math.random() < 0.5 ? 1 : 0));
-        for (let l = 0; l < lickCount; l++) {
-          const offsetDist = 0.15 + Math.random() * 0.35;
-          const lickPos = p.clone().addScaledVector(backDir, offsetDist);
-          const lickSize = 0.2 + Math.random() * 0.25; // 0.2 to 0.45 m
+        // The head: the burst's young, white-hot ball, rocked back and forth through those frames so it roils.
+        for (let k = 0; k < 2; k++) {
+          const life = 0.075 + 0.04 * (0.5 + 0.5 * Math.sin(fb.elapsed * 11 + k * 2.1));
+          const h = 0.85 - k * 0.2;
+          this.field.draw(p.x, p.y - h * 0.5, p.z, h, h, life, 0.15 + k * 0.6, k ? 0.45 : 0.8, mode, 0, 1);
+        }
+        // The tail: fire the head leaves where it has been, one puff every TRAIL_STEP of the real path,
+        // so it stretches with speed, bends with the flight and reads the same from any side.
+        const gap = fb.trailFrom.distanceTo(p);
+        const n = Math.floor(gap / TRAIL_STEP);
+        for (let i = 1; i <= n; i++) {
+          tmpVec.lerpVectors(fb.trailFrom, p, (i * TRAIL_STEP) / gap);
+          const s = 0.38 + Math.random() * 0.2;
           this.field.emit({
-            x: lickPos.x, y: lickPos.y, z: lickPos.z,
-            vx: backDir.x * (1.5 + Math.random() * 2.0) + (Math.random() - 0.5) * 0.4,
-            vy: 0.6 + Math.random() * 0.6,
-            vz: backDir.z * (1.5 + Math.random() * 2.0) + (Math.random() - 0.5) * 0.4,
-            drag: 1.8,
-            life: 0.15 + Math.random() * 0.10, // 0.15 to 0.25 s
-            w0: lickSize, h0: lickSize * 1.3, w1: lickSize * 0.4, h1: lickSize * 0.5,
-            mode, atlas: 0, alpha: 0.7,
+            x: tmpVec.x + (Math.random() - 0.5) * 0.08, y: tmpVec.y - s * 0.45, z: tmpVec.z + (Math.random() - 0.5) * 0.08,
+            vx: fb.velocity.x * 0.06 + (Math.random() - 0.5) * 0.3, vy: 0.5 + Math.random() * 0.5,
+            vz: fb.velocity.z * 0.06 + (Math.random() - 0.5) * 0.3, drag: 2.5,
+            life: 0.3 + Math.random() * 0.12, w0: s, h0: s, w1: s * 1.4, h1: s * 1.4, mode, atlas: 1, alpha: 0.3,
           });
         }
+        if (n > 0) fb.trailFrom.lerp(p, (n * TRAIL_STEP) / gap);
       } else {
         this.field.draw(p.x, p.y - 0.5, p.z, 1.15, 1.15, 0.14 + (fb.elapsed % 0.1), 0.31, 1, mode, 0, 1, fb.velocity.x, fb.velocity.z);
         this.field.draw(p.x, p.y - 0.3, p.z, 0.7, 0.9, 0.3, 0.77, 1, mode);
@@ -916,19 +1104,53 @@ export class BendingEffects {
         const pvel = new Vector3((Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8);
         this.spawnParticle('spark', fb.position, pvel, 0.25, 0.05, 0.015, fb.element, 1.0);
       }
-      if (fb.elapsed >= fb.duration || fb.position.y <= 0.06) {
+
+      if (fb.follow ? fb.follow.done : (fb.elapsed >= fb.duration || fb.position.y <= 0.06)) {
         fb.active = false;
-        const impactPos = fb.position.clone().setY(0.04);
+        const impactPos = (fb.follow?.end?.at ?? fb.position).clone();
+        fb.follow = undefined;
         this.spawnHitBurst(impactPos, fb.element);
         if (mode <= FxMode.HUSH) {
-          this.field.emit({ x: impactPos.x, y: 0.08, z: impactPos.z, life: 0.8,
-            w0: 1.6, h0: 1.6, w1: 2.1, h1: 2.1, mode, atlas: 1, alpha: 1 });
-          this.spawnScorch(impactPos, 1.8, 3);
+          this.fireBlast(impactPos, fb.element, mode);
+          this.spawnScorch(impactPos.clone().setY(0.04), 1.8, 3);
         }
         const style = ELEMENT_STYLES[fb.element] ?? ELEMENT_STYLES.IGNIS;
-        this.triggerFlash(impactPos.clone().setY(0.65), style.lightHex, 3.2, 0.4);
+        this.triggerFlash(impactPos.clone().setY(Math.max(0.65, impactPos.y)), style.lightHex, 3.2, 0.4);
         this.onFireballImpact?.(impactPos, fb.element, fb.hostile);
       }
+    }
+  }
+
+  /** A fireball meeting a body or a wall: a rolling blast, its smoke, embers and thrown grit. */
+  private fireBlast(at: Vector3, element: BendingType, mode: FxMode, size = 1): void {
+    // The baked burst is framed round its centre and nearly fills its cell; quads stand on their base.
+    const h = 3.4 * size;
+    const base = Math.max(0.02, at.y - h * 0.5);
+    this.field.emit({ x: at.x, y: base, z: at.z, vy: 0.5, life: 1.6,
+      w0: h * 0.9, h0: h * 0.9, w1: h, h1: h, mode, atlas: 1, alpha: 1 });
+    for (let i = 0; i < 2; i++) {
+      const a = Math.random() * Math.PI * 2;
+      this.field.emit({ x: at.x + Math.cos(a) * 0.35 * size, y: base + 0.2 * size, z: at.z + Math.sin(a) * 0.35 * size,
+        vy: 0.8, delay: 0.05 + i * 0.07, life: 1.0,
+        w0: h * 0.3, h0: h * 0.3, w1: h * 0.65, h1: h * 0.65, mode, atlas: 1, alpha: 0.85 });
+    }
+    // Smoke rolls up out of the blast as the fire dies.
+    for (let i = 0; i < 3; i++) {
+      this.field.emit({ x: at.x + (Math.random() - 0.5) * 0.6, y: base + 0.4 * size, z: at.z + (Math.random() - 0.5) * 0.6,
+        vy: 0.9 + i * 0.2, delay: 0.35 + i * 0.12, life: 2.4,
+        w0: h * 0.45, h0: h * 0.45, w1: h * 1.1, h1: h * 1.2, mode: smokeMode(element), atlas: 2, alpha: 0.55 });
+    }
+    const vel = new Vector3();
+    for (let i = 0; i < 26; i++) {
+      const a = Math.random() * Math.PI * 2, s = 3 + Math.random() * 6;
+      vel.set(Math.cos(a) * s, 1.5 + Math.random() * 4.5, Math.sin(a) * s);
+      this.spawnParticle('spark', at, vel, 0.6 + Math.random() * 0.8, 0.07, 0.02, element, 1.0);
+    }
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2, s = 2.5 + Math.random() * 4.5;
+      vel.set(Math.cos(a) * s, 2 + Math.random() * 4, Math.sin(a) * s);
+      const chip = 0.09 + Math.random() * 0.08;
+      this.spawnParticle('chip', at, vel, 1.4, chip, chip, element, 1.0);
     }
   }
 
@@ -1014,57 +1236,6 @@ export class BendingEffects {
     }
   }
 
-  private updateSprites(delta: number, camera?: Camera): void {
-    const camQuat = camera?.quaternion;
-    if (camQuat) tmpQuat.copy(camQuat).invert();
-    for (const p of this.particles) {
-      if (!p.active) continue;
-      p.elapsed += delta;
-      const t = p.elapsed / p.duration;
-      if (t >= 1) {
-        p.active = false;
-        p.mesh.visible = false;
-        continue;
-      }
-      p.velocity.y += p.gravity * delta;
-      const damp = Math.pow(p.drag, delta * 60);
-      p.velocity.x *= damp;
-      p.velocity.z *= damp;
-      p.position.addScaledVector(p.velocity, delta);
-      if (p.kind === 'chip' && p.position.y < 0.03) {
-        p.position.y = 0.03;
-        p.velocity.set(p.velocity.x * 0.4, Math.abs(p.velocity.y) * 0.25, p.velocity.z * 0.4);
-        p.rotationSpeed *= 0.5;
-      }
-      p.mesh.position.copy(p.position);
-
-      const size = p.startSize + t * (p.endSize - p.startSize);
-      if (camQuat) {
-        p.mesh.quaternion.copy(camQuat);
-        if (p.kind === 'spark') {
-          // Streak along the screen-space direction of travel.
-          const v = tmpVec.copy(p.velocity).applyQuaternion(tmpQuat);
-          p.mesh.rotateZ(Math.atan2(v.y, v.x));
-          const stretch = 1 + Math.min(3, Math.hypot(v.x, v.y) * 0.5);
-          p.mesh.scale.set(size * stretch, size, 1);
-        } else {
-          p.rotation += p.rotationSpeed * delta;
-          p.mesh.rotateZ(p.rotation);
-          p.mesh.scale.setScalar(size);
-        }
-      } else {
-        p.mesh.scale.setScalar(size);
-      }
-
-      if (p.kind === 'spark') {
-        p.mat.color.copy(p.colorCore).lerp(p.colorMid, Math.min(1, t * 1.5));
-        p.mat.opacity = p.baseOpacity * (1 - t * t);
-      } else {
-        p.mat.opacity = p.baseOpacity * (1 - Math.pow(t, 4));
-      }
-    }
-  }
-
   private updateScorch(delta: number): void {
     for (const s of this.scorchPool) {
       if (!s.active) continue;
@@ -1084,7 +1255,7 @@ export class BendingEffects {
   }
 
   private spawnParticle(
-    kind: SpriteKind,
+    kind: 'spark' | 'chip',
     pos: Vector3,
     vel: Vector3,
     duration: number,
@@ -1095,40 +1266,19 @@ export class BendingEffects {
   ): void {
     if (this.lowQuality && Math.random() > 0.5) return;
     // Earth throws grit instead of sparks.
-    if (kind === 'spark' && element === 'TERRA') kind = 'chip';
-    const p = this.particles.find(part => !part.active && part.kind === kind);
-    if (!p) return;
-
-    const style = ELEMENT_STYLES[element] ?? ELEMENT_STYLES.IGNIS;
-    p.active = true;
-    p.position.copy(pos);
-    p.velocity.copy(vel);
-    p.elapsed = 0;
-    p.duration = duration;
-    p.startSize = startSize;
-    p.endSize = endSize;
-    p.rotation = Math.random() * Math.PI * 2;
-    p.rotationSpeed = (Math.random() - 0.5) * 12.0;
-    p.baseOpacity = baseOpacity;
-
-    if (kind === 'spark') {
-      p.gravity = element === 'AQUES' ? -9.0 : element === 'AURA' ? 0 : -4.0;
-      p.drag = element === 'AURA' ? 0.93 : 0.975;
-      p.colorCore.set(style.core);
-      p.colorMid.set(style.primary);
-    } else {
-      p.gravity = -11.0;
-      p.drag = 0.985;
-      const shade = 0.22 + Math.random() * 0.18;
-      p.colorCore.setRGB(shade * 1.1, shade, shade * 0.85);
-      p.mat.color.copy(p.colorCore);
+    if (kind === 'chip' || element === 'TERRA') {
+      // Dark volcanic stone (linear values: 0.035 to 0.075 shows as a deep grey).
+      const shade = 0.035 + Math.random() * 0.04;
+      pieceColor.setRGB(shade * 1.08, shade, shade * 0.9);
+      this.debris.spawn('rock', { position: pos, velocity: vel, duration, startSize, endSize: startSize, gravity: -11, drag: 0.985, core: pieceColor, opacity: 1 });
+      return;
     }
-
-    p.mat.color.copy(p.colorCore);
-    p.mat.opacity = baseOpacity;
-    p.mesh.position.copy(pos);
-    p.mesh.scale.setScalar(startSize);
-    p.mesh.visible = true;
+    const style = ELEMENT_STYLES[element] ?? ELEMENT_STYLES.IGNIS;
+    this.debris.spawn('spark', {
+      position: pos, velocity: vel, duration, startSize, endSize,
+      gravity: element === 'AQUES' ? -9.0 : element === 'AURA' ? 0 : -4.0, drag: element === 'AURA' ? 0.93 : 0.975,
+      core: pieceColor.set(style.core), mid: pieceMid.set(style.primary), opacity: baseOpacity,
+    });
   }
 
   private spawnScorch(pos: Vector3, scale: number, duration: number): void {
@@ -1156,8 +1306,7 @@ export class BendingEffects {
   }
 
   dispose(): void {
-    this.particles[0]?.mesh.geometry.dispose();
-    for (const p of this.particles) p.mat.dispose();
+    this.debris.dispose();
     this.scorchPool[0]?.mesh.geometry.dispose();
     for (const s of this.scorchPool) s.mat.dispose();
     this.depth.dispose();
@@ -1169,7 +1318,6 @@ export class BendingEffects {
     this.flashLight.dispose();
     for (const pl of this.patchLights) pl.dispose();
     this.texSpark?.dispose();
-    this.texChip?.dispose();
     this.texScorch?.dispose();
     this.scene.remove(this.root);
   }

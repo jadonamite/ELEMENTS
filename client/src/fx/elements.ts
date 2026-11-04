@@ -28,6 +28,7 @@ import {
   RepeatWrapping,
   RingGeometry,
   type Scene,
+  SphereGeometry,
   SRGBColorSpace,
   type Texture,
   TextureLoader,
@@ -36,8 +37,72 @@ import {
   Vector3,
 } from 'three';
 import type { Element } from '../../../shared/src/index.js';
+import type { Projectile } from '../attacks/projectile.js';
+import { carry, type CombatSpace } from '../attacks/space.js';
 
 type Updater = (age: number, delta: number) => boolean;
+/**
+ * The head a shot picture is drawn at. A thrown move's head is the fight's own Projectile, so the
+ * picture stops exactly where the hit is judged; a kick's head is a short reach the effects move.
+ */
+interface Flight {
+  readonly position: Vector3;
+  readonly velocity: Vector3;
+  readonly origin: Vector3;
+  readonly done: boolean;
+  readonly end?: { at: Vector3; reason: 'world' | 'body' | 'spent' };
+}
+/** A kick's head: it runs out to the kick's reach, or to the first wall, and ends there. */
+interface Reach extends Flight { done: boolean; end?: { at: Vector3; reason: 'world' | 'body' | 'spent' }; left: number; radius: number }
+/** How big a thrown boulder is at bending strength `s`. */
+const stoneRadius = (s: number): number => 0.42 * (0.7 + s * 0.3);
+/** Back along the head's path, off the face it stopped on. */
+function backFrom(head: Flight): Vector3 {
+  return head.velocity.clone().setY(0).normalize().negate();
+}
+const stepFrom = new Vector3();
+const stepTo = new Vector3();
+/** Height at which ground effects ask the world what stands in their way. */
+const PROBE_Y = 0.5;
+const FAN_RAYS = 48;
+const toWorld = new Vector3();
+
+/**
+ * How far is open around a point, measured once in every direction. A wave, ice sheet, pool or
+ * whirlwind is held inside it, so it breaks against a wall instead of passing through.
+ */
+class Fan {
+  constructor(readonly centre: Vector3, private readonly open: Float32Array) {}
+  /** Open distance toward a world heading (atan2 of x over z); the nearer of the two samples around it. */
+  at(heading: number): number {
+    const n = this.open.length;
+    const f = (((heading / (Math.PI * 2)) % 1) + 1) % 1 * n;
+    const i = Math.floor(f) % n;
+    return Math.min(this.open[i]!, this.open[(i + 1) % n]!);
+  }
+  /** Holds every vertex of `mesh` inside the open outline; `base` is the mesh's own unclamped shape. */
+  hold(mesh: Mesh, base: Float32Array): void {
+    // Parents first: a whirlwind's group grows this frame before its rings are held.
+    mesh.updateWorldMatrix(true, false);
+    const pos = mesh.geometry.getAttribute('position');
+    const inverse = mesh.matrixWorld.clone().invert();
+    for (let i = 0; i < pos.count; i++) {
+      toWorld.set(base[i * 3]!, base[i * 3 + 1]!, base[i * 3 + 2]!).applyMatrix4(mesh.matrixWorld);
+      const dx = toWorld.x - this.centre.x, dz = toWorld.z - this.centre.z;
+      const d = Math.hypot(dx, dz);
+      const limit = this.at(Math.atan2(dx, dz));
+      if (d > limit) {
+        toWorld.x = this.centre.x + dx / d * limit;
+        toWorld.z = this.centre.z + dz / d * limit;
+      }
+      toWorld.applyMatrix4(inverse);
+      pos.setXYZ(i, toWorld.x, toWorld.y, toWorld.z);
+    }
+    pos.needsUpdate = true;
+  }
+}
+/** A mesh's own vertex positions, kept so a Fan can clamp them afresh each frame. */
+const shapeOf = (mesh: Mesh): Float32Array => Float32Array.from(mesh.geometry.getAttribute('position').array as Float32Array);
 interface Live { root: Object3D; age: number; update: Updater; dispose: Array<BufferGeometry | Material> }
 
 const UP = new Vector3(0, 1, 0);
@@ -109,6 +174,8 @@ function crystalGeometry(width: number, height: number, seed: number): BufferGeo
 }
 
 /** Rough rock: an icosahedron pushed in and out so no two look alike. */
+/** How far a rock's bumps reach past its radius. */
+const ROCK_BULGE = 1.28;
 function rockGeometry(radius: number, seed: number): BufferGeometry {
   const geo = new IcosahedronGeometry(radius, 1);
   const pos = geo.getAttribute('position');
@@ -116,7 +183,7 @@ function rockGeometry(radius: number, seed: number): BufferGeometry {
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i);
     const n = Math.sin(v.x * 7.1 + seed) * Math.cos(v.y * 5.3 - seed) * Math.sin(v.z * 6.7 + seed * 2);
-    v.multiplyScalar(1 + n * 0.28);
+    v.multiplyScalar(1 + n * (ROCK_BULGE - 1));
     v.y *= 0.8;
     pos.setXYZ(i, v.x, v.y, v.z);
   }
@@ -165,10 +232,22 @@ export class ElementEffects {
   private readonly foam: MeshBasicMaterial;
   /** A raised TERRA wall: the scene gives it a solid body for its lifetime. */
   onWall?: (center: Vector3, facing: number, size: Vector3, seconds: number) => void;
+  /** Wind and water extinguishing fire: douses flame patches and fireballs in range. */
+  onExtinguish?: (at: Vector3, radius: number) => void;
   private readonly wind: MeshBasicMaterial;
   private readonly textures: Texture[] = [];
   /** Pools and floods AQUES made; they count as water to bend from while they last. */
   readonly pools: Array<{ position: Vector3; until: number }> = [];
+  readonly wellspringPools: Array<{ position: Vector3; until: number }> = [];
+  private readonly reaches: Reach[] = [];
+  /** The fight's world query; kicks ask it so their picture stops at the same wall the judge sees. */
+  space?: Pick<CombatSpace, 'obstruction'>;
+  private windskiffGroup: Group | null = null;
+  private windskiffSphere: Mesh | null = null;
+  private windskiffTorus1: Mesh | null = null;
+  private windskiffTorus2: Mesh | null = null;
+  private windskiffTorus3: Mesh | null = null;
+  private windskiffDust: Mesh | null = null;
   private clock = 0;
 
   constructor(private readonly scene: Scene, quality: 'high' | 'low' = 'high') {
@@ -206,30 +285,325 @@ export class ElementEffects {
 
   /** Water sources from effects that are still on the ground. */
   get waterSources(): Vector3[] { return this.pools.filter(p => p.until > this.clock).map(p => p.position); }
+  /** Sacred wellspring water sources in the world. */
+  get wellspringSources(): Vector3[] { return this.wellspringPools.filter(p => p.until > this.clock).map(p => p.position); }
+
+  /**
+   * Toggle the AURA Windskiff (Air Scooter) technique.
+   * Spawns a glowing sphere of compressed air, spinning wind rings, and ground vortex beneath the sitting hero.
+   */
+  setWindskiff(active: boolean, at?: Vector3): void {
+    if (!this.windskiffGroup) {
+      this.windskiffGroup = new Group();
+      this.windskiffGroup.name = 'Windskiff';
+
+      // 1. Central glowing sphere of compressed spinning air
+      const sGeo = new SphereGeometry(0.68, 24, 24);
+      const airSphereMat = new MeshBasicMaterial({
+        color: 0xe6f4ff,
+        transparent: true,
+        opacity: 0.65,
+        blending: AdditiveBlending,
+      });
+      this.windskiffSphere = new Mesh(sGeo, airSphereMat);
+
+      // 2. High-speed equator and oblique wind vortex rings
+      const tGeo1 = new TorusGeometry(0.76, 0.06, 12, 32);
+      this.windskiffTorus1 = new Mesh(tGeo1, this.wind);
+
+      const tGeo2 = new TorusGeometry(0.72, 0.05, 12, 32);
+      this.windskiffTorus2 = new Mesh(tGeo2, this.wind);
+      this.windskiffTorus2.rotation.x = Math.PI / 3;
+
+      const tGeo3 = new TorusGeometry(0.74, 0.04, 12, 32);
+      this.windskiffTorus3 = new Mesh(tGeo3, this.wind);
+      this.windskiffTorus3.rotation.z = Math.PI / 4;
+
+      // 3. Ground vortex ring lifting air dust
+      const dGeo = new RingGeometry(0.3, 1.2, 32);
+      dGeo.rotateX(-Math.PI / 2);
+      this.windskiffDust = new Mesh(dGeo, this.spray);
+      this.windskiffDust.position.y = -0.66;
+
+      this.windskiffGroup.add(this.windskiffSphere, this.windskiffTorus1, this.windskiffTorus2, this.windskiffTorus3, this.windskiffDust);
+      this.scene.add(this.windskiffGroup);
+    }
+    this.windskiffGroup.visible = active;
+    if (active && at) {
+      this.windskiffGroup.position.copy(at).setY(at.y + 0.68);
+    }
+  }
+
+  /** Update the spinning windskiff under the hero while riding. */
+  updateWindskiff(at: Vector3, delta: number, speed: number, facing: number): void {
+    if (!this.windskiffGroup || !this.windskiffGroup.visible) return;
+    this.windskiffGroup.position.set(at.x, at.y + 0.68, at.z);
+    this.windskiffGroup.rotation.y = facing;
+    const spin = delta * (14 + speed * 6);
+    if (this.windskiffSphere) {
+      this.windskiffSphere.rotation.x += spin * 0.8;
+      this.windskiffSphere.rotation.y += spin;
+    }
+    if (this.windskiffTorus1) this.windskiffTorus1.rotation.y += spin * 1.2;
+    if (this.windskiffTorus2) this.windskiffTorus2.rotation.z += spin * 1.4;
+    if (this.windskiffTorus3) this.windskiffTorus3.rotation.x += spin * 1.1;
+    if (this.windskiffDust) this.windskiffDust.rotation.y -= spin * 0.6;
+    if (speed > 0.5 && Math.random() < 0.35) {
+      this.dust(at.clone().setY(0.05), 0.7, 2);
+    }
+  }
+
+  /**
+   * Stonehearing for TERRA benders:
+   * Radiates expanding ground sonar waves and highlights enemy footfalls through bedrock and walls.
+   * Uses depthTest=false so vibrational beacons project directly through solid obstacles.
+   */
+  spawnStonehearingPulse(origin: Vector3, maxRadius = 32.0, enemies: readonly Vector3[] = []): void {
+    const group = new Group();
+    group.position.copy(origin).setY(0.04);
+    const disposables: Array<BufferGeometry | Material> = [];
+
+    // 1. Concentric high-contrast ground vibrational sonar ripples
+    const ringGeo1 = new RingGeometry(0.35, 1.15, 64);
+    ringGeo1.rotateX(-Math.PI / 2);
+    const ringMat1 = new MeshBasicMaterial({
+      color: new Color(0x35ff75), // Vibrant emerald vibrational resonance
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+      opacity: 0.95,
+    });
+    const ringMesh1 = new Mesh(ringGeo1, ringMat1);
+    group.add(ringMesh1);
+    disposables.push(ringGeo1, ringMat1);
+
+    const ringGeo2 = new RingGeometry(0.4, 0.85, 64);
+    ringGeo2.rotateX(-Math.PI / 2);
+    const ringMat2 = new MeshBasicMaterial({
+      color: new Color(0xffdf55), // Secondary earth harmonic golden vibration
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+      opacity: 0.85,
+    });
+    const ringMesh2 = new Mesh(ringGeo2, ringMat2);
+    group.add(ringMesh2);
+    disposables.push(ringGeo2, ringMat2);
+
+    const ringGeo3 = new RingGeometry(0.3, 0.65, 48);
+    ringGeo3.rotateX(-Math.PI / 2);
+    const ringMesh3 = new Mesh(ringGeo3, ringMat1);
+    group.add(ringMesh3);
+    disposables.push(ringGeo3);
+
+    // 2. Vibrational Sonar Beacons tracking each detected enemy through bedrock
+    const enemyMarkers: Array<{
+      pillar: Mesh;
+      diamond: Mesh;
+      footRings: Mesh[];
+      x: number;
+      z: number;
+    }> = [];
+
+    for (const e of enemies) {
+      const d = Math.hypot(e.x - origin.x, e.z - origin.z);
+      if (d <= maxRadius) {
+        // Holographic cylindrical sonar column through bedrock (depthTest: false penetrates walls)
+        const pillarGeo = new CylinderGeometry(0.75, 0.85, 2.8, 32, 1, true);
+        const pillarMat = new MeshBasicMaterial({
+          color: new Color(0x40ff80),
+          transparent: true,
+          opacity: 0.75,
+          side: DoubleSide,
+          blending: AdditiveBlending,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const pillarMesh = new Mesh(pillarGeo, pillarMat);
+        pillarMesh.position.set(e.x - origin.x, 1.4, e.z - origin.z);
+        pillarMesh.renderOrder = 999;
+        group.add(pillarMesh);
+        disposables.push(pillarGeo, pillarMat);
+
+        // Hovering diamond / octahedron sonar beacon above head (depthTest: false)
+        const diamondGeo = new OctahedronGeometry(0.35, 0);
+        const diamondMat = new MeshBasicMaterial({
+          color: new Color(0x70ffaa),
+          transparent: true,
+          opacity: 0.95,
+          blending: AdditiveBlending,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const diamondMesh = new Mesh(diamondGeo, diamondMat);
+        diamondMesh.position.set(e.x - origin.x, 2.9, e.z - origin.z);
+        diamondMesh.renderOrder = 1000;
+        group.add(diamondMesh);
+        disposables.push(diamondGeo, diamondMat);
+
+        // Ground vibrational footfall resonance rings
+        const footGeo = new RingGeometry(0.35, 1.1, 32);
+        footGeo.rotateX(-Math.PI / 2);
+        const footMesh = new Mesh(footGeo, pillarMat);
+        footMesh.position.set(e.x - origin.x, 0.05, e.z - origin.z);
+        footMesh.renderOrder = 998;
+        group.add(footMesh);
+        disposables.push(footGeo);
+
+        enemyMarkers.push({
+          pillar: pillarMesh,
+          diamond: diamondMesh,
+          footRings: [footMesh],
+          x: e.x - origin.x,
+          z: e.z - origin.z,
+        });
+      }
+    }
+
+    this.add(group, (age) => {
+      const duration = 3.6;
+      const t = age / duration;
+      const r1 = Math.min(maxRadius, (age / 1.3) * maxRadius);
+      const r2 = Math.min(maxRadius, Math.max(0, ((age - 0.22) / 1.3) * maxRadius));
+      const r3 = Math.min(maxRadius, Math.max(0, ((age - 0.45) / 1.3) * maxRadius));
+
+      ringMesh1.scale.setScalar(r1);
+      ringMesh2.scale.setScalar(r2);
+      ringMesh3.scale.setScalar(r3);
+
+      const fade = Math.max(0, 1.0 - t);
+      ringMat1.opacity = 0.95 * fade;
+      ringMat2.opacity = 0.85 * fade;
+
+      // Animate enemy vibrational beacons
+      enemyMarkers.forEach((m, idx) => {
+        const pulse = Math.sin(age * 12 + idx * 1.5);
+        m.diamond.rotation.y += 0.08;
+        m.diamond.position.y = 2.9 + pulse * 0.12;
+        (m.diamond.material as MeshBasicMaterial).opacity = Math.max(0, 0.95 * fade * (0.75 + pulse * 0.25));
+
+        m.pillar.scale.set(1.0 + pulse * 0.08, 1.0, 1.0 + pulse * 0.08);
+        (m.pillar.material as MeshBasicMaterial).opacity = Math.max(0, 0.75 * fade * (0.8 + pulse * 0.2));
+
+        for (const f of m.footRings) {
+          const footPulse = ((age * 3.0 + idx) % 1.0);
+          f.scale.setScalar(0.7 + footPulse * 1.4);
+        }
+      });
+
+      return t < 1;
+    }, disposables);
+  }
+
+  /**
+   * Foot and leg bending strikes: projects crescent arcs of water, wind scythes, or stone
+   * ruptures originating directly from the kicking foot/limb.
+   */
+  castKick(
+    element: Element,
+    action: string,
+    origin: Vector3,
+    footPos: Vector3,
+    facing: number,
+    isHeavy = false,
+    strength = 1,
+    reach = 2.2,
+  ): void {
+    const forward = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const at = origin.clone().setY(0);
+    const foot = footPos.clone();
+    const s = Math.max(0.6, Math.min(1.5, strength));
+    // A kick is judged at the foot, so its shot runs only as far as the kick reaches.
+    // The head starts clear of the floor, which is part of the world it asks.
+    const kicked = (y: number, radius: number): Flight => this.kick(foot.clone().setY(Math.max(y, foot.y, radius + 0.08)), forward, Math.max(0.6, reach - 0.4), radius);
+
+    if (element === 'AQUES' || element === 'AURA') {
+      this.onExtinguish?.(origin.clone().addScaledVector(forward, 2.5), 4.2);
+    }
+
+    if (element === 'AQUES') {
+      if (isHeavy) {
+        // Heavy kick: sweeping crescent water scythe and crashing tidal surge along the ground
+        this.tide(at, facing, 5.0 * s, s);
+        this.droplets(foot, 16, 4.5 * s, 2.0 * s, 0.7);
+        this.pool(this.placed(at, at.clone().addScaledVector(forward, 2.5)), 1.8 * s, 5);
+      } else {
+        // Light kick: snapping water whip arc launched directly from the foot
+        this.lash(kicked(0.3, 0.13 * s + 0.05), s, 1.2 * s, 4);
+        this.droplets(foot, 10, 3.5 * s, 1.5 * s, 0.5);
+      }
+    } else if (element === 'AURA') {
+      if (isHeavy) {
+        // Heavy kick: sweeping 180-degree cyclone gale and vacuum burst
+        this.gust(at, facing, 6.0 * s, s);
+        this.cyclone(this.placed(at, at.clone().addScaledVector(forward, 1.8)), 0.9, 1.2 * s);
+      } else {
+        // Light kick: high-velocity crescent air blade sliced directly from the kicking foot
+        this.airBlade(kicked(0.4, 0.1), s);
+        this.streaks(foot, facing, 0.6, reach, 12, 1.2, 0.35);
+      }
+    } else if (element === 'TERRA') {
+      if (isHeavy) {
+        // Heavy kick: tearing stone rupture wave churned up along the kicking line
+        this.rockWave(at, forward, 5.5 * s, s);
+        this.spire(this.placed(at, at.clone().addScaledVector(forward, 2.8), 0.45), s);
+        this.dust(foot, 1.5, 12);
+      } else {
+        // Light kick: rock shard kicked from the floor at high velocity
+        this.stoneShot(kicked(0.4, stoneRadius(s) * ROCK_BULGE), s);
+        this.dust(foot, 1.0, 8);
+      }
+    }
+  }
 
   /** Draws one bending move. `strength` below 1 means a weaker move from an empty meter. */
-  cast(element: Element, move: string, origin: Vector3, facing: number, strength = 1): void {
+  cast(
+    element: Element,
+    move: string,
+    origin: Vector3,
+    facing: number,
+    strength = 1,
+    quality: 'waterskin' | 'natural' | 'wellspring' = 'waterskin'
+  ): void {
     const forward = new Vector3(Math.sin(facing), 0, Math.cos(facing));
     const at = origin.clone().setY(0);
     const s = Math.max(0.55, Math.min(1.4, strength));
+
+    // Wind and water extinguish fire in front of them
+    if (element === 'AQUES' || element === 'AURA') {
+      this.onExtinguish?.(origin.clone().addScaledVector(forward, 2.5), 4.2);
+    }
+
     const key = `${element}:${move}`;
     switch (key) {
-      case 'AQUES:bend_palm': this.lash(at, forward, 6, s); break;
-      case 'AQUES:bend_sweep': this.tide(at, facing, 4.5, s); break;
-      case 'AQUES:uppercut': this.geyser(at.clone().addScaledVector(forward, 1.3), s); break;
-      case 'AQUES:ground_pound': this.freeze(at, 4 * s); break;
-      case 'AQUES:dash_strike': this.mend(at); break;
-      case 'AQUES:ultimate': this.deluge(at, forward, facing); break;
-      case 'TERRA:bend_palm': this.stoneShot(at, forward, 8, s); break;
+      case 'AQUES:bend_sweep':
+        this.tide(at, facing, 4.5, s);
+        break;
+      case 'AQUES:uppercut':
+        const spout = this.placed(at, at.clone().addScaledVector(forward, 1.3), 0.42);
+        this.geyser(spout, s);
+        this.pool(spout, 1.8 * s, 6);
+        break;
+      case 'AQUES:ground_pound':
+        this.freeze(at, 4 * s);
+        break;
+      case 'AQUES:dash_strike':
+        this.mend(at, quality);
+        break;
+      case 'AQUES:ultimate':
+        this.deluge(at, forward, facing);
+        this.pool(this.placed(at, at.clone().addScaledVector(forward, 4.0)), 4.5, 8);
+        break;
       case 'TERRA:bend_sweep': this.rockWave(at, forward, 5, s); break;
-      case 'TERRA:uppercut': this.spire(at.clone().addScaledVector(forward, 1.3), s); break;
-      case 'TERRA:ground_pound': this.wall(at.clone().addScaledVector(forward, 1.6), facing, s); break;
+      case 'TERRA:uppercut': this.spire(this.placed(at, at.clone().addScaledVector(forward, 1.3), 0.45), s); break;
+      case 'TERRA:ground_pound': this.wall(this.placed(at, at.clone().addScaledVector(forward, 1.6), 0.4), facing, s); break;
       case 'TERRA:dash_strike': this.dust(at, 1.6, 14); break;
       case 'TERRA:ultimate': this.landfall(at, facing); break;
-      case 'AURA:bend_palm': this.airBlade(at, forward, facing, 10, s); break;
       case 'AURA:bend_sweep': this.gust(at, facing, 5, s); break;
-      case 'AURA:uppercut': this.updraft(at.clone().addScaledVector(forward, 1.0), s); break;
-      case 'AURA:ground_pound': this.cyclone(at.clone().addScaledVector(forward, 1.8), 1.5, 1.4 * s); break;
+      case 'AURA:uppercut': this.updraft(this.placed(at, at.clone().addScaledVector(forward, 1.0), 0.6), s); break;
+      case 'AURA:ground_pound': this.cyclone(this.placed(at, at.clone().addScaledVector(forward, 1.8)), 1.5, 1.4 * s); break;
       case 'AURA:dash_strike': this.windStep(at, forward, facing); break;
       case 'AURA:ultimate': this.tempest(at, 4); break;
       default: break;
@@ -257,17 +631,66 @@ export class ElementEffects {
     this.add(group, (age) => { surface.position.y = 0.2 + Math.sin(age * 1.3) * 0.006; return true; }, [rimGeo, surfaceGeo, surfaceMat]);
   }
 
-  /** A weak spark of any element thrown by a Hush. */
-  spark(element: Element, origin: Vector3, facing: number): void {
-    const forward = new Vector3(Math.sin(facing), 0, Math.cos(facing));
-    const at = origin.clone().setY(0);
-    if (element === 'AQUES') this.lash(at, forward, 5, 0.55);
-    else if (element === 'TERRA') this.stoneShot(at, forward, 6, 0.55);
-    else this.airBlade(at, forward, facing, 7, 0.55);
+  /**
+   * The Wellspring basin in the AQUES delta.
+   * Grants Wellspring water for purest healing.
+   */
+  wellspring(at: Vector3, radius = 2.4): void {
+    const group = new Group();
+    group.position.copy(at).setY(0);
+    const rimGeo = new TorusGeometry(radius, 0.32, 12, 48);
+    rimGeo.rotateX(Math.PI / 2);
+    const rim = this.mesh(rimGeo, this.stone);
+    rim.position.y = 0.16;
+    const surfaceGeo = new CircleGeometry(radius - 0.05, 48);
+    surfaceGeo.rotateX(-Math.PI / 2);
+    const surfaceMat = this.water.clone();
+    surfaceMat.color.setRGB(0.3, 0.95, 1.0);
+    surfaceMat.opacity = 0.92;
+    surfaceMat.depthWrite = true;
+    const surface = this.mesh(surfaceGeo, surfaceMat, false);
+    surface.position.y = 0.22;
+    group.add(rim, surface);
+    this.pools.push({ position: at.clone().setY(0), until: Infinity });
+    this.wellspringPools.push({ position: at.clone().setY(0), until: Infinity });
+    this.add(group, (age) => {
+      surface.position.y = 0.22 + Math.sin(age * 1.8) * 0.01;
+      return true;
+    }, [rimGeo, surfaceGeo, surfaceMat]);
+  }
+
+  /**
+   * Draws a thrown move on the fight's projectile: water lash, boulder or air blade. It flies
+   * with the projectile and breaks where the projectile ends. A Hush's spark is the same, weaker.
+   */
+  thrown(element: Element, p: Projectile, strength = 1): void {
+    const s = Math.max(0.55, Math.min(1.4, strength));
+    if (element === 'AQUES' || element === 'AURA') {
+      this.onExtinguish?.(p.origin.clone().addScaledVector(p.velocity.clone().setY(0).normalize(), 2.5), 4.2);
+    }
+    if (element === 'AQUES') this.lash(p, s, 1.5 * s);
+    else if (element === 'TERRA') this.stoneShot(p, s);
+    else if (element === 'AURA') this.airBlade(p, s);
   }
 
   update(delta: number): void {
     this.clock += delta;
+    // Kick heads move first, so every picture riding one draws at this frame's place.
+    for (let i = this.reaches.length - 1; i >= 0; i--) {
+      const r = this.reaches[i]!;
+      const speed = Math.max(r.velocity.length(), 1e-6);
+      let step = Math.min(r.left, speed * delta);
+      const to = r.position.clone().addScaledVector(r.velocity, step / speed);
+      const blocked = this.space?.obstruction(r.position, to, r.radius) ?? null;
+      if (blocked !== null) step = blocked;
+      r.position.addScaledVector(r.velocity, step / speed);
+      r.left -= step;
+      if (blocked !== null || r.left <= 0) {
+        r.done = true;
+        r.end = { at: r.position.clone(), reason: blocked !== null ? 'world' : 'spent' };
+        this.reaches.splice(i, 1);
+      }
+    }
     for (let i = this.live.length - 1; i >= 0; i--) {
       const fx = this.live[i]!;
       fx.age += delta;
@@ -289,6 +712,32 @@ export class ElementEffects {
   private add(root: Object3D, update: Updater, dispose: Array<BufferGeometry | Material> = []): void {
     this.scene.add(root);
     this.live.push({ root, age: 0, update, dispose });
+  }
+
+  /** The point toward `to` that something sent from `from` can reach; at `to`'s height. */
+  private placed(from: Vector3, to: Vector3, radius = 0.3): Vector3 {
+    if (!this.space) return to.clone();
+    // The probe rides clear of the floor, which is part of the world it asks.
+    const y = Math.max(PROBE_Y, radius + 0.05);
+    stepFrom.copy(from).setY(y);
+    stepTo.copy(to).setY(y);
+    const hit = this.space.obstruction(stepFrom, stepTo, radius);
+    if (hit === null) return to.clone();
+    return stepTo.clone().sub(stepFrom).normalize().multiplyScalar(hit).add(stepFrom).setY(to.y);
+  }
+
+  /** Measures how far is open around `centre`, out to `reach`. */
+  private fan(centre: Vector3, reach: number): Fan {
+    const open = new Float32Array(FAN_RAYS).fill(Infinity);
+    if (this.space) {
+      stepFrom.copy(centre).setY(PROBE_Y);
+      for (let i = 0; i < FAN_RAYS; i++) {
+        const a = (i / FAN_RAYS) * Math.PI * 2;
+        stepTo.copy(stepFrom).add(toWorld.set(Math.sin(a) * reach, 0, Math.cos(a) * reach));
+        open[i] = this.space.obstruction(stepFrom, stepTo, 0.1) ?? Infinity;
+      }
+    }
+    return new Fan(centre.clone().setY(0), open);
   }
 
   private mesh(geo: BufferGeometry, mat: Material, cast = true): Mesh {
@@ -315,7 +764,7 @@ export class ElementEffects {
     this.add(group, (age, dt) => {
       for (const d of drops) {
         d.v.y -= 9.8 * dt;
-        d.m.position.addScaledVector(d.v, dt);
+        carry(this.space, d.m.position, d.v, dt, 0.08);
         if (d.m.position.y < 0.03) { d.m.position.y = 0.03; d.v.set(0, 0, 0); }
         d.m.quaternion.copy(this.scene.userData.cameraQuaternion ?? d.m.quaternion);
       }
@@ -333,34 +782,65 @@ export class ElementEffects {
     const m = this.mesh(geo, mat, false);
     m.position.copy(at).setY(0.025);
     this.pools.push({ position: at.clone(), until: this.clock + seconds });
+    // Water spreads up to a wall and stops there.
+    const open = this.fan(at, radius + 0.5);
+    const shape = shapeOf(m);
     this.add(m, (age) => {
       mat.opacity = 0.62 * Math.min(1, age / 0.25) * Math.min(1, (seconds - age) / 0.8);
       m.scale.setScalar(0.6 + 0.4 * ease(age / 0.3));
+      if (age < 0.35) open.hold(m, shape);
       return age < seconds;
     }, [geo, mat]);
   }
 
   // AQUES
 
-  private lash(at: Vector3, forward: Vector3, reach: number, s: number): void {
-    const side = new Vector3().crossVectors(UP, forward);
-    const pts = [0, 0.25, 0.5, 0.75, 1].map((t, i) =>
-      at.clone().addScaledVector(forward, 0.5 + t * reach * s).addScaledVector(side, Math.sin(t * Math.PI * 1.5) * 0.45).setY(1.25 + Math.sin(t * Math.PI) * 0.35 - t * 0.4 + (i === 0 ? 0.1 : 0)));
-    const curve = new CatmullRomCurve3(pts);
-    const geo = new TubeGeometry(curve, 64, 0.13 * s + 0.05, 10, false);
+  /** A kick's head, as thick as the picture it carries, starting at the foot and running `reach` metres forward. */
+  private kick(at: Vector3, forward: Vector3, reach: number, radius: number): Flight {
+    const r: Reach = { position: at.clone(), origin: at.clone(), velocity: forward.clone().multiplyScalar(12), done: false, left: reach, radius };
+    this.reaches.push(r);
+    return r;
+  }
+
+  /**
+   * A whip of water from where it left the hand to the head. Its tip is the head; when the head
+   * ends the tip splashes there and the whip draws back into the splash.
+   */
+  private lash(head: Flight, s: number, poolRadius = 0, poolSeconds = 6): void {
+    // Built once along +Z from 0 to 1, then stretched from the origin to the head each frame. The
+    // wiggle runs flat into the tip, so the stretched tube ends at the head and not past it.
+    const pts = [0, 0.2, 0.4, 0.6, 0.8, 1].map(t => new Vector3(Math.sin(t * Math.PI * 2) * (1 - t) * 0.45, Math.sin(t * Math.PI) * (1 - t) * 0.4, t));
+    const geo = new TubeGeometry(new CatmullRomCurve3(pts), 64, 0.13 * s + 0.05, 10, false);
     const mat = this.water.clone();
     const m = this.mesh(geo, mat, false);
-    geo.setDrawRange(0, 0);
+    const group = new Group();
+    group.add(m);
+    group.position.copy(head.origin);
     const total = geo.index!.count;
-    const tip = curve.getPoint(1);
-    let splashed = false;
-    this.add(m, (age) => {
-      const out = ease(age / 0.18);
-      const back = age > 0.5 ? ease((age - 0.5) / 0.25) : 0;
+    let endedAt = -1;
+    const tip = new Vector3();
+    this.add(group, (age) => {
+      if (endedAt < 0) {
+        tip.copy(head.position);
+        const length = Math.max(0.01, tip.distanceTo(head.origin));
+        group.lookAt(tip);
+        m.scale.set(1, 1, length);
+        if (head.done) {
+          endedAt = age;
+          const at = head.end?.at ?? tip;
+          this.droplets(at, 18, 2.2, 2.4, 0.8);
+          // The foam column is wider than the whip, so it stands back off whatever the tip met.
+          const foamAt = at.clone().setY(Math.max(0.3, at.y - 0.6));
+          if (head.end?.reason === 'world') foamAt.addScaledVector(backFrom(head), 0.45);
+          this.foamColumn(foamAt, 1.2, 0.3, 10, 0.5);
+          if (poolRadius > 0) this.pool(at.clone().setY(0), poolRadius, poolSeconds);
+        }
+        return true;
+      }
+      const back = ease((age - endedAt) / 0.25);
       const start = Math.floor(total * back / 6) * 6;
-      geo.setDrawRange(start, Math.max(0, Math.floor(total * out / 6) * 6 - start));
-      if (!splashed && age > 0.2) { splashed = true; this.droplets(tip, 18, 2.2, 2.4, 0.8); this.foamColumn(tip.clone().setY(0.6), 1.2, 0.3, 10, 0.5); }
-      return age < 0.78;
+      geo.setDrawRange(start, total - start);
+      return back < 1;
     }, [geo, mat]);
   }
 
@@ -390,16 +870,19 @@ export class ElementEffects {
   private tide(at: Vector3, facing: number, reach: number, s: number): void {
     const m = this.crest(at, facing, reach * 0.55, 2.2, 0.9 * s);
     const mat = m.material as MeshPhysicalMaterial;
+    const open = this.fan(at, reach * 1.2);
+    const shape = shapeOf(m);
     this.add(m, (age) => {
       const t = age / 0.8;
       const grow = 0.45 + 0.65 * ease(t);
       m.scale.set(grow, Math.max(0.05, bump(Math.min(1, t * 1.15))), grow);
+      open.hold(m, shape);
       mat.opacity = 0.95 * (1 - Math.max(0, (t - 0.65) / 0.35));
       return t < 1;
     }, [m.geometry, mat]);
     const forward = new Vector3(Math.sin(facing), 0, Math.cos(facing));
-    this.pool(at.clone().addScaledVector(forward, reach * 0.65), 1.6 * s, 3);
-    this.droplets(at.clone().addScaledVector(forward, reach * 0.7).setY(0.4), 18, 3, 2, 0.8);
+    this.pool(this.placed(at, at.clone().addScaledVector(forward, reach * 0.65)), 1.6 * s, 3);
+    this.droplets(this.placed(at, at.clone().addScaledVector(forward, reach * 0.7).setY(0.4)), 18, 3, 2, 0.8);
   }
 
   /** White water rushing upward: soft foam puffs that rise, swell and fade. */
@@ -464,13 +947,19 @@ export class ElementEffects {
     const disc = this.mesh(discGeo, discMat, false);
     disc.position.y = 0.03;
     group.add(disc);
+    // Ice spreads over the open ground and stops at walls.
+    const open = this.fan(at, radius + 0.5);
+    const discShape = shapeOf(disc);
     const shardMat = this.ice.clone();
     const shards: Mesh[] = [];
     const disposables: Array<BufferGeometry | Material> = [discGeo, discMat, shardMat];
     for (let i = 0; i < 30; i++) {
       const a = (i / 30) * Math.PI * 2 + Math.random() * 0.2;
-      const r = radius * (0.35 + Math.random() * 0.6);
-      const g = crystalGeometry(0.1 + Math.random() * 0.1, 0.35 + Math.random() * 0.6, i * 1.7);
+      const width = 0.1 + Math.random() * 0.1, height = 0.35 + Math.random() * 0.6;
+      // A shard stands back from a wall by its width and by how far its tilt can lean it.
+      const r = Math.min(radius * (0.35 + Math.random() * 0.6), open.at(Math.atan2(Math.cos(a), Math.sin(a))) - width - height * Math.sin(0.3));
+      if (r <= 0) continue;
+      const g = crystalGeometry(width, height, i * 1.7);
       disposables.push(g);
       const m = this.mesh(g, shardMat);
       m.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
@@ -483,6 +972,7 @@ export class ElementEffects {
     this.add(group, (age) => {
       discMat.opacity = 0.55 * ease(age / 0.2) * Math.min(1, (hold - age) / 0.5);
       disc.scale.setScalar(0.2 + 0.8 * ease(age / 0.25));
+      if (age < 0.3) open.hold(disc, discShape);
       shards.forEach((m, i) => {
         const grow = ease((age - i * 0.008) / 0.18);
         const melt = age > hold - 0.5 ? 1 - ease((age - (hold - 0.5)) / 0.5) : 1;
@@ -492,25 +982,33 @@ export class ElementEffects {
     }, disposables);
   }
 
-  private mend(at: Vector3): void {
+  private mend(at: Vector3, quality: 'waterskin' | 'natural' | 'wellspring' = 'waterskin'): void {
     const group = new Group();
     group.position.copy(at);
     const geo = new CylinderGeometry(0.7, 0.75, 0.3, 40, 1, true, 0, Math.PI * 1.2);
     const mat = this.wind.clone();
-    mat.color.setRGB(0.45, 0.85, 1);
+    if (quality === 'wellspring') {
+      mat.color.setRGB(0.55, 0.98, 1.0);
+    } else if (quality === 'natural') {
+      mat.color.setRGB(0.25, 0.75, 1.0);
+    } else {
+      mat.color.setRGB(0.45, 0.85, 1.0);
+    }
     const rings: Mesh[] = [];
-    for (let i = 0; i < 4; i++) { const m = new Mesh(geo, mat); rings.push(m); group.add(m); }
+    const ringCount = quality === 'wellspring' ? 6 : 4;
+    for (let i = 0; i < ringCount; i++) { const m = new Mesh(geo, mat); rings.push(m); group.add(m); }
     this.add(group, (age) => {
       rings.forEach((m, i) => {
-        const t = ((age * 0.7 + i / 4) % 1);
-        m.position.y = 0.1 + t * 2.0;
+        const t = ((age * 0.7 + i / ringCount) % 1);
+        m.position.y = 0.1 + t * 2.2;
         m.scale.setScalar(1 - t * 0.45);
         m.rotation.y = age * 5 + i * 1.6;
       });
-      mat.opacity = 0.75 * Math.min(1, age / 0.2) * Math.min(1, (2 - age) / 0.3);
+      mat.opacity = 0.85 * Math.min(1, age / 0.2) * Math.min(1, (2 - age) / 0.3);
       return age < 2;
     }, [geo, mat]);
-    this.droplets(at.clone().setY(1.6), 12, 0.6, 0.8, 1.2);
+    const dropCount = quality === 'wellspring' ? 24 : 12;
+    this.droplets(at.clone().setY(1.6), dropCount, 0.7, 0.9, 1.3);
   }
 
   private deluge(at: Vector3, forward: Vector3, facing: number): void {
@@ -528,12 +1026,18 @@ export class ElementEffects {
       this.scene.add(mesh);
     }
     const crestTop = new Vector3();
+    // The wave rises and rolls out from the caster; it breaks on any wall in its way.
+    const open = this.fan(at, 11);
+    const shape = shapeOf(m);
     this.add(new Group(), (age) => {
       const t = age / 1.0;
       const lift = bump(Math.min(1, t * 1.15));
       const r = 4 * (1 + t * 0.3) + height * 0.45;
       for (const f of foam) {
         crestTop.set(Math.sin(f.theta) * r, height * 0.85 * lift + f.jitter * 0.3, Math.cos(f.theta) * r).applyAxisAngle(UP, facing).add(m.position);
+        const dx = crestTop.x - open.centre.x, dz = crestTop.z - open.centre.z, d = Math.hypot(dx, dz);
+        const limit = open.at(Math.atan2(dx, dz));
+        if (d > limit) { crestTop.x = open.centre.x + dx / d * limit; crestTop.z = open.centre.z + dz / d * limit; }
         f.mesh.position.copy(crestTop);
         f.mesh.scale.setScalar(0.5 + f.jitter * 0.5 + t * 0.4);
         f.mesh.quaternion.copy(this.scene.userData.cameraQuaternion ?? f.mesh.quaternion);
@@ -546,39 +1050,37 @@ export class ElementEffects {
       const t = age / 1.0;
       m.position.copy(back).addScaledVector(forward, t * 6);
       m.scale.set(1 + t * 0.3, Math.max(0.05, bump(Math.min(1, t * 1.15))), 1 + t * 0.3);
+      open.hold(m, shape);
       mat.opacity = 0.95 * (1 - Math.max(0, (t - 0.75) / 0.25));
       return t < 1;
     }, [m.geometry, mat]);
     for (let k = 0; k < 5; k++) {
       const side = new Vector3().crossVectors(UP, forward).multiplyScalar((k - 2) * 1.3);
-      this.foamColumn(at.clone().addScaledVector(forward, 3).add(side), 2.2, 0.6, 12, 1.1);
+      this.foamColumn(this.placed(at, at.clone().addScaledVector(forward, 3).add(side), 0.6 + 0.3), 2.2, 0.6, 12, 1.1); // puffs orbit 0.6 m out and are 0.3 m across
     }
-    this.pool(at.clone().addScaledVector(forward, 4), 5, 6);
-    this.droplets(at.clone().addScaledVector(forward, 4).setY(1.8), 40, 4, 3, 1.2);
+    this.pool(this.placed(at, at.clone().addScaledVector(forward, 4)), 5, 6);
+    this.droplets(this.placed(at, at.clone().addScaledVector(forward, 4).setY(1.8)), 40, 4, 3, 1.2);
   }
 
   // TERRA
 
-  private stoneShot(at: Vector3, forward: Vector3, reach: number, s: number): void {
-    const geo = rockGeometry(0.42 * (0.7 + s * 0.3), Math.random() * 10);
+  /** A boulder torn from the floor under the throw; it rides the head and breaks where it ends. */
+  private stoneShot(head: Flight, s: number): void {
+    const geo = rockGeometry(stoneRadius(s), Math.random() * 10);
     const m = this.mesh(geo, this.stone);
-    const right = new Vector3().crossVectors(forward, UP);
-    const start = at.clone().addScaledVector(forward, 1.1).addScaledVector(right, 0.7);
-    let burst = false;
+    const ground = head.origin.clone().setY(-0.3);
     this.add(m, (age) => {
-      if (age < 0.22) {
-        m.position.copy(start).setY(-0.3 + ease(age / 0.22) * 1.9);
-      } else {
-        const t = (age - 0.22) / 0.4;
-        m.position.copy(start).addScaledVector(forward, t * reach * s).addScaledVector(right, -t * 0.7).setY(1.6 - t * 0.5);
-        m.rotation.x += 0.35;
-        m.rotation.z += 0.2;
-        if (t >= 1 && !burst) { burst = true; this.chips(m.position.clone(), 10, 0.12); this.dust(m.position.clone().setY(0), 0.8, 6); }
-        if (t >= 1) return false;
-      }
-      return true;
+      // It comes up out of the ground and joins the head over the first moments.
+      m.position.lerpVectors(ground, head.position, ease(age / 0.12));
+      m.rotation.x += 0.35;
+      m.rotation.z += 0.2;
+      if (!head.done) return true;
+      const at = head.end?.at ?? head.position;
+      this.chips(at.clone(), 10, 0.12);
+      this.dust(at.clone().setY(0), 0.8, 6);
+      return false;
     }, [geo]);
-    this.chips(start.clone().setY(0.05), 6, 0.08);
+    this.chips(ground.clone().setY(0.05), 6, 0.08);
   }
 
   private chips(at: Vector3, count: number, size: number): void {
@@ -597,7 +1099,7 @@ export class ElementEffects {
     this.add(group, (age, dt) => {
       for (const p of parts) {
         p.v.y -= 9.8 * dt;
-        p.m.position.addScaledVector(p.v, dt);
+        carry(this.space, p.m.position, p.v, dt, size * 1.6); // the largest chip
         if (p.m.position.y < size) { p.m.position.y = size; p.v.multiplyScalar(0.4); p.v.y = Math.abs(p.v.y) * 0.3; }
         p.m.rotation.x += p.spin;
         if (age > 1.2) p.m.scale.multiplyScalar(0.9);
@@ -606,7 +1108,7 @@ export class ElementEffects {
     }, geos);
   }
 
-  private dust(at: Vector3, radius: number, count: number): void {
+  dust(at: Vector3, radius: number, count: number): void {
     const group = new Group();
     const geo = new PlaneGeometry(1, 1);
     const mat = this.spray.clone();
@@ -615,13 +1117,15 @@ export class ElementEffects {
     for (let i = 0; i < count; i++) {
       const m = new Mesh(geo, mat);
       const a = (i / count) * Math.PI * 2;
-      m.position.copy(at).add(new Vector3(Math.cos(a) * radius * 0.4, 0.3, Math.sin(a) * radius * 0.4));
+      // Spread out from the centre the same way it moves, so no puff starts inside a wall.
+      m.position.copy(at).setY(at.y + 0.3);
+      carry(this.space, m.position, new Vector3(Math.cos(a) * radius * 0.4, 0, Math.sin(a) * radius * 0.4), 1, 0.1);
       puffs.push({ m, v: new Vector3(Math.cos(a) * radius * 1.5, 0.4 + Math.random() * 0.5, Math.sin(a) * radius * 1.5) });
       group.add(m);
     }
     this.add(group, (age, dt) => {
       for (const p of puffs) {
-        p.m.position.addScaledVector(p.v, dt);
+        carry(this.space, p.m.position, p.v, dt, 0.1);
         p.v.multiplyScalar(0.92);
         p.m.scale.setScalar(0.6 + age * 2.2);
         p.m.quaternion.copy(this.scene.userData.cameraQuaternion ?? p.m.quaternion);
@@ -637,8 +1141,11 @@ export class ElementEffects {
     const spikes: Array<{ m: Mesh; delay: number }> = [];
     const geos: BufferGeometry[] = [];
     const count = Math.round(9 * s);
+    // Spikes break out of the floor only as far as the ground runs before a wall.
+    const open = this.placed(at, at.clone().addScaledVector(forward, 0.8 + reach), 0.35).distanceTo(at);
     for (let i = 0; i < count; i++) {
       const t = (i + 1) / count;
+      if (0.8 + t * reach > open) break;
       const g = spikeGeometry(0.22 + t * 0.12, 0.7 + t * 0.9, i * 1.3);
       geos.push(g);
       const m = this.mesh(g, this.stone);
@@ -658,7 +1165,7 @@ export class ElementEffects {
       }
       return age < 1.4;
     }, geos);
-    this.dust(at.clone().addScaledVector(forward, reach * 0.6), 1.2, 10);
+    this.dust(this.placed(at, at.clone().addScaledVector(forward, reach * 0.6)), 1.2, 10);
   }
 
   private spire(at: Vector3, s: number): void {
@@ -698,8 +1205,8 @@ export class ElementEffects {
       // Spread over the 240 degrees in front, so nothing lands on the camera behind.
       const a = Math.PI / 2 - facing + ((i / 6) - 0.5) * (Math.PI * 4 / 3) + (Math.random() - 0.5) * 0.3;
       const r = 2 + Math.random() * 2.8;
-      const target = at.clone().add(new Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
       const size = 0.5 + Math.random() * 0.45;
+      const target = this.placed(at, at.clone().add(new Vector3(Math.cos(a) * r, 0, Math.sin(a) * r)), size * ROCK_BULGE);
       const geo = rockGeometry(size, i * 5.7);
       const m = this.mesh(geo, this.stone);
       const delay = 0.15 + i * 0.07;
@@ -720,27 +1227,31 @@ export class ElementEffects {
 
   // AURA
 
-  private airBlade(at: Vector3, forward: Vector3, facing: number, reach: number, s: number): void {
+  /** Crescents of wind, the first at the head and the rest trailing behind it towards the hand. */
+  private airBlade(head: Flight, s: number): void {
     const group = new Group();
     const geo = new RingGeometry(0.75 * s + 0.2, 0.95 * s + 0.25, 32, 1, Math.PI * 0.15, Math.PI * 0.7);
     const blades: Mesh[] = [];
     const mat = this.wind.clone();
     mat.map = this.soft;
+    const facing = Math.atan2(head.velocity.x, head.velocity.z);
+    const back = head.velocity.clone().normalize().negate();
     for (let i = 0; i < 4; i++) {
       const m = new Mesh(geo, mat);
       m.rotation.set(0, facing, Math.PI / 2);
+      m.scale.setScalar(1 - i * 0.12);
       blades.push(m);
       group.add(m);
     }
+    let endedAt = -1;
     this.add(group, (age) => {
-      const t = age / 0.55;
-      blades.forEach((m, i) => {
-        const lag = Math.max(0, t - i * 0.05);
-        m.position.copy(at).addScaledVector(forward, 0.8 + lag * reach).setY(1.2);
-        m.scale.setScalar(1 - i * 0.12);
-      });
-      mat.opacity = 0.75 * (1 - Math.max(0, (t - 0.75) / 0.25));
-      return t < 1;
+      const flown = head.position.distanceTo(head.origin);
+      // Each trailing blade sits behind the head, never behind the hand, so none is ever past it.
+      blades.forEach((m, i) => m.position.copy(head.position).addScaledVector(back, Math.min(flown, i * 0.35)));
+      if (endedAt < 0 && head.done) { endedAt = age; this.dust((head.end?.at ?? head.position).clone().setY(0), 0.6, 5); }
+      const fade = endedAt < 0 ? 0 : (age - endedAt) / 0.15;
+      mat.opacity = 0.75 * Math.max(0, 1 - fade);
+      return fade < 1;
     }, [geo, mat]);
   }
 
@@ -749,20 +1260,28 @@ export class ElementEffects {
     const group = new Group();
     const geo = new PlaneGeometry(1.6, 0.12);
     const mat = this.wind.clone();
-    const lines: Array<{ m: Mesh; dir: Vector3; delay: number; y: number }> = [];
+    const lines: Array<{ m: Mesh; dir: Vector3; delay: number; y: number; open: number }> = [];
     for (let i = 0; i < count; i++) {
       const a = facing + (Math.random() - 0.5) * arc;
       const dir = new Vector3(Math.sin(a), 0, Math.cos(a));
       const m = new Mesh(geo, mat);
       m.rotation.y = a - Math.PI / 2;
-      lines.push({ m, dir, delay: Math.random() * 0.12, y: 0.3 + Math.random() * height });
+      const y = 0.3 + Math.random() * height;
+      // How far this line can run before the world stops it.
+      stepFrom.copy(at).setY(y);
+      stepTo.copy(stepFrom).addScaledVector(dir, 0.6 + reach + 3);
+      const open = this.space?.obstruction(stepFrom, stepTo, 0.06) ?? Infinity;
+      lines.push({ m, dir, delay: Math.random() * 0.12, y, open });
       group.add(m);
     }
     this.add(group, (age) => {
       for (const l of lines) {
         const t = Math.max(0, age - l.delay) / life;
-        l.m.position.copy(at).addScaledVector(l.dir, 0.6 + ease(t) * reach).setY(l.y);
-        l.m.scale.set(0.6 + t * 1.6, 1, 1);
+        // The line's front edge (centre plus half its 1.6 m length) never passes the open distance.
+        const centre = Math.min(0.6 + ease(t) * reach, l.open - 0.05);
+        const length = Math.max(0, Math.min(0.6 + t * 1.6, (l.open - centre) / 0.8));
+        l.m.position.copy(at).addScaledVector(l.dir, centre).setY(l.y);
+        l.m.scale.set(Math.max(1e-3, length), 1, 1);
       }
       mat.opacity = 0.7 * (1 - age / (life + 0.12));
       return age < life + 0.12;
@@ -811,9 +1330,13 @@ export class ElementEffects {
       rings.push(m);
       group.add(m);
     }
+    // Wind turns along walls instead of through them.
+    const open = this.fan(at, (0.5 + 5 * 0.32) * scale * 1.1 + 0.5);
+    const shapes = rings.map(shapeOf);
     this.add(group, (age, dt) => {
       rings.forEach((m, i) => { m.rotation.y += dt * (9 - i * 0.8); });
       group.scale.setScalar(0.3 + 0.7 * ease(age / 0.2));
+      rings.forEach((m, i) => open.hold(m, shapes[i]!));
       mat.opacity = 0.55 * Math.min(1, (seconds - age) / 0.3);
       return age < seconds;
     }, [...geos, mat]);

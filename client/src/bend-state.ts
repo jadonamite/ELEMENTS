@@ -30,7 +30,22 @@ export class BendState {
   charges = 0;
   private recharge = 0;
 
-  constructor(public kit: Kit, public tier = 5, private readonly sources: () => readonly Vector3[] = () => []) {
+  /** Moon tide: set under a full moon. The +300% damage edge is applied once, in the shared checkHit. */
+  isFullMoon = false;
+  /** Environment with ambient water (rain, canals, river): water is infinite and reusable. */
+  hasWaterEnvironment = false;
+  /** Special technique toggles */
+  windskiffActive = false;
+  lightningReady = false;
+  stonehearingActive = false;
+  stonehearingCooldown = 0;
+
+  constructor(
+    public kit: Kit,
+    public tier = 5,
+    private readonly sources: () => readonly Vector3[] = () => [],
+    private readonly wellspringSources: () => readonly Vector3[] = () => []
+  ) {
     this.shards = kit.hush ? balance.combat.shardSpark.testShards : 0;
     this.charges = this.maxCharges;
   }
@@ -41,22 +56,50 @@ export class BendState {
   /** Below this, bending is weaker and chains are closed. */
   get weakBelow(): number { return rules.meter.weakBelow; }
 
-  /** Whether a water source is within reach of this spot. */
+  /**
+   * Whether a water source is within reach of this spot.
+   * If in a water-rich environment (wet terrain, rain, canals), water is everywhere.
+   */
   nearWater(at: Vector3): boolean {
+    if (this.hasWaterEnvironment) return true;
     return this.sources().some(s => Math.hypot(s.x - at.x, s.z - at.z) <= skin.sourceRadius);
+  }
+
+  /**
+   * Whether wellspring water (Wellspring only found in the AQUES nation) is within reach.
+   */
+  nearWellspring(at: Vector3): boolean {
+    return this.wellspringSources().some(s => Math.hypot(s.x - at.x, s.z - at.z) <= skin.sourceRadius * 1.5);
+  }
+
+  /** Quality of water used for healing: waterskin, natural water, or wellspring water. */
+  healingQuality(at: Vector3): 'waterskin' | 'natural' | 'wellspring' {
+    if (this.nearWellspring(at)) return 'wellspring';
+    if (this.nearWater(at)) return 'natural';
+    return 'waterskin';
+  }
+
+  /** Healing scale based on water quality: Wellspring water gives the purest, most potent restoration. */
+  healingMultiplier(at: Vector3): number {
+    const quality = this.healingQuality(at);
+    if (quality === 'wellspring') return 2.5; // +150% healing from wellspring water
+    if (quality === 'natural') return 1.5; // +50% healing from natural standing water
+    return 1.0;
   }
 
   /** Per frame: the meter drains when idle, and standing at water refills the waterskin. */
   tick(delta: number, at: Vector3): void {
     this.idle += delta;
     this.sinceBend += delta;
+    if (this.stonehearingCooldown > 0) this.stonehearingCooldown -= delta;
     this.meter = rules.meterDrain(this.meter, this.idle, delta);
     if (this.charges < this.maxCharges && (this.recharge -= delta) <= 0) {
       this.charges += 1;
       this.recharge = rules.moveFor('dash_strike', this.kit).cooldownSeconds;
     }
+    const refillMultiplier = (this.kit.element === 'AQUES' && this.isFullMoon) ? 2.0 : 1.0;
     if (this.kit.element === 'AQUES' && this.waterskin < skin.charges && this.nearWater(at)) {
-      this.refill += delta;
+      this.refill += delta * refillMultiplier;
       if (this.refill >= skin.refillSeconds) { this.refill = 0; this.waterskin = skin.charges; }
     } else {
       this.refill = 0;
@@ -68,15 +111,35 @@ export class BendState {
     this.idle = 0;
   }
 
+  /** Toggle the Windskiff technique for AURA benders. */
+  toggleWindskiff(): boolean {
+    if (this.kit.element !== 'AURA' || this.kit.hush) {
+      this.windskiffActive = false;
+      return false;
+    }
+    this.windskiffActive = !this.windskiffActive;
+    return this.windskiffActive;
+  }
+
+  /** Trigger Stonehearing for TERRA benders. */
+  triggerStonehearing(): boolean {
+    if (this.kit.element !== 'TERRA' || this.kit.hush) return false;
+    this.stonehearingActive = true;
+    this.stonehearingCooldown = 4.0;
+    return true;
+  }
+
   /**
    * Asked when a bending move is pressed. `ready` says whether its cooldown is over.
    * Inside the chain window a move can skip its cooldown by paying for a link from the meter.
+   * In a place with water, water is infinite and reusable: it never depletes.
    */
   begin(move: BendMoveId, ready: boolean, at: Vector3): BendStart {
     if (this.kit.hush) return { go: false, why: 'hush' };
     if (!rules.tierAllows(move, this.tier)) return { go: false, why: 'tier' };
     let fromSkin = false;
-    if (this.kit.element === 'AQUES' && move !== 'dash_strike' && !this.nearWater(at)) {
+    const waterPresent = this.nearWater(at);
+    if (this.kit.element === 'AQUES' && move !== 'dash_strike' && !waterPresent) {
       if (this.waterskin <= 0) return { go: false, why: 'no_water' };
       fromSkin = true;
     }
@@ -133,5 +196,7 @@ export class BendState {
     this.shards = this.kit.hush ? balance.combat.shardSpark.testShards : 0;
     this.charges = this.maxCharges;
     this.recharge = 0;
+    this.windskiffActive = false;
+    this.stonehearingActive = false;
   }
 }

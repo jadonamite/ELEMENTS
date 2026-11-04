@@ -65,6 +65,9 @@ export interface CombatSituation {
   readonly terrain?: CombatTerrain | string;
   readonly weather?: CombatWeather | string;
   readonly moveModifier?: number;
+  readonly isFullMoon?: boolean;
+  readonly lunarPhase?: 'full_moon' | 'new_moon' | 'waxing' | 'waning';
+  readonly waterQuality?: 'waterskin' | 'natural' | 'wellspring';
 }
 export interface TierConfig {
   readonly names: readonly string[];
@@ -103,7 +106,11 @@ export interface Kit {
   readonly hush?: boolean;
 }
 export interface Position { readonly x: number; readonly y: number; readonly z: number }
-export interface Health { readonly current: number; readonly maximum: number }
+export interface Health {
+  readonly current: number;
+  readonly maximum: number;
+  readonly scars?: number;
+}
 export interface Combatant {
   readonly element: Element;
   readonly position: Position;

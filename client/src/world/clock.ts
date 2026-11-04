@@ -14,11 +14,14 @@ const smooth = (a: number, b: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
+export type MoonPhase = 'new' | 'waxing_crescent' | 'first_quarter' | 'waxing_gibbous' | 'full' | 'waning_gibbous' | 'last_quarter' | 'waning_crescent';
+
 /** Sky state shared with the sky shader: the sun's direction (also below the horizon) and the sunrise/sunset glow. */
 export const skyUniforms = {
   uSunDir: { value: new Vector3(0, 1, 0) },
   uMoonDir: { value: MOON.clone() },
   uDusk: { value: 0 },
+  uFullMoon: { value: 1 },
 };
 
 export interface Light {
@@ -31,21 +34,29 @@ export interface Light {
 const SUN_LOW = new Color(1.0, 0.5, 0.24);
 const SUN_HIGH = new Color(1.0, 0.94, 0.84);
 const MOONLIGHT = new Color(0.62, 0.72, 1.0);
+const FULL_MOONLIGHT = new Color(0.72, 0.84, 1.15);
 
 /**
  * Game time on a 24-minute loop: day, dusk, night, dawn. The sun rises in the east (+x),
  * crosses the south and sets in the west; at night a cool moon takes over.
  * ?night=0..1 pins the hour (tests rely on it), ?clock=minutes sets the start,
  * ?daySpeed=n runs the clock n times faster.
+ * ?moon=full forces a full moon (empowering water benders).
  */
 export class WorldClock {
   minute: number;
   speed = 1;
   private readonly pinnedNight: number | null = null;
+  moonPhase: MoonPhase = 'full';
   readonly light: Light = { direction: new Vector3(), color: new Color(), intensity: 0 };
 
   constructor(params: URLSearchParams) {
     this.minute = cfg.startMinute;
+    const moonParam = params.get('moon');
+    if (moonParam) {
+      if (moonParam === 'full') this.moonPhase = 'full';
+      else if (moonParam === 'new') this.moonPhase = 'new';
+    }
     const night = Number(params.get('night'));
     if (params.has('night') && Number.isFinite(night)) {
       const x = Math.min(1, Math.max(0, night));
@@ -59,6 +70,11 @@ export class WorldClock {
     const speed = Number(params.get('daySpeed'));
     if (params.has('daySpeed') && Number.isFinite(speed)) this.speed = speed;
     this.update(0);
+  }
+
+  /** Whether the full moon currently exerts its peak lunar power. */
+  get isFullMoon(): boolean {
+    return this.moonPhase === 'full' && nightness.value > 0.45;
   }
 
   /** Advance by real seconds and refresh nightness, the sky and the main light. */
@@ -91,8 +107,9 @@ export class WorldClock {
       l.intensity = 2.4 * smooth(-0.01, 0.22, sun.y);
     } else {
       l.direction.copy(MOON);
-      l.color.copy(MOONLIGHT);
-      l.intensity = 1.3 * smooth(0.0, 0.15, -sun.y);
+      l.color.copy(this.isFullMoon ? FULL_MOONLIGHT : MOONLIGHT);
+      l.intensity = (this.isFullMoon ? 1.8 : 1.3) * smooth(0.0, 0.15, -sun.y);
+      skyUniforms.uFullMoon.value = this.isFullMoon ? 1.5 : 1.0;
     }
   }
 }

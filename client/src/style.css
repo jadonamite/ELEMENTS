@@ -258,6 +258,16 @@ body.playing #hero-hud { opacity: 0; pointer-events: none; }
   transform-origin: left center;
 }
 .hero-health .trail { background: rgb(240 220 190 / 0.35); }
+.hero-health .scars {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  background: repeating-linear-gradient(45deg, rgb(20 16 16 / 0.9), rgb(20 16 16 / 0.9) 3px, rgb(68 28 28 / 0.9) 3px, rgb(68 28 28 / 0.9) 6px);
+  border-left: 1px solid rgb(140 40 40 / 0.6);
+  z-index: 2;
+}
 .hero-meter {
   position: absolute;
   left: max(var(--space-8), env(safe-area-inset-left));

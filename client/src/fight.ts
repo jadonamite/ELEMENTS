@@ -5,6 +5,8 @@ import { createCombatRules, isBendMove, type ActionState, type CombatBalance, ty
 import type { Combat } from './combat.js';
 import { Enemy, type EnemyTemplate, type VillainCast, type VillainKind } from './enemy.js';
 import { bladeTouches, inFront, limbTouchesCapsule } from './hits.js';
+import { CombatSpace, chest } from './attacks/space.js';
+import { advance, launch, type Projectile } from './attacks/projectile.js';
 import { afflictionFor, bendArc } from './element-moves.js';
 import type { WeaponSlotData } from './weapon.js';
 
@@ -13,6 +15,9 @@ const tuning = balance.enemy;
 
 /** Round sequence: 1-3-5-7 up till 15 and then stop. */
 export const VILLAIN_ROUNDS = [1, 3, 5, 7, 9, 11, 13, 15] as const;
+
+/** Height at which burning ground asks the world what stands in its way. */
+const PATCH_PROBE_Y = 0.5;
 
 /** A patch of burning ground on the arena stone floor. */
 export interface BurnPatch {
@@ -46,8 +51,10 @@ export interface FightEvents {
   /** The hero was hit; `blocked` when the guard took most of it. */
   heroHit(blocked: boolean): void;
   heroDied(): void;
-  /** A bender threw fire; the scene draws it. */
-  villainCast?(cast: VillainCast): void;
+  /** A projectile left a hand; the scene draws it following `p.position` until `p.done`. */
+  projectileLaunched?(p: Projectile): void;
+  /** A projectile ended against the world, a body, or ran out of range. */
+  projectileEnded?(p: Projectile): void;
   /** A hero swing connected; `killed` on the final blow. */
   enemyHit(enemy: Enemy, killed: boolean, damage?: number, hitPos?: Vector3, isCrit?: boolean): void;
   /** The hero blocked just as a hit landed: the attacker staggers. */
@@ -58,6 +65,10 @@ export interface FightEvents {
   roundCleared?(roundNumber: number, nextRoundVillainCount: number): void;
   /** Triggered when the final round (15 villains) is completed. */
   victory?(): void;
+  /** A strike met a wall, pillar or TERRA wall on its way; `pos` is where. */
+  wallBlocked?(pos: Vector3): void;
+  /** An enemy attack was countered or extinguished by an elemental defense. */
+  elementBlocked?(pos: Vector3): void;
 }
 
 /**
@@ -68,6 +79,18 @@ export class Fight {
   readonly enemies: Enemy[] = [];
   readonly burnPatches: BurnPatch[] = [];
   private readonly villainBurns = new Map<Enemy, { burnRemaining: number; tickAccumulator: number }>();
+  /** Full Moon lunar phase state empowering AQUES */
+  isFullMoon = false;
+  /** The hero's elemental defence: true when an attack of this element is countered. */
+  isAttackCountered?: (element: Element) => boolean;
+  /** Every projectile in flight, hero's and villains'. */
+  readonly projectiles: Projectile[] = [];
+  private readonly space: CombatSpace;
+  /** Limb positions on the previous step, so a fast limb is tested along the path it swept. */
+  private readonly lastLimb = new Map<string, Vector3>();
+  private launchedSwing = -1;
+  private readonly a = new Vector3();
+  private readonly b = new Vector3();
   heroHealth: Health = rules.createHealth(balance.hero.maxHealth);
   /** The hero's element and weapon; moves take their numbers from it. */
   kit: Kit = { element: 'IGNIS', weapon: 'sword' };
@@ -98,6 +121,7 @@ export class Fight {
     private readonly createEnemy: (template: EnemyTemplate, world: RAPIER.World, point: { x: number; z: number }, maxHealth: number, kind: VillainKind) => Enemy =
       (t, w, p, m, k) => new Enemy(t, w, p, m, k),
   ) {
+    this.space = new CombatSpace(world);
     // Initial spawn for Round 1 (1 villain)
     this.respawnIn.push(0.6);
     this.events.roundStarted?.(1, VILLAIN_ROUNDS[0]!);
@@ -141,8 +165,11 @@ export class Fight {
     return list;
   }
 
-  /** Spawns a burning patch of ground that damages villains walking into it. */
-  spawnBurnPatch(pos: Vector3, radius?: number, duration?: number, element: Element = 'IGNIS'): BurnPatch {
+  /**
+   * Spawns a burning patch of ground that damages villains walking into it. `from` is where the
+   * fire came from: a patch lands no further than the fire could reach from there.
+   */
+  spawnBurnPatch(pos: Vector3, from: Vector3, radius?: number, duration?: number, element: Element = 'IGNIS'): BurnPatch {
     let target = this.burnPatches.find(p => !p.active);
     if (!target) {
       let maxElapsed = -1;
@@ -154,7 +181,7 @@ export class Fight {
       }
     }
     const patch = target ?? this.burnPatches[0]!;
-    patch.position.copy(pos).setY(0.02);
+    this.space.reachable(this.a.copy(from).setY(PATCH_PROBE_Y), this.b.copy(pos).setY(PATCH_PROBE_Y), 0.3, patch.position).setY(0.02);
     patch.radius = radius ?? balance.combat.burn?.patchRadius ?? 1.25;
     patch.duration = duration ?? (2.4 + Math.random() * 1.2);
     patch.elapsed = 0;
@@ -335,26 +362,27 @@ export class Fight {
     for (const enemy of this.enemies) {
       const may = this.attacker === enemy || (this.attacker === null && this.gap === 0);
       const landed = enemy.step(quarry, may);
-      const cast = enemy.takeCast?.();
-      if (cast) this.events.villainCast?.(cast);
+      const cast = enemy.takeCast();
+      if (cast) {
+        const origin = chest(cast.origin).addScaledVector(new Vector3(Math.sin(cast.facing), 0, Math.cos(cast.facing)), 0.8);
+        this.throw(launch({ side: 'villain', element: (cast.element as Element), move: 'cast', damage: cast.damage,
+          origin, direction: chest(hero.position, this.a).sub(origin), speed: cast.speed, radius: 0.3, range: cast.range }));
+      }
       if (!landed) {
         if (enemy.attacking && !this.attacker) this.attacker = enemy;
         continue;
       }
-      if (combat.invulnerable) continue;
-      const guarded = combat.blocking && inFront(hero.position, hero.facing, enemy.controller.position, balance.hero.blockAngle);
-      // A guard raised just before the hit is a parry: no damage, and the attacker staggers open.
-      if (guarded && combat.blockAge <= rules.parryWindow(this.kit.hush)) {
-        enemy.afflict({ parried: true, stunSeconds: rules.parryStagger(this.kit.hush) });
-        this.events.heroParried?.(enemy);
+      // A swing reaches only if nothing fixed stands between the two bodies.
+      const from = chest(enemy.controller.position, this.a);
+      const to = chest(hero.position, this.b);
+      const blockedAt = this.space.obstruction(from, to, 0.15);
+      if (blockedAt !== null) {
+        this.events.wallBlocked?.(from.clone().addScaledVector(to.sub(from).normalize(), blockedAt));
         continue;
       }
-      const damage = rules.calculateDamage(enemy.attackDamage || tuning.attackDamage) *
-        (guarded ? balance.hero.blockDamageScale : 1);
-      this.heroHealth = rules.applyDamage(this.heroHealth, damage);
-      if (rules.isDead(this.heroHealth)) this.events.heroDied();
-      else this.events.heroHit(guarded);
+      this.strikeHero(enemy.controller.position, enemy.attackDamage || tuning.attackDamage, enemy.element as Element | undefined, combat, hero, enemy);
     }
+    this.flyProjectiles(dt, hero, combat, isLit);
 
     // Advance fire patches
     for (const patch of this.burnPatches) {
@@ -380,7 +408,9 @@ export class Fight {
         const dx = p.position.x - enemy.controller.position.x;
         const dz = p.position.z - enemy.controller.position.z;
         const maxDist = p.radius + enemy.body.radius;
-        return (dx * dx + dz * dz) <= maxDist * maxDist;
+        if ((dx * dx + dz * dz) > maxDist * maxDist) return false;
+        // Fire on the far side of a wall, pillar or TERRA wall does not reach.
+        return this.space.clear(this.a.copy(p.position).setY(PATCH_PROBE_Y), this.b.copy(enemy.controller.position).setY(enemy.controller.position.y + PATCH_PROBE_Y), 0.05);
       });
 
       let burn = this.villainBurns.get(enemy);
@@ -415,88 +445,166 @@ export class Fight {
     for (const enemy of this.enemies) if (!enemy.alive) this.handleEnemyDefeated(enemy);
   }
 
+  /**
+   * The one judge for anything that reaches the hero: dodge, parry (melee only), guard, elemental counter, then damage.
+   * A guard takes the whole hit; life drops only on a hit nothing stopped.
+   */
+  private strikeHero(source: Vector3, rawDamage: number, element: Element | undefined, combat: Combat, hero: HeroView, melee: Enemy | null): void {
+    if (!this.heroAlive || combat.invulnerable) return;
+    const guarded = combat.blocking && inFront(hero.position, hero.facing, source, balance.hero.blockAngle);
+    if (melee && guarded && combat.blockAge <= rules.parryWindow(this.kit.hush)) {
+      melee.afflict({ parried: true, stunSeconds: rules.parryStagger(this.kit.hush) });
+      this.events.heroParried?.(melee);
+      return;
+    }
+    if (guarded) { this.events.heroHit(true); return; }
+    if (element && this.isAttackCountered?.(element)) { this.events.elementBlocked?.(source); return; }
+    const damage = rules.calculateDamage(rawDamage);
+    this.heroHealth = rules.applyDamage(this.heroHealth, damage);
+    if (damage >= 14) {
+      // Heavy unblocked trauma leaves scars that water healing cannot close.
+      this.heroHealth = rules.inflictScars(this.heroHealth, Math.max(1, Math.round(damage * 0.18)));
+    }
+    if (rules.isDead(this.heroHealth)) this.events.heroDied();
+    else this.events.heroHit(false);
+  }
+
+  private throw(p: Projectile): void {
+    this.projectiles.push(p);
+    this.events.projectileLaunched?.(p);
+  }
+
+  /** Moves every projectile through the world; a body it reaches first takes the hit. */
+  private flyProjectiles(dt: number, hero: HeroView, combat: Combat, isLit: boolean): void {
+    const heroTarget = [{ key: 'hero' as Enemy | 'hero', body: { feet: hero.position, height: balance.controller.height, radius: balance.controller.radius } }];
+    const enemyTargets = this.enemies.filter(e => e.hittable).map(e => ({ key: e as Enemy | 'hero', body: e.body }));
+    for (const p of this.projectiles) {
+      const targets = p.side === 'villain' ? heroTarget : enemyTargets;
+      const before = p.done;
+      const hit = advance(p, dt, this.space, targets);
+      if (p.side === 'villain' && p.end?.reason === 'body' && !before) {
+        this.strikeHero(p.origin, p.damage, p.element, combat, hero, null);
+      } else if (hit && hit.key !== 'hero') {
+        this.landHeroMove(hit.key, p.move, p.origin, p.lit, p.swingAt, p.scale, p.chained, p.end?.at);
+      }
+      if (p.done && !before) this.events.projectileEnded?.(p);
+    }
+    for (let i = this.projectiles.length - 1; i >= 0; i--) if (this.projectiles[i]!.done) this.projectiles.splice(i, 1);
+  }
+
+  /** A limb's path this step: from where it was to where it is now. */
+  private sweep(name: string, now: Vector3 | undefined): [Vector3, Vector3] | null {
+    if (!now) return null;
+    const last = this.lastLimb.get(name);
+    const from = last ? last.clone() : now.clone();
+    if (last) last.copy(now); else this.lastLimb.set(name, now.clone());
+    return [from, now];
+  }
+
   /** Test the blade, limb, or projectile against every villain while the swing is live. */
   private strike(hero: HeroView, combat: Combat, isLit = false): void {
     const move = combat.current;
+    const sweeps = {
+      hand_r: this.sweep('hand_r', hero.handR), hand_l: this.sweep('hand_l', hero.handL),
+      foot_r: this.sweep('foot_r', hero.footR), foot_l: this.sweep('foot_l', hero.footL),
+    };
     if (!move || !combat.striking || !this.heroAlive) return;
     const limb = combat.strikingLimb;
-    const weaponReach = hero.weaponReach ?? hero.weaponSlot?.reach ?? combat.weaponReach ?? 2.5;
+    if (limb === 'blade' && (combat.fightingStyle === 'bare_hands' || combat.fightingStyle === 'legs')) return;
 
+    // A thrown move leaves the hand once per swing, as a real projectile.
+    if (limb === 'projectile') {
+      if (this.launchedSwing === combat.swing) return;
+      this.launchedSwing = combat.swing;
+      let reach = 8;
+      try { reach = rules.moveFor(move as MoveId, this.kit).reach; } catch { /* not a rules move */ }
+      const forward = new Vector3(Math.sin(hero.facing), 0, Math.cos(hero.facing));
+      const origin = chest(hero.position).addScaledVector(forward, 0.7);
+      this.throw(launch({ side: 'hero', element: this.kit.element, move, damage: 0, origin, direction: forward,
+        speed: 16, radius: 0.35, range: reach, swingAt: Math.min(combat.swingAt, this.clock),
+        scale: this.bend.scale, chained: this.bend.chained, lit: isLit }));
+      return;
+    }
+
+    const heroChest = chest(hero.position, this.a);
     for (const enemy of this.enemies) {
       if (!enemy.hittable || enemy.lastSwing === combat.swing) continue;
       const body = enemy.body;
       let connects = false;
-
-      // In bare hands style, the weapon is sheathed. All strikes MUST use fists or feet, never the blade.
-      if (combat.fightingStyle === 'bare_hands' || combat.fightingStyle === 'legs') {
-        if (limb === 'blade') {
-          continue;
-        }
-        // A punch lands with whichever fist reaches; a kick strikes along the active kicking shin while in the air.
-        const fists = [hero.handR, hero.handL];
-        const dist = hero.position.distanceTo(enemy.controller.position);
-        if (limb === 'hand_r' || limb === 'hand_l') {
-          connects = fists.some(p => p && limbTouchesCapsule(p, 0.26, body.feet, body.height, body.radius))
-            || (dist <= 2.2 && inFront(hero.position, hero.facing, enemy.controller.position, 1.4));
-        } else if (limb === 'foot_r' || limb === 'foot_l') {
-          const isRight = limb === 'foot_r';
-          const knee = isRight ? hero.kneeR : hero.kneeL;
-          const foot = isRight ? hero.footR : hero.footL;
-          const elevated = (foot?.y ?? 0.5) > 0.18;
-          const isHeavyKick = move === 'leg_heavy_1';
-          const kickReach = isHeavyKick ? 2.85 : 2.5;
-          const kickAngle = isHeavyKick ? 1.5 : 1.4;
-          connects = (elevated && !!knee && !!foot && limbTouchesCapsule(knee, isHeavyKick ? 0.35 : 0.28, body.feet, body.height, body.radius, foot))
-            || (dist <= kickReach + body.radius && inFront(hero.position, hero.facing, enemy.controller.position, kickAngle));
-        } else if (limb === 'area') {
-          connects = dist <= 2.8 && inFront(hero.position, hero.facing, enemy.controller.position, 1.6);
-        }
+      if (limb === 'hand_r' || limb === 'hand_l' || limb === 'foot_r' || limb === 'foot_l') {
+        const path = sweeps[limb];
+        const foot = limb === 'foot_r' || limb === 'foot_l';
+        const knee = limb === 'foot_r' ? hero.kneeR : limb === 'foot_l' ? hero.kneeL : undefined;
+        const size = foot ? (move === 'leg_heavy_1' ? 0.35 : 0.28) : 0.26;
+        connects = !!path && (limbTouchesCapsule(path[0], size, body.feet, body.height, body.radius, path[1])
+          || (!!knee && limbTouchesCapsule(knee, size, body.feet, body.height, body.radius, path[1])));
       } else if (limb === 'blade') {
-        const dist = hero.position.distanceTo(enemy.controller.position);
-        connects = dist <= weaponReach + body.radius && (bladeTouches(hero.bladeBase, hero.bladeTip, body.feet, body.height, body.radius)
-          || inFront(hero.position, hero.facing, enemy.controller.position, 1.4));
-      } else if (limb === 'hand_r' || limb === 'hand_l') {
-        const handPos = (limb === 'hand_r' ? hero.handR : hero.handL) ?? hero.position;
-        connects = limbTouchesCapsule(handPos, 0.26, body.feet, body.height, body.radius)
-          || (hero.position.distanceTo(enemy.controller.position) <= 2.2 && inFront(hero.position, hero.facing, enemy.controller.position, 1.4));
-      } else if (limb === 'foot_r' || limb === 'foot_l') {
-        const footPos = (limb === 'foot_r' ? hero.footR : hero.footL) ?? hero.position;
-        const isHeavyKick = move === 'leg_heavy_1';
-        const kickReach = isHeavyKick ? 2.85 : 2.4;
-        const kickAngle = isHeavyKick ? 1.5 : 1.4;
-        connects = limbTouchesCapsule(footPos, isHeavyKick ? 0.35 : 0.26, body.feet, body.height, body.radius)
-          || (hero.position.distanceTo(enemy.controller.position) <= kickReach + body.radius && inFront(hero.position, hero.facing, enemy.controller.position, kickAngle));
-      } else if (limb === 'projectile' || limb === 'area') {
-        const distance = hero.position.distanceTo(enemy.controller.position);
-        let maxReach = 5.0;
-        try { maxReach = rules.moveFor(move as MoveId, this.kit).reach; } catch { /* not a rules move */ }
-        connects = distance <= maxReach + body.radius && inFront(hero.position, hero.facing, enemy.controller.position, bendArc(move));
+        connects = bladeTouches(hero.bladeBase, hero.bladeTip, body.feet, body.height, body.radius);
+      } else if (limb === 'area') {
+        let reach = 2.8;
+        try { reach = rules.moveFor(move as MoveId, this.kit).reach; } catch { /* not a rules move */ }
+        connects = hero.position.distanceTo(enemy.controller.position) <= reach + body.radius
+          && inFront(hero.position, hero.facing, enemy.controller.position, bendArc(move));
       }
       if (!connects) continue;
+      // Nothing reaches through a wall, pillar or TERRA wall.
+      if (!this.space.clear(heroChest, chest(enemy.controller.position, this.b), 0.12)) continue;
       enemy.lastSwing = combat.swing;
-      const result = rules.checkHit({
-        attacker: { ...this.combatant(this.kit.element, hero.position, this.heroHealth, 0), weapon: this.kit.weapon },
-        target: this.combatant(tuning.element as Element, enemy.controller.position, enemy.health, tuning.armour),
-        moveId: move, now: this.clock, state: this.heroState, swingAt: Math.min(combat.swingAt, this.clock),
-        isLit, bendScale: this.bend.scale, chained: this.bend.chained,
-      });
-      if (!result.accepted) continue;
-      this.heroState = result.state;
-      const effect = isBendMove(move) ? afflictionFor(this.kit.element, move, hero.position, enemy.controller.position, Math.min(1, this.bend.scale)) : null;
-      if (effect && result.target.health.current > 0) enemy.afflict(effect);
-
-      const prevHp = enemy.health.current;
-      const killed = enemy.hurt(result.target.health, move, hero.position, isLit);
-      const damageDealt = Math.max(1, Math.round(prevHp - result.target.health.current));
-      const isCrit = isLit || move.startsWith('heavy') || move === 'uppercut' || move === 'ground_pound' || move === 'ultimate';
-      if (killed) {
-        this.handleEnemyDefeated(enemy);
-        this.events.enemyHit(enemy, true, damageDealt, enemy.controller.position, isCrit);
-      } else {
-        if (enemy === this.attacker) this.release();
-        this.events.enemyHit(enemy, false, damageDealt, enemy.controller.position, isCrit);
-      }
+      this.landHeroMove(enemy, move, hero.position, isLit, Math.min(combat.swingAt, this.clock), this.bend.scale, this.bend.chained);
     }
+  }
+
+  /** The rules judge a hero move that reached a villain, then the villain takes it. */
+  private landHeroMove(enemy: Enemy, move: string, from: Vector3, isLit: boolean, swingAt: number,
+    bendScale: number, chained: boolean, hitPos?: Vector3): void {
+    const result = rules.checkHit({
+      attacker: { ...this.combatant(this.kit.element, from, this.heroHealth, 0), weapon: this.kit.weapon },
+      target: this.combatant(tuning.element as Element, enemy.controller.position, enemy.health, tuning.armour),
+      moveId: move, now: this.clock, state: this.heroState, swingAt,
+      isLit, bendScale, chained, situation: { isFullMoon: this.isFullMoon },
+    });
+    if (!result.accepted) return;
+    this.heroState = result.state;
+    const effect = (isBendMove(move) || (isLit && (move.startsWith('leg_') || move.startsWith('bare_'))))
+      ? afflictionFor(this.kit.element, move, from, enemy.controller.position, Math.min(1, bendScale))
+      : null;
+    if (effect && result.target.health.current > 0) enemy.afflict(effect);
+    const prevHp = enemy.health.current;
+    const killed = enemy.hurt(result.target.health, move, from, isLit);
+    const damageDealt = Math.max(1, Math.round(prevHp - result.target.health.current));
+    const isCrit = isLit || move.startsWith('heavy') || move === 'uppercut' || move === 'ground_pound' || move === 'ultimate';
+    if (killed) {
+      this.handleEnemyDefeated(enemy);
+      this.events.enemyHit(enemy, true, damageDealt, hitPos ?? enemy.controller.position, isCrit);
+    } else {
+      if (enemy === this.attacker) this.release();
+      this.events.enemyHit(enemy, false, damageDealt, hitPos ?? enemy.controller.position, isCrit);
+    }
+  }
+
+  /**
+   * A straight bolt (lightning): it runs until the world stops it and hits every villain on the way.
+   * Returns where it ended, for the picture.
+   */
+  beam(origin: Vector3, facing: number, reach: number, damage: number, stunSeconds: number): Vector3 {
+    const forward = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const from = chest(origin);
+    const to = from.clone().addScaledVector(forward, reach);
+    const stop = this.space.obstruction(from, to, 0.1) ?? reach;
+    const end = from.clone().addScaledVector(forward, stop);
+    for (const enemy of this.enemies) {
+      if (!enemy.hittable) continue;
+      const at = chest(enemy.controller.position);
+      const along = at.clone().sub(from).dot(forward);
+      if (along < 0 || along > stop + enemy.body.radius) continue;
+      const off = at.clone().sub(from).addScaledVector(forward, -along).setY(0).length();
+      if (off > enemy.body.radius + 0.6) continue;
+      const killed = enemy.hurt({ current: Math.max(0, enemy.health.current - damage), maximum: enemy.health.maximum }, 'lightning', origin, true);
+      enemy.afflict({ stunSeconds });
+      if (killed) this.handleEnemyDefeated(enemy);
+      this.events.enemyHit(enemy, killed, damage, at, true);
+    }
+    return end;
   }
 
   /** Per drawn frame: animate villains, clear the fallen, advance rounds and spawn waves. */

@@ -30,6 +30,7 @@ export class FightHud {
   private readonly root: HTMLDivElement;
   private readonly heroFill: HTMLDivElement;
   private readonly heroTrail: HTMLDivElement;
+  private readonly heroScars: HTMLDivElement;
   private readonly banner: HTMLParagraphElement;
   private readonly modeBadge: HTMLSpanElement;
   private readonly stanceBadge: HTMLSpanElement;
@@ -64,7 +65,7 @@ export class FightHud {
       '<span class="perk-badge">Physical Mode</span>' +
       '</div>' +
       '<div class="hero-health" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100">' +
-      '<div class="trail"></div><div class="fill"></div></div>' +
+      '<div class="trail"></div><div class="fill"></div><div class="scars"></div></div>' +
       '<div class="hero-meter" role="meter" aria-label="Combo meter" aria-valuemin="0" aria-valuemax="100">' +
       '<div class="meter-fill"></div><div class="meter-line"></div></div>' +
       '<span class="hero-supply" aria-live="polite"></span>' +
@@ -87,6 +88,7 @@ export class FightHud {
     this.roundSub = this.root.querySelector('.round-sub')!;
     this.heroFill = this.root.querySelector('.fill')!;
     this.heroTrail = this.root.querySelector('.trail')!;
+    this.heroScars = this.root.querySelector('.scars')!;
     this.banner = this.root.querySelector('.fight-banner')!;
     this.modeBadge = this.root.querySelector('.mode-badge')!;
     this.stanceBadge = this.root.querySelector('.stance-badge')!;
@@ -231,6 +233,9 @@ export class FightHud {
     }
 
     const share = hero.current / hero.maximum;
+    const scars = hero.scars ?? 0;
+    const scarShare = Math.min(1, scars / hero.maximum);
+    this.heroScars.style.width = `${scarShare * 100}%`;
     // The pale trail drains after the fill, so a hit reads as a loss.
     this.trail = Math.max(share, this.trail - delta * 0.6);
     this.heroFill.style.transform = `scaleX(${share})`;

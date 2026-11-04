@@ -41,13 +41,13 @@ type KindTuning = {
   attackHitFraction: number; attackCooldown: number; walkSpeed: number; runSpeed: number;
   clipSpeeds: { walk: number; run: number }; weapons?: string[];
   element?: string; cast?: string; castSpeed?: number; castHitFraction?: number; castRange?: number;
-  castMin?: number; castDamage?: number; castCooldown?: number; boltSpeed?: number; boltHitRadius?: number;
+  castMin?: number; castDamage?: number; castCooldown?: number; boltSpeed?: number;
   keepDistance?: number;
 };
 const KINDS = tuning.kinds as Record<VillainKind, KindTuning>;
 
 /** A fireball a bender has just thrown, for the fight to draw. */
-export interface VillainCast { origin: Vector3; facing: number; element: string }
+export interface VillainCast { origin: Vector3; facing: number; element: string; damage: number; speed: number; range: number }
 
 /** Shared model and clips; each enemy clones the rig and binds its own mixer. */
 const VILLAIN_VARIANTS = 6;
@@ -121,6 +121,8 @@ export class Enemy {
   readonly anim: AnimationPlayer;
   readonly controller: HeroController;
   readonly kind: VillainKind;
+  /** Primary element of this enemy for combat and counters. */
+  get element(): string { return this.fit.element ?? 'IGNIS'; }
   health: Health;
   /** Damage of the strike that just landed, melee or thrown. */
   attackDamage = 0;
@@ -140,7 +142,6 @@ export class Enemy {
   private isKnockedDown = false;
   private readonly fit: KindTuning;
   private castCooldown = 0;
-  private bolt: { arrivesIn: number; aim: Vector3 } | null = null;
   private thrown: VillainCast | null = null;
   private slowScale = 1;
   private slowLeft = 0;
@@ -249,7 +250,7 @@ export class Enemy {
 
   /**
    * One physics step. `mayAttack` is the director's permission, so only one
-   * villain swings or casts at a time. Returns true on the step its attack lands on the hero.
+   * villain swings or casts at a time. Returns true on the step its melee swing lands; casts are taken with takeCast().
    */
   step(quarry: Quarry, mayAttack: boolean): boolean {
     const dt = balance.controller.fixedStep;
@@ -257,16 +258,6 @@ export class Enemy {
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.castCooldown = Math.max(0, this.castCooldown - dt);
     this.slowLeft = Math.max(0, this.slowLeft - dt);
-    let boltLanded = false;
-    if (this.bolt) {
-      this.bolt.arrivesIn -= dt;
-      if (this.bolt.arrivesIn <= 0) {
-        const miss = new Vector3().subVectors(quarry.position, this.bolt.aim).setY(0).length();
-        boltLanded = quarry.alive && miss <= (this.fit.boltHitRadius ?? 1.3);
-        if (boltLanded) this.attackDamage = this.fit.castDamage ?? 14;
-        this.bolt = null;
-      }
-    }
     const here = this.controller.position;
     const toHero = new Vector3().subVectors(quarry.position, here).setY(0);
     const distance = toHero.length();
@@ -370,9 +361,9 @@ export class Enemy {
         if (progress < (fit.castHitFraction ?? 0.5)) this.controller.facing = towardHero;
         else if (!this.struck) {
           this.struck = true;
-          this.thrown = { origin: here.clone(), facing: this.controller.facing, element: fit.element ?? 'IGNIS' };
-          // The bolt flies at the spot the hero stood; moving off that line dodges it.
-          this.bolt = { arrivesIn: distance / (fit.boltSpeed ?? 14), aim: quarry.position.clone() };
+          // The fight flies it as a real projectile; moving off its line dodges it, a wall stops it.
+          this.thrown = { origin: here.clone(), facing: this.controller.facing, element: fit.element ?? 'IGNIS',
+            damage: fit.castDamage ?? 14, speed: fit.boltSpeed ?? 14, range: (fit.castRange ?? 12) + 2 };
         }
         if (this.timer >= this.length) { this.state = 'chase'; this.castCooldown = fit.castCooldown ?? 3; this.cooldown = fit.attackCooldown; }
         break;
@@ -393,7 +384,7 @@ export class Enemy {
     this.controller.step(move, yaw, lunge, this.slowLeft > 0 ? this.slowScale : 1.0, impulse);
     // Face the hero while circling rather than the strafe direction.
     if (this.state === 'circle') this.controller.facing = towardHero;
-    return landed || boltLanded;
+    return landed;
   }
 
   /**

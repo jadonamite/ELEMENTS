@@ -25,6 +25,7 @@ import { getDefaultCharacterConfig, getStoredCharacter } from './creator/creator
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { AnimationPlayer } from './anim/index.js';
+import { StrikeLimbs, type StrikeLimb } from './anim/strike-limb.js';
 import { STAFF_WEAPON, SWORD_WEAPON, heroWeaponFor, type WeaponSlotData } from './weapon.js';
 
 export type Limb = 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'knee_r' | 'knee_l';
@@ -57,6 +58,8 @@ export interface HeroInstance {
   equipWeapon(slot: WeaponSlotData): Promise<void>;
   /** Gets world position of specified limb bone for contact checks. */
   getLimbWorldPosition(limb: Limb, out: Vector3): Vector3;
+  /** The hand or foot a clip strikes with, read from the clip itself. */
+  strikeLimbOf(clip: string): StrikeLimb | null;
   /** Ignites or extinguishes elemental bending mode (Lit vs Unlit). */
   setElemental(lit: boolean, element?: string): void;
   readonly elemental: boolean;
@@ -261,12 +264,27 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   const bladeBase = new Vector3();
   const bladeTip = new Vector3();
 
+  /**
+   * The hit segment, in the holder's own frame (the frame it is read back in), wherever the holder
+   * is at the time: it runs along the weapon's longest side through the middle of its bounds.
+   */
   const updateHitShape = (mesh: Object3D, shape: WeaponSlotData['hitShape']): void => {
-    mesh.updateMatrixWorld(true);
-    const bounds = new Box3().setFromObject(mesh);
-    const height = bounds.max.y - bounds.min.y;
-    bladeBase.set(0, bounds.min.y + height * shape.baseFraction, 0);
-    bladeTip.set(0, bounds.min.y + height * shape.tipFraction, 0);
+    holder.updateMatrixWorld(true);
+    const toHolder = new Matrix4().copy(holder.matrixWorld).invert();
+    const bounds = new Box3();
+    const part = new Box3();
+    mesh.traverse(o => {
+      const geometry = (o as Mesh).geometry;
+      if (!(o as Mesh).isMesh || !geometry) return;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      bounds.union(part.copy(geometry.boundingBox!).applyMatrix4(new Matrix4().multiplyMatrices(toHolder, o.matrixWorld)));
+    });
+    const size = bounds.getSize(new Vector3());
+    const axis = size.x >= size.y && size.x >= size.z ? 'x' : size.y >= size.z ? 'y' : 'z';
+    bounds.getCenter(bladeBase);
+    bladeTip.copy(bladeBase);
+    bladeBase[axis] = bounds.min[axis] + size[axis] * shape.baseFraction;
+    bladeTip[axis] = bounds.min[axis] + size[axis] * shape.tipFraction;
   };
   updateHitShape(swordMesh, weaponSlot.hitShape);
 
@@ -392,6 +410,8 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   const anim = new AnimationPlayer(heroModel, allClips, {
     defaultFadeDuration: 0.25,
   });
+  const strikeLimbs = new StrikeLimbs(heroModel, allClips, balance.combat.activeWindow as [number, number],
+    balance.controller.modelForwardYaw);
   anim.play('idle_relaxed');
   arm(false);
 
@@ -412,6 +432,7 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
     arm,
     equipWeapon,
     getLimbWorldPosition,
+    strikeLimbOf: (clip: string) => strikeLimbs.of(clip),
     setElemental,
     get elemental(): boolean { return elemental; },
   };

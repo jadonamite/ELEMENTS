@@ -12,6 +12,7 @@ import {
   Vector3,
   type Scene,
 } from 'three';
+import type { Element } from '../../../shared/src/index.js';
 import { RADIUS } from './terrain.js';
 import { fbm2D } from './noise.js';
 import type { QualityProfile } from './types.js';
@@ -138,10 +139,11 @@ export class FoliageSystem {
   constructor(
     readonly scene: Scene,
     readonly quality: QualityProfile,
-    readonly onSetupMaterial: (mat: MeshStandardMaterial) => void
+    readonly onSetupMaterial: (mat: MeshStandardMaterial) => void,
+    nation: Element = 'IGNIS'
   ) {
-    const count = quality.level === 'high' ? 7000 : 2200;
-    const seedCount = quality.level === 'high' ? 500 : 120;
+    const count = (nation === 'AQUES' || nation === 'AURA') ? 0 : (quality.level === 'high' ? 7000 : 2200);
+    const seedCount = (nation === 'AQUES' || nation === 'AURA') ? 0 : (quality.level === 'high' ? 500 : 120);
     const pebbleCount = quality.level === 'high' ? 160 : 50;
 
     const bladeGeo = createCurvedBladeClumpGeometry();
@@ -263,14 +265,15 @@ export class FoliageSystem {
     this.instancedPebbles.receiveShadow = true;
     this.instancedPebbles.castShadow = false;
 
-    this.populateInstances(count, seedCount, pebbleCount);
+    this.populateInstances(count, seedCount, pebbleCount, nation);
 
     this.scene.add(this.instancedGrass);
     this.scene.add(this.instancedSeedHeads);
     this.scene.add(this.instancedPebbles);
   }
 
-  private populateInstances(grassCount: number, seedCount: number, pebbleCount: number): void {
+  private populateInstances(grassCount: number, seedCount: number, pebbleCount: number, nation: Element = 'IGNIS'): void {
+    if (grassCount <= 0) return;
     const dummy = new Matrix4();
     const pos = new Vector3();
     const rot = new Quaternion();
@@ -280,8 +283,16 @@ export class FoliageSystem {
     let seed = 42817;
     const rand = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
 
-    // Golden-hour grass palette: dry gold, luminous wheat, dry golden olive, russet tan
-    const grassPalette = [
+    // Palette attuned to nation
+    const grassPalette = nation === 'TERRA' ? [
+      new Color(0x9a5a32), // Canyon dry scrub
+      new Color(0xb26b3c), // Red sandstone brush
+      new Color(0x7c4424), // Terracotta shrub
+    ] : nation === 'IGNIS' ? [
+      new Color(0x382218), // Charred cinder tufts
+      new Color(0x281812), // Blackened ash grass
+      new Color(0x482a1c), // Burnt sienna
+    ] : [
       new Color(0xd8ac44), // Sun-dried gold
       new Color(0xe2be5c), // Luminous wheat
       new Color(0x9a943a), // Dry golden olive

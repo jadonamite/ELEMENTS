@@ -392,3 +392,38 @@ test('AURA kit with a staff passes bendWithWeapon and with a sword does not', ()
   assert.equal(combat.canBendWithWeapon({ element: 'AQUES', weapon: 'spear' }), false);
   assert.equal(combat.canBendWithWeapon({ element: 'TERRA', weapon: 'axe' }), false);
 });
+
+test('moon tide: +300% damage for AQUES when isFullMoon is true', () => {
+  const aquesKit = combat.defaultKit('AQUES');
+  const baseDamage = combat.moveFor('light_1', aquesKit).damage;
+  const normalHit = accepted(input({ attacker: fighter('AQUES'), target: fighter('IGNIS'), situation: { isFullMoon: false } }));
+  assert.equal(normalHit.damage, baseDamage);
+
+  const surgeHit = accepted(input({ attacker: fighter('AQUES'), target: fighter('IGNIS'), situation: { isFullMoon: true } }));
+  assert.equal(surgeHit.damage, Math.round(baseDamage * 4));
+
+  // Other elements do not receive the lunar surge
+  const ignisHit = accepted(input({ attacker: fighter('IGNIS'), target: fighter('AURA'), situation: { isFullMoon: true } }));
+  assert.equal(ignisHit.damage, mv('light_1').damage);
+});
+
+test('scars cap healing: inflictScars adds scars and heal cannot exceed maximum minus scars', () => {
+  const initial = combat.createHealth(100);
+  assert.equal(initial.maximum, 100);
+  assert.equal(initial.current, 100);
+  assert.equal(initial.scars, 0);
+
+  const damaged = { ...initial, current: 40 };
+  const scarred = combat.inflictScars(damaged, 30);
+  assert.equal(scarred.scars, 30);
+  assert.equal(scarred.current, 40);
+
+  // Attempting to heal for 50 only heals up to 100 - 30 = 70
+  const healed = combat.heal(scarred, 50);
+  assert.equal(healed.current, 70);
+
+  // Healing further is capped at 70
+  const overHealed = combat.heal(healed, 50);
+  assert.equal(overHealed.current, 70);
+});
+

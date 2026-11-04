@@ -2,6 +2,7 @@ import balance from '../../shared/balance.json';
 import type { AnimationPlayer } from './anim/index.js';
 import { SWORD_WEAPON, type WeaponSlotData } from './weapon.js';
 import { ELEMENT_CLIPS } from './element-moves.js';
+import type { StrikeLimb } from './anim/strike-limb.js';
 import type { Element } from '../../shared/src/index.js';
 
 /** Moves every style maps the same way: bending slots, the ultimate and the Hush spark. */
@@ -14,32 +15,21 @@ export type CombatAction = 'light' | 'heavy' | 'uppercut' | 'ground_pound' | 'da
 export type FightingStyle = 'weapon' | 'bare_hands' | 'legs' | 'bending';
 export type StrikingLimb = 'blade' | 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'projectile' | 'area';
 
-export function getStrikingLimb(move: string | null, style: FightingStyle = 'weapon'): StrikingLimb {
-  if (!move) return style === 'weapon' ? 'blade' : 'hand_r';
+/** What judges a move: the blade, a hand or foot, a thrown projectile, or an area round the body. */
+export type StrikeKind = 'blade' | 'limb' | 'projectile' | 'area';
+
+export function strikeKind(move: string | null, style: FightingStyle = 'weapon'): StrikeKind {
+  if (!move) return style === 'weapon' ? 'blade' : 'limb';
   if (move === 'ultimate') return 'area';
   if (move === 'shard_spark') return 'projectile';
-  if (style === 'bare_hands') {
-    if (move === 'bare_light_1' || move === 'bare_heavy_1' || move === 'uppercut' || move === 'dash_strike') return 'hand_r';
-    if (move === 'bare_light_2') return 'hand_l';
-    if (move === 'bare_light_3') return 'foot_r';
-    if (move === 'ground_pound') return 'area';
-    return 'hand_r';
-  }
-  if (style === 'legs') {
-    if (move === 'ground_pound') return 'area';
-    if (move === 'uppercut' || move === 'dash_strike') return 'hand_r';
-    return 'foot_r';
-  }
+  if (style === 'bare_hands') return move === 'ground_pound' ? 'area' : 'limb';
+  if (style === 'legs') return move === 'ground_pound' ? 'area' : 'limb';
   if (style === 'bending') {
     if (move === 'bend_palm') return 'projectile';
-    if (move === 'bend_sweep' || move === 'ground_pound' || move === 'uppercut') return 'area';
-    if (move === 'dash_strike') return 'projectile';
+    // The dash carries the body itself into the target, so it is judged around the body.
     return 'area';
   }
-  // weapon style
-  if (move === 'bare_light_1' || move === 'bare_heavy_1') return 'hand_r';
-  if (move === 'bare_light_2') return 'hand_l';
-  if (move === 'bare_light_3') return 'foot_r';
+  if (move.startsWith('bare_')) return 'limb';
   if (move === 'bend_palm') return 'projectile';
   if (move === 'bend_sweep' || move === 'ground_pound') return 'area';
   return 'blade';
@@ -58,6 +48,8 @@ const moves = tuning.moves as Record<string, MoveSpec>;
  */
 export class Combat {
   private move: string | null = null;
+  /** The clip the current move is playing. */
+  private clip: string | null = null;
   private elapsed = 0;
   private length = 0;
   private queued: string | null = null;
@@ -79,6 +71,8 @@ export class Combat {
     private readonly ready: (move: string) => boolean = () => true,
     private readonly onStart?: (move: string, swingAt: number) => void,
     weapon: WeaponSlotData = SWORD_WEAPON,
+    /** Which hand or foot a clip strikes with (the hero reads it from the clip). */
+    private readonly limbOf: (clip: string) => StrikeLimb | null = () => null,
   ) {
     this.weapon = weapon;
   }
@@ -101,8 +95,12 @@ export class Combat {
   get weaponReach(): number { return this.weapon.reach; }
   setWeapon(weapon: WeaponSlotData): void { this.weapon = weapon; }
 
-  /** The limb or projectile responsible for the current move's impact. */
-  get strikingLimb(): StrikingLimb { return getStrikingLimb(this.move, this.style); }
+  /** The limb or projectile responsible for the current move's impact; a hand or foot is read from the clip. */
+  get strikingLimb(): StrikingLimb {
+    const kind = strikeKind(this.move, this.style);
+    if (kind !== 'limb') return kind;
+    return (this.clip && this.limbOf(this.clip)) || 'hand_r';
+  }
 
   /** The move playing now, or null while the hero is free to walk. */
   get current(): string | null { return this.move; }
@@ -238,13 +236,14 @@ export class Combat {
     if (this.elapsed < this.length || this.move === 'death') return false;
     const next = this.queued;
     this.move = null;
+    this.clip = null;
     this.queued = null;
     if (next && this.ready(next)) { this.start(next); return true; }
     return false;
   }
 
   /** Clear a held death pose. */
-  reset(): void { this.move = null; this.queued = null; }
+  reset(): void { this.move = null; this.clip = null; this.queued = null; }
 
   private start(name: string): void {
     const spec = moves[name]!;
@@ -254,6 +253,7 @@ export class Combat {
     const wanted = own ?? (this.style !== 'weapon' ? (bareClips[name] ?? spec.clip) : spec.clip);
     const clip = this.anim.hasClip(wanted) ? wanted : spec.clip;
     this.move = name;
+    this.clip = clip;
     this.elapsed = 0;
     this.queued = null;
     this.swing++;
