@@ -148,6 +148,7 @@ async function main(): Promise<void> {
   const consent = new ConsentBanner();
   cleanup.push(() => consent.dispose());
   let lifeSystem: SindrLifeSystem | null = null;
+  let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
   if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
@@ -283,13 +284,12 @@ async function main(): Promise<void> {
       controller,
       clock: zone.clock,
       sound,
-      satchel,
       getPlayerContext: () => ({
         name: 'Traveler',
         isLit: !isDim,
-        role: isDim ? 'Dim' : 'Shaper',
+        role: isDim ? 'Hush' : 'Shaper',
         element: isDim ? 'NONE' : kitElement,
-        carriedItemsCount: satchel.items.length,
+        carriedItemsCount: townEconomy?.carried?.weight ?? 0,
         redFlags: 0,
         hasBounty: false,
       }),
@@ -426,7 +426,7 @@ async function main(): Promise<void> {
     setTimeout(() => { if (fight.heroAlive && !fight.isVictory) fightHud.say(''); }, 1600);
   };
   // Loot, the market stalls and death drops, held by the server. Sindr is an IGNIS town.
-  const townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', { notice }) : null;
+  townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', { notice }) : null;
   cleanup.push(() => townEconomy?.dispose());
   const applyStyle = (): void => {
     fightingStyle = armedWith === 'weapon' ? 'weapon' : armedWith === 'legs' ? 'legs' : (isLit ? 'bending' : 'bare_hands');
@@ -465,7 +465,7 @@ async function main(): Promise<void> {
     return allowed === 'any' || (Array.isArray(allowed) && allowed.includes(fight.kit.weapon));
   };
   const setBending = (on: boolean): void => {
-    if (on && isDim) { notice('The Dim cannot bend'); return; }
+    if (on && isDim) { notice('The Hush cannot bend'); return; }
     isLit = on;
     if (on) sound.playFireBurst(0.35);
     const sheathed = on && armedWith === 'weapon' && !bendsArmed();

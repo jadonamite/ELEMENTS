@@ -514,10 +514,10 @@
       "Flame is only half the weapon. It takes good iron to strike a blow."
     ],
     "greeting_dim": [
-      "Ah, a fellow Dim! You have hands for honest crafting, {player}.",
-      "One of our own. A true crafter knows the iron sings before it strikes.",
-      "Respect to the Dim. We built every hearth in Sindr with our bare knuckles.",
-      "Good to see a Dim holding their own in the forge town."
+      "Ah, a fellow crafter! You have hands for honest forging, {player}.",
+      "One of our own. A true Hush knows the iron sings before it strikes.",
+      "They call us Dim, but our hands built every hearth in Sindr with bare knuckles.",
+      "They sneer at the Dim until their swords break, then they come running to our forge."
     ],
     "greeting_outsider_lit": [
       "An outsider Shaper. Your coin is good, but forge orders go to locals first.",
@@ -529,7 +529,7 @@
       "Heavy pack. If that is raw ore or shards, get it into a vault before dusk."
     ],
     "red_flag": [
-      "I do not forge iron for marked troublemakers. Clear your red flag with the Sentries.",
+      "I do not forge iron for marked troublemakers. Clear your red flag with the town watch.",
       "You carry a red mark. I pay my taxes to the treasury; I want no trouble at my forge."
     ],
     "bounty": [
@@ -555,10 +555,10 @@
       "Best prices on the square for our own fighters."
     ],
     "greeting_dim": [
-      "Welcome, fellow Dim! Honest coin for honest craft.",
-      "Good to see a working hand, {player}. Crafters always get fair measure here.",
-      "You know the sweat that went into these goods. Fair trade between Dim.",
-      "Step right up, {player}. Dim trade keeps Sindr alive."
+      "Welcome, fellow crafter! Honest coin for honest work.",
+      "Good to see a working hand, {player}. The Hush always get fair measure at my stall.",
+      "You know the sweat that went into these goods. Fair trade between crafters.",
+      "Step right up, {player}. The highborn call us Dim, but our trade keeps Sindr alive."
     ],
     "greeting_outsider_lit": [
       "Outsider Shaper from {nation}. Standard market rates apply to foreign coin.",
@@ -571,7 +571,7 @@
     ],
     "red_flag": [
       "A red flag above your head! Keep your distance, I am a law-abiding merchant.",
-      "The Sentries watch marked men closely. Clear your offense before trading here."
+      "The town watch watches marked men closely. Clear your offense before trading here."
     ],
     "bounty": [
       "You have a bounty on your head! Keep moving, I want no fights breaking my stalls.",
@@ -595,9 +595,9 @@
       "Ale is drawn and the stew is steaming. Rest your boots by the hearth."
     ],
     "greeting_dim": [
-      "Step in, fellow Dim! The fire is warm and the common room is full of crafters.",
-      "Welcome, {player}. Dim hands built this tavern, and Dim folk drink here in peace.",
-      "A working person's rest is earned. Find a bench and take a bowl."
+      "Step in, traveler! The fire is warm and the common room is full of crafters.",
+      "Welcome, {player}. Highborn lords sneer at Dim hands, but we built this tavern and we drink here in peace.",
+      "A working person's rest is earned. Find a bench, Hush, and take a bowl."
     ],
     "greeting_outsider_lit": [
       "An outsider in Sindr. A bed is 10 CHROMA and questions are free.",
@@ -628,7 +628,7 @@
     ],
     "red_flag": [
       "Keep your head down in my tavern, marked one. I run an honest establishment.",
-      "Mind your temper, {player}. One brawl and the Sentries will haul you to jail."
+      "Mind your temper, {player}. One brawl and the town watch will haul you to jail."
     ],
     "bounty": [
       "You are on the notice board outside! Drink fast and leave before the hunters arrive.",
@@ -645,7 +645,7 @@
     ],
     "greeting_dim": [
       "Stay on the lower lane, Dim. Only authorized business up toward the keep gate.",
-      "Keep to your trade, citizen. The high lane is for guards and nobles.",
+      "Keep moving, Dim. The high lane is for the keep's guards and nobles.",
       "Move along. No loitering near the gatehouse."
     ],
     "greeting_outsider_lit": [
@@ -683,8 +683,8 @@
     ],
     "greeting_dim": [
       "Even without an element, the sacred fire warms all who come in peace.",
-      "Welcome to the shrine, friend. The flame knows honest hearts.",
-      "The light does not judge between Dim and Lit. Peace be with you."
+      "Welcome to the shrine, Hush. The flame knows honest hearts.",
+      "The holy flame does not care if the streets call you Dim. Peace be with you."
     ],
     "greeting_outsider_lit": [
       "The Shrine of Embers welcomes all who respect the sacred fire, even from {nation}.",
@@ -720,7 +720,7 @@
     ],
     "greeting_dim": [
       "Another day, another sore back. Good to see you, fellow worker.",
-      "Dim hands do all the heavy lifting in this town. Never let them forget it, {player}."
+      "They curse the Dim, but our hands do all the heavy lifting in this town. Never let them forget it, {player}."
     ],
     "greeting_outsider_lit": [
       "Careful there, traveler! These stone crates weigh a ton.",
@@ -744,7 +744,7 @@
       "When I grow up, I want to bend fire just like you!"
     ],
     "greeting_dim": [
-      "My uncle is a Dim smith! He says his blades are sharper than any magic.",
+      "My uncle is a Hush smith! He says his blades are sharper than any magic.",
       "Can I see your belt pouches, {player}? Do you have shiny stones?",
       "We were playing tag around the slag well!"
     ],

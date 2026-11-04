@@ -106,6 +106,7 @@ export class NpcDialogueUI {
         color: #ff6a4a;
         background: rgba(160, 40, 20, 0.2);
       }
+      .dialogue-badge.hush,
       .dialogue-badge.dim {
         border-color: #4a5460;
         color: #a0b2c6;
@@ -187,7 +188,7 @@ export class NpcDialogueUI {
     if (nearestNpc) {
       this.currentNpc = nearestNpc;
       const roleName = nearestNpc.data.role.charAt(0).toUpperCase() + nearestNpc.data.role.slice(1);
-      const nationRole = nearestNpc.data.isLit ? 'Lit Shaper' : 'Dim Crafter';
+      const nationRole = nearestNpc.data.isLit ? 'Lit Shaper' : 'Hush Crafter';
       this.promptEl.innerHTML = `<kbd>E</kbd> Talk to ${nearestNpc.data.name} (${roleName} - ${nationRole})`;
       this.promptEl.style.display = 'block';
     } else {
@@ -234,8 +235,8 @@ export class NpcDialogueUI {
     this.soundManager.playBark(npc.data.role, npc.data.sex);
 
     const roleName = npc.data.role.charAt(0).toUpperCase() + npc.data.role.slice(1);
-    const badgeClass = npc.data.isLit ? 'lit' : 'dim';
-    const badgeLabel = npc.data.isLit ? 'Lit IGNIS' : 'Dim';
+    const badgeClass = npc.data.isLit ? 'lit' : 'hush';
+    const badgeLabel = npc.data.isLit ? 'Lit IGNIS' : 'Hush';
 
     let actionsHtml = `<button type="button" class="dialogue-btn" id="dialogue-more-btn">Talk</button>`;
     if (npc.data.role === 'innkeeper') {

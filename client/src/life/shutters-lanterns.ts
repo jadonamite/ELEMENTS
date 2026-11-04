@@ -35,17 +35,17 @@ export class ShuttersAndLanterns {
   private leftShuttersMesh: InstancedMesh;
   private rightShuttersMesh: InstancedMesh;
   private shutterDefs: WindowShutterDef[] = [];
+  private lastShutterProgress = -1;
 
   private lanternPostsMesh: InstancedMesh | null = null;
   private lanternGlassMesh: InstancedMesh;
   private lanternDefs: LanternDef[] = [];
   private glassMaterial: MeshStandardMaterial;
   private haloMaterial: MeshBasicMaterial;
+  private lastLanternGlow = -1;
 
-  // Real point lights for key lanterns in Sindr to bathe cobblestones in warm dusk light
-  private marketLight1: PointLight;
-  private marketLight2: PointLight;
-  private streetLight: PointLight;
+  // Optimized warm dusk point light for market square illumination
+  private marketLight: PointLight;
 
   private robberSpawned = false;
   private robberRef: unknown = null;
@@ -85,7 +85,6 @@ export class ShuttersAndLanterns {
       metalness: 0.08,
     });
     // Single shutter panel: hinge sits at local origin x = 0
-    // Panel has timber cross-plank details
     const panelGeomParts = [
       new BoxGeometry(0.44, 1.16, 0.04).translate(0.22, 0, 0),
       new BoxGeometry(0.42, 0.08, 0.055).translate(0.22, 0.45, 0.01),
@@ -173,82 +172,37 @@ export class ShuttersAndLanterns {
       depthWrite: false,
     });
 
-    // 3. Real warm point lights for market square and street illumination at dusk
-    this.marketLight1 = new PointLight(0xff7718, 0, 18, 1.2);
-    this.marketLight1.position.set(113.0, 2.4, 6.8);
+    // Warm point light for market square illumination at dusk
+    this.marketLight = new PointLight(0xff7718, 0, 14, 2.0);
+    this.marketLight.position.set(125.0, 3.2, 0);
 
-    this.marketLight2 = new PointLight(0xff6a14, 0, 20, 1.2);
-    this.marketLight2.position.set(125.0, 3.2, 0);
+    // Initialize static lantern transforms ONCE
+    this.setupStaticLanternTransforms();
 
-    this.streetLight = new PointLight(0xff7718, 0, 16, 1.2);
-    this.streetLight.position.set(70.0, 2.5, 4.5);
-
-    // Initial update
+    // Initial update for shutters
     this.update(0, 0);
   }
 
-  update(minute: number, nightFactor: number): void {
-    void minute;
-    // Shutter swing progress: 0 (day = open) to 1 (dusk/night = closed)
-    const shutterProgress = Math.min(1.0, Math.max(0.0, (nightFactor - 0.05) / 0.22));
-
-    // 1. Update shutters
+  private setupStaticLanternTransforms(): void {
     const mat = new Matrix4();
     const pos = new Vector3();
+    const quat = new Quaternion();
     const scale = new Vector3(1, 1, 1);
-
-    for (let i = 0; i < this.shutterDefs.length; i++) {
-      const def = this.shutterDefs[i]!;
-      // Left shutter: hinge at left edge of window casing
-      const openYaw = Math.PI * 0.48; // Folded back against stone wall
-      const leftAngle = (1.0 - shutterProgress) * -openYaw;
-      const rightAngle = (1.0 - shutterProgress) * openYaw;
-
-      // Base rotation of the window wall
-      const baseQuat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), def.yaw);
-
-      // Left panel position: offset left by def.w / 2
-      const leftOffset = new Vector3(-def.w / 2, 0, 0).applyQuaternion(baseQuat);
-      pos.set(def.x + leftOffset.x, def.y, def.z + leftOffset.z);
-      const leftRot = baseQuat.clone().multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), leftAngle));
-      mat.compose(pos, leftRot, scale);
-      this.leftShuttersMesh.setMatrixAt(i, mat);
-
-      // Right panel position: offset right by def.w / 2
-      const rightOffset = new Vector3(def.w / 2, 0, 0).applyQuaternion(baseQuat);
-      pos.set(def.x + rightOffset.x, def.y, def.z + rightOffset.z);
-      const rightRot = baseQuat
-        .clone()
-        .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI + rightAngle));
-      mat.compose(pos, rightRot, scale);
-      this.rightShuttersMesh.setMatrixAt(i, mat);
-    }
-
-    this.leftShuttersMesh.instanceMatrix.needsUpdate = true;
-    this.rightShuttersMesh.instanceMatrix.needsUpdate = true;
-
-    // 2. Update lanterns
-    const lanternGlow = Math.min(1.0, Math.max(0.0, (nightFactor - 0.04) / 0.20));
 
     if (this.lanternPostsMesh) {
       for (let i = 0; i < this.lanternDefs.length; i++) {
         const l = this.lanternDefs[i]!;
         if (!l.hanging) {
           pos.set(l.x, l.y, l.z);
-          const quat = new Quaternion();
-          mat.compose(pos, quat, scale);
         } else {
-          // Hide post under ground for hanging stall lanterns
-          pos.set(l.x, -50, l.z);
-          const quat = new Quaternion();
-          mat.compose(pos, quat, scale);
+          pos.set(l.x, -50, l.z); // Hide post under ground for hanging stall lanterns
         }
+        mat.compose(pos, quat, scale);
         this.lanternPostsMesh.setMatrixAt(i, mat);
       }
       this.lanternPostsMesh.instanceMatrix.needsUpdate = true;
     }
 
-    // Lantern glass core and fixture positions
     for (let i = 0; i < this.lanternDefs.length; i++) {
       const l = this.lanternDefs[i]!;
       const lampY = l.hanging ? l.y : l.y + 2.45;
@@ -256,32 +210,68 @@ export class ShuttersAndLanterns {
       const lampZ = l.z;
 
       pos.set(lampX, lampY, lampZ);
-      const quat = new Quaternion();
       mat.compose(pos, quat, scale);
       this.lanternGlassMesh.setMatrixAt(i, mat);
     }
     this.lanternGlassMesh.instanceMatrix.needsUpdate = true;
+  }
 
-    // Update material glow
-    this.glassMaterial.emissiveIntensity = lanternGlow * 3.2;
-    this.glassMaterial.color.setHex(lanternGlow > 0.05 ? 0xffaa33 : 0x221a14);
+  update(minute: number, nightFactor: number): void {
+    void minute;
+    // Shutter swing progress: 0 (day = open) to 1 (dusk/night = closed)
+    const shutterProgress = Math.min(1.0, Math.max(0.0, (nightFactor - 0.05) / 0.22));
 
-    // Update real point lights only when dusk/night
-    if (lanternGlow > 0.05) {
-      if (!this.marketLight1.parent) this.group.add(this.marketLight1);
-      if (!this.marketLight2.parent) this.group.add(this.marketLight2);
-      if (!this.streetLight.parent) this.group.add(this.streetLight);
-      this.marketLight1.intensity = lanternGlow * 22;
-      this.marketLight2.intensity = lanternGlow * 25;
-      this.streetLight.intensity = lanternGlow * 18;
-    } else {
-      if (this.marketLight1.parent) this.group.remove(this.marketLight1);
-      if (this.marketLight2.parent) this.group.remove(this.marketLight2);
-      if (this.streetLight.parent) this.group.remove(this.streetLight);
+    // 1. Update shutters only when changed
+    if (Math.abs(shutterProgress - this.lastShutterProgress) > 0.0005) {
+      this.lastShutterProgress = shutterProgress;
+      const mat = new Matrix4();
+      const pos = new Vector3();
+      const scale = new Vector3(1, 1, 1);
+
+      for (let i = 0; i < this.shutterDefs.length; i++) {
+        const def = this.shutterDefs[i]!;
+        const openYaw = Math.PI * 0.48;
+        const leftAngle = (1.0 - shutterProgress) * -openYaw;
+        const rightAngle = (1.0 - shutterProgress) * openYaw;
+
+        const baseQuat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), def.yaw);
+
+        const leftOffset = new Vector3(-def.w / 2, 0, 0).applyQuaternion(baseQuat);
+        pos.set(def.x + leftOffset.x, def.y, def.z + leftOffset.z);
+        const leftRot = baseQuat.clone().multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), leftAngle));
+        mat.compose(pos, leftRot, scale);
+        this.leftShuttersMesh.setMatrixAt(i, mat);
+
+        const rightOffset = new Vector3(def.w / 2, 0, 0).applyQuaternion(baseQuat);
+        pos.set(def.x + rightOffset.x, def.y, def.z + rightOffset.z);
+        const rightRot = baseQuat
+          .clone()
+          .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI + rightAngle));
+        mat.compose(pos, rightRot, scale);
+        this.rightShuttersMesh.setMatrixAt(i, mat);
+      }
+
+      this.leftShuttersMesh.instanceMatrix.needsUpdate = true;
+      this.rightShuttersMesh.instanceMatrix.needsUpdate = true;
     }
 
-    // 3. Robbers at night:
-    // If nightFactor > 0.8, check creature hook or manage night robbers
+    // 2. Update lanterns glow
+    const lanternGlow = Math.min(1.0, Math.max(0.0, (nightFactor - 0.04) / 0.20));
+
+    if (Math.abs(lanternGlow - this.lastLanternGlow) > 0.005) {
+      this.lastLanternGlow = lanternGlow;
+      this.glassMaterial.emissiveIntensity = lanternGlow * 3.2;
+      this.glassMaterial.color.setHex(lanternGlow > 0.05 ? 0xffaa33 : 0x221a14);
+
+      if (lanternGlow > 0.05) {
+        if (!this.marketLight.parent) this.group.add(this.marketLight);
+        this.marketLight.intensity = lanternGlow * 12;
+      } else {
+        if (this.marketLight.parent) this.group.remove(this.marketLight);
+      }
+    }
+
+    // 3. Robbers at night
     if (nightFactor > 0.8) {
       if (!this.robberSpawned) {
         this.spawnNightRobbers();

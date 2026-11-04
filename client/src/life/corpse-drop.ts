@@ -9,48 +9,36 @@ import {
   Scene,
   Vector3,
 } from 'three';
-import type { Satchel, SatchelItem } from '../world/satchel.js';
+
+export interface CorpseDropItem {
+  id: string;
+  name: string;
+  count: number;
+}
 
 export interface WorldCorpseDrop {
   id: string;
   x: number;
   y: number;
   z: number;
-  items: SatchelItem[];
+  items: CorpseDropItem[];
   mesh: Group;
   light: PointLight;
 }
 
+/**
+ * Creates visual beacon and loot pouch markers for death drops.
+ */
 export class CorpseDropManager {
   private drops: WorldCorpseDrop[] = [];
   group = new Group();
 
-  constructor(private scene: Scene, private satchel: Satchel) {
+  constructor(private scene: Scene) {
     this.scene.add(this.group);
-    this.restoreExistingDrops();
-  }
-
-  private restoreExistingDrops(): void {
-    if (this.satchel.dropped && this.satchel.dropped.items.length > 0) {
-      this.spawnDropMesh(this.satchel.dropped.x, 0.1, this.satchel.dropped.z, this.satchel.dropped.items);
-    }
   }
 
   /** Spawns physical container where the hero fell with the dropped materials. */
-  onHeroDeath(x: number, y: number, z: number): void {
-    const items = [...this.satchel.items];
-    if (items.length === 0) {
-      // Default materials if empty so evidence always shows materials on ground
-      items.push(
-        { id: 'ash_crystal', name: 'Ash Crystal', count: 3 },
-        { id: 'ember_fang', name: 'Ember Fang', count: 1 },
-      );
-    }
-    this.satchel.dropOnDeath(x, z);
-    this.spawnDropMesh(x, y, z, items);
-  }
-
-  private spawnDropMesh(x: number, y: number, z: number, items: SatchelItem[]): WorldCorpseDrop {
+  spawnDropMesh(x: number, y: number, z: number, items: CorpseDropItem[] = []): WorldCorpseDrop {
     const g = new Group();
     g.position.set(x, Math.max(0.05, y), z);
 
@@ -109,20 +97,11 @@ export class CorpseDropManager {
     return nearest;
   }
 
-  takeDrop(drop: WorldCorpseDrop): SatchelItem[] {
-    const recovered = [...drop.items];
-    for (const item of recovered) {
-      this.satchel.addItem(item.id, item.name, item.count);
-    }
-    this.satchel.dropped = null;
-    this.satchel.save();
-
-    // Remove mesh and light
+  removeDrop(drop: WorldCorpseDrop): void {
     this.group.remove(drop.mesh);
     drop.light.dispose();
     const idx = this.drops.indexOf(drop);
     if (idx !== -1) this.drops.splice(idx, 1);
-    return recovered;
   }
 
   dispose(): void {

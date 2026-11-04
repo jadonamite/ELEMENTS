@@ -211,7 +211,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
   // Guards on Keep Lane (x: 190, z: -34..-64) and West/East Gates
   {
     id: 'guard_garrick',
-    name: 'Sentry Garrick',
+    name: 'Guard Garrick',
     role: 'guard',
     dialogueRole: 'guard_sindr',
     isLit: true, // 3/6 Lit

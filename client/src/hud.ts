@@ -155,7 +155,7 @@ export class FightHud {
     isDim = false,
   ): void {
     if (isDim) {
-      this.modeBadge.textContent = 'Dim (Non-Shaper)';
+      this.modeBadge.textContent = 'Hush (Non-Shaper)';
       this.modeBadge.className = 'mode-badge dim';
     } else {
       this.modeBadge.textContent = isLit
@@ -181,7 +181,7 @@ export class FightHud {
     // Update combat perk display
     if (isDim) {
       this.perkBadge.className = 'perk-badge dim';
-      this.perkBadge.textContent = 'Dim: 1 weapon • 2 hands • 3 kicks • Q shard spark • wider parry';
+      this.perkBadge.textContent = 'Hush: 1 weapon • 2 hands • 3 kicks • Q shard spark • wider parry';
     } else if (fightingStyle === 'bending') {
       this.perkBadge.className = 'perk-badge lit';
       this.perkBadge.textContent = `Bending: ${this.throwName} (left click) • ${this.sweepName} (right click)`;

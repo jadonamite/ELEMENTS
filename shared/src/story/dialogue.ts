@@ -1,7 +1,7 @@
 export interface PlayerDialogueContext {
   name: string;
   isLit: boolean;
-  role: 'Shaper' | 'Dim';
+  role: 'Shaper' | 'Dim' | 'Hush';
   element: string;
   carriedItemsCount?: number;
   redFlags?: number;
@@ -86,13 +86,13 @@ export function pickDialogueLine(
   else if (event === 'night' || time === 'night') {
     if (block.night && Array.isArray(block.night)) {
       targetCategory = 'night';
-    } else if (player.role === 'Dim' && block.greeting_dim) {
+    } else if ((player.role === 'Dim' || player.role === 'Hush' || !player.isLit) && block.greeting_dim) {
       targetCategory = 'greeting_dim';
     }
   } else if (event === 'dusk' || time === 'dusk') {
     if (block.dusk && Array.isArray(block.dusk)) {
       targetCategory = 'dusk';
-    } else if (player.role === 'Dim' && block.greeting_dim) {
+    } else if ((player.role === 'Dim' || player.role === 'Hush' || !player.isLit) && block.greeting_dim) {
       targetCategory = 'greeting_dim';
     }
   }
@@ -100,8 +100,8 @@ export function pickDialogueLine(
   else if (carriedCount >= 4 && block.heavy_pack && Array.isArray(block.heavy_pack)) {
     targetCategory = 'heavy_pack';
   }
-  // 6. Identity greeting: Dim vs Lit (Shaper)
-  else if (player.role === 'Dim' || !player.isLit) {
+  // 6. Identity greeting: Dim/Hush vs Lit (Shaper)
+  else if (player.role === 'Dim' || player.role === 'Hush' || !player.isLit) {
     if (block.greeting_dim && Array.isArray(block.greeting_dim)) {
       targetCategory = 'greeting_dim';
     } else if (block.greeting_local && Array.isArray(block.greeting_local)) {

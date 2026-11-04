@@ -6,7 +6,6 @@ import {
   getTownspersonPosition,
 } from '../src/life/townsfolk.js';
 import { setTownsfolkBodyFactory } from '../src/life/town-manager.js';
-import { Satchel } from '../src/world/satchel.js';
 
 test('Sindr townsfolk roster: 80% Dim and 20% Lit distribution, exactly matching LORE', () => {
   assert.ok(SINDR_TOWNSFOLK.length >= 20, 'Sindr must have a living crowd');
@@ -75,38 +74,9 @@ test('People lane body factory hook is exposed and accepts custom factory', () =
   setTownsfolkBodyFactory(null); // Reset
 });
 
-test('Dying in the world leaves carried materials on the ground and satchel is emptied', () => {
-  // Use mock localStorage for node test
-  const storage = new Map();
-  globalThis.localStorage = {
-    getItem: (k) => storage.get(k) ?? null,
-    setItem: (k, v) => storage.set(k, String(v)),
-    removeItem: (k) => storage.delete(k),
-    clear: () => storage.clear(),
-  };
-
-  const satchel = new Satchel();
-  satchel.items = [
-    { id: 'ash_crystal', name: 'Ash Crystal', count: 5 },
-    { id: 'ember_fang', name: 'Ember Fang', count: 2 },
-  ];
-  satchel.save();
-
-  // Die on the road at x: 45, z: 0
-  satchel.dropOnDeath(45, 0);
-
-  // Satchel must now be empty
-  assert.equal(satchel.items.length, 0, 'Satchel must be empty after dying');
-  assert.ok(satchel.dropped !== null, 'Dropped satchel container must exist');
-  assert.equal(satchel.dropped.x, 45);
-  assert.equal(satchel.dropped.z, 0);
-  assert.equal(satchel.dropped.items.length, 2);
-
-  // Recover materials from ground
-  const recovered = satchel.recoverDropped();
-  assert.ok(recovered !== null);
-  assert.equal(recovered.length, 2);
-  assert.equal(satchel.items.length, 2);
-  assert.equal(satchel.items.find(i => i.id === 'ash_crystal').count, 5);
-  assert.equal(satchel.dropped, null, 'Ground container cleared after recovery');
+test('Sindr town watch guard is named Guard Garrick with no Sentry title', () => {
+  const guard = SINDR_TOWNSFOLK.find(p => p.id === 'guard_garrick');
+  assert.ok(guard, 'Guard Garrick must exist');
+  assert.equal(guard.name, 'Guard Garrick', 'Guard must not be named Sentry');
+  assert.ok(!guard.name.toLowerCase().includes('sentry'), 'No Sentry title in Sindr');
 });

@@ -1,12 +1,10 @@
 import { Scene, Vector3, type Camera } from 'three';
 import type { HeroController } from '../controller.js';
 import type { SoundManager } from '../audio.js';
-import type { Satchel } from '../world/satchel.js';
 import type { WorldClock } from '../world/clock.js';
 import { nightness } from '../world/effects.js';
 import { TownManager, setTownsfolkBodyFactory, type TownsfolkBodyFactory } from './town-manager.js';
 import { ShuttersAndLanterns } from './shutters-lanterns.js';
-import { CorpseDropManager } from './corpse-drop.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
 import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
 import { LeadManager, type Lead } from '../../../shared/src/story/leads.js';
@@ -20,7 +18,6 @@ export interface SindrLifeOptions {
   controller: HeroController;
   clock: WorldClock;
   sound: SoundManager;
-  satchel: Satchel;
   getPlayerContext: () => PlayerDialogueContext;
   onNotice: (message: string) => void;
 }
@@ -28,7 +25,6 @@ export interface SindrLifeOptions {
 export class SindrLifeSystem {
   readonly townManager: TownManager;
   readonly shuttersLanterns: ShuttersAndLanterns;
-  readonly corpseDrops: CorpseDropManager;
   readonly leadManager: LeadManager;
   readonly waypointMarker: WaypointMarker;
   readonly dialogueUI: NpcDialogueUI;
@@ -39,7 +35,6 @@ export class SindrLifeSystem {
   private controller: HeroController;
   private clock: WorldClock;
   private sound: SoundManager;
-  private satchel: Satchel;
   private getPlayerContext: () => PlayerDialogueContext;
   private onNotice: (message: string) => void;
 
@@ -49,7 +44,6 @@ export class SindrLifeSystem {
     this.controller = options.controller;
     this.clock = options.clock;
     this.sound = options.sound;
-    this.satchel = options.satchel;
     this.getPlayerContext = options.getPlayerContext;
     this.onNotice = options.onNotice;
 
@@ -57,7 +51,6 @@ export class SindrLifeSystem {
     this.shuttersLanterns = new ShuttersAndLanterns();
     this.scene.add(this.shuttersLanterns.group);
 
-    this.corpseDrops = new CorpseDropManager(this.scene, this.satchel);
     this.leadManager = new LeadManager();
     this.waypointMarker = new WaypointMarker(this.scene);
     this.dialogueMemory = createDialogueMemory();
@@ -94,41 +87,12 @@ export class SindrLifeSystem {
     }
 
     // 4. Update interaction prompt
-    const nearestDrop = this.corpseDrops.getNearestDrop(heroPos, 2.8);
-    if (nearestDrop) {
-      // Prompt to recover dropped satchel
-      this.dialogueUI.updatePrompt(null);
-      const promptEl = document.getElementById('npc-prompt');
-      if (promptEl) {
-        const names = nearestDrop.items.map(i => `${i.count} ${i.name}`).join(', ');
-        promptEl.innerHTML = `<kbd>E</kbd> Take Dropped Materials (${names})`;
-        promptEl.style.display = 'block';
-      }
-    } else {
-      const nearestNpc = this.townManager.getNearestTownsperson(heroPos, 3.2);
-      this.dialogueUI.updatePrompt(nearestNpc);
-    }
-  }
-
-  onHeroDied(): void {
-    const pos = this.controller.position;
-    this.corpseDrops.onHeroDeath(pos.x, pos.y, pos.z);
+    const nearestNpc = this.townManager.getNearestTownsperson(heroPos, 3.2);
+    this.dialogueUI.updatePrompt(nearestNpc);
   }
 
   handleInteract(): boolean {
     const heroPos = this.controller.position;
-
-    // Check if near dropped materials
-    const nearestDrop = this.corpseDrops.getNearestDrop(heroPos, 2.8);
-    if (nearestDrop) {
-      const recovered = this.corpseDrops.takeDrop(nearestDrop);
-      if (recovered.length > 0) {
-        const summary = recovered.map(i => `${i.count} ${i.name}`).join(', ');
-        this.onNotice(`Recovered materials: ${summary}`);
-        this.sound.playThump(90, 0.2, 0.5);
-        return true;
-      }
-    }
 
     // Check if near NPC
     const nearestNpc = this.townManager.getNearestTownsperson(heroPos, 3.5);
@@ -149,7 +113,6 @@ export class SindrLifeSystem {
   dispose(): void {
     this.townManager.dispose();
     this.shuttersLanterns.dispose();
-    this.corpseDrops.dispose();
     this.waypointMarker.dispose();
     this.dialogueUI.dispose();
   }

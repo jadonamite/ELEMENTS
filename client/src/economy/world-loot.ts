@@ -6,6 +6,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  PointLight,
   type Scene,
   SphereGeometry,
   type Vector3,
@@ -42,10 +43,12 @@ export class WorldLoot {
   private readonly pouchGeo = new SphereGeometry(0.18, 12, 8);
   private readonly coinGeo = new CylinderGeometry(0.05, 0.05, 0.012, 10);
   private readonly glowGeo = new CircleGeometry(0.55, 24);
+  private readonly beaconGeo = new CylinderGeometry(0.03, 0.08, 2.2, 8);
   private readonly pouchMat = new MeshStandardMaterial({ color: 0x8a7458, roughness: 0.95 });
   private readonly coinMat = new MeshStandardMaterial({ color: 0xd9a441, metalness: 0.9, roughness: 0.35 });
   private readonly shardMat = new MeshStandardMaterial({ color: 0xc92a2a, emissive: 0x8b1e1e, emissiveIntensity: 1.4, roughness: 0.3 });
   private readonly glowMat = new MeshBasicMaterial({ color: 0xff7a3d, transparent: true, opacity: 0.22, depthWrite: false, blending: AdditiveBlending });
+  private readonly beaconMat = new MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.65, depthWrite: false, blending: AdditiveBlending });
 
   constructor(
     scene: Scene,
@@ -68,6 +71,10 @@ export class WorldLoot {
       s.mesh.rotation.y += dt * 0.6;
       const glow = s.mesh.children[0];
       if (glow) glow.scale.setScalar(1 + Math.sin(this.time * 2.4) * 0.08);
+      const beacon = s.mesh.getObjectByName('beacon');
+      if (beacon instanceof Mesh && beacon.material instanceof MeshBasicMaterial) {
+        beacon.material.opacity = 0.55 + Math.sin(this.time * 3.0) * 0.2;
+      }
     }
 
     this.pollIn -= dt;
@@ -87,8 +94,8 @@ export class WorldLoot {
 
   dispose(): void {
     this.root.removeFromParent();
-    for (const g of [this.pouchGeo, this.coinGeo, this.glowGeo]) g.dispose();
-    for (const m of [this.pouchMat, this.coinMat, this.shardMat, this.glowMat]) m.dispose();
+    for (const g of [this.pouchGeo, this.coinGeo, this.glowGeo, this.beaconGeo]) g.dispose();
+    for (const m of [this.pouchMat, this.coinMat, this.shardMat, this.glowMat, this.beaconMat]) m.dispose();
   }
 
   private async poll(x: number, z: number): Promise<void> {
@@ -140,6 +147,16 @@ export class WorldLoot {
     pouch.position.y = 0.12;
     pouch.castShadow = true;
     g.add(pouch);
+
+    // Amber beacon beam and warm light for dropped loot piles
+    const beacon = new Mesh(this.beaconGeo, this.beaconMat);
+    beacon.name = 'beacon';
+    beacon.position.y = 1.1;
+    g.add(beacon);
+
+    const light = new PointLight(0xff8822, 1.2, 5.0, 1.8);
+    light.position.y = 0.5;
+    g.add(light);
 
     const coins = Math.min(6, Math.ceil(pile.contents.chroma / 10));
     for (let i = 0; i < coins; i++) {
