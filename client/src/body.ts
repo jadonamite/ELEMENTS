@@ -6,9 +6,11 @@
 
 import {
   AnimationClip,
+  BufferAttribute,
   BufferGeometry,
   Color,
   Group,
+  Matrix4,
   Mesh,
   MeshStandardMaterial,
   Object3D,
@@ -21,6 +23,7 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   BODY_PRESET_OPTIONS,
   type CharacterConfig,
@@ -42,6 +45,7 @@ const OUTFIT_PATH: Record<Sex, string> = {
   male: '/assets/characters/creator/peasant_male.glb',
   female: '/assets/characters/creator/peasant_female.glb',
 };
+const OUTFIT_FILES = new Set(Object.values(OUTFIT_PATH));
 /** Patched, greener rags for robbers. */
 const WORN_RAGS_PATH = '/assets/characters/creator/peasant_worn.webp';
 /** Bones whose vertices make up the head kept from the creator body. */
@@ -148,6 +152,7 @@ export class BodyKit {
     let s = this.scenes.get(path);
     if (!s) {
       s = (await this.loader.loadAsync(path)).scene;
+      if (OUTFIT_FILES.has(path)) joinByMaterial(s);
       this.scenes.set(path, s);
     }
     return s;
@@ -162,8 +167,8 @@ export class BodyKit {
     return this.wornRags;
   }
 
-  /** A posable fighter for this configuration, with its own materials. */
-  async build(config: CharacterConfig, look: BodyLook = 'hero'): Promise<Group> {
+  /** A posable fighter for this configuration, with its own materials; `cloth` dyes the outfit. */
+  async build(config: CharacterConfig, look: BodyLook = 'hero', cloth?: number): Promise<Group> {
     const model = cloneSkinned(await this.scene(OUTFIT_PATH[config.sex]));
     const group = new Group();
     group.name = look === 'hero' ? 'Hero' : 'Villain';
@@ -173,7 +178,7 @@ export class BodyKit {
     const hair = HAIR_COLOR_PRESETS.find(c => c.id === config.hairColorId) ?? HAIR_COLOR_PRESETS[1]!;
     const uniforms: SkinUniforms = {
       uSkinColor: { value: new Color(skin.color) },
-      uCloth: { value: look === 'villain' ? new Color(0.16, 0.05, 0.035) : new Color(0.2, 0.18, 0.16) },
+      uCloth: { value: cloth !== undefined ? new Color(cloth) : look === 'villain' ? new Color(0.16, 0.05, 0.035) : new Color(0.2, 0.18, 0.16) },
       uVillain: { value: look === 'villain' ? 1 : 0 },
     };
     const worn = look === 'villain' ? await this.worn() : null;
@@ -186,13 +191,13 @@ export class BodyKit {
       mesh.material = mat;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      mesh.frustumCulled = false;
       if ((mesh as SkinnedMesh).isSkinnedMesh && !rig) rig = mesh as SkinnedMesh;
       if (mat.name.toLowerCase().includes('peasant')) {
         if (worn) {
           mat.map = worn;
           mat.color.setRGB(0.62, 0.55, 0.5);
         }
+        if (cloth !== undefined) mat.color.setHex(cloth);
       } else {
         applySkinShader(mat, uniforms);
       }
@@ -232,6 +237,7 @@ export class BodyKit {
 
     const preset = BODY_PRESET_OPTIONS.find(b => b.id === config.bodyPreset) ?? BODY_PRESET_OPTIONS[1]!;
     group.scale.set(...preset.scale);
+    cullAsOneBody(group, rigMesh);
     group.userData.sex = config.sex;
     return group;
   }
@@ -251,6 +257,74 @@ export class BodyKit {
     this.fitted.set(key, out);
     return out;
   }
+}
+
+/**
+ * Skinned parts that share a material and a skeleton become one mesh, so an outfit cut into
+ * arms, body, legs and feet costs one draw instead of four. Parts missing vertex colour get white.
+ */
+function joinByMaterial(root: Object3D): void {
+  const byMaterial = new Map<string, SkinnedMesh[]>();
+  root.traverse((node) => {
+    const mesh = node as SkinnedMesh;
+    if (!mesh.isSkinnedMesh) return;
+    const key = `${(mesh.material as MeshStandardMaterial).name}:${mesh.skeleton.uuid}`;
+    byMaterial.set(key, [...(byMaterial.get(key) ?? []), mesh]);
+  });
+  for (const parts of byMaterial.values()) {
+    if (parts.length < 2) continue;
+    const coloured = parts.some(m => m.geometry.getAttribute('color'));
+    const names = new Set(Object.keys(parts[0]!.geometry.attributes));
+    for (const m of parts) for (const n of [...names]) if (!m.geometry.getAttribute(n)) names.delete(n);
+    if (coloured) names.add('color');
+    const geometries = parts.map((m) => {
+      const g = new BufferGeometry();
+      for (const n of names) {
+        const a = m.geometry.getAttribute(n);
+        g.setAttribute(n, a ?? new BufferAttribute(new Float32Array(m.geometry.getAttribute('position').count * 4).fill(1), 4));
+      }
+      g.setIndex(m.geometry.getIndex());
+      return g;
+    });
+    const joined = mergeGeometries(geometries.map(g => (g.getAttribute('color') ? withRgba(g) : g)));
+    if (!joined) continue;
+    const [first, ...rest] = parts;
+    first!.geometry = joined;
+    (first!.material as MeshStandardMaterial).vertexColors = coloured;
+    for (const m of rest) m.removeFromParent();
+  }
+}
+
+/** Colour as four float components, so parts stored in different formats merge. */
+function withRgba(g: BufferGeometry): BufferGeometry {
+  const c = g.getAttribute('color');
+  const out = new Float32Array(c.count * 4);
+  for (let i = 0; i < c.count; i++) out.set([c.getX(i), c.getY(i), c.getZ(i), 1], i * 4);
+  g.setAttribute('color', new BufferAttribute(out, 4));
+  return g;
+}
+
+/** How far past the rest pose a swing, kick or fall can reach, as a share of the body's radius. */
+const POSE_REACH = 1.6;
+
+/**
+ * Every part of a body is culled by one sphere: the rest pose's, widened for the reach of a
+ * clip. Off-screen bodies then skip both the picture and the shadow passes.
+ */
+function cullAsOneBody(group: Group, rig: SkinnedMesh): void {
+  group.updateMatrixWorld(true);
+  rig.skeleton.update();
+  rig.computeBoundingSphere();
+  const world = rig.boundingSphere?.clone().applyMatrix4(rig.matrixWorld);
+  if (!world) return;
+  world.radius *= POSE_REACH;
+  const toLocal = new Matrix4();
+  group.traverse((node) => {
+    const mesh = node as SkinnedMesh;
+    if (!mesh.isSkinnedMesh) return;
+    mesh.boundingSphere = world.clone().applyMatrix4(toLocal.copy(mesh.matrixWorld).invert());
+    mesh.frustumCulled = true;
+  });
 }
 
 const tmp = new Vector3();

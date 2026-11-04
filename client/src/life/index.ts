@@ -3,14 +3,14 @@ import type { HeroController } from '../controller.js';
 import type { SoundManager } from '../audio.js';
 import type { WorldClock } from '../world/clock.js';
 import { nightness } from '../world/effects.js';
-import { TownManager, setTownsfolkBodyFactory, type TownsfolkBodyFactory } from './town-manager.js';
+import { TownManager } from './town-manager.js';
+import { loadTownsfolkBodies } from './townsfolk-bodies.js';
 import { ShuttersAndLanterns } from './shutters-lanterns.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
 import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
 import { LeadManager, type Lead } from '../../../shared/src/story/leads.js';
 import { createDialogueMemory, type DialogueMemory, type PlayerDialogueContext } from '../../../shared/src/story/dialogue.js';
 
-export { setTownsfolkBodyFactory, type TownsfolkBodyFactory };
 
 export interface SindrLifeOptions {
   scene: Scene;
@@ -65,7 +65,7 @@ export class SindrLifeSystem {
       },
     );
 
-    void this.townManager.init();
+    loadTownsfolkBodies().then((bodies) => this.townManager.init(bodies)).catch(console.error);
   }
 
   update(delta: number): void {

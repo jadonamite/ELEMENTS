@@ -5,7 +5,6 @@ import {
   getTownspersonActivity,
   getTownspersonPosition,
 } from '../src/life/townsfolk.js';
-import { setTownsfolkBodyFactory } from '../src/life/town-manager.js';
 
 test('Sindr townsfolk roster: 80% Dim and 20% Lit distribution, exactly matching LORE', () => {
   assert.ok(SINDR_TOWNSFOLK.length >= 20, 'Sindr must have a living crowd');
@@ -60,18 +59,6 @@ test('Dusk crowd thinning: market square empties as night approaches', () => {
   assert.ok(atWorkDay >= 25, 'Most people work during the day');
   assert.equal(atInnOrHomeDusk, SINDR_TOWNSFOLK.length, 'Everyone moves to inn or home at dusk');
   assert.equal(atInnOrHomeNight, SINDR_TOWNSFOLK.length, 'Streets are empty at night');
-});
-
-test('People lane body factory hook is exposed and accepts custom factory', () => {
-  let calledWith = null;
-  const mockFactory = (npc) => {
-    calledWith = npc.name;
-    return null;
-  };
-
-  setTownsfolkBodyFactory(mockFactory);
-  assert.ok(typeof setTownsfolkBodyFactory === 'function');
-  setTownsfolkBodyFactory(null); // Reset
 });
 
 test('Sindr town watch guard is named Guard Garrick with no Sentry title', () => {
