@@ -50,3 +50,69 @@ export function sindrStreet(x: number, z: number): StreetKind {
 
 /** Sentries stand by Sindr's shrine, west of x 48. */
 export const sindrSentryDistance = (x: number): number => (x < 48 ? 12 : 60);
+
+export interface CollisionBox {
+  id: string;
+  x: number;
+  z: number;
+  hx: number;
+  hz: number;
+}
+
+/** Sindr town collision boxes for stalls, well, and key obstacles to prevent bodies standing inside them. */
+export const SINDR_COLLISION_BOXES: CollisionBox[] = [
+  // Stalls: 4.8m wide (hx 2.4), 3m deep (hz 1.5), plus clearance for awnings and crates
+  { id: 'stall_shards', x: 113, z: -8, hx: 2.6, hz: 1.8 },
+  { id: 'stall_supplies', x: 137, z: -8, hx: 2.6, hz: 1.8 },
+  { id: 'stall_arms', x: 113, z: 8, hx: 2.6, hz: 1.8 },
+  // Slag well at centre of market square: 7.2m x 7.2m (hx 3.6, hz 3.6)
+  { id: 'slag_well', x: 125, z: 0, hx: 3.8, hz: 3.8 },
+  // Ginkgo trees at square corners
+  { id: 'ginkgo_nw', x: 106.5, z: -12.5, hx: 1.4, hz: 1.4 },
+  { id: 'ginkgo_se', x: 143.5, z: 12.5, hx: 1.4, hz: 1.4 },
+  { id: 'ginkgo_sw', x: 106.5, z: 12.6, hx: 1.4, hz: 1.4 },
+  // Alley cache behind west square
+  { id: 'alley_cache', x: 109, z: -14.5, hx: 1.2, hz: 1.2 },
+];
+
+/** True if (x, z) falls inside any collision box (with character radius padding). */
+export function isColliding(x: number, z: number, radius = 0.5, boxes: readonly CollisionBox[] = SINDR_COLLISION_BOXES): boolean {
+  for (const b of boxes) {
+    if (Math.abs(x - b.x) < b.hx + radius && Math.abs(z - b.z) < b.hz + radius) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Shifts a placement (x, z) so it stands clear of any collision box. */
+export function standClear(x: number, z: number, radius = 0.5, boxes: readonly CollisionBox[] = SINDR_COLLISION_BOXES): { x: number; z: number } {
+  let cx = x, cz = z;
+  for (const b of boxes) {
+    const ox = b.hx + radius - Math.abs(cx - b.x);
+    const oz = b.hz + radius - Math.abs(cz - b.z);
+    if (ox > 0 && oz > 0) {
+      if (ox < oz) {
+        cx = cx >= b.x ? b.x + b.hx + radius + 0.05 : b.x - b.hx - radius - 0.05;
+      } else {
+        cz = cz >= b.z ? b.z + b.hz + radius + 0.05 : b.z - b.hz - radius - 0.05;
+      }
+    }
+  }
+  return { x: cx, z: cz };
+}
+
+/** Places a body at `distance` along `angle` from `feet`, stopping short if a collision box is in the way. */
+export function standOff(feet: { x: number; z: number }, angle: number, distance: number, radius = 0.5, boxes: readonly CollisionBox[] = SINDR_COLLISION_BOXES): { x: number; z: number } {
+  const sx = Math.sin(angle), sz = Math.cos(angle);
+  const steps = 10;
+  for (let s = steps; s >= 1; s--) {
+    const d = (distance * s) / steps;
+    const tx = feet.x + sx * d;
+    const tz = feet.z + sz * d;
+    if (!isColliding(tx, tz, radius, boxes)) {
+      return { x: tx, z: tz };
+    }
+  }
+  return standClear(feet.x, feet.z, radius, boxes);
+}

@@ -4,7 +4,7 @@ import balance from '../../../shared/balance.json';
 import { createCombatRules, type CombatBalance, type Kit, type MoveId } from '../../../shared/src/index.js';
 import {
   enemyFromTuple, MOVE_HZ, playerFromTuple, ServerClock,
-  type EnemyDiedMsg, type EnemyHitMsg, type HitResultMsg, type HurtMsg, type MoveMsg, type PongMsg, type SnapMsg, type TrackDelay, type WelcomeMsg,
+  type ClockMsg, type EnemyDiedMsg, type EnemyHitMsg, type HitResultMsg, type HurtMsg, type MoveMsg, type PongMsg, type SnapMsg, type TrackDelay, type WelcomeMsg,
 } from '../../../shared/src/net/index.js';
 import type { Combat } from '../combat.js';
 import type { EnemyTemplate } from '../enemy.js';
@@ -33,13 +33,15 @@ export interface OnlineGame {
   loadAvatar: () => Promise<HeroInstance>;
   loadHound: () => Promise<HoundTemplate>;
   villains: Promise<EnemyTemplate>;
+  clock?: { setMinute?: (m: number, s?: number) => void } | undefined;
   /** One of our hits the server accepted. */
-  onMyHit?: (at: Vector3, damage: number, killed: boolean) => void;
+  onMyHit?: ((at: Vector3, damage: number, killed: boolean) => void) | undefined;
   /** An enemy the server moves struck us; hp is the server's figure. */
-  onHurt?: (hp: number, max: number, damage: number) => void;
-  onStatus?: (text: string) => void;
+  onHurt?: ((hp: number, max: number, damage: number) => void) | undefined;
+  onStatus?: ((text: string) => void) | undefined;
+  onNotice?: ((text: string) => void) | undefined;
   /** The server's fighting tier for this player, sent on joining. */
-  onTier?: (tier: number) => void;
+  onTier?: ((tier: number) => void) | undefined;
 }
 
 export interface OnlineOptions {
@@ -49,8 +51,11 @@ export interface OnlineOptions {
   element: string;
   role: 'Shaper' | 'Hush';
   /** Test-only added delay each way, seconds. */
-  lag?: number;
-  trackDelay?: TrackDelay;
+  lag?: number | undefined;
+  trackDelay?: TrackDelay | undefined;
+  forcedCarry?: number | undefined;
+  night?: number | undefined;
+  clock?: number | undefined;
 }
 
 /** Live link between this browser and its zone on the game server. */
@@ -61,6 +66,8 @@ export class OnlineSession {
   you = '';
   /** How far in the past other players are drawn; see RemoteTrack. */
   trackDelay: TrackDelay = 'auto';
+  /** Notices and alerts received from the server. */
+  readonly notices: string[] = [];
   /** Hit verdicts from the server, newest last, for tests and the debug view. */
   readonly verdicts: HitResultMsg[] = [];
   private sendIn = 0;
@@ -89,6 +96,19 @@ export class OnlineSession {
     });
     link.on('snap', (m) => this.applySnapshot(m as SnapMsg));
     link.on('left', (m) => this.dropPlayer((m as { id: string }).id));
+    link.on('notice', (m) => {
+      const text = (m as { text?: unknown }).text;
+      if (typeof text === 'string') {
+        this.notices.push(text);
+        this.game.onNotice?.(text) ?? this.game.onStatus?.(text);
+      }
+    });
+    link.on('clock', (m) => {
+      const c = m as ClockMsg;
+      if (typeof c.minute === 'number') {
+        this.game.clock?.setMinute?.(c.minute, c.speed);
+      }
+    });
     link.on('hit_result', (m) => {
       const r = m as HitResultMsg;
       this.verdicts.push(r);
@@ -129,7 +149,20 @@ export class OnlineSession {
 
   /** Joins the zone's room. Throws when the server can't be reached or refuses. */
   static async connect(game: OnlineGame, opts: OnlineOptions): Promise<OnlineSession> {
-    const link = await RoomLink.join(opts.server, 'zone', { zone: opts.zone, element: opts.element, role: opts.role }, opts.token, { delay: opts.lag ?? 0 });
+    const link = await RoomLink.join(
+      opts.server,
+      'zone',
+      {
+        zone: opts.zone,
+        element: opts.element,
+        role: opts.role,
+        forcedCarry: opts.forcedCarry,
+        night: opts.night,
+        clock: opts.clock,
+      },
+      opts.token,
+      { delay: opts.lag ?? 0 },
+    );
     const session = new OnlineSession(link, game);
     if (opts.trackDelay !== undefined) session.trackDelay = opts.trackDelay;
     for (let i = 0; i < 5; i++) setTimeout(() => session.ping(), i * 120);
@@ -171,8 +204,10 @@ export class OnlineSession {
       rp.push(v, arrived);
     }
     for (const id of this.players.keys()) if (!seen.has(id)) this.dropPlayer(id);
+    const seenEnemies = new Set<string>();
     for (const tuple of s.e) {
       const v = enemyFromTuple(tuple);
+      seenEnemies.add(v.id);
       let e = this.enemies.get(v.id);
       if (!e) {
         const template = v.kind === 'hound' ? this.houndTemplate : this.villainTemplate;
@@ -181,6 +216,12 @@ export class OnlineSession {
         this.enemies.set(v.id, e);
       }
       e.push(v, s.t, arrived);
+    }
+    for (const [id, e] of this.enemies.entries()) {
+      if (!seenEnemies.has(id)) {
+        e.dispose();
+        this.enemies.delete(id);
+      }
     }
   }
 

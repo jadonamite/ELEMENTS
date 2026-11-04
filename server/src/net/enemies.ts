@@ -81,13 +81,14 @@ export const KINDS: Record<EnemyKind, KindTuning> = {
   },
   brawler: villainKind('brawler'),
   armed: villainKind('armed'),
+  robber: { ...villainKind('armed'), maxHealth: 100 },
 };
 
 /** How far an enemy follows a player from where it lives before it gives up. */
 const LEASH = 30;
 const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 
-export type EnemyState = 'idle' | 'notice' | 'stalk' | 'chase' | 'charge' | 'strike' | 'recoil' | 'return' | 'dead';
+export type EnemyState = 'idle' | 'notice' | 'stalk' | 'chase' | 'charge' | 'strike' | 'recoil' | 'return' | 'flee' | 'dead';
 
 /** An enemy the server moves and keeps the health of. Clients only draw it. */
 export class ServerEnemy {
@@ -163,8 +164,12 @@ export class ServerEnemy {
     return best;
   }
 
+  flee(): void {
+    if (this.alive) this.enter('flee');
+  }
+
   /** Moves toward (tx, tz) at `speed`, stopping at the point. */
-  private head(tx: number, tz: number, speed: number, dt: number): void {
+  head(tx: number, tz: number, speed: number, dt: number): void {
     const dx = tx - this.x;
     const dz = tz - this.z;
     const d = Math.hypot(dx, dz);
@@ -265,6 +270,20 @@ export class ServerEnemy {
         if (this.timer >= this.length) {
           this.cooldown = Math.max(this.cooldown, 0.5);
           this.enter(this.kind === 'hound' ? 'stalk' : 'chase');
+        }
+        break;
+      case 'flee':
+        if (quarry) {
+          const dx = this.x - quarry.x;
+          const dz = this.z - quarry.z;
+          const d = Math.hypot(dx, dz);
+          if (d > 0.05) {
+            this.vx = (dx / d) * tune.run;
+            this.vz = (dz / d) * tune.run;
+            this.facing = Math.atan2(dx, dz);
+          }
+        } else {
+          this.head(this.home.x, this.home.z, tune.run, dt);
         }
         break;
     }

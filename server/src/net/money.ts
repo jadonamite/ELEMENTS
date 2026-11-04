@@ -32,7 +32,7 @@ export const isGuest = (accountId: string): boolean => accountId.startsWith('gue
 const ZONE_NATION: Record<string, string> = { sindr: 'IGNIS', arena: 'IGNIS' };
 
 /** What each server enemy counts as for the loot rules. */
-const LOOT_KIND: Record<string, string> = { brawler: 'miscreant', armed: 'robber' };
+const LOOT_KIND: Record<string, string> = { brawler: 'miscreant', armed: 'robber', robber: 'robber' };
 
 /** Coin of the starting purse still held back from trades, by the ledger's own grant record. */
 export function lockedPurse(accountId: string, now = Date.now(), db: DatabaseSync = getDatabase()): number {

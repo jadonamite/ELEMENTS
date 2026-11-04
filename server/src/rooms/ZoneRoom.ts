@@ -1,10 +1,12 @@
 import { Room, type Client } from '@colyseus/core';
 import { randomUUID } from 'node:crypto';
-import { ELEMENTS, type Element } from '@elements/shared';
+import { cycleMinutes, ELEMENTS, type Element } from '@elements/shared';
 import { verifyToken } from '../auth.js';
 import { getRising } from '../db.js';
+import { balance } from '../net/balance.js';
 import { SNAPSHOT_RATE } from '../net/constants.js';
 import { isGuest } from '../net/money.js';
+import { ServerRobberGang } from '../net/outlaws.js';
 import { closeZone, enterRoom, leaveRoom, openZone } from '../net/presence.js';
 import { OPEN_TIER, ZoneWorld, type Identity, type WorldEvent } from '../net/world.js';
 import { ZoneEconomy, type EconEvent } from '../net/zone-economy.js';
@@ -29,16 +31,21 @@ export const guestsAllowed = (): boolean => process.env.NODE_ENV !== 'production
  * outside production picks a kit for testing.
  */
 export async function identify(options: Record<string, unknown> | undefined, token: string | undefined | null): Promise<Identity> {
+  const forcedCarry = typeof options?.forcedCarry === 'number'
+    ? options.forcedCarry
+    : typeof options?.chroma === 'number'
+      ? options.chroma
+      : undefined;
   if (token) {
     const { userId } = await verifyToken(token);
     const rising = getRising(userId);
     if (!rising) throw new Error('This account has not risen yet');
-    return { accountId: userId, role: rising.role, element: (rising.element ?? 'IGNIS') as Element, tier: rising.tier ?? OPEN_TIER };
+    return { accountId: userId, role: rising.role, element: (rising.element ?? 'IGNIS') as Element, tier: rising.tier ?? OPEN_TIER, forcedCarry };
   }
   if (!guestsAllowed()) throw new Error('Login required');
   const asked = typeof options?.element === 'string' ? options.element.toUpperCase() : 'IGNIS';
   const element = (ELEMENTS as readonly string[]).includes(asked) ? asked as Element : 'IGNIS';
-  return { accountId: `guest:${randomUUID()}`, role: options?.role === 'Hush' ? 'Hush' : 'Shaper', element, tier: OPEN_TIER };
+  return { accountId: `guest:${randomUUID()}`, role: options?.role === 'Hush' ? 'Hush' : 'Shaper', element, tier: OPEN_TIER, forcedCarry };
 }
 
 /**
@@ -50,6 +57,9 @@ export class ZoneRoom extends Room {
   maxClients = 50;
   world!: ZoneWorld;
   economy!: ZoneEconomy;
+  outlaws?: ServerRobberGang;
+  clockMinute = 4;
+  clockSpeed = 1;
   private started = 0;
 
   /** Seconds since the room opened: the clock every client syncs to. */
@@ -57,11 +67,27 @@ export class ZoneRoom extends Room {
     return (performance.now() - this.started) / 1000;
   }
 
-  override onCreate(options: { zone?: string }): void {
+  override onCreate(options: { zone?: string; minute?: number; clock?: number; night?: number; speed?: number }): void {
     this.started = performance.now();
     const zone = typeof options?.zone === 'string' ? options.zone : 'arena';
     this.world = new ZoneWorld(zone);
     this.economy = new ZoneEconomy(this.world);
+    if (zone === 'sindr') {
+      this.outlaws = new ServerRobberGang();
+    }
+    const dayNight = balance.world.dayNight;
+    this.clockSpeed = typeof options?.speed === 'number' ? options.speed : 1;
+    if (typeof options?.minute === 'number') {
+      this.clockMinute = options.minute;
+    } else if (typeof options?.clock === 'number') {
+      this.clockMinute = options.clock;
+    } else if (typeof options?.night === 'number') {
+      const x = Math.min(1, Math.max(0, options.night));
+      this.clockMinute = x <= 0 ? dayNight.startMinute : x >= 1 ? 18 : dayNight.dayMinutes + dayNight.duskMinutes * x;
+      if (options.night === 1) this.clockSpeed = 0;
+    } else {
+      this.clockMinute = dayNight.startMinute;
+    }
     openZone(zone);
     void this.setMetadata({ zone });
 
@@ -69,8 +95,15 @@ export class ZoneRoom extends Room {
     let sincePiles = 0;
     this.setSimulationInterval((deltaMs) => {
       const dt = Math.min(deltaMs / 1000, 0.1);
+      this.clockMinute = (this.clockMinute + (dt / 60) * this.clockSpeed) % cycleMinutes(dayNight);
       this.deliver(this.world.step(dt, this.now()));
       this.pay(this.economy.drain());
+      if (this.outlaws) {
+        const notices = this.outlaws.update(dt, this.now(), this.world, this.economy, this.clockMinute);
+        for (const text of notices) {
+          this.broadcast('notice', { text });
+        }
+      }
       sincePiles += dt;
       if (sincePiles >= PILE_REFRESH_SECONDS) {
         sincePiles = 0;
@@ -138,6 +171,7 @@ export class ZoneRoom extends Room {
     const player = this.world.join(client.sessionId, who, this.now());
     if (!isGuest(who.accountId)) enterRoom(who.accountId);
     client.send('welcome', { you: client.sessionId, t: this.now(), zone: this.world.zone, element: player.element, role: player.role, tier: player.tier });
+    client.send('clock', { minute: this.clockMinute, speed: this.clockSpeed });
     client.send('snap', this.world.snapshot(this.now()));
     this.pay(this.economy.join(client.sessionId));
   }
@@ -151,6 +185,7 @@ export class ZoneRoom extends Room {
   }
 
   override onDispose(): void {
+    this.outlaws?.despawn(this.world);
     this.economy.dispose();
     closeZone(this.world.zone);
   }

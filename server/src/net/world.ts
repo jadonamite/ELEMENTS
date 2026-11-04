@@ -1,4 +1,5 @@
 import type { ActionState, Element, Weapon } from '@elements/shared';
+import { standClear } from '@elements/shared';
 import { balance, rules } from './balance.js';
 import { ServerEnemy, type Strike } from './enemies.js';
 import { PoseHistory } from './history.js';
@@ -17,7 +18,9 @@ export interface Identity {
   role: 'Shaper' | 'Hush';
   element: Element;
   /** Fighting tier from the stored rising; it decides which moves land. */
-  tier?: number;
+  tier?: number | undefined;
+  /** Optional forced carry amount for testing. */
+  forcedCarry?: number | undefined;
 }
 
 /** The tier every rising holds until trials raise or set it: every move but the strongest open. */
@@ -31,6 +34,7 @@ export class ServerPlayer implements Attacker {
   readonly weapon: Weapon;
   readonly hush: boolean;
   readonly tier: number;
+  readonly forcedCarry?: number | undefined;
   x: number;
   y = 0;
   z: number;
@@ -63,6 +67,7 @@ export class ServerPlayer implements Attacker {
     this.element = who.element;
     this.hush = who.role === 'Hush';
     this.tier = who.tier ?? OPEN_TIER;
+    this.forcedCarry = who.forcedCarry;
     this.weapon = !this.hush && who.element === 'AURA' ? 'staff' : 'sword';
     this.x = spawn.x;
     this.z = spawn.z;
@@ -161,7 +166,10 @@ export class ZoneWorld {
 
   constructor(readonly zone: string, rand: () => number = Math.random) {
     this.layout = layoutFor(zone);
-    for (const spawn of this.layout.enemies) this.enemies.set(spawn.id, new ServerEnemy(spawn, rand));
+    for (const spawn of this.layout.enemies) {
+      const pos = zone === 'sindr' ? standClear(spawn.x, spawn.z) : { x: spawn.x, z: spawn.z };
+      this.enemies.set(spawn.id, new ServerEnemy({ ...spawn, x: pos.x, z: pos.z }, rand));
+    }
   }
 
   join(id: string, who: Identity, now: number): ServerPlayer {

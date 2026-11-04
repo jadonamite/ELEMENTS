@@ -1,6 +1,6 @@
 import { SINDR_SPAWN } from '@elements/shared';
 
-export type EnemyKind = 'hound' | 'brawler' | 'armed';
+export type EnemyKind = 'hound' | 'brawler' | 'armed' | 'robber';
 
 export interface EnemySpawn {
   id: string;
@@ -21,7 +21,7 @@ export const ZONES: Record<string, ZoneLayout> = {
     respawn: { x: SINDR_SPAWN.x, z: SINDR_SPAWN.z },
     enemies: [
       { id: 'hound_1', kind: 'hound', x: 128, z: 6 },
-      { id: 'villain_1', kind: 'brawler', x: 140, z: -8 },
+      { id: 'villain_1', kind: 'brawler', x: 138, z: -3 },
       { id: 'villain_2', kind: 'armed', x: 140, z: 9 },
     ],
   },
