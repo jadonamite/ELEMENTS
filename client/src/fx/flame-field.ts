@@ -232,9 +232,9 @@ export class FlameField {
     this.low = low;
     if (!this.loader) return;
     const old = this.textures;
-    // Slot order is the shader's: 0 looping flame, 1 burst, 2 smoke, 3 one-shot tongue, 4 projectile.
+    // Slot order is the shader's: 0 looping flame, 1 burst, 2 smoke, 3 one-shot tongue.
     // A tongue is the baked flame loop played once over its life, so slots 0 and 3 share one texture.
-    const files = ['flame', 'burst', 'smoke', 'flame', 'projectile'];
+    const files = ['flame', 'burst', 'smoke', 'flame'];
     const loaded = new Map<string, import('three').Texture>();
     this.textures = files.map((name, i) => {
       let texture = loaded.get(name);

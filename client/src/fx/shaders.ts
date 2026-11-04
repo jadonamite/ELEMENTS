@@ -202,39 +202,11 @@ void main() {
   float s = sin(iSize.z);
   vec2 r = vec2(local.x * c - local.y * s, local.x * s + local.y * c);
   r.x += sin(iAnim.w * 31.0 + uTime * (3.0 + iAnim.y * 3.0)) * uv.y * uv.y * iSize.x * 0.14;
-  if (iAnim.w > 0.5 && iAnim.x < 3.5) {
+  if (iAnim.w > 0.5) {
     vUv.x = 1.0 - uv.x;
   }
-  if (iAnim.x > 3.5) {
-    vec4 clip0 = projectionMatrix * viewMatrix * vec4(iPos, 1.0);
-    vec4 clip1 = projectionMatrix * viewMatrix * vec4(iPos + iMotion, 1.0);
-    vec2 ndc0 = clip0.xy / max(1e-4, clip0.w);
-    vec2 ndc1 = clip1.xy / max(1e-4, clip1.w);
-    vec2 dir2d = ndc1 - ndc0;
-    float aspect = projectionMatrix[1][1] / max(1e-4, projectionMatrix[0][0]);
-    vec2 screenDir = vec2(dir2d.x * aspect, dir2d.y);
-    float screenLen = length(screenDir);
-
-    float alignWeight = smoothstep(0.04, 0.22, screenLen);
-    vec2 normDir = screenLen > 1e-4 ? normalize(screenDir) : vec2(1.0, 0.0);
-    vec2 axisX = -normDir;
-    vec2 axisY = vec2(-axisX.y, axisX.x);
-
-    vec3 alignedRight = camRight * axisX.x + camUp * axisX.y;
-    vec3 alignedUp = camRight * axisY.x + camUp * axisY.y;
-
-    right = mix(camRight, alignedRight, alignWeight);
-    up = mix(camUp, alignedUp, alignWeight);
-
-    float sideX = (position.x + 0.5 - 0.22) * iSize.x;
-    float headX = position.x * iSize.y;
-    r = vec2(mix(headX, sideX, alignWeight), position.y * iSize.y);
-
-    vUv.x = mix(0.22 + position.x * 0.44, uv.x, alignWeight);
-    vUv.y = mix(0.50 + position.y * 0.44, uv.y, alignWeight);
-  }
   vec3 world = iPos + right * r.x + up * r.y;
-  if (iAnim.x < 3.5) world.xz -= iMotion.xz * (uv.y * uv.y) * 0.035;
+  world.xz -= iMotion.xz * (uv.y * uv.y) * 0.035;
   gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
 }
 `;
@@ -245,7 +217,6 @@ uniform sampler2D uAtlas0;
 uniform sampler2D uAtlas1;
 uniform sampler2D uAtlas2;
 uniform sampler2D uAtlas3;
-uniform sampler2D uAtlas4;
 uniform sampler2D uSceneDepth;
 uniform vec2 uViewport;
 uniform vec2 uNearFar;
@@ -263,26 +234,20 @@ vec4 atlasFrame(float frame) {
   if (vAnim.x < 0.5) return texture2D(uAtlas0, coords);
   if (vAnim.x < 1.5) return texture2D(uAtlas1, coords);
   if (vAnim.x < 2.5) return texture2D(uAtlas2, coords);
-  if (vAnim.x < 3.5) return texture2D(uAtlas3, coords);
-  return texture2D(uAtlas4, coords);
+  return texture2D(uAtlas3, coords);
 }
 void main() {
   int mode = int(vData.w + 0.5);
   vec4 col;
   if (mode <= 1 || mode == 5) {
-    float frame = (vAnim.x < 0.5 || vAnim.x > 3.5) ? mod(uTime * (24.0 * vAnim.y) + vAnim.w * 64.0, 64.0) : clamp(vData.x * 63.0 * vAnim.y, 0.0, 63.0);
-    float nextFrame = (vAnim.x < 0.5 || vAnim.x > 3.5) ? mod(floor(frame) + 1.0, 64.0) : min(63.0, floor(frame) + 1.0);
+    float frame = vAnim.x < 0.5 ? mod(uTime * (24.0 * vAnim.y) + vAnim.w * 64.0, 64.0) : clamp(vData.x * 63.0 * vAnim.y, 0.0, 63.0);
+    float nextFrame = vAnim.x < 0.5 ? mod(floor(frame) + 1.0, 64.0) : min(63.0, floor(frame) + 1.0);
     col = mix(atlasFrame(floor(frame)), atlasFrame(nextFrame), fract(frame));
     // sRGB atlas textures decode to linear light before the hot core feeds bloom.
     if (mode <= 1) {
-      if (vAnim.x > 3.5) {
-        col.rgb *= vec3(1.15, 1.10, 1.02);
-        col.rgb = min(col.rgb, vec3(2.2, 2.0, 1.8));
-      } else {
-        // The baked atlases carry their own fire colour: lift it for bloom, vary yellow-orange per tongue.
-        col.rgb *= 1.6 * vec3(1.0, vAnim.z, mix(1.0, vAnim.z, 0.5));
-        col.rgb = min(col.rgb, vec3(2.3, 2.1, 1.8));
-      }
+      // The baked atlases carry their own fire colour: lift it for bloom, vary yellow-orange per tongue.
+      col.rgb *= 1.6 * vec3(1.0, vAnim.z, mix(1.0, vAnim.z, 0.5));
+      col.rgb = min(col.rgb, vec3(2.3, 2.1, 1.8));
       if (mode == 1) col.rgb = col.rgb.r * vec3(0.6, 0.14, 1.0);
       col.a *= 1.0 - smoothstep(0.65, 1.0, vData.x);
     }

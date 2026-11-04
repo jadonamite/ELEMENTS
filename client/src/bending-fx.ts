@@ -229,6 +229,8 @@ interface FireballProjectile {
   hostile: boolean;
   /** The fight's projectile this fireball draws; it moves and ends only when that does. */
   follow?: Projectile | undefined;
+  /** Where the last trail puff was left. */
+  trailFrom: Vector3;
 }
 
 const POOL_SPARKS = 220;
@@ -242,6 +244,8 @@ const HEAVY_SLASH_CAPTURE = 1.0;
 /** A blade that has not swept by now is not swinging (the move is bare-handed). */
 const SLASH_FALLBACK_AFTER = 0.55;
 const GOLDEN_ANGLE = 2.39996;
+/** Path length between the puffs a fireball leaves behind it. */
+const TRAIL_STEP = 0.2;
 
 const tmpQuat = new Quaternion();
 const tmpVec = new Vector3();
@@ -584,7 +588,7 @@ export class BendingEffects {
     }
 
     for (let i = 0; i < 6; i++) {
-      this.fireballs.push({ active: false, position: new Vector3(), velocity: new Vector3(), element: 'IGNIS', duration: 0, elapsed: 0, hostile: false });
+      this.fireballs.push({ active: false, position: new Vector3(), velocity: new Vector3(), trailFrom: new Vector3(), element: 'IGNIS', duration: 0, elapsed: 0, hostile: false });
     }
   }
 
@@ -806,6 +810,7 @@ export class BendingEffects {
     fb.active = true;
     fb.follow = p;
     fb.position.copy(p.position);
+    fb.trailFrom.copy(p.position);
     fb.velocity.copy(p.velocity);
     fb.element = element;
     fb.hostile = hostile;
@@ -1128,31 +1133,27 @@ export class BendingEffects {
       const mode = flameMode(fb.element);
       const p = fb.position;
       if (mode <= FxMode.HUSH) {
-        // A round hot head (0.7m across) with trailing ribbons (total length with tail 2.2m)
-        this.field.draw(
-          p.x, p.y, p.z,
-          2.2, 0.7,
-          0.2, 0.35, 1.0, mode, 0, 4,
-          fb.velocity.x, fb.velocity.y, fb.velocity.z
-        );
-        // Trail: 2 or 3 small atlas: 0 flame licks per frame just behind head, drifting back and up
-        const backDir = fb.velocity.clone().normalize().negate();
-        const lickCount = this.lowQuality ? 1 : (2 + (Math.random() < 0.5 ? 1 : 0));
-        for (let l = 0; l < lickCount; l++) {
-          const offsetDist = 0.15 + Math.random() * 0.35;
-          const lickPos = p.clone().addScaledVector(backDir, offsetDist);
-          const lickSize = 0.2 + Math.random() * 0.25; // 0.2 to 0.45 m
+        // The head: the burst's young, white-hot ball, rocked back and forth through those frames so it roils.
+        for (let k = 0; k < 2; k++) {
+          const life = 0.075 + 0.04 * (0.5 + 0.5 * Math.sin(fb.elapsed * 11 + k * 2.1));
+          const h = 0.85 - k * 0.2;
+          this.field.draw(p.x, p.y - h * 0.5, p.z, h, h, life, 0.15 + k * 0.6, k ? 0.45 : 0.8, mode, 0, 1);
+        }
+        // The tail: fire the head leaves where it has been, one puff every TRAIL_STEP of the real path,
+        // so it stretches with speed, bends with the flight and reads the same from any side.
+        const gap = fb.trailFrom.distanceTo(p);
+        const n = Math.floor(gap / TRAIL_STEP);
+        for (let i = 1; i <= n; i++) {
+          tmpVec.lerpVectors(fb.trailFrom, p, (i * TRAIL_STEP) / gap);
+          const s = 0.38 + Math.random() * 0.2;
           this.field.emit({
-            x: lickPos.x, y: lickPos.y, z: lickPos.z,
-            vx: backDir.x * (1.5 + Math.random() * 2.0) + (Math.random() - 0.5) * 0.4,
-            vy: 0.6 + Math.random() * 0.6,
-            vz: backDir.z * (1.5 + Math.random() * 2.0) + (Math.random() - 0.5) * 0.4,
-            drag: 1.8,
-            life: 0.15 + Math.random() * 0.10, // 0.15 to 0.25 s
-            w0: lickSize, h0: lickSize * 1.3, w1: lickSize * 0.4, h1: lickSize * 0.5,
-            mode, atlas: 0, alpha: 0.7,
+            x: tmpVec.x + (Math.random() - 0.5) * 0.08, y: tmpVec.y - s * 0.45, z: tmpVec.z + (Math.random() - 0.5) * 0.08,
+            vx: fb.velocity.x * 0.06 + (Math.random() - 0.5) * 0.3, vy: 0.5 + Math.random() * 0.5,
+            vz: fb.velocity.z * 0.06 + (Math.random() - 0.5) * 0.3, drag: 2.5,
+            life: 0.3 + Math.random() * 0.12, w0: s, h0: s, w1: s * 1.4, h1: s * 1.4, mode, atlas: 1, alpha: 0.3,
           });
         }
+        if (n > 0) fb.trailFrom.lerp(p, (n * TRAIL_STEP) / gap);
       } else {
         this.field.draw(p.x, p.y - 0.5, p.z, 1.15, 1.15, 0.14 + (fb.elapsed % 0.1), 0.31, 1, mode, 0, 1, fb.velocity.x, fb.velocity.z);
         this.field.draw(p.x, p.y - 0.3, p.z, 0.7, 0.9, 0.3, 0.77, 1, mode);

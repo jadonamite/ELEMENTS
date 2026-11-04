@@ -26,12 +26,5 @@
     "rows": 8,
     "frameSize": 128,
     "loop": false
-  },
-  "projectile": {
-    "frames": 64,
-    "columns": 8,
-    "rows": 8,
-    "frameSize": 256,
-    "loop": true
   }
 }
