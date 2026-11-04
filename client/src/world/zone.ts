@@ -12,7 +12,6 @@ import {
   Group,
   HalfFloatType,
   HemisphereLight,
-  InstancedMesh,
   LineBasicMaterial,
   LineSegments,
   Matrix4,
@@ -42,17 +41,20 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import balance from '../../../shared/balance.json';
 import { SANITIZE_SHADER } from '../env/postprocessing.js';
 import type { PhysicsWorld } from '../physics.js';
-import { WorldBuilder, type Bucket } from './builder.js';
+import { cellLods, createAoMaterial, WorldBuilder, type Bucket, type Part } from './builder.js';
 import { skyUniforms, WorldClock } from './clock.js';
-import { createEmbers, createFires, createForgeMaterial, createLavaMaterial, createSmoke, createWindowMaterial, LightPool, nightness, worldTime } from './effects.js';
+import { createEmbers, createFires, createForgeMaterial, createLavaMaterial, createPaperMaterial, createSmoke, createWaterMaterial, createWetMaterial, createWindowMaterial, LightPool, nightness, STEAM, worldTime } from './effects.js';
 import { createSky, fieldMesh, heightAt, sampleField, slopeBlend } from './landscape.js';
 import { LOOKS, SurfaceLibrary, worldUv, type Surface } from './materials.js';
 import { buildSindr, PEAKS, WALKABLE } from './sindr.js';
+import { createPlants } from './trees.js';
+import { installHaze } from './haze.js';
 import { buildGorge } from './gorge.js';
 import { buildBarrens } from './barrens.js';
 import { buildFort } from './fort.js';
 import { buildRoofTestRow } from './roof-test.js';
 import { buildTerraceTest, terraceTestAreas } from './terrace-test.js';
+import { buildStyleStreet, STYLES, type StreetStyle } from './style-streets.js';
 
 export { SPAWN } from './sindr.js';
 
@@ -93,7 +95,9 @@ const GRADE_SHADER = {
 export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const params = new URLSearchParams(window.location.search);
   const low = params.get('fxQuality') === 'low';
+  const debug = params.has('debug');
   const clock = new WorldClock(params);
+  installHaze();
   const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -147,7 +151,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const look = {
     daySky: new Color(0xb6c4dc), duskSky: new Color(0xc89a80), nightSky: new Color(0x8496c4),
     dayGround: new Color(0x6e5644), nightGround: new Color(0x2e1c12),
-    dayFog: new Color(0x8e9098), duskFog: new Color(0x7a5444), nightFog: new Color(0x161822),
+    dayFog: new Color(0xb2aca4), duskFog: new Color(0x8a6450), nightFog: new Color(0x161822),
   };
   const applyHour = (): void => {
     const night = nightness.value, dusk = skyUniforms.uDusk.value * (1 - night);
@@ -157,7 +161,8 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     hemi.groundColor.copy(look.dayGround).lerp(look.nightGround, night);
     hemi.intensity = 1.1 + 0.4 * night;
     fog.color.copy(look.dayFog).lerp(look.duskFog, dusk).lerp(look.nightFog, night);
-    fog.density = 0.0028 + 0.0016 * night;
+    // Haze down the streets: about a third gone at 50 m by day, thicker with the night's smoke.
+    fog.density = 0.0075 + 0.002 * night;
     scene.environmentIntensity = 0.8 - 0.2 * night;
     renderer.toneMappingExposure = 0.9 + 0.7 * night;
   };
@@ -170,7 +175,13 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   const lib = new SurfaceLibrary(renderer, low ? '1k' : '2k');
   const terraceTest = params.has('terraceTest');
-  const walkable = terraceTest ? WALKABLE.with(terraceTestAreas()) : WALKABLE;
+  const styleParam = params.get('style') as StreetStyle | null;
+  const style = styleParam && STYLES.includes(styleParam) ? styleParam : null;
+  // The town's built ground (terraces, flights, the keep road) and any trial street's are collected on a
+  // scratch build first, so the terrain is shaped to them before they are built.
+  const townAreas = buildSindr(new WorldBuilder());
+  const styleAreas = style ? buildStyleStreet(style, new WorldBuilder()) : [];
+  const walkable = WALKABLE.with([...townAreas, ...(terraceTest ? terraceTestAreas() : []), ...styleAreas]);
   const ground = (x: number, z: number): number => heightAt(x, z, walkable, PEAKS);
 
   // Near land: walkable flats, banks and hills, matched by a physics heightfield spanning the entire nation.
@@ -200,7 +211,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   // The town.
   const builder = new WorldBuilder();
-  buildSindr(builder, ground);
+  buildSindr(builder);
   buildGorge(builder);
   buildBarrens(builder);
   buildFort(builder);
@@ -208,7 +219,11 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     buildRoofTestRow(builder);
   }
   if (terraceTest) buildTerraceTest(builder);
-  const glows: Record<string, Material> = { window: createWindowMaterial(), forge: createForgeMaterial(), lava: createLavaMaterial() };
+  if (style) buildStyleStreet(style, builder);
+  const glows: Record<string, Material> = {
+    window: createWindowMaterial(), forge: createForgeMaterial(), lava: createLavaMaterial(), ao: createAoMaterial(),
+    wet: createWetMaterial(), water: createWaterMaterial(), paper: createPaperMaterial(),
+  };
   const town = builder.build((bucket: Bucket) => glows[bucket] ?? lib.get(bucket as Surface));
   scene.add(town);
   for (const c of builder.colliders) {
@@ -227,7 +242,9 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const smokeSources = [...builder.chimneys, new Vector3(volcano.x, volcano.height - 40, volcano.z)];
   const smoke = createSmoke(smokeSources, low ? 6 : 10);
   const embers = createEmbers(builder.embers, low ? 6 : 14);
-  scene.add(fires, smoke, embers);
+  const steam = createSmoke(builder.steam, low ? 4 : 7, STEAM);
+  scene.add(fires, smoke, embers, steam);
+  scene.add(createPlants(builder.plants, lib.get('charred_timber_beams'), low));
   const plume = createSmoke(Array.from({ length: 8 }, (_, i) => new Vector3(volcano.x + (i - 4) * 12, volcano.height - 60, volcano.z)), 8);
   plume.scale.setScalar(1);
   (plume.material as unknown as { uniforms: Record<string, { value: unknown }> }).uniforms.uColor!.value = new Color(0x1a1614);
@@ -283,6 +300,9 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       sun.target.position.set(fx, 0, fz);
       sun.position.set(fx, 0, fz).addScaledVector(clock.light.direction, 120);
       pool.update(focus, worldTime.value, camera);
+      // Debug only: a fixed photographer's camera for comparison shots (window.elementsShotCam = [px, py, pz, tx, ty, tz]).
+      const shot = debug ? (window as unknown as { elementsShotCam?: number[] }).elementsShotCam : undefined;
+      if (shot && shot.length === 6) { camera.position.set(shot[0]!, shot[1]!, shot[2]!); camera.lookAt(shot[3]!, shot[4]!, shot[5]!); }
       sky.position.copy(camera.position);
       composer.render();
     },
@@ -303,37 +323,43 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   };
 }
 
+/**
+ * The scanned props, instanced per ground cell: the full model near, the low model past `near`, nothing
+ * past the distance the haze swallows a thing of its size. On low quality only the low model is loaded.
+ */
 async function loadProps(renderer: WebGLRenderer, placements: WorldBuilder['props'], into: Group, low: boolean, iron: Material): Promise<void> {
   const ktx2 = new KTX2Loader().setTranscoderPath('/assets/env/ignis/basis/').detectSupport(renderer);
   const loader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
   const byId = new Map<string, WorldBuilder['props']>();
   for (const p of placements) byId.set(p.id, [...(byId.get(p.id) ?? []), p]);
+  // The procedural iron pieces export without textures; they take the scanned blackened iron.
+  const partsOf = async (id: string, file: string): Promise<{ parts: Part[]; radius: number }> => {
+    const gltf = await loader.loadAsync(`/assets/env/ignis/models/${file}.glb`);
+    gltf.scene.updateMatrixWorld(true);
+    const forged = id === 'iron_brazier' || id === 'anvil';
+    const parts: Part[] = [];
+    let radius = 0;
+    gltf.scene.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh) return;
+      const geometry = forged ? bakeIronUv(mesh.geometry, mesh.matrixWorld) : mesh.geometry;
+      const mat = mesh.material as MeshStandardMaterial;
+      if (mat.isMeshStandardMaterial) mat.envMapIntensity = 0.8;
+      geometry.computeBoundingSphere();
+      radius = Math.max(radius, geometry.boundingSphere!.radius);
+      parts.push({ geometry, material: forged ? iron : mesh.material as Material, local: forged ? undefined : mesh.matrixWorld.clone(), castShadow: true, name: id });
+    });
+    return { parts, radius };
+  };
   await Promise.all([...byId].map(async ([id, list]) => {
     try {
-      const gltf = await loader.loadAsync(`/assets/env/ignis/models/${id}${low ? '_low' : ''}.glb`);
-      gltf.scene.updateMatrixWorld(true);
-      gltf.scene.traverse((o) => {
-        const mesh = o as Mesh;
-        if (!mesh.isMesh) return;
-        // The procedural iron pieces export without textures; they take the scanned blackened iron.
-        const forged = id === 'iron_brazier' || id === 'anvil';
-        const geometry = forged ? bakeIronUv(mesh.geometry, mesh.matrixWorld) : mesh.geometry;
-        const local = forged ? new Matrix4() : mesh.matrixWorld;
-        const inst = new InstancedMesh(geometry, forged ? iron : mesh.material, list.length);
-        const m = new Matrix4();
-        list.forEach((p, i) => {
-          m.compose(new Vector3(p.x, p.y, p.z), new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), p.yaw), new Vector3(p.scale, p.scale, p.scale));
-          inst.setMatrixAt(i, m.multiply(local));
-        });
-        inst.castShadow = true;
-        inst.receiveShadow = true;
-        const mat = mesh.material as MeshStandardMaterial;
-        if (mat.isMeshStandardMaterial) {
-          mat.envMapIntensity = 0.8;
-        }
-        inst.computeBoundingSphere();
-        into.add(inst);
-      });
+      const far = await partsOf(id, `${id}_low`);
+      const size = far.radius * Math.max(...list.map((p) => p.scale));
+      // A barrel (0.5 m) is gone at about 100 m, a cart at 250 m, a boulder or dead tree carries to 600 m.
+      const hideAt = Math.min(600, Math.max(100, size * 130));
+      const near = Math.max(10, size * 8);
+      const levels = low ? [{ from: 0, parts: far.parts }] : [{ from: 0, parts: (await partsOf(id, id)).parts }, { from: near, parts: far.parts }];
+      for (const lod of cellLods(list, levels, hideAt)) into.add(lod);
     } catch (error) {
       console.warn(`Prop ${id} failed to load:`, error);
     }

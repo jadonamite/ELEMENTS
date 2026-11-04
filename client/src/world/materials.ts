@@ -19,7 +19,9 @@ export type Surface =
   | 'basalt_cobblestone' | 'basalt_rock_face' | 'ash_cinder_ground' | 'cooled_lava_crust'
   | 'ashlar_stone_blocks' | 'charred_timber_beams' | 'blackened_rusted_iron' | 'packed_dirt_road'
   | 'roof_slates' | 'sooted_plaster'
-  | 'lime_plaster' | 'red_lacquer' | 'pale_stone' | 'roof_tile_charcoal' | 'roof_tile_red' | 'gold_trim';
+  | 'lime_plaster' | 'red_lacquer' | 'pale_stone' | 'roof_tile_charcoal' | 'roof_tile_red' | 'gold_trim'
+  | 'moss' | 'terracotta'
+  | 'worn_flagstones' | 'ash_plaster' | 'dirt_verge' | 'indigo_cloth' | 'raw_timber' | 'river_cobbles';
 
 export interface SurfaceLook {
   /** Metres covered by one repeat of the texture. */
@@ -32,12 +34,14 @@ export interface SurfaceLook {
   albedo: number;
   roughness?: number;
   normalScale?: number;
-  /** Reuse another surface's scans under a different grade. */
-  source?: Surface;
+  /** Reuse another scan set (a surface's, or a scan no surface uses directly) under a different grade. */
+  source?: Surface | 'clean_plaster';
   /** Plain metal with no scans (gold trim). */
   metal?: number;
   /** Pan-and-cover tile courses drawn over the scan: cover rows across u, courses up v, per texture repeat. */
   courses?: { rows: number; courses: number };
+  /** Laid over other ground with a ragged edge: vertex alpha fades it, so it never writes depth. */
+  overlay?: boolean;
 }
 
 /** Repeat size and grade per scanned surface, pushed toward black basalt and soot. */
@@ -53,11 +57,22 @@ export const LOOKS: Record<Surface, SurfaceLook> = {
   roof_slates: { tile: 2.4, tint: 0xa8a2a0, scan: 0.243, albedo: 0.09, normalScale: 1.3 },
   sooted_plaster: { tile: 3, tint: 0x8a8580, scan: 0.234, albedo: 0.11 },
   // The palace and temple family: lime plaster, lacquered timber, pale floor stone, curved tile roofs, gold trim.
-  lime_plaster: { tile: 3, tint: 0xf2ebe0, scan: 0.234, albedo: 0.42, source: 'sooted_plaster' },
+  lime_plaster: { tile: 3.5, tint: 0xf2ebe0, scan: 0.246, albedo: 0.42, normalScale: 0.8, source: 'clean_plaster' },
   red_lacquer: { tile: 2.4, tint: 0xa3170e, scan: 0.202, albedo: 0.1, roughness: 0.55, normalScale: 0.5, source: 'charred_timber_beams' },
   pale_stone: { tile: 3.2, tint: 0xd9d2c6, scan: 0.036, albedo: 0.32, source: 'ashlar_stone_blocks' },
   roof_tile_charcoal: { tile: 2.4, tint: 0x6a6866, scan: 0.243, albedo: 0.07, normalScale: 0.6, source: 'roof_slates', courses: { rows: 8, courses: 7 } },
   roof_tile_red: { tile: 2.4, tint: 0x8c2a1e, scan: 0.243, albedo: 0.08, normalScale: 0.6, source: 'roof_slates', courses: { rows: 8, courses: 7 } },
+  // Lived-on surfaces: moss and growth in damp corners, fired clay pots and planters.
+  moss: { tile: 3, tint: 0x56603a, scan: 0.094, albedo: 0.055, normalScale: 1.4, source: 'ash_cinder_ground' },
+  terracotta: { tile: 1.5, tint: 0x8a5e4a, scan: 0.234, albedo: 0.13, source: 'sooted_plaster' },
+  // The street: big worn flagstones down the middle, rounded cobbles in bands, packed earth at the edges.
+  worn_flagstones: { tile: 7, tint: 0x8c8a88, scan: 0.276, albedo: 0.13, normalScale: 1.3 },
+  river_cobbles: { tile: 2.2, tint: 0x9a948c, scan: 0.224, albedo: 0.15, normalScale: 1.5, source: 'basalt_cobblestone' },
+  dirt_verge: { tile: 3.5, tint: 0x8a7a6a, scan: 0.046, albedo: 0.1, source: 'packed_dirt_road', overlay: true },
+  // Sindr's plaster: lime washed over and greyed by the forges' ash, never the clean white of a lowland town.
+  ash_plaster: { tile: 3.5, tint: 0xd8d2c8, scan: 0.246, albedo: 0.3, normalScale: 0.8, source: 'clean_plaster' },
+  indigo_cloth: { tile: 1.6, tint: 0x2c3e66, scan: 0.246, albedo: 0.06, normalScale: 0.4, source: 'clean_plaster' },
+  raw_timber: { tile: 2.0, tint: 0x9a7656, scan: 0.202, albedo: 0.17, source: 'charred_timber_beams' },
   gold_trim: { tile: 1.5, tint: 0xd8a84a, scan: 1, albedo: 0.55, roughness: 0.32, metal: 1 },
 };
 
@@ -115,6 +130,14 @@ export class SurfaceLibrary {
       return material;
     }
     if (look.courses) addCourses(material, look.courses.rows, look.courses.courses);
+    if (look.overlay) {
+      material.transparent = true;
+      material.vertexColors = true;
+      material.depthWrite = false;
+      material.polygonOffset = true;
+      material.polygonOffsetFactor = -1;
+      material.polygonOffsetUnits = -2;
+    }
     material.normalScale = new Vector2(look.normalScale ?? 1, look.normalScale ?? 1);
     // Normals stay at 1K on every level: the 2K ones cost four times the download for detail the town camera never sees.
     const load = (map: string, srgb: boolean, apply: (t: Texture) => void): void => {

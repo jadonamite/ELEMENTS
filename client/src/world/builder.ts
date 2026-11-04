@@ -1,10 +1,16 @@
 import {
   BoxGeometry,
+  BufferAttribute,
   BufferGeometry,
+  DataTexture,
+  DoubleSide,
+  MeshBasicMaterial,
   CylinderGeometry,
   Euler,
   ExtrudeGeometry,
   Group,
+  InstancedMesh,
+  LOD,
   Matrix4,
   Mesh,
   Path,
@@ -17,8 +23,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { LOOKS, worldUv, type Surface } from './materials.js';
 import { roof } from './roofs.js';
 
-/** Surfaces that glow instead of taking scanned textures. */
-export type Glow = 'window' | 'forge' | 'lava';
+export type PlantKind = 'ginkgo' | 'maple' | 'weed' | 'fern';
+
+/** Surfaces with their own made material instead of scanned textures: glows, shadow strips, water. */
+export type Glow = 'window' | 'forge' | 'lava' | 'ao' | 'wet' | 'water' | 'paper';
 export type Bucket = Surface | Glow;
 
 export interface Collider {
@@ -43,9 +51,13 @@ export interface HouseSpec {
   /** Roof pitch in radians. */
   pitch?: number;
   door?: number;
+  /** Height of the ground it stands on. */
+  y?: number;
 }
 
-const GLOWS: Glow[] = ['window', 'forge', 'lava'];
+const GLOWS: Glow[] = ['window', 'forge', 'lava', 'ao', 'wet', 'water', 'paper'];
+/** Made surfaces that are flat films over other ground, drawn after it. */
+const FILMS: Glow[] = ['ao', 'wet'];
 
 /** Seeded random numbers, so the town is the same on every load. */
 export function seeded(seed: number): () => number {
@@ -61,14 +73,79 @@ export function seeded(seed: number): () => number {
 
 const up = new Vector3(0, 1, 0);
 
+/**
+ * Ground cells. The town is drawn per cell rather than as one mesh per material across the whole world, so
+ * the renderer's frustum test skips what is behind the camera or outside the sun's shadow box. Bigger cells
+ * mean fewer draw calls, smaller ones tighter culling: merged building pieces use 80 m cells (a street block);
+ * props and plants use 40 m cells, because they also switch detail by distance from their cell's centre
+ * (see cellLods) and a big cell would keep far items at full detail.
+ */
+export const BUILD_CELL = 80;
+export const PROP_CELL = 40;
+const cellKey = (x: number, z: number, size: number): string => `${Math.floor(x / size)},${Math.floor(z / size)}`;
+/** Groups items by the ground cell their position falls in. */
+export function byCell<T extends { x: number; z: number }>(items: T[], size: number): T[][] {
+  const cells = new Map<string, T[]>();
+  for (const it of items) {
+    const k = cellKey(it.x, it.z, size);
+    const list = cells.get(k);
+    if (list) list.push(it); else cells.set(k, [it]);
+  }
+  return [...cells.values()];
+}
+
+export interface Placement { x: number; y: number; z: number; yaw: number; scale: number }
+/** One drawn part of a placed thing: its geometry, material and offset inside the thing. */
+export interface Part { geometry: BufferGeometry; material: Material; local?: Matrix4 | undefined; castShadow: boolean; name: string }
+
+/**
+ * Instanced placements as one LOD per ground cell. Level k draws its parts from `levels[k].from` metres
+ * (camera to cell centre) on; past `hideAt` the cell draws nothing. Distances are padded by the cell's
+ * half-diagonal so the farthest item of a cell is never cut early.
+ */
+export function cellLods(items: Placement[], levels: Array<{ from: number; parts: Part[] }>, hideAt: number): LOD[] {
+  const pad = PROP_CELL * 0.71;
+  const m = new Matrix4(), q = new Quaternion(), s = new Vector3();
+  return byCell(items, PROP_CELL).map((cell) => {
+    const centre = cell.reduce((c, p) => c.add(new Vector3(p.x, p.y, p.z)), new Vector3()).divideScalar(cell.length);
+    const lod = new LOD();
+    lod.position.copy(centre);
+    levels.forEach((level, k) => {
+      const group = new Group();
+      for (const part of level.parts) {
+        const inst = new InstancedMesh(part.geometry, part.material, cell.length);
+        cell.forEach((p, i) => {
+          q.setFromAxisAngle(up, p.yaw);
+          m.compose(new Vector3(p.x - centre.x, p.y - centre.y, p.z - centre.z), q, s.setScalar(p.scale));
+          if (part.local) m.multiply(part.local);
+          inst.setMatrixAt(i, m);
+        });
+        inst.castShadow = part.castShadow;
+        inst.receiveShadow = true;
+        inst.name = part.name;
+        inst.computeBoundingSphere();
+        group.add(inst);
+      }
+      lod.addLevel(group, k === 0 ? 0 : level.from + pad);
+    });
+    lod.addLevel(new Group(), hideAt + pad);
+    return lod;
+  });
+}
+
 export class WorldBuilder {
-  private readonly buckets = new Map<Bucket, BufferGeometry[]>();
+  /** Pieces by material and ground cell. */
+  private readonly buckets = new Map<string, { bucket: Bucket; list: BufferGeometry[] }>();
   readonly colliders: Collider[] = [];
   readonly emitters: Emitter[] = [];
   readonly fires: Array<{ position: Vector3; scale: number }> = [];
   readonly chimneys: Vector3[] = [];
   readonly embers: Vector3[] = [];
   readonly props: Array<{ id: string; x: number; y: number; z: number; yaw: number; scale: number }> = [];
+  /** Trees and weeds, drawn as instances by kind (see trees.ts). */
+  readonly plants: Array<{ kind: PlantKind; x: number; y: number; z: number; yaw: number; scale: number }> = [];
+  /** Where steam hangs: the hot runnel, wash houses, quenching troughs. */
+  readonly steam: Vector3[] = [];
   /** Where pieces go; houses set it to their own frame. */
   private frame = new Matrix4();
 
@@ -83,16 +160,21 @@ export class WorldBuilder {
     g.applyMatrix4(new Matrix4().multiplyMatrices(this.frame, local));
     if (!localUv && !GLOWS.includes(bucket as Glow)) g = worldUv(g, LOOKS[bucket as Surface].tile);
     if (!g.getAttribute('uv1')) g.setAttribute('uv1', g.getAttribute('uv'));
-    const list = this.buckets.get(bucket) ?? [];
-    list.push(g);
-    this.buckets.set(bucket, list);
+    g.computeBoundingBox();
+    const c = g.boundingBox!.getCenter(new Vector3());
+    const key = `${bucket}|${cellKey(c.x, c.z, BUILD_CELL)}`;
+    const entry = this.buckets.get(key);
+    if (entry) entry.list.push(g); else this.buckets.set(key, { bucket, list: [g] });
   }
 
-  /** A box centred at (x, y, z) in the current frame. */
+  /**
+   * A box centred at (x, y, z) in the current frame. Rotation reads as heading (y), then pitch about the
+   * turned x axis, then roll about the turned z axis, so a beam can be aimed along any direction.
+   */
   box(bucket: Bucket, x: number, y: number, z: number, sx: number, sy: number, sz: number,
     rot?: { x?: number; y?: number; z?: number }, localUv?: { u: number; v: number }): void {
     const m = new Matrix4().compose(new Vector3(x, y, z),
-      new Quaternion().setFromEuler(new Euler(rot?.x ?? 0, rot?.y ?? 0, rot?.z ?? 0)),
+      new Quaternion().setFromEuler(new Euler(rot?.x ?? 0, rot?.y ?? 0, rot?.z ?? 0, 'YXZ')),
       new Vector3(1, 1, 1));
     this.add(bucket, new BoxGeometry(sx, sy, sz), m, localUv);
   }
@@ -108,6 +190,14 @@ export class WorldBuilder {
   }
 
   world(x: number, y: number, z: number): Vector3 { return new Vector3(x, y, z).applyMatrix4(this.frame); }
+
+  /** Runs `build` in a frame at (x, y, z) turned by yaw inside the current one, then restores the current frame. */
+  inside(x: number, z: number, yaw: number, y: number, build: () => void): void {
+    const saved = this.frame;
+    this.frame = saved.clone().multiply(new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(1, 1, 1)));
+    build();
+    this.frame = saved;
+  }
 
   /** A solid block the hero and camera stop at, in the current frame. */
   solid(x: number, y: number, z: number, sx: number, sy: number, sz: number): void {
@@ -134,10 +224,32 @@ export class WorldBuilder {
     this.embers.push(this.world(x, y + scale * 0.6, z));
   }
 
+  plant(kind: PlantKind, x: number, z: number, scale = 1, y = 0, yaw = 0): void {
+    const p = this.world(x, y, z);
+    const frameYaw = Math.atan2(this.frame.elements[8]!, this.frame.elements[10]!);
+    this.plants.push({ kind, x: p.x, y: p.y, z: p.z, yaw: yaw + frameYaw, scale });
+  }
+
   prop(id: string, x: number, z: number, yaw: number, scale = 1, y = 0): void {
     const p = this.world(x, y, z);
     const frameYaw = Math.atan2(this.frame.elements[8]!, this.frame.elements[10]!);
     this.props.push({ id, x: p.x, y: p.y, z: p.z, yaw: yaw + frameYaw, scale });
+  }
+
+  /**
+   * A contact shadow: a quad darkest along p0-p1, fading to nothing at p0+out / p1+out (frame coordinates).
+   * Laid where steps meet walls, walls meet the ground and inside recesses, it stands in for ambient occlusion.
+   */
+  ao(p0: [number, number, number], p1: [number, number, number], out: [number, number, number], strength = 1): void {
+    const q = [p0, p1, [p1[0] + out[0], p1[1] + out[1], p1[2] + out[2]], [p0[0] + out[0], p0[1] + out[1], p0[2] + out[2]]];
+    const pos = new Float32Array([...q[0]!, ...q[1]!, ...q[2]!, ...q[0]!, ...q[2]!, ...q[3]!]);
+    const v0 = 1 - Math.min(1, Math.max(0, strength));
+    const uv = new Float32Array([0, v0, 1, v0, 1, 1, 0, v0, 1, 1, 0, 1]);
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(pos, 3));
+    g.setAttribute('uv', new BufferAttribute(uv, 2));
+    g.computeVertexNormals();
+    this.add('ao', g, new Matrix4(), { u: 1, v: 1 });
   }
 
   /** A window: glowing pane set back inside a deep timber casing and sill, on the face at z = face; dir -1 faces -z. */
@@ -207,7 +319,7 @@ export class WorldBuilder {
   /** A town house: basalt plinth, ashlar ground floor, jettied timber-framed plaster floors, slate gable roof. */
   house(spec: HouseSpec, rand: () => number): void {
     const { w, d, floors } = spec;
-    this.at(spec.x, spec.z, spec.yaw);
+    this.at(spec.x, spec.z, spec.yaw, spec.y ?? 0);
     const plinth = 0.45;
     const groundH = 3.3;
     const upperH = 2.7;
@@ -324,21 +436,41 @@ export class WorldBuilder {
     }
   }
 
-  /** Merges every bucket into one mesh per material. */
+  /** Merges every bucket into one mesh per material and ground cell. */
   build(material: (bucket: Bucket) => Material): Group {
     const group = new Group();
-    for (const [bucket, list] of this.buckets) {
+    const materials = new Map<Bucket, Material>();
+    for (const { bucket, list } of this.buckets.values()) {
       const merged = mergeGeometries(list, false);
       if (!merged) continue;
       for (const g of list) g.dispose();
       merged.computeBoundingSphere();
-      const mesh = new Mesh(merged, material(bucket));
+      let mat = materials.get(bucket);
+      if (!mat) { mat = material(bucket); materials.set(bucket, mat); }
+      const mesh = new Mesh(merged, mat);
       mesh.name = bucket;
       mesh.castShadow = !GLOWS.includes(bucket as Glow);
-      mesh.receiveShadow = true;
+      mesh.receiveShadow = bucket !== 'ao';
+      // Films are drawn after the ground they lie on.
+      if (FILMS.includes(bucket as Glow) || bucket === 'dirt_verge') mesh.renderOrder = 1;
       group.add(mesh);
     }
     this.buckets.clear();
     return group;
   }
+}
+
+/** The contact-shadow material: black, fading with uv.v (0 = darkest), drawn over the stone without writing depth. */
+export function createAoMaterial(opacity = 0.9): MeshBasicMaterial {
+  const n = 64, data = new Uint8Array(4 * 2 * n);
+  for (let j = 0; j < n; j++) {
+    const v = j / (n - 1), a = Math.round(255 * Math.pow(1 - v, 1.5));
+    for (let i = 0; i < 2; i++) data.set([a, a, a, 255], (j * 2 + i) * 4);
+  }
+  const map = new DataTexture(data, 2, n);
+  map.needsUpdate = true;
+  return new MeshBasicMaterial({
+    color: 0x000000, transparent: true, opacity, alphaMap: map, depthWrite: false, side: DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+  });
 }

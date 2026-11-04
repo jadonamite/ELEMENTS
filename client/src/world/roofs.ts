@@ -170,7 +170,8 @@ function buildSingleRoofTier(
   // 4. Main Ridge Cap along local X
   const ridgeMat: Surface = trim ? 'gold_trim' : tile;
   const ridgeLen = halfRidgeW * 2 + 0.4;
-  b.cylinder(ridgeMat, 0, ridgeY + 0.08, 0, 0.18, 0.18, ridgeLen, 8);
+  // A round ridge cap lying along the ridge (cylinders stand along y, so it is turned onto x).
+  b.add(ridgeMat, new CylinderGeometry(0.18, 0.18, ridgeLen, 8).rotateZ(Math.PI / 2), new Matrix4().makeTranslation(0, ridgeY + 0.08, 0));
 
   // Upturned ornament at the ridge ends
   for (const sx of [-1, 1]) {
@@ -434,8 +435,9 @@ function buildGableTriangle(
   const boardLen = Math.hypot(p.ridgeY - p.baseY, p.halfD);
   const angle = Math.atan2(p.ridgeY - p.baseY, p.halfD);
 
-  b.box(trimMat, p.x + p.normalSign * 0.05, (p.baseY + p.ridgeY) / 2, p.halfD / 2, boardThick, 0.22, boardLen, { x: -angle });
-  b.box(trimMat, p.x + p.normalSign * 0.05, (p.baseY + p.ridgeY) / 2, -p.halfD / 2, boardThick, 0.22, boardLen, { x: angle });
+  // Each board falls from the ridge (z 0) to the eave end of the gable (z = +-halfD).
+  b.box(trimMat, p.x + p.normalSign * 0.05, (p.baseY + p.ridgeY) / 2, p.halfD / 2, boardThick, 0.22, boardLen, { x: angle });
+  b.box(trimMat, p.x + p.normalSign * 0.05, (p.baseY + p.ridgeY) / 2, -p.halfD / 2, boardThick, 0.22, boardLen, { x: -angle });
 }
 
 /**

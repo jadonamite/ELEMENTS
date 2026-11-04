@@ -1,0 +1,367 @@
+{
+  "about": "Named places in Sindr, IGNIS's forge town, for every system that needs to find them: merchants, guards, robbers, spawns, quests. The town is built from this file. x runs east, z runs south (north is -z), y is the walking height in metres. yaw is the way a front faces: 0 faces south (+z), pi faces north, pi/2 faces east. reach is how close a hero must stand to use the place.",
+  "town": {
+    "name": "Sindr",
+    "nation": "IGNIS",
+    "spawn": {
+      "x": 2,
+      "y": 0,
+      "z": 0,
+      "facing": 1.5708
+    }
+  },
+  "anchors": [
+    {
+      "id": "shrine",
+      "kind": "shrine",
+      "name": "Shrine of Embers",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "reach": 6
+    },
+    {
+      "id": "west_gate",
+      "kind": "gate",
+      "name": "West Gate",
+      "x": 52,
+      "y": 0,
+      "z": 0,
+      "yaw": 1.5708,
+      "reach": 4
+    },
+    {
+      "id": "east_gate",
+      "kind": "gate",
+      "name": "East Gate, to the Gorge Road",
+      "x": 225,
+      "y": 0,
+      "z": 0,
+      "yaw": 1.5708,
+      "reach": 4
+    },
+    {
+      "id": "market",
+      "kind": "market",
+      "name": "Market Square",
+      "x": 125,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "reach": 20
+    },
+    {
+      "id": "stall_shards",
+      "kind": "stall",
+      "name": "Shard stall",
+      "merchant": "sindr_shards",
+      "x": 113,
+      "y": 0,
+      "z": -8,
+      "yaw": 0,
+      "reach": 3.6
+    },
+    {
+      "id": "stall_supplies",
+      "kind": "stall",
+      "name": "Supplies stall",
+      "merchant": "sindr_supplies",
+      "x": 137,
+      "y": 0,
+      "z": -8,
+      "yaw": 0,
+      "reach": 3.6
+    },
+    {
+      "id": "stall_arms",
+      "kind": "stall",
+      "name": "Arms stall",
+      "merchant": "sindr_arms",
+      "x": 113,
+      "y": 0,
+      "z": 8,
+      "yaw": 3.1416,
+      "reach": 3.6
+    },
+    {
+      "id": "stall_spare",
+      "kind": "stall",
+      "name": "Empty stall",
+      "merchant": null,
+      "x": 137,
+      "y": 0,
+      "z": 8,
+      "yaw": 3.1416,
+      "reach": 3.6
+    },
+    {
+      "id": "stall_yard",
+      "kind": "stall",
+      "name": "Yard stall on the Rise",
+      "merchant": null,
+      "x": 105.5,
+      "y": 4.5,
+      "z": -56,
+      "yaw": 1.5708,
+      "reach": 3.6
+    },
+    {
+      "id": "slag_well",
+      "kind": "landmark",
+      "name": "Slag well",
+      "x": 125,
+      "y": 0,
+      "z": 0,
+      "yaw": 0,
+      "reach": 4.5
+    },
+    {
+      "id": "notice_board",
+      "kind": "notice_board",
+      "name": "Notice board",
+      "x": 117,
+      "y": 0,
+      "z": -13.5,
+      "yaw": 0,
+      "reach": 3
+    },
+    {
+      "id": "great_forge",
+      "kind": "forge",
+      "name": "The Great Forge",
+      "x": 82,
+      "y": 0.4,
+      "z": 36,
+      "yaw": 0,
+      "reach": 8
+    },
+    {
+      "id": "raid_hall",
+      "kind": "raid_hall",
+      "name": "Raid Hall branch",
+      "x": 124,
+      "y": 0,
+      "z": 34,
+      "yaw": 3.1416,
+      "reach": 4,
+      "door": {
+        "x": 124,
+        "z": 28.4
+      }
+    },
+    {
+      "id": "rise_foot",
+      "kind": "lane",
+      "name": "Foot of the Rise",
+      "x": 125,
+      "y": 0,
+      "z": -17,
+      "yaw": 3.1416,
+      "reach": 5
+    },
+    {
+      "id": "counting_house_w",
+      "kind": "counting_house",
+      "name": "West Counting House",
+      "x": 115.0,
+      "y": 3.0,
+      "z": -43,
+      "yaw": 1.5708,
+      "reach": 3,
+      "door": {
+        "x": 119.7,
+        "z": -43
+      }
+    },
+    {
+      "id": "counting_house_e",
+      "kind": "counting_house",
+      "name": "East Counting House",
+      "x": 135.0,
+      "y": 3.0,
+      "z": -43,
+      "yaw": -1.5708,
+      "reach": 3,
+      "door": {
+        "x": 130.3,
+        "z": -43
+      }
+    },
+    {
+      "id": "yard",
+      "kind": "yard",
+      "name": "Well Yard",
+      "x": 125,
+      "y": 4.5,
+      "z": -58,
+      "yaw": 0,
+      "reach": 10
+    },
+    {
+      "id": "inn",
+      "kind": "inn",
+      "name": "The Banked Hearth inn",
+      "x": 140.5,
+      "y": 4.5,
+      "z": -56,
+      "yaw": -1.5708,
+      "reach": 3,
+      "door": {
+        "x": 135.5,
+        "z": -56
+      }
+    },
+    {
+      "id": "yard_well",
+      "kind": "landmark",
+      "name": "Yard well",
+      "x": 111,
+      "y": 4.5,
+      "z": -63,
+      "yaw": 0,
+      "reach": 2
+    },
+    {
+      "id": "noble_gate",
+      "kind": "gate",
+      "name": "Lord's Gate",
+      "x": 125,
+      "y": 11,
+      "z": -99,
+      "yaw": 0,
+      "reach": 3
+    },
+    {
+      "id": "masters_hall",
+      "kind": "masters_hall",
+      "name": "Master's Hall",
+      "x": 125,
+      "y": 11,
+      "z": -117,
+      "yaw": 0,
+      "reach": 4,
+      "door": {
+        "x": 125,
+        "z": -107.5
+      }
+    },
+    {
+      "id": "keep_lane",
+      "kind": "keep_lane",
+      "name": "Keep road, foot of the switchbacks",
+      "x": 147,
+      "y": 11,
+      "z": -131,
+      "yaw": 1.5708,
+      "reach": 3,
+      "path": [
+        {
+          "x": 147,
+          "y": 11,
+          "z": -131
+        },
+        {
+          "x": 195,
+          "y": 17.5,
+          "z": -135
+        },
+        {
+          "x": 143,
+          "y": 24,
+          "z": -142
+        },
+        {
+          "x": 199,
+          "y": 30,
+          "z": -146
+        },
+        {
+          "x": 178,
+          "y": 30,
+          "z": -160
+        }
+      ]
+    },
+    {
+      "id": "keep_gate",
+      "kind": "gate",
+      "name": "Gate of Brandr's Keep",
+      "x": 178,
+      "y": 30,
+      "z": -167,
+      "yaw": 0,
+      "reach": 3
+    },
+    {
+      "id": "keep",
+      "kind": "keep",
+      "name": "Brandr's Keep",
+      "x": 178,
+      "y": 30,
+      "z": -182,
+      "yaw": 0,
+      "reach": 10
+    },
+    {
+      "id": "watch_square",
+      "kind": "watch_post",
+      "name": "Watch post, square",
+      "x": 146,
+      "y": 0,
+      "z": -14,
+      "yaw": 0,
+      "reach": 2
+    },
+    {
+      "id": "watch_rise",
+      "kind": "watch_post",
+      "name": "Watch post, Rise yard",
+      "x": 129,
+      "y": 4.5,
+      "z": -52,
+      "yaw": 0,
+      "reach": 2
+    },
+    {
+      "id": "watch_west",
+      "kind": "watch_post",
+      "name": "Watch post, West Gate",
+      "x": 56,
+      "y": 0,
+      "z": 4,
+      "yaw": 1.5708,
+      "reach": 2
+    },
+    {
+      "id": "watch_east",
+      "kind": "watch_post",
+      "name": "Watch post, East Gate",
+      "x": 220,
+      "y": 0,
+      "z": 4,
+      "yaw": -1.5708,
+      "reach": 2
+    },
+    {
+      "id": "alley_hideout",
+      "kind": "hideout",
+      "name": "Back alley behind the square",
+      "x": 101,
+      "y": 0,
+      "z": -15,
+      "yaw": 0,
+      "reach": 3
+    },
+    {
+      "id": "fight_street",
+      "kind": "open_ground",
+      "name": "Cinder Row, lower street",
+      "x": 175,
+      "y": 0,
+      "z": 0,
+      "yaw": 1.5708,
+      "reach": 30
+    }
+  ]
+}
