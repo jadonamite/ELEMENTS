@@ -1,5 +1,6 @@
 import { CylinderGeometry, Matrix4, Vector3 } from 'three';
-import { WorldBuilder } from './builder.js';
+import { seeded, WorldBuilder } from './builder.js';
+import { handCart } from './street.js';
 
 export const GORGE = {
   x0: 224,
@@ -82,8 +83,7 @@ export function buildGorge(b: WorldBuilder): void {
   // 2. Abandoned timber wagon and spilled cargo at x = 390
   b.at(390, 0, 0);
   // Tipped wagon
-  b.prop('wooden_cart', 0, 2.2, -0.35, 1.2);
-  b.solid(0, 1.0, 2.2, 3.2, 2.0, 2.4);
+  b.inside(0, 2.2, -0.35, 0, () => handCart(b, seeded(31)));
 
   // Spilled crates and barrels
   b.prop('crate', -2.2, 1.4, 0.4, 0.9);

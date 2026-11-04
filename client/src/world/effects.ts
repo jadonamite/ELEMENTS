@@ -91,8 +91,25 @@ export function createFires(fires: Array<{ position: Vector3; scale: number }>):
   return mesh;
 }
 
-/** Soft smoke columns rising from chimneys; each puff loops up and fades. */
-export function createSmoke(sources: Vector3[], puffsEach: number): Mesh {
+/** How a column of puffs moves and looks: chimney smoke climbs and spreads; steam hangs low and lingers. */
+export interface PuffLook {
+  /** Metres climbed over a puff's life. */
+  rise: number;
+  /** Sideways drift over a life (x, z), growing with the square of age. */
+  drift: [number, number];
+  size: [number, number];
+  /** Lives per second. */
+  speed: number;
+  opacity: number;
+  color: number;
+  /** Colour when young (fire-lit smoke); the same as color for steam. */
+  lit: number;
+}
+export const SMOKE: PuffLook = { rise: 22, drift: [14, 5], size: [0.9, 6.5], speed: 0.045, opacity: 0.32, color: 0x2a2522, lit: 0x7a3a1a };
+export const STEAM: PuffLook = { rise: 2.2, drift: [2.5, 1.0], size: [0.8, 3.6], speed: 0.07, opacity: 0.075, color: 0xd8d6d2, lit: 0xeeeae4 };
+
+/** Soft puffs rising from each source and fading: chimney smoke, or steam that hangs over hot water. */
+export function createSmoke(sources: Vector3[], puffsEach: number, look: PuffLook = SMOKE): Mesh {
   const geometry = new InstancedBufferGeometry();
   const quad = new PlaneGeometry(1, 1);
   geometry.index = quad.index;
@@ -104,23 +121,27 @@ export function createSmoke(sources: Vector3[], puffsEach: number): Mesh {
   geometry.setAttribute('aPuff', new InstancedBufferAttribute(data, 4));
   geometry.instanceCount = sources.length * puffsEach;
   const material = new ShaderMaterial({
-    uniforms: { uTime: worldTime, uColor: { value: new Color(0x2a2522) }, uLit: { value: new Color(0x7a3a1a) } },
+    uniforms: {
+      uTime: worldTime, uColor: { value: new Color(look.color) }, uLit: { value: new Color(look.lit) },
+      uRise: { value: look.rise }, uDrift: { value: look.drift }, uSize: { value: look.size }, uSpeed: { value: look.speed }, uOpacity: { value: look.opacity },
+    },
     transparent: true,
     depthWrite: false,
     blending: NormalBlending,
     vertexShader: /* glsl */ `
       attribute vec4 aPuff;
-      uniform float uTime;
+      uniform float uTime, uRise, uSpeed;
+      uniform vec2 uDrift, uSize;
       varying vec2 vUv;
       varying float vLife;
       varying float vSeed;
       void main() {
         vUv = uv;
         vSeed = fract(aPuff.x * 0.13 + aPuff.z * 0.29 + aPuff.w * 3.1);
-        float life = fract(uTime * 0.045 + aPuff.w);
+        float life = fract(uTime * uSpeed + aPuff.w);
         vLife = life;
-        float size = mix(0.9, 6.5, life);
-        vec3 drift = vec3(life * life * 14.0, life * 22.0, life * life * 5.0);
+        float size = mix(uSize.x, uSize.y, life);
+        vec3 drift = vec3(life * life * uDrift.x, life * uRise, life * life * uDrift.y);
         vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
         vec3 upv = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
         vec3 world = aPuff.xyz + drift + (right * position.x + upv * position.y) * size;
@@ -130,6 +151,7 @@ export function createSmoke(sources: Vector3[], puffsEach: number): Mesh {
       uniform float uTime;
       uniform vec3 uColor;
       uniform vec3 uLit;
+      uniform float uOpacity;
       varying vec2 vUv;
       varying float vLife;
       varying float vSeed;
@@ -138,7 +160,7 @@ export function createSmoke(sources: Vector3[], puffsEach: number): Mesh {
         vec2 c = vUv - 0.5;
         float n = wFbm(vUv * 3.0 + vec2(vSeed * 9.0, -uTime * 0.12));
         float a = (1.0 - smoothstep(0.15, 0.5, length(c) + (n - 0.5) * 0.35));
-        a *= smoothstep(0.0, 0.12, vLife) * (1.0 - smoothstep(0.45, 1.0, vLife)) * 0.32;
+        a *= smoothstep(0.0, 0.12, vLife) * (1.0 - smoothstep(0.45, 1.0, vLife)) * uOpacity;
         vec3 col = mix(uLit, uColor, smoothstep(0.0, 0.35, vLife));
         gl_FragColor = vec4(col, a);
       }`,
@@ -146,7 +168,7 @@ export function createSmoke(sources: Vector3[], puffsEach: number): Mesh {
   const mesh = new Mesh(geometry, material);
   mesh.frustumCulled = false;
   mesh.renderOrder = 2;
-  mesh.name = 'smoke';
+  mesh.name = look === STEAM ? 'steam' : 'smoke';
   return mesh;
 }
 
@@ -237,6 +259,71 @@ export function createWindowMaterial(): MeshStandardMaterial {
       .replace('#include <common>', '#include <common>\nvarying vec2 vEmissiveUv;\nvarying float vWinSeed;')
       .replace('#include <uv_vertex>', '#include <uv_vertex>\nvEmissiveUv = uv;\nvWinSeed = fract(sin(dot(floor(position.xz / 2.5), vec2(12.9898, 78.233))) * 43758.5453);');
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vEmissiveUv;\nvarying float vWinSeed;');
+  };
+  return material;
+}
+
+/**
+ * Standing water on paving: a dark glossy film that mirrors the sky, its edge broken by noise.
+ * The patch quads carry 0..1 uvs; each patch picks its own blob from the noise by where it lies.
+ */
+export function createWetMaterial(): MeshStandardMaterial {
+  const material = new MeshStandardMaterial({
+    color: 0x0a0b0d, roughness: 0.05, metalness: 0, transparent: true, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vWetUv;\nvarying vec2 vWetSeed;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvWetUv = uv;\nvWetSeed = (modelMatrix * vec4(position, 1.0)).xz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying vec2 vWetUv;\nvarying vec2 vWetSeed;\n${NOISE}`)
+      .replace('#include <alphamap_fragment>', `
+        vec2 wc = vWetUv - 0.5;
+        float wn = wFbm(vWetSeed * 0.9) * 0.55 + wFbm(vWetSeed * 3.1 + 7.0) * 0.25;
+        float wr = length(wc) * 2.0 + (wn - 0.4) * 0.9;
+        // A wet rim darkens the stone; the middle holds a skin of water that mirrors the sky.
+        float wet = 1.0 - smoothstep(0.55, 0.95, wr);
+        float pool = 1.0 - smoothstep(0.2, 0.55, wr);
+        diffuseColor.a = wet * mix(0.5, 0.92, pool);`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(0.38, 0.03, pool);')
+      // The scene's sky map reflects at the scene's environment strength, which material settings cannot raise;
+      // standing water mirrors far more than stone, so the pool's reflection is strengthened here.
+      .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\n#if defined( RE_IndirectSpecular )\nradiance *= mix(1.0, 1.6, pool);\n#endif');
+  };
+  return material;
+}
+
+/** Hot spring water in the runnel: near black, glossy, slowly rippling, with a faint warmth after dark. */
+export function createWaterMaterial(): MeshStandardMaterial {
+  const material = new MeshStandardMaterial({ color: 0x0b1112, roughness: 0.06, metalness: 0, envMapIntensity: 1.4, emissive: 0x3a1408 });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = worldTime;
+    shader.uniforms.uNight = nightness;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWaterPos;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWaterPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nuniform float uTime;\nuniform float uNight;\nvarying vec3 vWaterPos;\n${NOISE}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        vec2 wp = vWaterPos.xz * 1.7;
+        float h0 = wFbm(wp + vec2(uTime * 0.35, uTime * 0.12));
+        float hx = wFbm(wp + vec2(0.05, 0.0) + vec2(uTime * 0.35, uTime * 0.12));
+        float hz = wFbm(wp + vec2(0.0, 0.05) + vec2(uTime * 0.35, uTime * 0.12));
+        normal = normalize(normal + mat3(viewMatrix) * (vec3(h0 - hx, 0.0, h0 - hz) * 2.2));`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 0.15 + 0.85 * uNight;');
+  };
+  return material;
+}
+
+/** Red paper lanterns: deep red by day, glowing from the candle inside after dark. */
+export function createPaperMaterial(): MeshStandardMaterial {
+  const material = new MeshStandardMaterial({ color: 0x7a1a10, roughness: 0.8, metalness: 0, emissive: 0xff3a14 });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uNight = nightness;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uNight;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 0.06 + 1.1 * smoothstep(0.1, 0.5, uNight);');
   };
   return material;
 }

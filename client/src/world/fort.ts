@@ -1,5 +1,6 @@
 import { CylinderGeometry, Matrix4, Vector3 } from 'three';
-import { WorldBuilder } from './builder.js';
+import { seeded, WorldBuilder } from './builder.js';
+import { handCart } from './street.js';
 import { roof } from './roofs.js';
 
 export const FORT = {
@@ -128,7 +129,7 @@ export function buildFort(b: WorldBuilder): void {
 
   // Supply depot along north edge of courtyard (z = -20)
   b.at(gx - 25, -20, 0);
-  b.prop('wooden_cart', -6, 0, 0.4, 1.2);
+  b.inside(-6, 0, 0.4, 0, () => handCart(b, seeded(37)));
   b.prop('crate', 2, 0, 0.2, 1.0);
   b.prop('crate', 4, 1, 0.8, 0.9);
   b.prop('barrel', 0, 2.5, 0, 0.9);

@@ -1,7 +1,7 @@
 import { seeded, type WorldBuilder } from './builder.js';
 import { rectArea, stripArea, type Area, type Rect } from './levels.js';
 import { stairRun, stairs } from './stairs.js';
-import { retainingWall, terraceTop } from './walls.js';
+import { dressTerrace, retainingWall, terraceTop } from './walls.js';
 
 /**
  * A test hill on the open Slag Barrens (?town&terraceTest): ground at 0, a terrace at 3.5 and one at 7,
@@ -98,6 +98,18 @@ export function buildTerraceTest(b: WorldBuilder): void {
   retainingWall(b, { path: [{ x: LANE.x0 + LANE.len, z: inner.z1 }, { x: LANE.x0, z: inner.z1 }], bottom: (x) => lane1(x), top: (x) => lane2(x), parapet: 0.9 }, rand);
   retainingWall(b, { path: [{ x: LANE.x0, z: inner.z1 }, { x: LANE.padX0, z: inner.z1 }], bottom: 0, top: L.lowY, parapet: 0.9 }, rand);
   retainingWall(b, { path: [{ x: LANE.padX0, z: inner.z1 }, { x: LANE.padX0, z }], bottom: 0, top: L.lowY, parapet: 0.9 }, rand);
+
+  // Lived-on tops: drains and planters along the drop, everyday things kept off the stair heads and the houses.
+  const turnBox = { x0: landing.x0 - runHalf - 1, x1: landing.x1 + 1, z0: L.low.z0, z1: landing.z1 + 1 };
+  dressTerrace(b, L.low, L.lowY, rand, {
+    edge: 's', density: 0.8,
+    clear: [{ x0: STAIR1_X - 3, x1: STAIR1_X + 3, z0: z - 4, z1: z }, turnBox, { x0: LANE.padX0 - 1, x1: LANE.x0 + 1, z0: z - 4, z1: z },
+      { x0: 548, x1: 556, z0: -82, z1: -73 }],
+  });
+  dressTerrace(b, L.high, L.highY, rand, {
+    edge: 's', density: 0.8,
+    clear: [{ x0: TURN.x - 3, x1: TURN.x + 3, z0: L.low.z0 - 4, z1: L.low.z0 }, { x0: 544, x1: 552, z0: -108, z1: -99 }],
+  });
 
   // Stand-in houses, one per terrace.
   for (const [x, zz, y] of [[552, -78, L.lowY], [548, -104, L.highY]] as const) {

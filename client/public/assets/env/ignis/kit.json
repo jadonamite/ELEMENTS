@@ -11,7 +11,7 @@
   "totalSizeLowKB": 19254,
   "totalSizeHighMB": 31.0,
   "totalSizeLowMB": 18.8,
-  "materialsCount": 8,
+  "materialsCount": 10,
   "modelsCount": 17,
   "materials": [
     {
@@ -195,6 +195,52 @@
           "diffKtx2": "/assets/env/ignis/materials/packed_dirt_road_diff_1k.ktx2",
           "norKtx2": "/assets/env/ignis/materials/packed_dirt_road_nor_uastc_1k.ktx2",
           "armKtx2": "/assets/env/ignis/materials/packed_dirt_road_arm_1k.ktx2"
+        }
+      }
+    },
+    {
+      "id": "worn_flagstones",
+      "name": "Worn Flagstones",
+      "category": "Ground / Architecture",
+      "tiling": 7,
+      "source": "Poly Haven (rock_tile_floor)",
+      "sourceUrl": "https://polyhaven.com/a/rock_tile_floor",
+      "license": "CC0",
+      "sizeHighKB": 2439,
+      "sizeLowKB": 1573,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/worn_flagstones_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/worn_flagstones_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/worn_flagstones_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/worn_flagstones_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/worn_flagstones_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/worn_flagstones_arm_1k.ktx2"
+        }
+      }
+    },
+    {
+      "id": "clean_plaster",
+      "name": "Lime Plaster",
+      "category": "Architecture",
+      "tiling": 3.5,
+      "source": "Poly Haven (white_plaster_02)",
+      "sourceUrl": "https://polyhaven.com/a/white_plaster_02",
+      "license": "CC0",
+      "sizeHighKB": 2373,
+      "sizeLowKB": 1503,
+      "files": {
+        "high": {
+          "diffKtx2": "/assets/env/ignis/materials/clean_plaster_diff_2k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/clean_plaster_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/clean_plaster_arm_2k.ktx2"
+        },
+        "low": {
+          "diffKtx2": "/assets/env/ignis/materials/clean_plaster_diff_1k.ktx2",
+          "norKtx2": "/assets/env/ignis/materials/clean_plaster_nor_uastc_1k.ktx2",
+          "armKtx2": "/assets/env/ignis/materials/clean_plaster_arm_1k.ktx2"
         }
       }
     }

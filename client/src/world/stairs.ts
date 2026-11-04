@@ -10,8 +10,8 @@ export interface StairSpec {
   to: { x: number; z: number; y: number };
   width: number;
   surface: 'ashlar_stone_blocks' | 'pale_stone' | 'basalt_rock_face';
-  /** Side walls with coping and newels. */
-  cheeks?: boolean;
+  /** Side walls with coping and newels: both (default), none, or only the one on the climber's left or right. */
+  cheeks?: boolean | 'left' | 'right';
   /** Steps between landings. */
   landingEvery?: number;
 }
@@ -65,6 +65,12 @@ export function stairs(b: WorldBuilder, spec: StairSpec, rand: () => number): Ar
         // The step's body: its front face is the riser.
         b.box(surf, 0, (fillBottom + top - TREAD_T) / 2, z0 + t / 2, w, top - TREAD_T - fillBottom, t);
         treadStones(b, surf, w, z0 - NOSE, t + NOSE, top, rand);
+        // Contact shadow where the tread meets the cheeks and the next riser.
+        if (spec.cheeks !== false) {
+          if (spec.cheeks !== 'right') b.ao([w / 2, top + 0.004, z0], [w / 2, top + 0.004, z0 + t], [-0.5, 0, 0], 0.8);
+          if (spec.cheeks !== 'left') b.ao([-w / 2, top + 0.004, z0], [-w / 2, top + 0.004, z0 + t], [0.5, 0, 0], 0.8);
+        }
+        if (i < s.m) b.ao([-w / 2, top + 0.004, z0 + t], [w / 2, top + 0.004, z0 + t], [0, 0, -0.16], 0.45);
       }
     } else {
       b.box(surf, 0, (fillBottom + s.y0 - TREAD_T) / 2, s.a0 + s.d / 2, w, s.y0 - TREAD_T - fillBottom, s.d);
@@ -91,7 +97,10 @@ export function stairs(b: WorldBuilder, spec: StairSpec, rand: () => number): Ar
     }
   }
 
-  if (spec.cheeks !== false) cheeks(b, surf === 'pale_stone' ? 'ashlar_stone_blocks' : surf, segs, t, r, w, run, rise, fillBottom);
+  if (spec.cheeks !== false) {
+    const sides = spec.cheeks === 'left' ? [1] : spec.cheeks === 'right' ? [-1] : [-1, 1];
+    cheeks(b, surf === 'pale_stone' ? 'ashlar_stone_blocks' : surf, segs, t, r, w, run, rise, fillBottom, sides);
+  }
   b.at(0, 0, 0);
 
   const area = stripArea('stair', from.x, from.z, yaw, run, w + 2 * CHEEK_W, from.y, to.y, from.y);
@@ -131,7 +140,8 @@ function treadStones(b: WorldBuilder, surf: Surface, w: number, z0: number, dept
 }
 
 /** Cheek walls on both sides following the nosing line, coping along the top, newels at the foot and head. */
-function cheeks(b: WorldBuilder, surf: Surface, segs: Segment[], t: number, r: number, w: number, run: number, rise: number, bottom: number): void {
+function cheeks(b: WorldBuilder, surf: Surface, segs: Segment[], t: number, r: number, w: number, run: number, rise: number, bottom: number,
+  sides: number[]): void {
   // The top line of the cheek, as points along the stair.
   const line: Array<[number, number]> = [];
   for (const s of segs) {
@@ -147,7 +157,7 @@ function cheeks(b: WorldBuilder, surf: Surface, segs: Segment[], t: number, r: n
   shape.lineTo(run, bottom);
   for (let i = line.length - 1; i >= 0; i--) shape.lineTo(line[i]![0], line[i]![1]);
   shape.closePath();
-  for (const side of [-1, 1]) {
+  for (const side of sides) {
     const xc = side * (w / 2 + CHEEK_W / 2);
     const g = new ExtrudeGeometry(shape, { depth: CHEEK_W, bevelEnabled: false });
     b.add(surf, g, new Matrix4().makeTranslation(xc + CHEEK_W / 2, 0, 0).multiply(new Matrix4().makeRotationY(-Math.PI / 2)));
