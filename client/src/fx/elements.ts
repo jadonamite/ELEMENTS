@@ -38,7 +38,7 @@ import {
 } from 'three';
 import type { Element } from '../../../shared/src/index.js';
 import type { Projectile } from '../attacks/projectile.js';
-import type { CombatSpace } from '../attacks/space.js';
+import { carry, type CombatSpace } from '../attacks/space.js';
 
 type Updater = (age: number, delta: number) => boolean;
 /**
@@ -740,22 +740,6 @@ export class ElementEffects {
     return new Fan(centre.clone().setY(0), open);
   }
 
-  /**
-   * Moves a loose piece (chip, droplet, dust) one step. Sideways motion asks the world first, and a
-   * piece that would go into a wall, pillar or raised TERRA wall bounces back off it instead.
-   */
-  private carry(position: Vector3, velocity: Vector3, dt: number, size: number): void {
-    stepFrom.copy(position).setY(Math.max(position.y, size + 0.05));
-    stepTo.copy(stepFrom).set(stepFrom.x + velocity.x * dt, stepFrom.y, stepFrom.z + velocity.z * dt);
-    if (this.space?.obstruction(stepFrom, stepTo, size) != null) {
-      velocity.x *= -0.4;
-      velocity.z *= -0.4;
-      position.y += velocity.y * dt;
-      return;
-    }
-    position.addScaledVector(velocity, dt);
-  }
-
   private mesh(geo: BufferGeometry, mat: Material, cast = true): Mesh {
     const m = new Mesh(geo, mat);
     m.castShadow = cast;
@@ -780,7 +764,7 @@ export class ElementEffects {
     this.add(group, (age, dt) => {
       for (const d of drops) {
         d.v.y -= 9.8 * dt;
-        this.carry(d.m.position, d.v, dt, 0.08);
+        carry(this.space, d.m.position, d.v, dt, 0.08);
         if (d.m.position.y < 0.03) { d.m.position.y = 0.03; d.v.set(0, 0, 0); }
         d.m.quaternion.copy(this.scene.userData.cameraQuaternion ?? d.m.quaternion);
       }
@@ -1115,7 +1099,7 @@ export class ElementEffects {
     this.add(group, (age, dt) => {
       for (const p of parts) {
         p.v.y -= 9.8 * dt;
-        this.carry(p.m.position, p.v, dt, size * 1.6); // the largest chip
+        carry(this.space, p.m.position, p.v, dt, size * 1.6); // the largest chip
         if (p.m.position.y < size) { p.m.position.y = size; p.v.multiplyScalar(0.4); p.v.y = Math.abs(p.v.y) * 0.3; }
         p.m.rotation.x += p.spin;
         if (age > 1.2) p.m.scale.multiplyScalar(0.9);
@@ -1135,13 +1119,13 @@ export class ElementEffects {
       const a = (i / count) * Math.PI * 2;
       // Spread out from the centre the same way it moves, so no puff starts inside a wall.
       m.position.copy(at).setY(at.y + 0.3);
-      this.carry(m.position, new Vector3(Math.cos(a) * radius * 0.4, 0, Math.sin(a) * radius * 0.4), 1, 0.1);
+      carry(this.space, m.position, new Vector3(Math.cos(a) * radius * 0.4, 0, Math.sin(a) * radius * 0.4), 1, 0.1);
       puffs.push({ m, v: new Vector3(Math.cos(a) * radius * 1.5, 0.4 + Math.random() * 0.5, Math.sin(a) * radius * 1.5) });
       group.add(m);
     }
     this.add(group, (age, dt) => {
       for (const p of puffs) {
-        this.carry(p.m.position, p.v, dt, 0.1);
+        carry(this.space, p.m.position, p.v, dt, 0.1);
         p.v.multiplyScalar(0.92);
         p.m.scale.setScalar(0.6 + age * 2.2);
         p.m.quaternion.copy(this.scene.userData.cameraQuaternion ?? p.m.quaternion);

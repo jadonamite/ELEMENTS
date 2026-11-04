@@ -17,7 +17,6 @@ import {
   NormalBlending,
   PlaneGeometry,
   PointLight,
-  Quaternion,
   RingGeometry,
   SphereGeometry,
   TubeGeometry,
@@ -32,6 +31,8 @@ import { SoftDepth } from './fx/soft-depth.js';
 import { GroundRings } from './fx/ground-ring.js';
 import { FireWalls } from './fx/fire-wall.js';
 import type { Projectile } from './attacks/projectile.js';
+import type { CombatSpace } from './attacks/space.js';
+import { Debris } from './fx/debris.js';
 
 export type BendingType = Element | 'HUSH';
 
@@ -108,8 +109,8 @@ function smokeMode(element: BendingType): FxMode {
   }
 }
 
-/** Canvas textures for sparks, stone chips and scorch decals. */
-function createProceduralTexture(type: 'spark' | 'chip' | 'scorch'): CanvasTexture | null {
+/** Canvas textures for sparks and scorch decals. */
+function createProceduralTexture(type: 'spark' | 'scorch'): CanvasTexture | null {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
   const size = type === 'scorch' ? 256 : 64;
   const canvas = document.createElement('canvas');
@@ -127,21 +128,6 @@ function createProceduralTexture(type: 'spark' | 'chip' | 'scorch'): CanvasTextu
     grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
-  } else if (type === 'chip') {
-    // An irregular stone fragment, lit from the top left.
-    ctx.beginPath();
-    const points = 7;
-    for (let i = 0; i < points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const r = center * (0.55 + ((i * 37) % 10) / 25);
-      ctx.lineTo(center + Math.cos(a) * r, center + Math.sin(a) * r);
-    }
-    ctx.closePath();
-    const grad = ctx.createLinearGradient(0, 0, size, size);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    grad.addColorStop(1, 'rgba(120, 120, 120, 1)');
-    ctx.fillStyle = grad;
-    ctx.fill();
   } else {
     const grad = ctx.createRadialGradient(center, center, 0, center, center, center);
     grad.addColorStop(0, 'rgba(12, 10, 8, 0.9)');
@@ -170,28 +156,6 @@ function createProceduralTexture(type: 'spark' | 'chip' | 'scorch'): CanvasTextu
   const texture = new CanvasTexture(canvas);
   texture.needsUpdate = true;
   return texture;
-}
-
-type SpriteKind = 'spark' | 'chip';
-
-interface Particle {
-  mesh: Mesh;
-  mat: MeshBasicMaterial;
-  active: boolean;
-  kind: SpriteKind;
-  position: Vector3;
-  velocity: Vector3;
-  gravity: number;
-  drag: number;
-  elapsed: number;
-  duration: number;
-  startSize: number;
-  endSize: number;
-  rotation: number;
-  rotationSpeed: number;
-  colorCore: Color;
-  colorMid: Color;
-  baseOpacity: number;
 }
 
 interface ScorchMark {
@@ -247,7 +211,8 @@ const GOLDEN_ANGLE = 2.39996;
 /** Path length between the puffs a fireball leaves behind it. */
 const TRAIL_STEP = 0.2;
 
-const tmpQuat = new Quaternion();
+const pieceColor = new Color();
+const pieceMid = new Color();
 const tmpVec = new Vector3();
 
 /**
@@ -259,7 +224,9 @@ const tmpVec = new Vector3();
  */
 export class BendingEffects {
   private readonly root = new Group();
-  private readonly particles: Particle[] = [];
+  private readonly debris: Debris;
+  /** The world loose sparks and stones bounce off. */
+  set space(space: Pick<CombatSpace, 'obstruction'> | undefined) { this.debris.space = space; }
   private readonly scorchPool: ScorchMark[] = [];
   private readonly field: FlameField;
   private readonly depth: SoftDepth;
@@ -272,7 +239,6 @@ export class BendingEffects {
   private readonly trail: BladeTrail;
 
   private readonly texSpark = createProceduralTexture('spark');
-  private readonly texChip = createProceduralTexture('chip');
   private readonly texScorch = createProceduralTexture('scorch');
 
   // Lit sword
@@ -525,33 +491,7 @@ export class BendingEffects {
     syncAtlas();
     this.setQuality(typeof location !== 'undefined' && new URLSearchParams(location.search).get('fxQuality') === 'low' ? 'low' : 'high');
 
-    const quadGeo = new PlaneGeometry(1, 1);
-    const addSprites = (kind: SpriteKind, count: number): void => {
-      for (let i = 0; i < count; i++) {
-        const mat = new MeshBasicMaterial({
-          map: kind === 'spark' ? this.texSpark : this.texChip,
-          transparent: true,
-          blending: kind === 'spark' ? AdditiveBlending : NormalBlending,
-          depthWrite: false,
-          side: DoubleSide,
-          opacity: 0,
-          fog: false,
-        });
-        const mesh = new Mesh(quadGeo, mat);
-        mesh.visible = false;
-        mesh.renderOrder = 3;
-        this.root.add(mesh);
-        this.particles.push({
-          mesh, mat, active: false, kind,
-          position: new Vector3(), velocity: new Vector3(),
-          gravity: 0, drag: 0.98, elapsed: 0, duration: 1,
-          startSize: 0.1, endSize: 0.05, rotation: 0, rotationSpeed: 0,
-          colorCore: new Color(), colorMid: new Color(), baseOpacity: 1,
-        });
-      }
-    };
-    addSprites('spark', POOL_SPARKS);
-    addSprites('chip', POOL_CHIPS);
+    this.debris = new Debris(this.root, this.texSpark, POOL_SPARKS, POOL_CHIPS);
 
     const scorchGeo = new PlaneGeometry(1, 1);
     scorchGeo.rotateX(-Math.PI / 2);
@@ -943,7 +883,7 @@ export class BendingEffects {
     this.field.end(delta);
     this.rings.update(delta);
     this.trail.update(delta);
-    this.updateSprites(delta, camera);
+    this.debris.update(delta, camera);
     this.updateScorch(delta);
   }
 
@@ -1296,57 +1236,6 @@ export class BendingEffects {
     }
   }
 
-  private updateSprites(delta: number, camera?: Camera): void {
-    const camQuat = camera?.quaternion;
-    if (camQuat) tmpQuat.copy(camQuat).invert();
-    for (const p of this.particles) {
-      if (!p.active) continue;
-      p.elapsed += delta;
-      const t = p.elapsed / p.duration;
-      if (t >= 1) {
-        p.active = false;
-        p.mesh.visible = false;
-        continue;
-      }
-      p.velocity.y += p.gravity * delta;
-      const damp = Math.pow(p.drag, delta * 60);
-      p.velocity.x *= damp;
-      p.velocity.z *= damp;
-      p.position.addScaledVector(p.velocity, delta);
-      if (p.kind === 'chip' && p.position.y < 0.03) {
-        p.position.y = 0.03;
-        p.velocity.set(p.velocity.x * 0.4, Math.abs(p.velocity.y) * 0.25, p.velocity.z * 0.4);
-        p.rotationSpeed *= 0.5;
-      }
-      p.mesh.position.copy(p.position);
-
-      const size = p.startSize + t * (p.endSize - p.startSize);
-      if (camQuat) {
-        p.mesh.quaternion.copy(camQuat);
-        if (p.kind === 'spark') {
-          // Streak along the screen-space direction of travel.
-          const v = tmpVec.copy(p.velocity).applyQuaternion(tmpQuat);
-          p.mesh.rotateZ(Math.atan2(v.y, v.x));
-          const stretch = 1 + Math.min(3, Math.hypot(v.x, v.y) * 0.5);
-          p.mesh.scale.set(size * stretch, size, 1);
-        } else {
-          p.rotation += p.rotationSpeed * delta;
-          p.mesh.rotateZ(p.rotation);
-          p.mesh.scale.setScalar(size);
-        }
-      } else {
-        p.mesh.scale.setScalar(size);
-      }
-
-      if (p.kind === 'spark') {
-        p.mat.color.copy(p.colorCore).lerp(p.colorMid, Math.min(1, t * 1.5));
-        p.mat.opacity = p.baseOpacity * (1 - t * t);
-      } else {
-        p.mat.opacity = p.baseOpacity * (1 - Math.pow(t, 4));
-      }
-    }
-  }
-
   private updateScorch(delta: number): void {
     for (const s of this.scorchPool) {
       if (!s.active) continue;
@@ -1366,7 +1255,7 @@ export class BendingEffects {
   }
 
   private spawnParticle(
-    kind: SpriteKind,
+    kind: 'spark' | 'chip',
     pos: Vector3,
     vel: Vector3,
     duration: number,
@@ -1377,40 +1266,19 @@ export class BendingEffects {
   ): void {
     if (this.lowQuality && Math.random() > 0.5) return;
     // Earth throws grit instead of sparks.
-    if (kind === 'spark' && element === 'TERRA') kind = 'chip';
-    const p = this.particles.find(part => !part.active && part.kind === kind);
-    if (!p) return;
-
-    const style = ELEMENT_STYLES[element] ?? ELEMENT_STYLES.IGNIS;
-    p.active = true;
-    p.position.copy(pos);
-    p.velocity.copy(vel);
-    p.elapsed = 0;
-    p.duration = duration;
-    p.startSize = startSize;
-    p.endSize = endSize;
-    p.rotation = Math.random() * Math.PI * 2;
-    p.rotationSpeed = (Math.random() - 0.5) * 12.0;
-    p.baseOpacity = baseOpacity;
-
-    if (kind === 'spark') {
-      p.gravity = element === 'AQUES' ? -9.0 : element === 'AURA' ? 0 : -4.0;
-      p.drag = element === 'AURA' ? 0.93 : 0.975;
-      p.colorCore.set(style.core);
-      p.colorMid.set(style.primary);
-    } else {
-      p.gravity = -11.0;
-      p.drag = 0.985;
-      const shade = 0.22 + Math.random() * 0.18;
-      p.colorCore.setRGB(shade * 1.1, shade, shade * 0.85);
-      p.mat.color.copy(p.colorCore);
+    if (kind === 'chip' || element === 'TERRA') {
+      // Dark volcanic stone (linear values: 0.035 to 0.075 shows as a deep grey).
+      const shade = 0.035 + Math.random() * 0.04;
+      pieceColor.setRGB(shade * 1.08, shade, shade * 0.9);
+      this.debris.spawn('rock', { position: pos, velocity: vel, duration, startSize, endSize: startSize, gravity: -11, drag: 0.985, core: pieceColor, opacity: 1 });
+      return;
     }
-
-    p.mat.color.copy(p.colorCore);
-    p.mat.opacity = baseOpacity;
-    p.mesh.position.copy(pos);
-    p.mesh.scale.setScalar(startSize);
-    p.mesh.visible = true;
+    const style = ELEMENT_STYLES[element] ?? ELEMENT_STYLES.IGNIS;
+    this.debris.spawn('spark', {
+      position: pos, velocity: vel, duration, startSize, endSize,
+      gravity: element === 'AQUES' ? -9.0 : element === 'AURA' ? 0 : -4.0, drag: element === 'AURA' ? 0.93 : 0.975,
+      core: pieceColor.set(style.core), mid: pieceMid.set(style.primary), opacity: baseOpacity,
+    });
   }
 
   private spawnScorch(pos: Vector3, scale: number, duration: number): void {
@@ -1438,8 +1306,7 @@ export class BendingEffects {
   }
 
   dispose(): void {
-    this.particles[0]?.mesh.geometry.dispose();
-    for (const p of this.particles) p.mat.dispose();
+    this.debris.dispose();
     this.scorchPool[0]?.mesh.geometry.dispose();
     for (const s of this.scorchPool) s.mat.dispose();
     this.depth.dispose();
@@ -1451,7 +1318,6 @@ export class BendingEffects {
     this.flashLight.dispose();
     for (const pl of this.patchLights) pl.dispose();
     this.texSpark?.dispose();
-    this.texChip?.dispose();
     this.texScorch?.dispose();
     this.scene.remove(this.root);
   }

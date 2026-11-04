@@ -223,6 +223,7 @@ async function main(): Promise<void> {
   let mending = { left: 0, perSecond: 0 };
 
   const bending = new BendingEffects(scene);
+  bending.space = elementFx.space;
   cleanup.push(() => bending.dispose());
   bending.onFireballImpact = (pos, elem, hostile) => {
     if (!hostile) fight.spawnBurnPatch(pos, pos, 1.35, 3.2, toElement(elem));

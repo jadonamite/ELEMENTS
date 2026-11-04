@@ -51,3 +51,22 @@ export class CombatSpace {
 export function chest(feet: Vector3, out = new Vector3()): Vector3 {
   return out.copy(feet).setY(feet.y + 1.15);
 }
+
+const stepFrom = new Vector3();
+const stepTo = new Vector3();
+
+/**
+ * Moves a loose piece (chip, spark, droplet, dust) one step. Sideways motion asks the world first, and a
+ * piece that would go into a wall, pillar or raised TERRA wall bounces back off it instead.
+ */
+export function carry(space: Pick<CombatSpace, 'obstruction'> | undefined, position: Vector3, velocity: Vector3, dt: number, size: number): void {
+  stepFrom.copy(position).setY(Math.max(position.y, size + 0.05));
+  stepTo.set(stepFrom.x + velocity.x * dt, stepFrom.y, stepFrom.z + velocity.z * dt);
+  if (space?.obstruction(stepFrom, stepTo, size) != null) {
+    velocity.x *= -0.4;
+    velocity.z *= -0.4;
+    position.y += velocity.y * dt;
+    return;
+  }
+  position.addScaledVector(velocity, dt);
+}
