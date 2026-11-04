@@ -1,5 +1,6 @@
 import { Scene, Vector3, type Camera } from 'three';
 import type { HeroController } from '../controller.js';
+import type { CombatSpace } from '../attacks/space.js';
 import type { SoundManager } from '../audio.js';
 import type { WorldClock } from '../world/clock.js';
 import { nightness } from '../world/effects.js';
@@ -20,6 +21,10 @@ export interface SindrLifeOptions {
   sound: SoundManager;
   getPlayerContext: () => PlayerDialogueContext;
   onNotice: (message: string) => void;
+  /** Where fighting is happening now; townsfolk run from it. */
+  getThreats: () => readonly Vector3[];
+  /** The world's solid shapes, so people running from a fight don't run through walls. */
+  space?: CombatSpace | null;
 }
 
 export class SindrLifeSystem {
@@ -37,6 +42,7 @@ export class SindrLifeSystem {
   private sound: SoundManager;
   private getPlayerContext: () => PlayerDialogueContext;
   private onNotice: (message: string) => void;
+  private getThreats: () => readonly Vector3[];
 
   constructor(options: SindrLifeOptions) {
     this.scene = options.scene;
@@ -46,8 +52,9 @@ export class SindrLifeSystem {
     this.sound = options.sound;
     this.getPlayerContext = options.getPlayerContext;
     this.onNotice = options.onNotice;
+    this.getThreats = options.getThreats;
 
-    this.townManager = new TownManager(this.scene);
+    this.townManager = new TownManager(this.scene, options.space ?? null);
     this.shuttersLanterns = new ShuttersAndLanterns();
     this.scene.add(this.shuttersLanterns.group);
 
@@ -73,7 +80,7 @@ export class SindrLifeSystem {
     const heroPos = this.controller.position;
 
     // 1. Update townsfolk routines and locomotion
-    this.townManager.update(delta, minute, heroPos);
+    this.townManager.update(delta, minute, heroPos, this.getThreats());
 
     // 2. Update dusk & night world changes (shutters, lanterns, robbers)
     this.shuttersLanterns.update(minute, nightness.value);

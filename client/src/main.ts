@@ -214,7 +214,8 @@ async function main(): Promise<void> {
     );
     setTimeout(() => { if (!disposed) physics.world.removeCollider(collider, false); }, seconds * 1000);
   };
-  elementFx.space = new CombatSpace(physics.world);
+  const space = new CombatSpace(physics.world);
+  elementFx.space = space;
   // Wind and water douse / extinguish fire
   elementFx.onExtinguish = (pos, radius) => {
     bending.extinguishAt(pos, radius);
@@ -360,6 +361,8 @@ async function main(): Promise<void> {
         hasBounty: false,
       }),
       onNotice: (msg) => notice(msg),
+      getThreats: () => fight.enemies.filter(e => e.alive).map(e => e.controller.position),
+      space,
     });
     cleanup.push(() => lifeSystem?.dispose());
   }
