@@ -508,7 +508,7 @@ async function main(): Promise<void> {
       const stop = combat.current !== 'dodge' && fight.nearestDistance(controller.position) < balance.combat.lungeStopDistance;
       const move = rooted ? { forward: 0, right: 0, running: false } : (pilot && mode === 'dungeon' ? pilot.move : input.read());
       controller.step(move, shoulder.yaw, stop ? 0 : combat.lunge, 1);
-      if (paused) return;
+      if (paused) { world.step(); return; }
       fight.step(heroView, combat, false);
       for (const a of allies.values()) {
         const struck = a.step(leader, liveFoes);
@@ -518,6 +518,8 @@ async function main(): Promise<void> {
           if (killed) { a.kills++; roomKills[a.id] = (roomKills[a.id] ?? 0) + 1; lastKiller = a.id; fight.defeatEnemy(struck); }
         }
       }
+      // Every body has moved for this tick; the world steps once.
+      world.step();
     });
 
     // Draw.

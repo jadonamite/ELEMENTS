@@ -604,6 +604,8 @@ function loop(now: number) {
     };
     robberGang.update(dt, quarry, senses);
   }
+  // Every body has moved this frame; the world steps once.
+  world.step();
 
   // Update Badges
   const tempV = new Vector3();

@@ -31,10 +31,10 @@ test('fixed timestep gives equal travel at 30, 60 and 144 fps; stalls are capped
     const hero = new HeroController(physics.world);
     const clock = new FixedStepper();
     try {
-      for (let frame = 0; frame < rate; frame++) clock.advance(1 / rate, () => hero.step(move(1, 0, true), 0));
+      for (let frame = 0; frame < rate; frame++) clock.advance(1 / rate, () => { hero.step(move(1, 0, true), 0); physics.step(); });
       distances.push(hero.position.z);
       assert.equal(locomotionForSpeed(hero.speed), 'run');
-      hero.step(move(), 0);
+      hero.step(move(), 0); physics.step();
       assert.equal(locomotionForSpeed(hero.speed), 'idle');
     } finally { hero.dispose(); physics.dispose(); }
   }
@@ -60,7 +60,7 @@ test('capsule stays on the floor and inside every wall and corner, sliding along
     for (const [forward, right] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]]) {
       hero.body.setTranslation({ x: 0, y: balance.controller.height / 2 + balance.controller.skin, z: 0 }, true);
       physics.step();
-      for (let step = 0; step < 500; step++) hero.step(move(forward, right, true), 0);
+      for (let step = 0; step < 500; step++) { hero.step(move(forward, right, true), 0); physics.step(); }
       assert.ok(Math.abs(hero.position.x) < half - balance.controller.radius);
       assert.ok(Math.abs(hero.position.z) < half - balance.controller.radius);
       assert.ok(Math.abs(hero.position.y) < 0.01);
@@ -68,7 +68,7 @@ test('capsule stays on the floor and inside every wall and corner, sliding along
     }
     hero.body.setTranslation({ x: half - balance.controller.radius - balance.controller.skin, y: 0.92, z: 0 }, true);
     physics.step();
-    for (let step = 0; step < 60; step++) hero.step(move(1, 1, true), 0);
+    for (let step = 0; step < 60; step++) { hero.step(move(1, 1, true), 0); physics.step(); }
     assert.ok(hero.position.z < -3);
     assert.ok(hero.position.x < half - balance.controller.radius);
   } finally { hero.dispose(); physics.dispose(); }
@@ -146,9 +146,10 @@ test('in an open zone, shift and place keep the hero standing on the ground; shi
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.createCollider(RAPIER.ColliderDesc.cuboid(50, 0.5, 50).setTranslation(0, -0.5, 0));
   world.createCollider(RAPIER.ColliderDesc.cuboid(0.5, 3, 5).setTranslation(3, 3, 0));
+  world.step();
   const hero = new HeroController(world, { x: 0, z: 0 }, undefined, false);
   try {
-    for (let i = 0; i < 30; i++) hero.step(move(), 0);
+    for (let i = 0; i < 30; i++) { hero.step(move(), 0); world.step(); }
     const standing = hero.body.translation().y;
     close(hero.position.y, 0, 0.05);
     hero.shift(0.7, 0);
@@ -158,9 +159,36 @@ test('in an open zone, shift and place keep the hero standing on the ground; shi
     assert.ok(hero.position.x < 2.5 - balance.controller.radius + 0.05, `wall stops the shift at ${hero.position.x}`);
     hero.place(-4, 0, 2);
     close(hero.body.translation().y, standing, 0.02);
-    for (let i = 0; i < 30; i++) hero.step(move(), 0);
+    for (let i = 0; i < 30; i++) { hero.step(move(), 0); world.step(); }
     close(hero.position.y, 0, 0.05);
   } finally { hero.dispose(); world.free(); }
+});
+
+test('many bodies move in one tick with one world step, and they do not walk through each other', async () => {
+  await RAPIER.init();
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  world.createCollider(RAPIER.ColliderDesc.cuboid(50, 0.5, 50).setTranslation(0, -0.5, 0));
+  world.step();
+  const a = new HeroController(world, { x: 0, z: 0 }, undefined, false);
+  const b = new HeroController(world, { x: 0, z: -4 }, undefined, false);
+  const crowd = Array.from({ length: 20 }, (_, i) => new HeroController(world, { x: 10 + i * 2, z: 0 }, undefined, false));
+  let steps = 0;
+  const step = world.step.bind(world);
+  world.step = () => { steps++; step(); };
+  try {
+    for (let i = 0; i < 120; i++) {
+      a.step(move(1, 0, false), 0);
+      b.step(move(-1, 0, false), 0);
+      for (const c of crowd) c.step(move(1, 0, false), 0);
+      world.step();
+    }
+    assert.equal(steps, 120, 'one world step per tick, whatever the number of bodies');
+    assert.ok(a.position.z < -0.5 && b.position.z > -3.5, 'both walked toward each other');
+    assert.ok(Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z) >= 2 * balance.controller.radius - 0.05,
+      `bodies stop at touching, not inside each other: ${a.position.distanceTo(b.position)}`);
+    for (const c of crowd) close(c.position.y, 0, 0.05);
+    close(a.body.translation().z, a.position.z, 1e-4);
+  } finally { for (const c of [a, b, ...crowd]) c.dispose(); world.free(); }
 });
 
 test('standOff places a body short of a wall, on the level of the feet it starts from', async () => {

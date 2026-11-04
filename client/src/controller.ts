@@ -58,12 +58,15 @@ export class HeroController {
       this.character.setMinSlopeSlideAngle(walk.minSlopeSlideDeg * rad);
       this.character.enableAutostep(walk.autostepHeight, walk.autostepMinWidth, false);
     }
-    world.step();
+    world.propagateModifiedBodyPositionsToColliders();
     this.sync();
     this.previous.copy(this.position);
   }
 
-  /** One physics step; a lunge (m/s) carries the hero along its facing instead of the input. */
+  /**
+   * Moves the body for one physics tick; a lunge (m/s) carries it along its facing instead of the input.
+   * The world itself is stepped once per tick by whoever runs the tick, after every body has moved.
+   */
   step(input: MoveInput, yaw: number, lunge = 0, speedMultiplier = 1.0, impulse?: Vector3): void {
     const dt = tuning.fixedStep;
     const effectiveSpeeds = speedMultiplier === 1.0
@@ -104,9 +107,8 @@ export class HeroController {
     if (this.bounded && next.y === floorCenter) this.verticalVelocity = 0;
     this.speed = Math.hypot(next.x - previous.x, next.z - previous.z) / dt;
     this.body.setNextKinematicTranslation(next);
-    this.world.step();
     this.previous.copy(this.position);
-    this.sync();
+    this.position.set(next.x, next.y - tuning.height / 2 - tuning.skin, next.z);
   }
 
   /**

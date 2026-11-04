@@ -1096,6 +1096,8 @@ async function main(): Promise<void> {
       const lunge = stop ? 0 : combat.lunge;
       controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge, speedMultiplier);
       if (!picking) fight.step(heroView, combat, isLit);
+      // Every body has moved for this tick; the world steps once.
+      physics.step();
     });
 
     if (bend.windskiffActive) {
