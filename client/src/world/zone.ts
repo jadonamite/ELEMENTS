@@ -68,6 +68,8 @@ export interface Zone {
   clock: WorldClock;
   /** Readies something that will appear during play (a villain, an effect) so its first frame does not stall. */
   warm(object: Object3D): Promise<void>;
+  /** Resolves when the town surfaces and every prop LOD have loaded. */
+  ready: Promise<void>;
   /** The point the shadows and the nearest lights follow, usually the hero. */
   follow(point: Vector3): void;
   setSize(width: number, height: number): void;
@@ -257,11 +259,10 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const pool = new LightPool(scene, builder.emitters, low ? 4 : 8);
 
   // Kit models placed as instances, one draw call per model part.
-  // They load after the town stands; they join it only once warmed, so walking into them never stalls a frame.
+  // Entry waits for every level and surface before warming the completed scene.
   const props = new Group();
-  void loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron'))
-    .then(() => warmUp(props))
-    .then(() => scene.add(props));
+  const ready = Promise.all([loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron')), lib.ready()])
+    .then(() => { scene.add(props); });
 
   // Post: sanitize first (stops NaN black frames), bloom for fire and slag, grade, then anti-aliasing.
   const composer = new EffectComposer(renderer);
@@ -283,7 +284,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   let followed: Vector3 | null = null;
 
   return {
-    scene, camera, renderer, clock,
+    scene, camera, renderer, clock, ready,
     physics: { world, step: () => world.step(), dispose: () => world.free() },
     follow(point) { followed = point; },
     warm: warmUp,

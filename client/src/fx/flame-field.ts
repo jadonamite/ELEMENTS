@@ -142,6 +142,7 @@ export class FlameField {
   private qualityReady = false;
   private textures: import('three').Texture[] = [];
   onTexturesUpdated?: () => void;
+  ready: Promise<void> = Promise.resolve();
 
   constructor(parent: Object3D, depth?: SoftDepth, poolSize = 420, capacity = 640) {
     if (depth) for (const mat of [this.additiveMat, this.normalMat]) Object.assign(mat.uniforms, depth.uniforms);
@@ -236,10 +237,16 @@ export class FlameField {
     // A tongue is the baked flame loop played once over its life, so slots 0 and 3 share one texture.
     const files = ['flame', 'burst', 'smoke', 'flame'];
     const loaded = new Map<string, import('three').Texture>();
+    const pending: Promise<void>[] = [];
     this.textures = files.map((name, i) => {
       let texture = loaded.get(name);
       if (!texture) {
-        texture = this.loader!.load(`/assets/fx/fire-${name}${low ? '-low' : ''}.png`);
+        let resolve!: () => void;
+        pending.push(new Promise<void>((done) => { resolve = done; }));
+        texture = this.loader!.load(`/assets/fx/fire-${name}${low ? '-low' : ''}.png`, resolve, undefined, (error) => {
+          console.warn(`Effect texture ${name} failed:`, error);
+          resolve();
+        });
         texture.minFilter = LinearFilter;
         texture.magFilter = LinearFilter;
         texture.generateMipmaps = false;
@@ -249,6 +256,7 @@ export class FlameField {
       for (const mat of [this.additiveMat, this.normalMat]) mat.uniforms[`uAtlas${i}`] = { value: texture };
       return texture;
     });
+    this.ready = Promise.all(pending).then(() => undefined);
     this.onTexturesUpdated?.();
     new Set(old).forEach(texture => texture.dispose());
   }

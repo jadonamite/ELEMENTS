@@ -32,7 +32,7 @@ import { StreetChallenges } from './life/street-challenges.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
-import { Vector3 } from 'three';
+import { Group, Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { ClientRobberGang } from './agents/outlaws/robberGang.js';
 import { ClientDeserterBand } from './agents/outlaws/deserterBand.js';
@@ -100,8 +100,6 @@ async function main(): Promise<void> {
   const initialBoneRotations = new Map<string, { x: number; y: number; z: number }>();
   let wasWindskiffActive = false;
   const villains = loadEnemyTemplate();
-  // Every villain look is ready to draw before the first challenger or ambush shows.
-  if (zone) void villains.then((t) => Promise.all(villainLooks(t).map((look) => zone.warm(look)))).catch(console.error);
   try {
     hero = await loadHero();
     for (const name of windskiffBones) {
@@ -120,9 +118,6 @@ async function main(): Promise<void> {
   if (disposed) { hero.anim.dispose(); disposeObject(hero.model); return; }
   scene.add(hero.model);
   cleanup.push(() => hero.anim.dispose());
-  button.disabled = false;
-  button.textContent = zone ? 'Enter Sindr' : 'Enter the arena';
-  status('');
   // The HUD fades out while the mouse is captured.
   const togglePlaying = (): void => { document.body.classList.toggle('playing', document.pointerLockElement === canvas); };
   document.addEventListener('pointerlockchange', togglePlaying);
@@ -922,6 +917,20 @@ async function main(): Promise<void> {
     }).catch((error: unknown) => status(`Playing offline: ${(error as Error).message}`));
   }
   // --- End online ---
+
+  if (zone) {
+    await Promise.all([zone.ready, bending.ready, lifeSystem?.ready]);
+    if (disposed) return;
+    const looks = new Group();
+    looks.add(...villainLooks(await villains));
+    scene.add(looks);
+    try { await zone.warm(scene); } finally { looks.removeFromParent(); }
+    if (disposed) return;
+  }
+  resetTime();
+  button.disabled = false;
+  button.textContent = zone ? 'Enter Sindr' : 'Enter the arena';
+  status('');
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();
