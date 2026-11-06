@@ -1,0 +1,241 @@
+.counting-house-window {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  background: rgba(10, 8, 8, 0.65);
+  font-family: var(--font-family-body);
+  color: var(--color-text-primary);
+}
+
+.counting-house-window[hidden] {
+  display: none;
+}
+
+.counting-house-panel {
+  width: min(34rem, 100%);
+  max-height: calc(100vh - var(--space-12));
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: ch-in var(--duration-normal) var(--ease-out);
+}
+
+@keyframes ch-in {
+  from { opacity: 0; transform: translateY(var(--space-2)); }
+}
+
+.counting-house-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.counting-house-title {
+  margin: 0;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-xl);
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+.counting-house-subtitle {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.counting-house-balances {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.counting-house-balances strong {
+  color: var(--color-terra-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.counting-house-close {
+  min-width: var(--target-min-width);
+  min-height: var(--target-min-height);
+  padding: 0 var(--space-4);
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.counting-house-close:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+
+.counting-house-body {
+  padding: var(--space-4) var(--space-5);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.counting-house-notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-ignis-crimson);
+  background: var(--color-bg-subtle);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.counting-house-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.counting-house-heading {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-widest);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.counting-house-hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-snug);
+}
+
+.counting-house-deposit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.counting-house-input {
+  flex: 1 1 7rem;
+  min-height: var(--target-min-height);
+  padding: 0 var(--space-3);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-base);
+  font-variant-numeric: tabular-nums;
+}
+
+.counting-house-input:focus-visible {
+  outline: 2px solid var(--color-ignis-glow-bright);
+  outline-offset: 1px;
+}
+
+.counting-house-quick-btns {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.counting-house-quick-btn {
+  min-height: var(--target-min-height);
+  padding: 0 var(--space-2);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.counting-house-quick-btn:hover {
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+}
+
+.counting-house-btn {
+  min-height: var(--target-min-height);
+  padding: 0 var(--space-4);
+  background: var(--color-ignis-ember);
+  border: 1px solid var(--color-ignis-crimson);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.counting-house-btn:hover:not(:disabled) {
+  background: var(--color-ignis-crimson);
+}
+
+.counting-house-btn:disabled {
+  background: transparent;
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.counting-house-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.counting-house-note-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.counting-house-note-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.counting-house-note-amount {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-terra-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.counting-house-note-id {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.counting-house-empty {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .counting-house-panel { animation: none; }
+}

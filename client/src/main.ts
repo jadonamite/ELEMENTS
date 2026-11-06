@@ -912,7 +912,15 @@ async function main(): Promise<void> {
       element: kitElement, role: isDim ? 'Hush' : 'Shaper', lag: lagMs / 1000,
     }).then((session) => {
       cleanup.push(() => session.dispose());
-      townEconomy?.goOnline(session.channel);
+      townEconomy?.goOnline(session.channel, () => {
+        const list: Array<{ id: string; name: string; position: Vector3 }> = [];
+        for (const [id, rp] of session.players) {
+          if (rp.hero?.model) {
+            list.push({ id, name: id.slice(0, 8), position: rp.hero.model.position });
+          }
+        }
+        return list;
+      });
       if (fps) Object.assign((window as unknown as { elements: object }).elements, { online: session });
     }).catch((error: unknown) => status(`Playing offline: ${(error as Error).message}`));
   }

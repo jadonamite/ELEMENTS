@@ -8,6 +8,7 @@ import {
   depositToCountingHouse,
   executePlayerTrade,
   getAccountBalance,
+  getAccountNotes,
   getMerchant,
   getSatchel,
   listLootPiles,
@@ -218,6 +219,10 @@ export class ZoneEconomy {
         const result = withdrawFromCountingHouse({ accountId: p.accountId, noteId, countingHouseId: house.id }, this.db);
         return reply(true, { ...result });
       }
+      if (m.action === 'notes') {
+        const notes = getAccountNotes(p.accountId, this.db);
+        return reply(true, { notes });
+      }
       return reply(false, { error: 'invalid_input' });
     } catch (err) {
       return reply(false, { error: err instanceof Error ? err.message : 'Counting house refused' });
@@ -228,7 +233,14 @@ export class ZoneEconomy {
 
   private tradeView(id: string): EconEvent[] {
     const mine = this.offers.get(id);
-    if (!mine) return [{ to: id, type: 'trade', body: { open: false } }];
+    if (!mine) {
+      for (const [otherId, offer] of this.offers.entries()) {
+        if (offer.with === id) {
+          return [{ to: id, type: 'trade', body: { open: false, incoming: otherId, theirs: { chroma: offer.chroma, items: offer.items, accepted: offer.accepted } } }];
+        }
+      }
+      return [{ to: id, type: 'trade', body: { open: false } }];
+    }
     const theirs = this.offers.get(mine.with);
     const side = (o: Offer | undefined) => (o && o.with === id ? { chroma: o.chroma, items: o.items, accepted: o.accepted } : null);
     return [{ to: id, type: 'trade', body: { open: true, with: mine.with, mine: { chroma: mine.chroma, items: mine.items, accepted: mine.accepted }, theirs: side(theirs) } }];
@@ -277,13 +289,23 @@ export class ZoneEconomy {
 
   cancelTrade(id: string): EconEvent[] {
     const mine = this.offers.get(id);
-    if (!mine) return [];
+    if (!mine) {
+      for (const [otherId, offer] of this.offers.entries()) {
+        if (offer.with === id) {
+          this.offers.delete(otherId);
+          return [{ to: id, type: 'trade', body: { open: false } }, { to: otherId, type: 'trade', body: { open: false, error: 'They walked away' } }];
+        }
+      }
+      return [];
+    }
     this.offers.delete(id);
     const theirs = this.offers.get(mine.with);
     const events: EconEvent[] = [{ to: id, type: 'trade', body: { open: false } }];
     if (theirs?.with === id) {
       this.offers.delete(mine.with);
       events.push({ to: mine.with, type: 'trade', body: { open: false, error: 'They walked away' } });
+    } else {
+      events.push({ to: mine.with, type: 'trade', body: { open: false } });
     }
     return events;
   }
