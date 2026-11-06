@@ -65,6 +65,8 @@ Nothing is removed from the build plan; the economy items move up and run in par
 3. **On chain, alongside:** the economy server and coin contract merged, NEP-245 contract, agent accounts, settling (M6.1, M6.3, M6.4), then Intents with merchants as solvers.
 4. **Then the rest of M3 as planned:** Gorge Road and ambushes, preset arenas, Slag Barrens, the fort. Then M4 onward, unchanged.
 
+What of this is playable today, and what is still missing, is recorded in `docs/LOOP-IN-SINDR.md`.
+
 ## 5. Open questions
 
 1. Does the 30-second / 5-minute / session loop above match the game in your head? Anything missing or wrong for the Lit or the Dim?
