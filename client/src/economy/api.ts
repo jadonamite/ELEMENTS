@@ -107,8 +107,25 @@ export async function reportKill(kind: string, x: number, z: number, zone: strin
 
 /** Where the player stands with the town watch, as the server holds it. */
 export interface Standing {
+  accountId?: string;
   redFlags: number;
   hasBounty: boolean;
+}
+
+/** A price the watch has put on a player's head, as the notice board reads it. */
+export interface Bounty {
+  id: string;
+  targetAccountId: string;
+  rewardChroma: number;
+  reason: string;
+  issuerId: string;
+  issuedAt: number;
+  status: 'open' | 'claimed' | 'pardoned';
+}
+
+export async function fetchOpenBounties(): Promise<Bounty[]> {
+  const data = await call<{ bounties: Bounty[] }>('/api/economy/bounties');
+  return data.bounties;
 }
 
 export async function fetchStanding(): Promise<Standing> {
@@ -126,6 +143,49 @@ export async function reportDeath(x: number, z: number, zone: string): Promise<L
     body: JSON.stringify({ x, z, zone }),
   });
   return data.pile;
+}
+
+export interface ShopOwnership {
+  merchantId: string;
+  mine: boolean;
+  ownerHandle: string | null;
+  purse: number;
+  priceMultipliers: Record<string, number>;
+  unpaidUpkeepDays: number;
+}
+
+export async function fetchShopOwnership(merchantId: string): Promise<ShopOwnership> {
+  return call<ShopOwnership>(`/api/economy/shops/${encodeURIComponent(merchantId)}/ownership`);
+}
+
+export interface ShopForSale {
+  merchantId: string;
+  salePrice: number;
+  daysOnSale: number;
+  remainingDays: number;
+}
+
+export async function fetchShopsForSale(): Promise<ShopForSale[]> {
+  const data = await call<{ shops: ShopForSale[] }>('/api/economy/shops/for-sale');
+  return data.shops;
+}
+
+export async function buyShop(merchantId: string): Promise<{ success: boolean }> {
+  return call(`/api/economy/shops/${encodeURIComponent(merchantId)}/buy`, { method: 'POST', body: '{}' });
+}
+
+export async function withdrawShopProfit(merchantId: string, amount?: number): Promise<{ amount: number }> {
+  return call(`/api/economy/shops/${encodeURIComponent(merchantId)}/withdraw`, {
+    method: 'POST',
+    body: JSON.stringify(amount === undefined ? {} : { amount }),
+  });
+}
+
+export async function setShopPrices(merchantId: string, multipliers: Record<string, number>): Promise<{ multipliers: Record<string, number> }> {
+  return call(`/api/economy/shops/${encodeURIComponent(merchantId)}/prices`, {
+    method: 'POST',
+    body: JSON.stringify({ multipliers }),
+  });
 }
 
 export async function fetchMerchant(merchantId: string): Promise<Merchant> {

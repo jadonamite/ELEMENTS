@@ -330,18 +330,18 @@ test('HTTP API: a guard seeing a street brawl flags the signed-in player, three 
     assert.equal((await post({})).status, 401);
     assert.equal((await post({ Authorization: 'Bearer forged' })).status, 401);
     assert.equal((await standing('forged')).status, 401);
-    assert.deepEqual((await standing('brawler')).body, { redFlags: 0, hasBounty: false });
+    assert.deepEqual((await standing('brawler')).body, { accountId: 'did:privy:brawler', redFlags: 0, hasBounty: false });
 
     // The account named in the body is ignored: the flag lands on the token's account.
     const first = await post({ Authorization: 'Bearer brawler' }, { accountId: 'someone_else' });
     assert.equal(first.status, 200);
-    assert.deepEqual(await first.json(), { convertedToBounty: false, redFlags: 1, hasBounty: false });
-    assert.deepEqual((await standing('brawler')).body, { redFlags: 1, hasBounty: false });
+    assert.deepEqual(await first.json(), { accountId: 'did:privy:brawler', convertedToBounty: false, redFlags: 1, hasBounty: false });
+    assert.deepEqual((await standing('brawler')).body, { accountId: 'did:privy:brawler', redFlags: 1, hasBounty: false });
 
     await post({ Authorization: 'Bearer brawler' });
     const third = await post({ Authorization: 'Bearer brawler' });
-    assert.deepEqual(await third.json(), { convertedToBounty: true, redFlags: 0, hasBounty: true });
-    assert.deepEqual((await standing('brawler')).body, { redFlags: 0, hasBounty: true });
+    assert.deepEqual(await third.json(), { accountId: 'did:privy:brawler', convertedToBounty: true, redFlags: 0, hasBounty: true });
+    assert.deepEqual((await standing('brawler')).body, { accountId: 'did:privy:brawler', redFlags: 0, hasBounty: true });
 
     // Nobody can flag or jail an account by naming it any more.
     const forgedFlag = await fetch(`${ts.baseUrl}/api/economy/crime/flag`, {

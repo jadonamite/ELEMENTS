@@ -23,6 +23,7 @@ import {
   claimLootPile,
   getMerchantMind,
   getShopsForSale,
+  getShopOwnership,
   buyShop,
   setShopPrices,
   stockShop,
@@ -358,7 +359,7 @@ export function setupApi(app: Application): void {
   // The player's own standing with the town watch. The account comes from the token.
   app.get('/api/economy/crime/standing', async (req: Request, res: Response) => {
     const accountId = await requireAccount(req, res);
-    if (accountId) res.json(getStanding(accountId));
+    if (accountId) res.json({ accountId, ...getStanding(accountId) });
   });
 
   // The town watch saw this player brawling in the street. The account comes from the token, never the body.
@@ -370,7 +371,7 @@ export function setupApi(app: Application): void {
     const accountId = await requireAccount(req, res);
     if (!accountId) return;
     const result = addRedFlag(accountId, 'Brawling in the street, seen by the town watch');
-    res.json({ convertedToBounty: result.convertedToBounty, ...getStanding(accountId) });
+    res.json({ accountId, convertedToBounty: result.convertedToBounty, ...getStanding(accountId) });
   });
 
   app.get('/api/economy/loot', (req: Request, res: Response) => {
@@ -534,6 +535,23 @@ export function setupApi(app: Application): void {
         error: err instanceof Error ? err.message : 'Failed to query shops for sale',
       });
     }
+  });
+
+  // Who holds this shop, and what its purse holds. The account comes from the token.
+  app.get('/api/economy/shops/:merchantId/ownership', async (req: Request, res: Response) => {
+    const merchantId = String(req.params.merchantId ?? '');
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    const ownership = getShopOwnership(merchantId);
+    const merchant = getMerchant(merchantId);
+    res.json({
+      merchantId,
+      mine: ownership?.ownerId === accountId,
+      ownerHandle: ownership ? ownership.ownerId.slice(0, 8) : null,
+      purse: merchant?.balance ?? 0,
+      priceMultipliers: ownership?.priceMultipliers ?? {},
+      unpaidUpkeepDays: ownership?.unpaidUpkeepDays ?? 0,
+    });
   });
 
   app.post('/api/economy/shops/:merchantId/buy', async (req: Request, res: Response) => {

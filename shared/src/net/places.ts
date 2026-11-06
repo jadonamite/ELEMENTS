@@ -19,21 +19,30 @@ export const SINDR_STALLS: Place[] = [
   { id: 'sindr_arms', x: 113, z: 8 },
 ];
 
-/** Sindr's two counting houses. Placeholder spots off the market until the buildings stand. */
+/**
+ * Sindr's two counting houses, at the doors of the strongrooms on the Rise. The server checks a
+ * player's position against these, so they must be the doors the town builds, not a placeholder;
+ * `client/tests/places.test.mjs` fails when they drift apart from `sindr-anchors.json`.
+ */
 export const SINDR_COUNTING_HOUSES: Place[] = [
-  { id: 'ch_ignis_sindr_upper', x: 125, z: -14 },
-  { id: 'ch_ignis_sindr_lower', x: 60, z: 6 },
+  { id: 'ch_ignis_sindr_upper', x: 130.3, z: -43 },
+  { id: 'ch_ignis_sindr_lower', x: 119.7, z: -43 },
 ];
 
-/** How close a player stands to a stall or counting house to use it, metres. */
+/** Sindr's notice board, at the anchor the town builds it on: where the watch posts red flags and bounties. */
+export const SINDR_NOTICE_BOARD: Place = { id: 'notice_board', x: 117, z: -13.5 };
+
+/** How close a player stands to a stall, counting house or notice board to use it, metres. */
 export const PLACE_REACH = 3.6;
 /** Extra room the server allows for a position report a moment old, metres. */
 export const PLACE_SLACK = 1.5;
 /** How close two players stand to trade hand to hand, metres. */
 export const TRADE_REACH = 4;
 
-export const placesFor = (zone: string): { stalls: Place[]; countingHouses: Place[] } =>
-  zone === 'sindr' ? { stalls: SINDR_STALLS, countingHouses: SINDR_COUNTING_HOUSES } : { stalls: [], countingHouses: [] };
+export const placesFor = (zone: string): { stalls: Place[]; countingHouses: Place[]; noticeBoard: Place | null } =>
+  zone === 'sindr'
+    ? { stalls: SINDR_STALLS, countingHouses: SINDR_COUNTING_HOUSES, noticeBoard: SINDR_NOTICE_BOARD }
+    : { stalls: [], countingHouses: [], noticeBoard: null };
 
 /** True when (x, z) is within reach of the place, with the server's slack. */
 export const atPlace = (place: Place, x: number, z: number, slack = PLACE_SLACK): boolean =>

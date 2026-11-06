@@ -538,6 +538,7 @@ async function main(): Promise<void> {
   townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', {
     notice,
     standingChanged: (s) => fightHud.setStanding(s.redFlags, s.hasBounty),
+    nightness: () => nightness.value,
   }) : null;
   cleanup.push(() => townEconomy?.dispose());
   const applyStyle = (): void => {

@@ -1,0 +1,175 @@
+.notice-board-window {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  background: rgba(10, 8, 8, 0.65);
+  font-family: var(--font-family-body);
+  color: var(--color-text-primary);
+}
+
+.notice-board-window[hidden] {
+  display: none;
+}
+
+.notice-board-panel {
+  width: min(32rem, 100%);
+  max-height: calc(100vh - var(--space-12));
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: nb-in var(--duration-normal) var(--ease-out);
+}
+
+@keyframes nb-in {
+  from { opacity: 0; transform: translateY(var(--space-2)); }
+}
+
+.notice-board-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.notice-board-title {
+  margin: 0;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-xl);
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+.notice-board-subtitle {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.notice-board-close {
+  min-width: var(--target-min-width);
+  min-height: var(--target-min-height);
+  padding: 0 var(--space-4);
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.notice-board-close:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+
+.notice-board-body {
+  padding: var(--space-4) var(--space-5);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.notice-board-clear,
+.notice-board-marked,
+.notice-board-wanted {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-border-default);
+  background: var(--color-bg-subtle);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-snug);
+}
+
+.notice-board-marked {
+  border-left-color: var(--color-ignis-crimson);
+}
+
+.notice-board-wanted {
+  border-left-color: var(--color-ignis-crimson);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.notice-board-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.notice-board-heading {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-widest);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.notice-board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.notice-board-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.notice-board-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.notice-board-name {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+}
+
+.notice-board-reward {
+  font-size: var(--font-size-sm);
+  color: var(--color-terra-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.notice-board-reason {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-snug);
+}
+
+.notice-board-empty,
+.notice-board-hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.notice-board-hint {
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-snug);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice-board-panel { animation: none; }
+}

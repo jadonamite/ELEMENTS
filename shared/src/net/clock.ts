@@ -29,5 +29,8 @@ export function nightnessAt(minute: number, c: DayNightConfig): number {
 /** Robbers count it as night from this much darkness on, as the browser always has. */
 export const NIGHT_FROM = 0.45;
 
+/** The market stalls shut for the night at the same darkness the robbers count as night. */
+export const stallsShut = (nightness: number): boolean => nightness >= NIGHT_FROM;
+
 /** Server to client: the zone's clock. `speed` is game minutes per real minute. */
 export interface ClockMsg { minute: number; speed: number }

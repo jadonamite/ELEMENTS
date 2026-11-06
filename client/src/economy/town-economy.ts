@@ -6,6 +6,7 @@ import {
   economyAvailable,
   fetchBalance,
   fetchSatchel,
+  fetchOpenBounties,
   fetchStanding,
   isGuestSession,
   reportBrawlSeen,
@@ -15,13 +16,16 @@ import {
 import type { LootPile, Standing } from './api.js';
 import { CountingHouseWindow } from './counting-house-window.js';
 import { httpDoor, RoomDoor, type MoneyDoor, type RoomChannel, type TradeState } from './door.js';
+import { NoticeBoardWindow } from './notice-board-window.js';
 import { ShopWindow } from './shop-window.js';
 import { TradeWindow } from './trade-window.js';
 import { placesFor, PLACE_REACH, TRADE_REACH } from '../../../shared/src/net/index.js';
+import { stallsShut } from '../../../shared/src/net/clock.js';
 import { WorldLoot } from './world-loot.js';
 
 // The money loop in the town: loot that falls where enemies die, picked up by walking over it, sold at
-// the market stalls, deposited at counting houses, and traded hand-to-hand with other players.
+// the market stalls, banked at counting houses, read on the notice board, and traded hand to hand with
+// other players.
 
 // What each kind of fighter in the town counts as for the loot rules.
 const LOOT_KIND: Record<string, string> = {
@@ -40,6 +44,8 @@ export interface NearbyPlayerInfo {
 export interface TownEconomyEvents {
   notice(text: string): void;
   standingChanged(standing: Standing): void;
+  /** How dark the world is, 0 by day, 1 at night. The market closes at night. */
+  nightness(): number;
 }
 
 export class TownEconomy {
@@ -50,17 +56,21 @@ export class TownEconomy {
   readonly loot: WorldLoot | null = null;
   private readonly shop: ShopWindow | null = null;
   private readonly countingHouse: CountingHouseWindow | null = null;
+  private readonly noticeBoard: NoticeBoardWindow | null = null;
   private readonly tradeWindow: TradeWindow | null = null;
   private nearStall: string | null = null;
   private stallAt: Vector3 | null = null;
   private nearHouse: string | null = null;
   private houseAt: Vector3 | null = null;
+  private nearBoard = false;
+  private boardAt: Vector3 | null = null;
   private nearPlayer: NearbyPlayerInfo | null = null;
   private playerAt: Vector3 | null = null;
   private incomingTrade: { id: string; name: string; at: Vector3 } | null = null;
   private getNearbyPlayers: (() => NearbyPlayerInfo[]) | null = null;
   private readonly offerAt = new Vector3();
   private readonly houseOfferAt = new Vector3();
+  private readonly boardOfferAt = new Vector3();
   private readonly playerOfferAt = new Vector3();
   private standingNow: Standing = { redFlags: 0, hasBounty: false };
   private door: MoneyDoor = httpDoor;
@@ -86,7 +96,9 @@ export class TownEconomy {
       satchel: () => this.items,
       coin: () => this.coin,
       changed: () => this.refresh(),
-      trade: (action, merchantId, item) => this.door.trade(action, merchantId, item, 1),
+      trade: (action, merchantId, item) => this.shuttered
+        ? Promise.reject(new Error('The stalls are shuttered for the night'))
+        : this.door.trade(action, merchantId, item, 1),
     });
     this.countingHouse = new CountingHouseWindow({
       coin: () => this.coin,
@@ -95,6 +107,12 @@ export class TownEconomy {
       deposit: (houseId, amount) => this.door.deposit(houseId, amount),
       withdraw: (houseId, noteId) => this.door.withdraw(houseId, noteId),
       notes: (houseId) => this.door.notes(houseId, this.accountId ?? undefined),
+      isGuest: () => isGuestSession(),
+    });
+    this.noticeBoard = new NoticeBoardWindow({
+      standing: () => this.standingNow,
+      accountId: () => this.accountId,
+      bounties: () => fetchOpenBounties(),
       isGuest: () => isGuestSession(),
     });
     this.tradeWindow = new TradeWindow({
@@ -134,9 +152,22 @@ export class TownEconomy {
     return this.tradeWindow?.isOpen ?? false;
   }
 
+  get noticeBoardOpen(): boolean {
+    return this.noticeBoard?.isOpen ?? false;
+  }
+
+  /** The market is shut once the world is dark enough; the stalls' shutters are already down. */
+  private get shuttered(): boolean {
+    return stallsShut(this.events.nightness());
+  }
+
   openCountingHouse(houseId?: string): void {
     const id = houseId ?? this.nearHouse ?? placesFor(this.zone).countingHouses[0]?.id;
     if (id) void this.countingHouse?.open(id);
+  }
+
+  openNoticeBoard(): void {
+    void this.noticeBoard?.open();
   }
 
   openTrade(partnerId: string, partnerName?: string): void {
@@ -157,6 +188,10 @@ export class TownEconomy {
     this.nearHouse = house?.id ?? null;
     this.houseAt = house ? this.houseOfferAt.set(house.x, hero.y + 1.6, house.z) : null;
 
+    const board = places.noticeBoard;
+    this.nearBoard = board ? Math.hypot(hero.x - board.x, hero.z - board.z) < PLACE_REACH : false;
+    this.boardAt = board && this.nearBoard ? this.boardOfferAt.set(board.x, hero.y + 2.2, board.z) : null;
+
     if (this.getNearbyPlayers) {
       const players = this.getNearbyPlayers();
       const p = players.find((other) => Math.hypot(hero.x - other.position.x, hero.z - other.position.z) <= TRADE_REACH);
@@ -168,9 +203,9 @@ export class TownEconomy {
     }
   }
 
-  /** Trading, banking, or player trade is what the context key does. */
+  /** Trading, banking, reading the board or a player trade is what the context key does. */
   contextOffer(): ContextOffer | null {
-    if (!this.enabled || this.shopOpen || this.countingHouseOpen || this.tradeOpen) return null;
+    if (!this.enabled || this.shopOpen || this.countingHouseOpen || this.tradeOpen || this.noticeBoardOpen) return null;
 
     if (this.incomingTrade) {
       return {
@@ -184,11 +219,17 @@ export class TownEconomy {
     }
 
     if (this.nearStall && this.stallAt) {
-      return { verb: 'Trade', at: this.stallAt, act: () => { this.interact(); } };
+      return this.shuttered
+        ? { verb: 'Shuttered for the night', at: this.stallAt, act: () => { this.events.notice('The stalls are shuttered until dawn.'); } }
+        : { verb: 'Trade', at: this.stallAt, act: () => { this.interact(); } };
     }
 
     if (this.nearHouse && this.houseAt) {
       return { verb: 'Counting house', at: this.houseAt, act: () => { this.openCountingHouse(this.nearHouse!); } };
+    }
+
+    if (this.nearBoard && this.boardAt) {
+      return { verb: 'Read the notice board', at: this.boardAt, act: () => { this.openNoticeBoard(); } };
     }
 
     if (this.nearPlayer && this.playerAt) {
@@ -201,6 +242,10 @@ export class TownEconomy {
   // The interact key. Returns true when it opened a shop.
   interact(): boolean {
     if (!this.enabled || !this.shop || !this.nearStall || this.shop.isOpen) return false;
+    if (this.shuttered) {
+      this.events.notice('The stalls are shuttered until dawn.');
+      return true;
+    }
     void this.shop.open(this.nearStall);
     return true;
   }
@@ -273,6 +318,7 @@ export class TownEconomy {
     this.loot?.dispose();
     this.shop?.dispose();
     this.countingHouse?.dispose();
+    this.noticeBoard?.dispose();
     this.tradeWindow?.dispose();
   }
 
@@ -311,6 +357,7 @@ export class TownEconomy {
   }
 
   private setStanding(next: Standing): void {
+    if (next.accountId) this.accountId = next.accountId;
     this.standingNow = { redFlags: next.redFlags, hasBounty: next.hasBounty };
     this.events.standingChanged(this.standingNow);
   }
