@@ -109,7 +109,7 @@ export class HeroController {
     if (this.bounded && reach > limit) { next.x *= limit / reach; next.z *= limit / reach; }
     const onFloor = this.bounded && next.y === floorCenter && this.verticalVelocity <= 0;
     if (onFloor) this.verticalVelocity = 0;
-    this.grounded = this.bounded ? onFloor : landed;
+    this.grounded = landed || onFloor;
     this.speed = Math.hypot(next.x - previous.x, next.z - previous.z) / dt;
     this.body.setNextKinematicTranslation(next);
     this.previous.copy(this.position);

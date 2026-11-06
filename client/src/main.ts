@@ -40,6 +40,7 @@ import type { OutlawSenses } from '../../shared/src/agents/types.js';
 import type { Quarry } from './enemy.js';
 import { CombatSpace } from './attacks/space.js';
 import { hasGameServer } from './auth/server-api.js';
+import { isTownMode } from './world-mode.js';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -72,9 +73,8 @@ async function main(): Promise<void> {
   const changeFighter = panel.querySelector<HTMLButtonElement>('.hud-secondary')!;
   const status = (message: string): void => { panel.querySelector('#control-status')!.textContent = message; };
 
-  // ?town walks Sindr from the Shrine of Embers; without it the fight arena opens.
-  const inTown = new URLSearchParams(window.location.search).has('town');
   const params = new URLSearchParams(window.location.search);
+  const inTown = isTownMode(params);
   const forcedElement = ELEMENTS.find(e => e === params.get('element')?.toUpperCase() || e === params.get('nation')?.toUpperCase()) ?? null;
   const forcedHush = params.has('hush') || params.has('dim');
   const storedChoice = lastFighter();
@@ -123,7 +123,7 @@ async function main(): Promise<void> {
   const togglePlaying = (): void => { document.body.classList.toggle('playing', document.pointerLockElement === canvas); };
   document.addEventListener('pointerlockchange', togglePlaying);
   cleanup.push(() => { document.removeEventListener('pointerlockchange', togglePlaying); document.body.classList.remove('playing'); });
-  const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status);
+  const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status, inTown ? 'Enter Sindr' : 'Enter the arena');
   cleanup.push(() => input.dispose());
   let heroElement: BendingType = 'IGNIS';
   let isDim = false;

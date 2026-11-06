@@ -14,6 +14,7 @@ import {
   postSession,
 } from './auth/index.js';
 import { roll } from '../../shared/src/rising/roll.js';
+import { isTownMode } from './world-mode.js';
 
 /**
  * Opening sequence: Age verification gate, character creation studio,
@@ -356,7 +357,7 @@ export class OpeningFlow {
         </div>
         <h2 class="ceremony-result ${result.role === 'Shaper' ? result.element.toLowerCase() : 'hush'}">${title}</h2>
         <p class="ceremony-desc">${desc}</p>
-        <button type="button" id="enter-arena-button" class="opening-button primary">Enter the Arena</button>
+        <button type="button" id="enter-arena-button" class="opening-button primary">${isTownMode(new URLSearchParams(window.location.search)) ? 'Enter Sindr' : 'Enter the arena'}</button>
       </div>
     `;
 
