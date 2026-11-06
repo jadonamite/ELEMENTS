@@ -1,4 +1,4 @@
-import { getServerUrl, getStoredAuthToken, isOfflineMode } from '../auth/server-api.js';
+import { getServerUrl, getStoredAuthToken, isOfflineMode, hasGameServer } from '../auth/server-api.js';
 
 // Calls to the economy server. Every call that moves coin or items is signed with the player's token;
 // the server decides who is asking, never the request body.
@@ -58,10 +58,11 @@ export class EconomyError extends Error {
 
 // Economy is on when the player is signed in and not playing offline.
 export function economyAvailable(): boolean {
-  return !isOfflineMode() && getStoredAuthToken() !== null;
+  return hasGameServer() && !isOfflineMode() && getStoredAuthToken() !== null;
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!hasGameServer()) throw new EconomyError('Unavailable', 503);
   const token = getStoredAuthToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;

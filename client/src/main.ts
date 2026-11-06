@@ -39,6 +39,7 @@ import { ClientDeserterBand } from './agents/outlaws/deserterBand.js';
 import type { OutlawSenses } from '../../shared/src/agents/types.js';
 import type { Quarry } from './enemy.js';
 import { CombatSpace } from './attacks/space.js';
+import { hasGameServer } from './auth/server-api.js';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -134,7 +135,7 @@ async function main(): Promise<void> {
   let refreshStyle: (() => void) | null = null;
   // Test flags: ?element=AQUES picks the element, ?dim (or ?hush) plays a Dim, ?tier=N sets the tier (default 5: every move open, no extra strength).
   // Online, the server owns every enemy: no local spawns that other players can't see.
-  const playingOnline = params.has('online');
+  const playingOnline = hasGameServer() && params.has('online');
   const tier = Math.max(1, Math.min(7, Number(params.get('tier')) || 5));
   /** The element a Hush's shards carry; a Shaper's own element otherwise. */
   let kitElement: Element = 'IGNIS';
@@ -885,7 +886,7 @@ async function main(): Promise<void> {
   };
 
   // --- Online: ?online joins this zone's room on the game server. ---
-  if (new URLSearchParams(window.location.search).has('online')) {
+  if (playingOnline) {
     const online = await import('./net/online.js');
     const { getServerUrl, getStoredAuthToken } = await import('./auth/server-api.js');
     const { loadHoundTemplate } = await import('./monsters/hound.js');

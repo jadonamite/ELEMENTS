@@ -1,9 +1,11 @@
-import { StrictMode, useCallback, useEffect, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { getAccessToken, PrivyProvider, useLogin, usePrivy } from '@privy-io/react-auth';
 import type { DrawingResult } from '../opening.js';
 import {
   postSession,
+  hasGameServer,
+  localSession,
   setStoredAccountId,
   setStoredAuthToken,
 } from './server-api.js';
@@ -20,32 +22,40 @@ export interface LoginIslandProps {
 }
 
 function LoginCard({ onSuccess, onOffline }: LoginIslandProps) {
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated, user } = usePrivy();
+  const sessionStarted = useRef(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSession = useCallback(async () => {
+    if (sessionStarted.current) return;
+    if (!hasGameServer() && !user?.id) return;
+    sessionStarted.current = true;
     try {
       setIsVerifying(true);
       setError(null);
-      const token = await getAccessToken();
-      if (!token) {
+      const token = hasGameServer() ? await getAccessToken() : '';
+      if (hasGameServer() && !token) {
+        sessionStarted.current = false;
         setIsVerifying(false);
         return;
       }
-      const session = await postSession(token);
+      const session = hasGameServer() ? await postSession(token!) : localSession(user!.id);
       setStoredAuthToken(token);
       setStoredAccountId(session.accountId);
       onSuccess({
         accountId: session.accountId,
-        token,
+        token: token ?? '',
         rising: session.rising,
       });
     } catch {
-      setError('Unable to reach authentication server. You can continue offline.');
+      sessionStarted.current = false;
+      setError(hasGameServer()
+        ? 'Unable to reach authentication server. You can continue offline.'
+        : 'Sign-in could not be completed. Try again or continue offline.');
       setIsVerifying(false);
     }
-  }, [onSuccess]);
+  }, [onSuccess, user?.id]);
 
   const { login } = useLogin({
     onComplete: () => {
@@ -57,14 +67,14 @@ function LoginCard({ onSuccess, onOffline }: LoginIslandProps) {
   });
 
   useEffect(() => {
-    if (ready && authenticated && !isVerifying) {
+    if (ready && authenticated) {
       void handleSession();
     }
-  }, [ready, authenticated, isVerifying, handleSession]);
+  }, [ready, authenticated, handleSession]);
 
   if (!ready || isVerifying) {
     return (
-      <div class-name="opening-modal login-modal">
+      <div className="opening-modal login-modal">
         <h2>Enter ELEMENTS</h2>
         <p className="opening-subtitle">Connecting...</p>
         <div className="login-loading-spinner" />
@@ -76,7 +86,9 @@ function LoginCard({ onSuccess, onOffline }: LoginIslandProps) {
     <div className="opening-modal login-modal">
       <h2>Enter the Realm</h2>
       <p className="opening-subtitle">
-        Sign in so your character and your rising are saved to your account. You rise only once.
+        {hasGameServer()
+          ? 'Sign in so your character and your rising are saved to your account. You rise only once.'
+          : 'Sign in to enter. Your character and rising are saved in this browser.'}
       </p>
 
       {error && (
