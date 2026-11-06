@@ -52,20 +52,22 @@ const dispose = (): void => {
 import.meta.hot?.dispose(dispose);
 
 async function main(): Promise<void> {
+  const params = new URLSearchParams(window.location.search);
+  const inTown = isTownMode(params);
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('Game canvas is missing.');
   canvas.tabIndex = 0;
-  canvas.setAttribute('aria-label', 'Arena. WASD to move. Shift to run. Click to capture the mouse.');
+  canvas.setAttribute('aria-label', `${inTown ? 'Sindr' : 'Arena'}. WASD to move. Shift to run. Click to capture the mouse.`);
 
   const panel = document.createElement('section');
   panel.id = 'hero-hud';
-  panel.setAttribute('aria-label', 'Arena controls');
+  panel.setAttribute('aria-label', inTown ? 'Town controls' : 'Arena controls');
   panel.innerHTML = '<button type="button" disabled>Loading</button>' +
     '<p class="hud-keys"><kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Mouse</kbd> look <kbd>Tab</kbd> lock-on</p>' +
     '<p class="hud-keys"><kbd>Left click</kbd> strike <kbd>Right click</kbd> heavy <kbd>Q</kbd> rise ' +
     '<kbd>E</kbd> ground <kbd>F</kbd> move <kbd>G</kbd> ultimate <kbd>R</kbd> block (tap to parry) <kbd>Alt</kbd> dodge <kbd>Space</kbd> jump (tap again in the air: super jump)</p>' +
     '<p class="hud-keys"><kbd>1</kbd> weapon <kbd>2</kbd> hands <kbd>3</kbd> legs <kbd>X</kbd> weapon or hands <kbd>B</kbd> bending on/off</p>' +
-    '<p id="control-status" class="hud-status" role="status">Loading the arena.</p>' +
+    `<p id="control-status" class="hud-status" role="status">${inTown ? 'Loading Sindr.' : 'Loading the arena.'}</p>` +
     '<button type="button" class="hud-secondary" hidden>Change fighter</button>';
   document.body.appendChild(panel);
   cleanup.push(() => panel.remove());
@@ -73,8 +75,6 @@ async function main(): Promise<void> {
   const changeFighter = panel.querySelector<HTMLButtonElement>('.hud-secondary')!;
   const status = (message: string): void => { panel.querySelector('#control-status')!.textContent = message; };
 
-  const params = new URLSearchParams(window.location.search);
-  const inTown = isTownMode(params);
   const forcedElement = ELEMENTS.find(e => e === params.get('element')?.toUpperCase() || e === params.get('nation')?.toUpperCase()) ?? null;
   const forcedHush = params.has('hush') || params.has('dim');
   const storedChoice = lastFighter();
