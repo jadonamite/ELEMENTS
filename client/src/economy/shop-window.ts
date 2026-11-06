@@ -1,11 +1,25 @@
 import balance from '../../../shared/balance.json';
-import { EconomyError, fetchMerchant, fetchQuote, type Merchant, type Quote } from './api.js';
+import {
+  EconomyError,
+  buyShop,
+  fetchMerchant,
+  fetchQuote,
+  fetchShopOwnership,
+  fetchShopsForSale,
+  setShopPrices,
+  withdrawShopProfit,
+  type Merchant,
+  type Quote,
+  type ShopForSale,
+  type ShopOwnership,
+} from './api.js';
 import type { StallResult } from './door.js';
 import { itemName, shelfName } from './items.js';
 import './shop-window.css';
 
 // The window a player sees at a market stall: the merchant's purse, what's on each shelf and its price,
 // what the merchant will pay for what you carry, and, on every price, the merchant's reason in their words.
+// A stall whose keeper has gone broke is offered for sale here, and one you own is run from here.
 
 interface MerchantConfig {
   id: string;
@@ -98,6 +112,11 @@ export class ShopWindow {
     const carried = Object.entries(this.events.satchel()).filter(([itemId, n]) => n > 0 && shelfFor(itemId, merchant.inventory));
     const sellQuotes = await Promise.all(carried.map(([itemId]) => fetchQuote(id, itemId, 'sell', 1).catch(() => null)));
 
+    const ownership = await fetchShopOwnership(id).catch(() => null);
+    const forSale = merchant.status === 'closed' && !ownership
+      ? await fetchShopsForSale().then((shops) => shops.find((s) => s.merchantId === id) ?? null).catch(() => null)
+      : null;
+
     const closed = merchant.status !== 'open';
     const statusLine = closed
       ? merchant.status === 'closed'
@@ -138,15 +157,118 @@ export class ShopWindow {
       ${statusLine ? `<p class="shop-status">${escape(statusLine)}</p>` : ''}
       <section aria-label="For sale"><h3 class="shop-heading">For sale</h3>${buyRows}</section>
       <section aria-label="Sell to this stall"><h3 class="shop-heading">Sell what you carry</h3>${sellRows}</section>
+      ${this.ownerBlock(merchant, ownership, forSale)}
       ${note ? `<p class="shop-note" role="status">${escape(note)}</p>` : ''}
     `;
     const purse = `<span class="shop-purse">Purse <strong>${merchant.balance.toLocaleString()}</strong></span><span class="shop-coin">You carry <strong>${this.events.coin().toLocaleString()}</strong> CHROMA</span>`;
     this.el.innerHTML = this.frame(title, purse, body);
     this.bindClose();
     this.el.querySelectorAll<HTMLButtonElement>('button[data-action]').forEach((b) =>
-      b.addEventListener('click', () => void this.act(b.dataset.action as 'buy' | 'sell', b.dataset.item!)),
+      b.addEventListener('click', () => {
+        const action = b.dataset.action!;
+        if (action === 'buy' || action === 'sell') void this.act(action, b.dataset.item!);
+        else if (action === 'buy_shop') void this.buy(id);
+        else if (action === 'withdraw') void this.withdraw(id);
+        else if (action === 'set_prices') void this.setPrices(id);
+      }),
     );
     (this.el.querySelector('.shop-close') as HTMLElement | null)?.focus();
+  }
+
+  // The stall's owner half: buy a broken shop, run the one you hold, or read who holds it.
+  private ownerBlock(merchant: Merchant, ownership: ShopOwnership | null, forSale: ShopForSale | null): string {
+    if (ownership?.mine) {
+      const shelves = Object.keys(merchant.inventory);
+      const priceRows = shelves.map((key) => {
+        const m = ownership.priceMultipliers[key] ?? 1;
+        return `<label class="shop-price-row"><span>${escape(shelfName(key))}</span><input type="number" min="0.6" max="2.5" step="0.1" value="${m}" data-shelf="${escape(key)}" aria-label="Price multiplier for ${escape(shelfName(key))}"></label>`;
+      }).join('');
+      const upkeep = ownership.unpaidUpkeepDays > 0
+        ? `${ownership.unpaidUpkeepDays} ${ownership.unpaidUpkeepDays === 1 ? 'day' : 'days'} of upkeep unpaid.`
+        : 'Upkeep is paid.';
+      return `
+        <section aria-label="Your shop" class="shop-owner">
+          <h3 class="shop-heading">Your shop</h3>
+          <p class="shop-owner-line">The purse holds <strong>${merchant.balance.toLocaleString()}</strong> CHROMA of takings. ${escape(upkeep)}</p>
+          <button type="button" class="shop-act shop-wide" data-action="withdraw" ${merchant.balance <= 0 ? 'disabled' : ''}>Take the takings</button>
+          ${shelves.length ? `
+            <h3 class="shop-heading shop-heading-sub">Your prices</h3>
+            <p class="shop-owner-line">What the stall asks, against the going rate.</p>
+            <div class="shop-price-grid">${priceRows}</div>
+            <button type="button" class="shop-act shop-wide" data-action="set_prices">Set prices</button>` : ''}
+        </section>`;
+    }
+
+    if (ownership) {
+      return `<p class="shop-status">Held by ${escape(ownership.ownerHandle ?? 'another')}. Its keeper sets the prices.</p>`;
+    }
+
+    if (merchant.status === 'closed') {
+      if (!forSale) {
+        return '<p class="shop-status">Closed, and not yet offered for sale.</p>';
+      }
+      const short = this.events.coin() < forSale.salePrice;
+      return `
+        <section aria-label="For sale" class="shop-owner shop-for-sale">
+          <h3 class="shop-heading">For sale</h3>
+          <p class="shop-owner-line">The keeper went broke. The Lord sells the stall for <strong>${forSale.salePrice.toLocaleString()}</strong> CHROMA, ${forSale.remainingDays} ${forSale.remainingDays === 1 ? 'day' : 'days'} left on the listing.</p>
+          <button type="button" class="shop-act shop-wide" data-action="buy_shop" ${short ? 'disabled' : ''}>${short ? 'You cannot afford the stall' : 'Buy this shop'}</button>
+        </section>`;
+    }
+
+    return '';
+  }
+
+  private async buy(id: string): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    let note: string;
+    try {
+      await buyShop(id);
+      await this.events.changed();
+      note = 'The stall is yours. Its keeper answers to you now.';
+    } catch (err) {
+      note = err instanceof EconomyError ? err.message : 'The purchase did not go through.';
+    } finally {
+      this.busy = false;
+    }
+    await this.render(note);
+  }
+
+  private async withdraw(id: string): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    let note: string;
+    try {
+      const r = await withdrawShopProfit(id);
+      await this.events.changed();
+      note = `Took ${r.amount.toLocaleString()} CHROMA from the till.`;
+    } catch (err) {
+      note = err instanceof EconomyError ? err.message : 'The till would not open.';
+    } finally {
+      this.busy = false;
+    }
+    await this.render(note);
+  }
+
+  private async setPrices(id: string): Promise<void> {
+    if (this.busy) return;
+    const multipliers: Record<string, number> = {};
+    this.el.querySelectorAll<HTMLInputElement>('input[data-shelf]').forEach((input) => {
+      const value = Number(input.value);
+      if (Number.isFinite(value)) multipliers[input.dataset.shelf!] = value;
+    });
+    this.busy = true;
+    let note: string;
+    try {
+      await setShopPrices(id, multipliers);
+      note = 'The stall asks the new prices.';
+    } catch (err) {
+      note = err instanceof EconomyError ? err.message : 'The prices were refused.';
+    } finally {
+      this.busy = false;
+    }
+    await this.render(note);
   }
 
   private frame(title: string, purse: string, body: string): string {
