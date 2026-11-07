@@ -166,7 +166,8 @@
       "door": {
         "x": 119.7,
         "z": -43
-      }
+      },
+      "institution": "ch_ignis_sindr_upper"
     },
     {
       "id": "counting_house_e",
@@ -180,7 +181,8 @@
       "door": {
         "x": 130.3,
         "z": -43
-      }
+      },
+      "institution": "ch_ignis_sindr_lower"
     },
     {
       "id": "yard",
@@ -357,5 +359,11 @@
       "yaw": 1.5708,
       "reach": 30
     }
-  ]
+  ],
+  "spawn": {
+    "x": 8,
+    "y": 0,
+    "z": 0,
+    "facing": 1.5707963267948966
+  }
 }

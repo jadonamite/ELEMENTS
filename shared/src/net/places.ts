@@ -1,3 +1,5 @@
+import { SINDR_ANCHORS, SINDR_MANIFEST } from '../world/ignis/sindr.js';
+
 /**
  * Places in a zone that the server checks a player's position against, in the zone's own
  * metres. The browser uses the same lists to show its hints.
@@ -10,27 +12,21 @@ export interface Place {
 }
 
 /** Where a player starts and wakes in Sindr: the shrine's east mouth, facing the road, clear of the brazier. */
-export const SINDR_SPAWN = { x: 8, z: 0, facing: Math.PI / 2 };
+export const SINDR_SPAWN = SINDR_MANIFEST.spawn;
 
-/** Sindr's market stalls, by merchant. The square is centred at x 125. */
-export const SINDR_STALLS: Place[] = [
-  { id: 'sindr_shards', x: 113, z: -8 },
-  { id: 'sindr_supplies', x: 137, z: -8 },
-  { id: 'sindr_arms', x: 113, z: 8 },
-];
+/** Merchant IDs and positions come from the same anchors that build their stalls. */
+export const SINDR_STALLS: Place[] = SINDR_ANCHORS.filter(a => a.merchant).map(a => ({ id: a.merchant!, x: a.x, z: a.z }));
 
-/**
- * Sindr's two counting houses, at the doors of the strongrooms on the Rise. The server checks a
- * player's position against these, so they must be the doors the town builds, not a placeholder;
- * `client/tests/places.test.mjs` fails when they drift apart from `sindr-anchors.json`.
- */
-export const SINDR_COUNTING_HOUSES: Place[] = [
-  { id: 'ch_ignis_sindr_upper', x: 130.3, z: -43 },
-  { id: 'ch_ignis_sindr_lower', x: 119.7, z: -43 },
-];
+/** Economic account IDs stay fixed; service reach is measured from the drawn entrance. */
+export const SINDR_COUNTING_HOUSES: Place[] = SINDR_ANCHORS.filter(a => a.kind === 'counting_house').map(a => {
+  if (!a.institution || !a.door) throw new Error(`Counting house ${a.id} needs an institution and entrance`);
+  return { id: a.institution, x: a.door.x, z: a.door.z };
+});
 
-/** Sindr's notice board, at the anchor the town builds it on: where the watch posts red flags and bounties. */
-export const SINDR_NOTICE_BOARD: Place = { id: 'notice_board', x: 117, z: -13.5 };
+/** Sindr's notice board, from the anchor the town builds it on: where the watch posts red flags and bounties. */
+const board = SINDR_ANCHORS.find(a => a.kind === 'notice_board');
+if (!board) throw new Error('Sindr needs a notice board anchor');
+export const SINDR_NOTICE_BOARD: Place = { id: board.id, x: board.x, z: board.z };
 
 /** How close a player stands to a stall, counting house or notice board to use it, metres. */
 export const PLACE_REACH = 3.6;

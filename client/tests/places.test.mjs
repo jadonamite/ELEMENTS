@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import anchors from '../src/world/sindr-anchors.json' with { type: 'json' };
+import anchors from '../../shared/src/world/ignis/sindr.json' with { type: 'json' };
 import { SINDR_STALLS, SINDR_COUNTING_HOUSES, SINDR_NOTICE_BOARD, placesFor } from '../../shared/src/net/places.ts';
 
 // The server checks a player's position against the shared place list, and the town builds from the
-// anchors file. If the two drift, a player stands at a stall or a bank door and is told they are
+// shared anchors file. If the two drift, a player stands at a stall or a bank door and is told they are
 // nowhere near it. These tests hold the two lists together.
 
 const byKind = (kind) => anchors.anchors.filter((a) => a.kind === kind);
@@ -24,7 +24,7 @@ test('every Sindr counting house stands at the door its anchor builds', () => {
   const houses = byKind('counting_house');
   assert.equal(SINDR_COUNTING_HOUSES.length, houses.length);
   for (const place of SINDR_COUNTING_HOUSES) {
-    const anchor = houses.find((a) => (a.id === 'counting_house_w' ? 'ch_ignis_sindr_lower' : 'ch_ignis_sindr_upper') === place.id);
+    const anchor = houses.find((a) => a.institution === place.id);
     assert.ok(anchor, `no anchor builds the counting house ${place.id}`);
     assert.ok(anchor.door, `${anchor.id} has no door to stand at`);
     assert.equal(place.x, anchor.door.x, `${place.id} door x`);

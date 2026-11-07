@@ -378,7 +378,7 @@ Hired for CHROMA, paid per run. Better fighters cost more. A hired fighter can d
 When one nation dominates, the world reacts by itself (for example a firestorm that closes a trade route).
 
 ### The Sentries
-The Lord's enforcers of the Edict (section 4). They patrol Chromara and the roads near it only, so the far roads stay lawless.
+The Lord's enforcers of the Edict (section 4). They patrol Chromara and the roads near it, and keep a small watch of two or three in Sindr beside its own town guards; the far roads stay lawless.
 
 ### Day and night
 Robbers are bolder at night, some monsters come out only after dark, and shops shut.
