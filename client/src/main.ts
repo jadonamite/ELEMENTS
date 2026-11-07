@@ -324,7 +324,10 @@ async function main(): Promise<void> {
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
       if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone());
       if (killed) markKill(fight.allDead);
-      else if (combat.current === 'ultimate') slowMotion = Math.max(slowMotion, ULTIMATE_SLOW_SECONDS);
+      else if (combat.current === 'ultimate') {
+        slowMotion = Math.max(slowMotion, ULTIMATE_SLOW_SECONDS);
+        shoulderCamera.killCloseUp();
+      }
     },
     roundStarted(roundNumber, villainCount) {
       fightHud.say(`Round ${roundNumber} — ${villainCount} ${villainCount === 1 ? 'Villain' : 'Villains'}`);

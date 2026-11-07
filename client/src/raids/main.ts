@@ -131,6 +131,7 @@ async function main(): Promise<void> {
       sound.playImpact(killed, false);
       fightHud.showDamage(hitPos ?? enemy.controller.position, damage, false);
       shoulder.shake(killed ? 0.3 : 0.12);
+      if (killed) shoulder.killCloseUp();
     },
   }, makeFoe);
   fight.stopWaves();
@@ -495,8 +496,8 @@ async function main(): Promise<void> {
       if (liveFoes.length && fight.nearestDistance(controller.position) < balance.stance.engageRadius && alive) sword.draw(false);
       else if (!combat.current && !liveFoes.length) sword.sheathe();
     }
-    // Indoors the close shoulder view always; the open-world view sits above the ceiling.
-    shoulder.fight = 1;
+    shoulder.fight = liveFoes.length > 0 ? 1 : 0;
+    shoulder.crowd = liveFoes.filter((foe) => foe.controller.position.distanceTo(controller.position) < 8).length >= 3;
     if (locked && !locked.alive) locked = null;
     shoulder.lockTarget = locked ? locked.controller.position : null;
 
