@@ -4,6 +4,7 @@ import { Vector3 } from 'three';
 const identity = { x: 0, y: 0, z: 0, w: 1 };
 const dir = new Vector3();
 const lineFrom = new Vector3(), lineTo = new Vector3();
+const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
 
 /**
  * The one place attacks ask the world what is in their way. Every fixed collider counts:
@@ -47,6 +48,16 @@ export class CombatSpace {
     const hit = this.obstruction(lineFrom, lineTo, 0.4);
     const back = hit === null ? distance : Math.max(0, hit - 0.8);
     return out.set(feet.x + sx * back, feet.y, feet.z + sz * back);
+  }
+
+  /**
+   * Height of the first fixed surface straight below (x, from, z), searching at most `depth` metres down;
+   * `from` itself when the point is inside something solid, null when nothing is below.
+   */
+  floor(x: number, from: number, z: number, depth: number): number | null {
+    ray.origin = { x, y: from, z };
+    const hit = this.world.castRay(ray, depth, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+    return hit ? from - hit.timeOfImpact : null;
   }
 
   /** True when nothing fixed stands between the two points. */

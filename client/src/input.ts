@@ -4,7 +4,7 @@ import type { CombatAction, FightingStyle } from './combat.js';
 const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyR']);
 /** Keys that trigger one move per press. */
 const actionKeys: Record<string, CombatAction> = {
-  KeyQ: 'uppercut', KeyE: 'ground_pound', KeyF: 'dash', KeyG: 'ultimate', Space: 'dodge',
+  KeyQ: 'uppercut', KeyE: 'ground_pound', KeyF: 'dash', KeyG: 'ultimate', AltLeft: 'dodge',
 };
 
 export function isEditable(target: EventTarget | null): boolean {
@@ -24,6 +24,8 @@ export class GameInput {
   onInteract?: () => boolean | void;
   onDuelToggle?: () => void;
   onTechnique?: () => void;
+  /** Space: a jump, or the super jump when tapped again in the air. */
+  onJump?: () => void;
 
   constructor(private readonly canvas: HTMLCanvasElement, button: HTMLButtonElement,
     orbit: (dx: number, dy: number) => void, status: (text: string) => void) {
@@ -48,6 +50,13 @@ export class GameInput {
     button.addEventListener('click', capture, options);
     window.addEventListener('keydown', event => {
       if (isEditable(event.target) || document.activeElement !== canvas) return;
+      if (event.code === 'Space') {
+        event.preventDefault();
+        if (!event.repeat) this.onJump?.();
+        return;
+      }
+      // Alt alone would focus the browser menu on some systems.
+      if (event.code === 'AltLeft') event.preventDefault();
       if (event.code === 'Tab') {
         event.preventDefault();
         this.onLockToggle?.();

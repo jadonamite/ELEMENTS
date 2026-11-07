@@ -101,7 +101,7 @@ export class FightHud {
       '</div>' +
       '<div class="ability-tray" aria-label="Moves">' +
       slot('light', 'L-Click', 'Attack', true) + slot('heavy', 'R-Click', 'Heavy', true) +
-      slot('dodge', 'Space', 'Dodge', true, true) + slot('block', 'R', 'Guard', true) +
+      slot('dodge', 'Alt', 'Dodge', true, true) + slot('block', 'R', 'Guard', true) +
       slot('uppercut', 'Q', 'Uppercut') + slot('ground_pound', 'E', 'Slam') +
       slot('dash_strike', 'F', 'Dash') + slot('ultimate', 'G', 'Ultimate') +
       '</div>' +

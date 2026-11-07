@@ -42,7 +42,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import balance from '../../../shared/balance.json';
 import { SANITIZE_SHADER } from '../env/postprocessing.js';
 import type { PhysicsWorld } from '../physics.js';
-import { cellLods, createAoMaterial, WorldBuilder, type Bucket, type Part } from './builder.js';
+import { cellLods, createAoMaterial, WorldBuilder, type Bucket, type Part, type Post } from './builder.js';
 import { skyUniforms, WorldClock } from './clock.js';
 import { createEmbers, createFires, createForgeMaterial, createLavaMaterial, createPaperMaterial, createSmoke, createWaterMaterial, createWetMaterial, createWindowMaterial, LightPool, nightness, STEAM, worldTime } from './effects.js';
 import { createSky, fieldMesh, heightAt, sampleField, slopeBlend } from './landscape.js';
@@ -70,6 +70,8 @@ export interface Zone {
   warm(object: Object3D): Promise<void>;
   /** Resolves when the town surfaces and every prop LOD have loaded. */
   ready: Promise<void>;
+  /** Where people belong, as the town was built: counters, anvils, doors. */
+  posts: readonly Post[];
   /** The point the shadows and the nearest lights follow, usually the hero. */
   follow(point: Vector3): void;
   setSize(width: number, height: number): void;
@@ -284,7 +286,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   let followed: Vector3 | null = null;
 
   return {
-    scene, camera, renderer, clock, ready,
+    scene, camera, renderer, clock, ready, posts: builder.posts,
     physics: { world, step: () => world.step(), dispose: () => world.free() },
     follow(point) { followed = point; },
     warm: warmUp,

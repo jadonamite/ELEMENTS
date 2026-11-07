@@ -482,6 +482,7 @@ export class BendingEffects {
 
     this.depth = new SoftDepth(scene, this.root);
     this.field = new FlameField(this.root, this.depth);
+    this.depth.needed = () => this.field.drawing;
     this.rings = new GroundRings(this.root, this.field.time);
     this.walls = new FireWalls(this.root, this.field.time);
     this.trail = new BladeTrail(this.root, this.field.time);

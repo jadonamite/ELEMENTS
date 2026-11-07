@@ -1,6 +1,6 @@
 import { DepthTexture, MeshDepthMaterial, Vector2, Vector4, WebGLRenderTarget, type Group, type Scene } from 'three';
 
-/** Captures opaque scene depth before effects, including animated bodies. */
+/** Captures opaque scene depth before effects, including animated bodies, on frames that draw soft effects. */
 export class SoftDepth {
   readonly uniforms = {
     uSceneDepth: { value: null as DepthTexture | null },
@@ -13,6 +13,8 @@ export class SoftDepth {
   private readonly previous: Scene['onBeforeRender'];
   private readonly hook: Scene['onBeforeRender'];
   private busy = false;
+  /** Whether anything soft is drawn this frame; with nothing to soften, the scene is not drawn twice. */
+  needed: () => boolean = () => true;
   private scale = 0.5;
 
   constructor(private readonly scene: Scene, root: Group) {
@@ -21,6 +23,7 @@ export class SoftDepth {
     this.hook = (renderer, currentScene, camera, geometry, material, group) => {
       if (this.busy) return;
       this.previous.call(scene, renderer, currentScene, camera, geometry, material, group);
+      if (!this.needed() && !scene.userData.warming) return;
       const destination = renderer.getRenderTarget();
       const size = destination ? new Vector2(destination.width, destination.height) : renderer.getDrawingBufferSize(new Vector2());
       const width = Math.max(1, Math.round(size.x * this.scale));

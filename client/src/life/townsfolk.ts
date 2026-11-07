@@ -24,6 +24,12 @@ export interface Townsperson {
   isLit: boolean;
   element: 'IGNIS' | 'DIM';
   sex: 'male' | 'female';
+  /** The look this person wears; people without one have a look of their own. */
+  look?: string;
+  /** Wanders the open streets instead of keeping a schedule. */
+  wander?: boolean;
+  /** Keeps a post built into a place: by day (a shop, an anvil), or always (a home's door). */
+  post?: 'day' | 'always';
   schedule: {
     work: LocationWaypoint;
     market: LocationWaypoint;
@@ -514,6 +520,8 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
  */
 export function getTownspersonActivity(minute: number, townsperson: Townsperson): RoutineActivity {
   const m = ((minute % 24) + 24) % 24;
+  if (townsperson.post === 'always') return 'work';
+  if (townsperson.post === 'day') return m < 12 || m >= 22 ? 'work' : 'home';
 
   if (m < 12) {
     // Daytime: at work/market

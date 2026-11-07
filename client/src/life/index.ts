@@ -5,7 +5,10 @@ import type { SoundManager } from '../audio.js';
 import type { WorldClock } from '../world/clock.js';
 import { nightness } from '../world/effects.js';
 import { TownManager } from './town-manager.js';
-import { loadTownsfolkBodies } from './townsfolk-bodies.js';
+import { loadLookBodies, ownLooks } from './townsfolk-bodies.js';
+import { makeCrowd, staffPosts } from './crowd.js';
+import type { Post } from '../world/builder.js';
+import { SINDR_TOWNSFOLK } from './townsfolk.js';
 import { ShuttersAndLanterns } from './shutters-lanterns.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
 import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
@@ -15,6 +18,9 @@ import type { ContextOffer } from '../ui/context-action.js';
 
 /** How near a townsperson stands to be talked to, metres. */
 const TALK_REACH = 3.5;
+/** People wandering the streets beside the named townsfolk and the keepers of posts, and how many looks they share. */
+const CROWD_PEOPLE = 110;
+const CROWD_LOOKS = 30;
 
 
 export interface SindrLifeOptions {
@@ -29,6 +35,8 @@ export interface SindrLifeOptions {
   getThreats: () => readonly Vector3[];
   /** The world's solid shapes, so people running from a fight don't run through walls. */
   space?: CombatSpace | null;
+  /** Where people belong, as the town was built; each gets someone. */
+  posts?: readonly Post[];
 }
 
 export class SindrLifeSystem {
@@ -79,8 +87,14 @@ export class SindrLifeSystem {
       },
     );
 
-    this.ready = loadTownsfolkBodies().then((bodies) => {
-      if (!this.disposed) this.townManager.init(bodies);
+    // The named townsfolk, then a crowd wearing its own looks, copied round the streets.
+    const crowd = makeCrowd(CROWD_PEOPLE, CROWD_LOOKS);
+    const keepers = staffPosts(options.posts ?? [], crowd, SINDR_TOWNSFOLK);
+    const people = [...SINDR_TOWNSFOLK, ...keepers, ...crowd.people];
+    const looks = [...ownLooks(SINDR_TOWNSFOLK), ...crowd.looks];
+    const children = new Set(people.filter(p => p.role === 'child').map(p => p.look ?? p.id));
+    this.ready = loadLookBodies(looks, children).then(async (bodies) => {
+      if (!this.disposed) await this.townManager.init(bodies, people);
     }).catch(console.error);
   }
 
@@ -89,7 +103,7 @@ export class SindrLifeSystem {
     const heroPos = this.controller.position;
 
     // 1. Update townsfolk routines and locomotion
-    this.townManager.update(delta, minute, heroPos, this.getThreats());
+    this.townManager.update(delta, minute, heroPos, this.getThreats(), this.camera);
 
     // 2. Update dusk & night world changes (shutters, lanterns, robbers)
     this.shuttersLanterns.update(minute, nightness.value);

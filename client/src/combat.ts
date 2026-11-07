@@ -115,9 +115,12 @@ export class Combat {
     return this.progress >= start && this.progress <= end;
   }
 
-  /** True during the dodge roll's invulnerable frames. */
+  /** Whether the running dodge found open ground; a cornered dodge is short and only briefly safe. */
+  dodgeOpen = true;
+
+  /** True during the dodge's invulnerable frames: nearly all of it in the open, a sliver when cornered. */
   get invulnerable(): boolean {
-    const [start, end] = tuning.dodgeInvulnerable as [number, number];
+    const [start, end] = (this.dodgeOpen ? tuning.dodgeOpenInvulnerable : tuning.dodgeInvulnerable) as [number, number];
     // AURA's Wind Step is a dash with no opening at all.
     if (this.move === 'dash_strike' && this.element === 'AURA') return true;
     return this.move === 'dodge' && this.progress >= start && this.progress <= end;
@@ -130,7 +133,9 @@ export class Combat {
   get lunge(): number {
     if (!this.move) return 0;
     // Lunges only during the first part of a move, so recoveries stay planted.
-    return this.elapsed < this.length * tuning.lungeFraction ? moves[this.move]!.lunge : 0;
+    if (this.elapsed >= this.length * tuning.lungeFraction) return 0;
+    const lunge = moves[this.move]!.lunge;
+    return this.move === 'dodge' && !this.dodgeOpen ? lunge * tuning.dodgeCorneredLunge : lunge;
   }
 
   press(action: CombatAction): boolean {

@@ -236,6 +236,7 @@ function square(b: WorldBuilder, rand: () => number): void {
     for (let gx = -1.9; gx < 2; gx += 0.38 + rand() * 0.2) b.cylinder(rand() < 0.5 ? 'terracotta' : 'raw_timber', gx, 1.12, 1.2 + (rand() - 0.5) * 0.4, 0.13, 0.16, 0.22 + rand() * 0.14, 9);
     b.prop('crate', -1.4, -0.6, 0.3, 0.8);
     b.prop('barrel', 1.5, -0.7, 0, 0.8);
+    b.post('keeper', 0, 0.35);
     b.solid(0, 1.3, 0, 4.8, 2.6, 3);
   }
   b.at(0, 0, 0);

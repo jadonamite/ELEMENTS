@@ -37,6 +37,13 @@ export interface Collider {
 /** A light source the nearest-lights pool may pick: braziers, forge mouths, windows. */
 export interface Emitter { position: Vector3; color: number; intensity: number; range: number; flicker: number }
 
+/** What a person at a post does: keeps a shop or stall, works an anvil, or lives behind a door. */
+export type PostKind = 'keeper' | 'smith' | 'household';
+/** When a post is kept: shops and anvils by day, homes all the time. */
+export type PostHours = 'day' | 'always';
+/** A spot that always has someone at it, built with the place it belongs to. */
+export interface Post { kind: PostKind; hours: PostHours; x: number; y: number; z: number; facing: number }
+
 export interface HouseSpec {
   x: number; z: number;
   /** Rotation about y; the front faces local +z. */
@@ -138,6 +145,8 @@ export class WorldBuilder {
   private readonly buckets = new Map<string, { bucket: Bucket; list: BufferGeometry[] }>();
   readonly colliders: Collider[] = [];
   readonly emitters: Emitter[] = [];
+  /** Where people belong: behind every counter, at every anvil and door. */
+  readonly posts: Post[] = [];
   readonly fires: Array<{ position: Vector3; scale: number }> = [];
   readonly chimneys: Vector3[] = [];
   readonly embers: Vector3[] = [];
@@ -228,6 +237,13 @@ export class WorldBuilder {
     const p = this.world(x, y, z);
     const frameYaw = Math.atan2(this.frame.elements[8]!, this.frame.elements[10]!);
     this.plants.push({ kind, x: p.x, y: p.y, z: p.z, yaw: yaw + frameYaw, scale });
+  }
+
+  /** A post in frame coordinates; `facing` 0 looks along the frame's +z, out of a front. */
+  post(kind: PostKind, x: number, z: number, facing = 0, y = 0, hours: PostHours = kind === 'household' ? 'always' : 'day'): void {
+    const p = this.world(x, y, z);
+    const frameYaw = Math.atan2(this.frame.elements[8]!, this.frame.elements[10]!);
+    this.posts.push({ kind, hours, x: p.x, y: p.y, z: p.z, facing: facing + frameYaw });
   }
 
   prop(id: string, x: number, z: number, yaw: number, scale = 1, y = 0): void {
@@ -350,13 +366,16 @@ export class WorldBuilder {
       this.box('ashlar_stone_blocks', 0, plinth + 0.45, front - depth + 0.7, 1.8, 0.9, 0.9);
       this.fire(0, plinth + 0.95, front - depth + 0.7, 0.9);
       this.light(0, plinth + 1.6, front + 0.6, 0xff6a20, 35, 13, 0.35);
-      this.prop('anvil', 1.6 * (rand() > 0.5 ? 1 : -1), front + 1.3, rand() * 0.8 - 0.4, 1.1);
+      const anvil = 1.6 * (rand() > 0.5 ? 1 : -1);
+      this.prop('anvil', anvil, front + 1.3, rand() * 0.8 - 0.4, 1.1);
+      this.post('smith', anvil, front + 2.1, Math.PI);
     } else {
       this.box('ashlar_stone_blocks', 0, plinth + groundH / 2, 0, w, groundH, d);
       const door = spec.door ?? (rand() - 0.5) * (w - 2.4);
       this.box('charred_timber_beams', door, plinth + 1.1, front + 0.03, 1.2, 2.2, 0.1, undefined, { u: 0.5, v: 1 });
       this.box('ashlar_stone_blocks', door, plinth + 2.35, front + 0.08, 1.7, 0.32, 0.2);
       this.box('basalt_rock_face', door, 0.12, front + 0.45, 1.6, 0.24, 0.6);
+      this.post('household', door + 0.7, front + 1.1);
       const side = door > 0 ? -1 : 1;
       if (w > 5) this.window(side * Math.min(w / 2 - 1.2, Math.abs(door) + 2.1), plinth + 1.7, front);
       if (rand() > 0.6) this.window(0, plinth + 1.7, -front, 0.7, 0.9, -1);
