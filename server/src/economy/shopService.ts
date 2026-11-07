@@ -127,6 +127,7 @@ export function buyShop(
     throw new Error(validation.reason ?? 'Failed shop purchase validation');
   }
 
+  return withSavepoint(db, () => {
   // 1. Transfer purchase price from buyer to treasury
   recordTransaction(
     {
@@ -180,6 +181,7 @@ export function buyShop(
     ownership,
     merchant,
   };
+  });
 }
 
 // Configures price multipliers for a player-owned shop.
@@ -352,6 +354,7 @@ export function withdrawShopProfit(
     throw new Error(withdrawal.reason ?? 'Invalid withdrawal amount');
   }
 
+  return withSavepoint(db, () => {
   // 1. Transfer CHROMA from merchant purse to owner
   recordTransaction(
     {
@@ -393,6 +396,7 @@ export function withdrawShopProfit(
     remainingPurse: merchant.balance,
     ownerBalance,
   };
+  });
 }
 
 // Pays daily shop upkeep from owner's purse to the Lord treasury.
@@ -424,6 +428,7 @@ export function payShopUpkeep(
     );
   }
 
+  return withSavepoint(db, () => {
   recordTransaction(
     {
       from: params.ownerAccountId,
@@ -455,6 +460,7 @@ export function payShopUpkeep(
     success: true,
     amount: upkeepAmount,
   };
+  });
 }
 
 // Processes daily economic upkeep and sale window progression for a shop.
@@ -470,6 +476,7 @@ export function tickShopDay(
   bailoutReopened: boolean;
   unpaidUpkeepDays: number;
 } {
+  return withSavepoint(db, () => {
   const active = getActiveShopOwnership(params.merchantId, db);
 
   if (active) {
@@ -636,6 +643,7 @@ export function tickShopDay(
     bailoutReopened: false,
     unpaidUpkeepDays: 0,
   };
+  });
 }
 
 // Ticks daily shop status across all merchants in the market.

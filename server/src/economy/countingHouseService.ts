@@ -9,6 +9,7 @@ import {
 } from '@elements/shared';
 import { getDatabase } from '../db.js';
 import { recordTransaction } from './ledgerService.js';
+import { withSavepoint } from './satchelService.js';
 import { getActiveRedFlags, hasActiveBounty } from './crimeService.js';
 
 interface RawNoteRow {
@@ -62,22 +63,24 @@ export function depositToCountingHouse(
     timestamp: now,
   });
 
-  // Transfer CHROMA from player into depository
-  recordTransaction(
-    {
-      from: params.accountId,
-      to: params.countingHouseId,
-      amount: params.amount,
-      reason: 'counting_house_deposit',
-      refId: noteId,
-    },
-    db,
-  );
+  // Transfer CHROMA into the depository and seal the note as one unit: either both land or neither.
+  withSavepoint(db, () => {
+    recordTransaction(
+      {
+        from: params.accountId,
+        to: params.countingHouseId,
+        amount: params.amount,
+        reason: 'counting_house_deposit',
+        refId: noteId,
+      },
+      db,
+    );
 
-  db.prepare(
-    `INSERT INTO counting_house_notes (note_id, account_id, amount, issued_at, issued_by, status, redeemed_at, redeemed_by)
-     VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)`,
-  ).run(note.noteId, note.accountId, note.amount, note.issuedAt, note.issuedBy, note.status);
+    db.prepare(
+      `INSERT INTO counting_house_notes (note_id, account_id, amount, issued_at, issued_by, status, redeemed_at, redeemed_by)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)`,
+    ).run(note.noteId, note.accountId, note.amount, note.issuedAt, note.issuedBy, note.status);
+  });
 
   return note;
 }
@@ -116,21 +119,24 @@ export function withdrawFromCountingHouse(
 
   const now = Date.now();
 
-  // Transfer CHROMA from depository back to player
-  recordTransaction(
-    {
-      from: note.issuedBy,
-      to: params.accountId,
-      amount: note.amount,
-      reason: 'counting_house_withdrawal',
-      refId: note.noteId,
-    },
-    db,
-  );
+  // Pay the note out and mark it redeemed as one unit, so a half-finished withdrawal can never
+  // leave the note active for a second redemption.
+  withSavepoint(db, () => {
+    recordTransaction(
+      {
+        from: note.issuedBy,
+        to: params.accountId,
+        amount: note.amount,
+        reason: 'counting_house_withdrawal',
+        refId: note.noteId,
+      },
+      db,
+    );
 
-  db.prepare(
-    `UPDATE counting_house_notes SET status = 'redeemed', redeemed_at = ?, redeemed_by = ? WHERE note_id = ?`,
-  ).run(now, params.countingHouseId, note.noteId);
+    db.prepare(
+      `UPDATE counting_house_notes SET status = 'redeemed', redeemed_at = ?, redeemed_by = ? WHERE note_id = ?`,
+    ).run(now, params.countingHouseId, note.noteId);
+  });
 
   return {
     withdrawnAmount: note.amount,

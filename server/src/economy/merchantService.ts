@@ -10,6 +10,7 @@ import {
   applyMerchantBailout,
   TREASURY_ACCOUNT_ID,
   TAX_RATES,
+  MERCHANT_CONFIG,
   DEMAND_CONFIG,
   COLOR_BALANCE_CONFIG,
   getElementFromItemType,
@@ -578,7 +579,7 @@ export function tickAllMerchantsDay(db: DatabaseSync = getDatabase()): {
         {
           from: TREASURY_ACCOUNT_ID,
           to: m.id,
-          amount: 100_000,
+          amount: MERCHANT_CONFIG.bailoutGrant,
           reason: 'merchant_bailout',
           refId: m.id,
         },
