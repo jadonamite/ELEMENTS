@@ -5,7 +5,7 @@ import { circleArea, Levels, rectArea, stripArea, type Area, type Rect } from '.
 import type { Surface } from './materials.js';
 import { brackets, roof } from './roofs.js';
 import { SINDR_SPAWN } from '../../../shared/src/net/index.js';
-import anchorData from './sindr-anchors.json';
+import { SINDR_ANCHORS, type SindrAnchor } from '../../../shared/src/world/ignis/sindr.js';
 import { stairRun, stairs } from './stairs.js';
 import { compoundWall, hall, noticeBoard, roofedGate, stall, townHouse, well, type Rank } from './style-kit.js';
 import { awning, clutter, handCart, lampPost, lanternString, paperLantern, parkedCart, paveStreet, runnel, timberStack, wetPatch, type Strip } from './street.js';
@@ -16,17 +16,11 @@ import { dressTerrace, planter, retainingWall, terraceTop } from './walls.js';
  * Shrine of Embers past the market square to the Gorge Road; from the square one lane, the Rise, climbs north
  * in short flights between stepped rows of houses, commoners low and merchants above, through the well yard
  * to the Lord's Gate and the Master's Hall; behind the hall a switchback road climbs the crag to Brandr's Keep.
- * Every named place comes from sindr-anchors.json, which the other systems read too. x runs east, north is -z.
+ * Named places and service entrances come from the shared Sindr manifest. x runs east, north is -z.
  */
 
-export interface Anchor {
-  id: string; kind: string; name: string;
-  x: number; y: number; z: number; yaw: number; reach: number;
-  merchant?: string | null;
-  door?: { x: number; z: number };
-  path?: Array<{ x: number; y: number; z: number }>;
-}
-export const ANCHORS: Anchor[] = anchorData.anchors as Anchor[];
+export type Anchor = SindrAnchor;
+export const ANCHORS = SINDR_ANCHORS;
 export function anchor(id: string): Anchor {
   const a = ANCHORS.find((k) => k.id === id);
   if (!a) throw new Error(`Sindr has no anchor ${id}`);

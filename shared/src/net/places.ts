@@ -1,3 +1,5 @@
+import { SINDR_ANCHORS, SINDR_MANIFEST } from '../world/ignis/sindr.js';
+
 /**
  * Places in a zone that the server checks a player's position against, in the zone's own
  * metres. The browser uses the same lists to show its hints.
@@ -10,20 +12,16 @@ export interface Place {
 }
 
 /** Where a player starts and wakes in Sindr: the shrine's east mouth, facing the road, clear of the brazier. */
-export const SINDR_SPAWN = { x: 8, z: 0, facing: Math.PI / 2 };
+export const SINDR_SPAWN = SINDR_MANIFEST.spawn;
 
-/** Sindr's market stalls, by merchant. The square is centred at x 125. */
-export const SINDR_STALLS: Place[] = [
-  { id: 'sindr_shards', x: 113, z: -8 },
-  { id: 'sindr_supplies', x: 137, z: -8 },
-  { id: 'sindr_arms', x: 113, z: 8 },
-];
+/** Merchant IDs and positions come from the same anchors that build their stalls. */
+export const SINDR_STALLS: Place[] = SINDR_ANCHORS.filter(a => a.merchant).map(a => ({ id: a.merchant!, x: a.x, z: a.z }));
 
-/** Sindr's two counting houses. Placeholder spots off the market until the buildings stand. */
-export const SINDR_COUNTING_HOUSES: Place[] = [
-  { id: 'ch_ignis_sindr_upper', x: 125, z: -14 },
-  { id: 'ch_ignis_sindr_lower', x: 60, z: 6 },
-];
+/** Economic account IDs stay fixed; service reach is measured from the drawn entrance. */
+export const SINDR_COUNTING_HOUSES: Place[] = SINDR_ANCHORS.filter(a => a.kind === 'counting_house').map(a => {
+  if (!a.institution || !a.door) throw new Error(`Counting house ${a.id} needs an institution and entrance`);
+  return { id: a.institution, x: a.door.x, z: a.door.z };
+});
 
 /** How close a player stands to a stall or counting house to use it, metres. */
 export const PLACE_REACH = 3.6;
