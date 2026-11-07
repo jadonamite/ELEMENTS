@@ -70,13 +70,20 @@
     "near": 0.1,
     "far": 500,
     "hideHeroDistance": 0.6,
-    "blendSeconds": 0.35,
+    "blendSeconds": 0.8,
     "world": {
-      "distance": 11,
-      "pitch": 0.733,
+      "distance": 3.4,
+      "pitch": 0.035,
       "shoulder": 0,
-      "targetHeight": 2.4,
-      "fov": 42
+      "targetHeight": 1.5,
+      "fov": 55
+    },
+    "crowd": {
+      "distance": 12,
+      "pitch": 0.85,
+      "shoulder": 0.25,
+      "targetHeight": 1.9,
+      "fov": 70
     }
   },
   "look": {
