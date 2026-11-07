@@ -11,15 +11,19 @@ import { retainingWall } from './walls.js';
  * build every reach and crossing in the nation.
  */
 
-/** Height of a rail's collider: above a standing jump, so nobody steps or hops into the water by accident. */
+/** Height of a full rail's collider: above a standing jump, so nobody hops off a terrace by accident. */
 const RAIL_SOLID = 1.6;
+/** A low rail stops walkers and the walk map, but a deliberate jump clears it. */
+const LOW_RAIL_SOLID = 1.1;
 
 /**
- * A stone balustrade from `a` to `c` standing at height y: a base course, square posts with caps, a low panel and
- * a heavy top rail. `gaps` are stretches along it (metres from `a`) left open for stairs and crossings.
+ * A stone balustrade from `a` to `c` standing at height y. Full: a base course, square posts with caps, a low
+ * panel and a heavy top rail, for terrace edges and bridges. Low: knee-high posts and an open row of balusters
+ * under a light rail, for a bank people look over at the water. `gaps` are stretches along it (metres from `a`)
+ * left open for stairs and crossings.
  */
 export function balustrade(b: WorldBuilder, a: { x: number; z: number }, c: { x: number; z: number }, y: number,
-  gaps: Array<[number, number]> = [], rand: () => number = () => 0.5): void {
+  gaps: Array<[number, number]> = [], rand: () => number = () => 0.5, low = false): void {
   const L = Math.hypot(c.x - a.x, c.z - a.z);
   if (L < 0.3) return;
   b.at(a.x, a.z, Math.atan2(c.x - a.x, c.z - a.z), y);
@@ -32,6 +36,10 @@ export function balustrade(b: WorldBuilder, a: { x: number; z: number }, c: { x:
   if (L > s + 0.3) runs.push([s, L]);
   for (const [s0, s1] of runs) {
     const len = s1 - s0, mid = (s0 + s1) / 2;
+    if (low) {
+      lowRun(b, s0, s1, rand);
+      continue;
+    }
     b.box('pale_stone', 0, 0.09, mid, 0.44, 0.18, len);
     b.box('ashlar_stone_blocks', 0, 0.36, mid, 0.18, 0.36, len);
     b.box('ashlar_stone_blocks', 0, 0.93, mid, 0.32, 0.16, len + 0.1);
@@ -53,6 +61,26 @@ export function balustrade(b: WorldBuilder, a: { x: number; z: number }, c: { x:
     b.solid(0, RAIL_SOLID / 2, mid, 0.4, RAIL_SOLID, len);
   }
   b.at(0, 0, 0);
+}
+
+/** One run of a low balustrade, in the balustrade's frame (local z along it). */
+function lowRun(b: WorldBuilder, s0: number, s1: number, rand: () => number): void {
+  const len = s1 - s0, mid = (s0 + s1) / 2;
+  b.box('pale_stone', 0, 0.06, mid, 0.4, 0.12, len);
+  b.box('ashlar_stone_blocks', 0, 0.66, mid, 0.26, 0.12, len + 0.08);
+  b.box('pale_stone', 0, 0.735, mid, 0.3, 0.03, len + 0.1);
+  const n = Math.max(1, Math.round(len / 2.2));
+  for (let k = 0; k <= n; k++) {
+    const z = s0 + (k / n) * len;
+    b.box('ashlar_stone_blocks', 0, 0.4, z, 0.28, 0.8, 0.28);
+    b.box('pale_stone', 0, 0.83, z, 0.36, 0.07, 0.36);
+    if (k < n) {
+      const bay = len / n, m = Math.max(2, Math.round(bay / 0.42));
+      for (let j = 1; j < m; j++) b.cylinder('ashlar_stone_blocks', 0, 0.36, z + (j / m) * bay, 0.045, 0.06, 0.48, 6);
+    }
+  }
+  if (rand() < 0.6) b.box('moss', 0, 0.125, s0 + rand() * len * 0.6, 0.42, 0.015, 0.5 + rand() * 1.2);
+  b.solid(0, LOW_RAIL_SOLID / 2, mid, 0.36, LOW_RAIL_SOLID, len);
 }
 
 export interface CanalSpec {
@@ -110,7 +138,7 @@ export function canal(b: WorldBuilder, c: CanalSpec, rand: () => number): Area[]
   b.solid((c.x0 + top.x) / 2, (c.south + c.bed(c.x0)) / 2, top.z, top.x - c.x0, c.south - c.bed(c.x0), 1.2);
   // Rails: the south bank is open at the stair head and the crossings; the north bank follows its ground.
   const southGaps: Array<[number, number]> = [[0, top.x - c.x0 + 0.1], ...c.crossings.map(([a, z]): [number, number] => [a - c.x0, z - c.x0])];
-  balustrade(b, { x: c.x0, z: c.z1 + 0.35 }, { x: c.x1, z: c.z1 + 0.35 }, c.south, southGaps, rand);
+  balustrade(b, { x: c.x0, z: c.z1 + 0.3 }, { x: c.x1, z: c.z1 + 0.3 }, c.south, southGaps, rand, true);
   for (const n of c.north) {
     if (n.top <= c.south + 0.01) continue;
     const gaps = (c.openNorth ?? []).filter(([a, z]) => z > n.x0 && a < n.x1).map(([a, z]): [number, number] => [a - n.x0, z - n.x0]);

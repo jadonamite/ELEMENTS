@@ -33,6 +33,8 @@ float wFbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += 
 export const worldTime = { value: 0 };
 /** 0 at noon, 1 at full night: windows and forges glow harder after dark. */
 export const nightness = { value: 0.6 };
+/** How lit the town's lamps are: lanterns, windows and lamp lights catch as the sun gets low and stay lit all night. */
+export const lamplight = { value: 0.6 };
 
 /** Billboarded noise flames, one draw call for every brazier and hearth. */
 export function createFires(fires: Array<{ position: Vector3; scale: number }>): Mesh {
@@ -239,7 +241,7 @@ export function createLavaMaterial(): MeshBasicMaterial {
 export function createWindowMaterial(): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ color: 0x0c0806, roughness: 0.35, metalness: 0, emissive: 0xff8a3a });
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uNight = nightness;
+    shader.uniforms.uNight = lamplight;
     shader.uniforms.uTime = worldTime;
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uNight;\nuniform float uTime;')
@@ -323,7 +325,7 @@ export function createWaterMaterial(kind: 'hot' | 'fresh' = 'hot'): MeshStandard
 export function createPaperMaterial(): MeshStandardMaterial {
   const material = new MeshStandardMaterial({ color: 0x7a1a10, roughness: 0.8, metalness: 0, emissive: 0xff3a14 });
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uNight = nightness;
+    shader.uniforms.uNight = lamplight;
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uNight;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 0.06 + 1.1 * smoothstep(0.1, 0.5, uNight);');
@@ -379,7 +381,7 @@ export class LightPool {
       const edge = i === this.lights.length - 1 ? 0.5 : 1;
       // Braziers burn all day but only read after dark; each catches at its own moment through dusk.
       const stagger = Math.abs(Math.sin(seed * 12.9898)) * 0.6;
-      const dark = Math.min(1, Math.max(0, (nightness.value - stagger) / 0.25));
+      const dark = Math.min(1, Math.max(0, (lamplight.value - stagger) / 0.25));
       light.intensity = e.intensity * flick * edge * (0.3 + 0.7 * dark);
     });
   }

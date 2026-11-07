@@ -3,7 +3,7 @@ import { SINDR_ANCHORS } from '../../../shared/src/world/ignis/sindr.js';
 import type { PostKind, WorldBuilder } from './builder.js';
 import { rectArea, type Area, type Rect } from './levels.js';
 import { stairRun, stairs } from './stairs.js';
-import { clutter, lampPost, lanternString, paveStreet, parkedCart } from './street.js';
+import { goodsTable, lampPost, lanternString, paveStreet, parkedCart } from './street.js';
 import { marketStall, noticeBoard, townHouse, type FrontRoom } from './style-kit.js';
 import { dressTerrace, retainingWall, terraceTop } from './walls.js';
 import { archBridge, balustrade, canal } from './water-works.js';
@@ -149,16 +149,23 @@ function shells(b: WorldBuilder, rand: () => number): void {
     const spans: Array<{ x0: number; x1: number; room?: FrontRoom; shop?: boolean }> = [...fixed];
     let x = shell.x0 + 0.1;
     for (const f of [...fixed, { x0: shell.x1 - 0.1, x1: shell.x1 - 0.1 }].sort((p, q) => p.x0 - q.x0)) {
-      // A long frontage is several houses of about 7 m; no party wall falls on the door.
-      const gap = f.x0 - 0.2 - x, n = Math.ceil(gap / 8.5);
+      // A long frontage is several narrow houses; no party wall falls on the door.
+      const gap = f.x0 - 0.2 - x, n = Math.ceil(gap / 6.5);
       if (gap >= 4.2) {
-        let a = x;
-        for (let k = 1; k <= n; k++) {
-          let cut = k === n ? f.x0 - 0.2 : x + (gap * k) / n;
-          if (door && k < n && Math.abs(cut - door.x) < 1.6) cut = door.x + 1.8;
-          spans.push({ x0: a, x1: cut });
-          a = cut + 0.2;
+        const cuts = [x];
+        for (let k = 1; k < n; k++) {
+          let cut = x + (gap * k) / n;
+          // Off the door, to whichever side leaves both houses widest.
+          if (door && Math.abs(cut - door.x) < 1.6) {
+            const prev = cuts[cuts.length - 1]!, next = k + 1 < n ? x + (gap * (k + 1)) / n : f.x0 - 0.2;
+            const options = [door.x - 1.8, door.x + 1.8].filter((c) => c - prev >= 4 && next - c >= 4);
+            if (!options.length) continue;
+            cut = options.sort((p, q) => Math.min(q - prev, next - q) - Math.min(p - prev, next - p))[0]!;
+          }
+          cuts.push(cut);
         }
+        cuts.push(f.x0 - 0.2);
+        for (let k = 0; k + 1 < cuts.length; k++) spans.push({ x0: cuts[k]! + (k ? 0.1 : 0), x1: cuts[k + 1]! - (k + 2 < cuts.length ? 0.1 : 0) });
       }
       x = Math.max(x, f.x1 + 0.2);
     }
@@ -170,7 +177,7 @@ function shells(b: WorldBuilder, rand: () => number): void {
       const shop = span.shop ?? (shell.face === 'north' && !span.room && !hasDoor && rand() < 0.8);
       townHouse(b, {
         x: cx, z: cz, y: shell.y, yaw, w, d, floors: 2, rank: shell.rank, ...(span.room ? { room: span.room } : {}),
-        shop, ...(doorAt !== undefined ? { door: doorAt } : {}),
+        shop, wares: shell.face === 'north', ...(doorAt !== undefined ? { door: doorAt } : {}),
         balcony: shell.rank !== 'common' || rand() < 0.4, sign: shop || span.room ? 3 : rand() < 0.5 ? 2 : 0,
         awning: shop, lantern: shell.rank !== 'common' || span.room !== undefined || rand() < 0.4, footing: shell.face === 'south' ? 1.6 : 0.8,
       }, rand);
@@ -201,15 +208,21 @@ function stallsAndPosts(b: WorldBuilder, rand: () => number): void {
     const facing = p.role === 'crew' ? -Math.PI / 2 : p.role === 'porter' ? -Math.PI / 2 : p.z < 0 ? 0 : Math.PI;
     b.post(kind, p.x, p.z, facing, p.y, kind === 'guard' || kind === 'sentry' ? 'always' : 'day');
   }
-  // Life against the shop fronts, clear of doors, counters and the alley.
-  const front = M.shells.find((k) => k.face === 'north')!.z0;
-  for (let x = M.street.x0 + 3; x < M.street.x1 - 3; x += 4.5 + rand() * 3) {
-    const z = front - 0.6;
-    const mouths = M.shells.flatMap((k) => [k.service?.x, k.forge?.x]).filter((m): m is number => m !== undefined);
-    if (b.posts.some((p) => Math.hypot(p.x - x, p.z - z) < 2.6) || M.exits.some((e) => Math.abs(e.x - x) < 4.5 && e.z > front)
-      || mouths.some((m) => Math.abs(m - x) < 2 + 2)) continue;
-    if (rand() < 0.55) clutter(b, x, z, M.street.y, UP_FACE, rand);
+  // Goods tables along the free stretches of the stall band, each worked: clear of the stalls, the cart bay and
+  // the lane south to E4.
+  const band = M.street.stalls.z0 + 2;
+  const taken: Array<[number, number]> = [
+    ...SINDR_ANCHORS.filter((k) => k.kind === 'stall' && k.y === 0).map((k): [number, number] => [k.x - 3.1, k.x + 3.1]),
+    [porter.x - 4, porter.x + 0.6],
+    ...M.exits.filter((e) => e.z > M.street.stalls.z1).map((e): [number, number] => [e.x - 4, e.x + 5]),
+  ];
+  for (let x = M.street.x0 + 2; x < M.street.x1 - 1.5; x += 0.5) {
+    if (taken.some(([a, c]) => x + 1.5 > a && x - 1.5 < c)) continue;
+    b.at(x, band, Math.PI, M.street.y);
+    goodsTable(b, 1.6 + rand() * 0.4, rand, true);
+    taken.push([x - 1.7, x + 1.7]);
   }
+  b.at(0, 0, 0);
   const hide = SINDR_ANCHORS.find((k) => k.kind === 'hideout')!;
   b.prop('crate', hide.x - 1, hide.z + 1.5, 0.4, 0.9); b.prop('barrel', hide.x + 0.9, hide.z + 2.4, 0, 0.9);
   b.solid(hide.x - 1, 0.4, hide.z + 1.5, 0.9, 0.8, 0.9);

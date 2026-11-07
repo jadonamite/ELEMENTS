@@ -1,6 +1,6 @@
 import { Color, Vector3 } from 'three';
 import balance from '../../../shared/balance.json';
-import { nightness } from './effects.js';
+import { lamplight, nightness } from './effects.js';
 
 const cfg = balance.world.dayNight;
 const DAY = cfg.dayMinutes, DUSK = cfg.duskMinutes, NIGHT = cfg.nightMinutes, DAWN = cfg.dawnMinutes;
@@ -105,7 +105,9 @@ export class WorldClock {
       const a = Math.PI * ((risen - upSpan) / NIGHT);
       sun.set(-Math.cos(a), -Math.sin(a) * 0.6, Math.sin(a) * 0.3).normalize();
     }
-    skyUniforms.uDusk.value = 1 - smooth(0.0, 0.32, Math.abs(sun.y));
+    // The evening glow builds from late afternoon, while the sun is still well up, and the lamps catch with it.
+    skyUniforms.uDusk.value = 1 - smooth(0.0, 0.5, Math.abs(sun.y));
+    lamplight.value = Math.max(nightness.value, sun.y > 0 ? 1 - smooth(0.12, 0.42, sun.y) : 1);
 
     const l = this.light;
     if (sun.y > 0) {

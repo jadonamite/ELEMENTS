@@ -3,10 +3,10 @@ import type { HeroController } from '../controller.js';
 import type { CombatSpace } from '../attacks/space.js';
 import type { SoundManager } from '../audio.js';
 import type { WorldClock } from '../world/clock.js';
-import { TownManager } from './town-manager.js';
+import { SINDR_STREETS, SINDR_WALK, TownManager } from './town-manager.js';
 import { loadLookBodies, ownLooks } from './townsfolk-bodies.js';
 import { makeCrowd, staffPosts } from './crowd.js';
-import type { Post } from '../world/builder.js';
+import type { Browse, Post } from '../world/builder.js';
 import { SINDR_TOWNSFOLK } from './townsfolk.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
 import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
@@ -35,6 +35,8 @@ export interface SindrLifeOptions {
   space?: CombatSpace | null;
   /** Where people belong, as the town was built; each gets someone. */
   posts?: readonly Post[];
+  /** Where passers-by stop to look at goods, as the town was built. */
+  browse?: readonly Browse[];
 }
 
 export class SindrLifeSystem {
@@ -89,7 +91,7 @@ export class SindrLifeSystem {
     const looks = [...ownLooks(SINDR_TOWNSFOLK), ...crowd.looks];
     const children = new Set(people.filter(p => p.role === 'child').map(p => p.look ?? p.id));
     this.ready = loadLookBodies(looks, children).then(async (bodies) => {
-      if (!this.disposed) await this.townManager.init(bodies, people);
+      if (!this.disposed) await this.townManager.init(bodies, people, SINDR_STREETS, SINDR_WALK, options.browse ?? []);
     }).catch(console.error);
   }
 

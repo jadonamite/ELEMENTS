@@ -52,7 +52,7 @@
       "merchant": "sindr_shards",
       "x": 91,
       "y": 0,
-      "z": 10,
+      "z": 9,
       "yaw": 3.1416,
       "reach": 3.6
     },
@@ -63,7 +63,7 @@
       "merchant": "sindr_supplies",
       "x": 107,
       "y": 0,
-      "z": 10,
+      "z": 9,
       "yaw": 3.1416,
       "reach": 3.6
     },
@@ -74,7 +74,7 @@
       "merchant": "sindr_arms",
       "x": 138,
       "y": 0,
-      "z": 10,
+      "z": 9,
       "yaw": 3.1416,
       "reach": 3.6
     },

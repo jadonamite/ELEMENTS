@@ -4,7 +4,9 @@ import { Vector3 } from 'three';
 const identity = { x: 0, y: 0, z: 0, w: 1 };
 const dir = new Vector3();
 const lineFrom = new Vector3(), lineTo = new Vector3();
-const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+const down = { x: 0, y: -1, z: 0 };
+/** Radius of the ball swept down to find a floor. */
+const FLOOR_PROBE = 0.02;
 
 /**
  * The one place attacks ask the world what is in their way. Every fixed collider counts:
@@ -52,12 +54,13 @@ export class CombatSpace {
 
   /**
    * Height of the first fixed surface straight below (x, from, z), searching at most `depth` metres down;
-   * `from` itself when the point is inside something solid, null when nothing is below.
+   * `from` itself when the point is inside something solid, null when nothing is below. A small ball is swept
+   * down rather than a ray, so a point over the seam between two terrain triangles still finds its ground.
    */
   floor(x: number, from: number, z: number, depth: number): number | null {
-    ray.origin = { x, y: from, z };
-    const hit = this.world.castRay(ray, depth, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
-    return hit ? from - hit.timeOfImpact : null;
+    const hit = this.world.castShape({ x, y: from + FLOOR_PROBE, z }, identity, down, this.probe(FLOOR_PROBE), 0, depth, true,
+      RAPIER.QueryFilterFlags.ONLY_FIXED);
+    return hit ? Math.min(from, from - hit.time_of_impact) : null;
   }
 
   /** True when nothing fixed stands between the two points. */

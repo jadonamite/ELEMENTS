@@ -373,6 +373,7 @@ async function main(): Promise<void> {
       getThreats: () => fight.enemies.filter(e => e.alive && !e.challenging).map(e => e.controller.position),
       space,
       posts: zone.posts,
+      browse: zone.browse,
     });
     cleanup.push(() => lifeSystem?.dispose());
   }

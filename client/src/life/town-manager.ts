@@ -11,6 +11,7 @@ import { WalkMap, type WalkBounds, type WaterQuery } from './walk-map.js';
 import { MARKET_SLICE, waterAt } from '../../../shared/src/world/ignis/market-slice.js';
 import { IDLE, walkFor, type TownsfolkBody } from './townsfolk-bodies.js';
 import type { CombatSpace } from '../attacks/space.js';
+import type { Browse } from '../world/builder.js';
 
 /** Beyond this a townsperson is neither drawn nor animated. */
 const DRAW_DISTANCE = 60;
@@ -38,6 +39,9 @@ const HERO_SPACE = 1.0;
 /** Wanderers pick their next spot this far away, and rest this long between walks, seconds. */
 const LEG_MIN = 5, LEG_MAX = 28;
 const REST_MIN = 2, REST_MAX = 12;
+/** How often a wanderer's next stop is goods to look at rather than open street, and how long they look. */
+const BROWSE_CHANCE = 0.5;
+const BROWSE_MIN = 5, BROWSE_MAX = 16;
 /** A resting wanderer turns to face anyone this close, so standing people look like they talk. */
 const TALK_FACE = 3;
 
@@ -75,15 +79,17 @@ export interface LiveTownsperson {
   far: number;
   fleeing: boolean;
   cowering: boolean;
+  /** Where a browsing wanderer will look once there (the goods), or null on open street. */
+  looking: number | null;
 }
 
 /** Where wanderers may stand and walk: street areas, sampled on a grid. */
 export interface StreetArea { x0: number; x1: number; z0: number; z1: number; y: number }
 
-/** Sindr's open ground: Cinder Row from gate to gate, the market street to the stalls, the upper walk over the canal. */
+/** Sindr's open ground: Cinder Row from gate to gate, the market street in among its stalls, the upper walk over the canal. */
 export const SINDR_STREETS: readonly StreetArea[] = [
   { x0: 56, x1: 220, z0: -5, z1: 5, y: 0 },
-  { x0: MARKET_SLICE.street.x0, x1: MARKET_SLICE.street.x1, z0: MARKET_SLICE.canal.z1, z1: MARKET_SLICE.street.stalls.z0, y: MARKET_SLICE.street.y },
+  { x0: MARKET_SLICE.street.x0, x1: MARKET_SLICE.street.x1, z0: MARKET_SLICE.canal.z1, z1: MARKET_SLICE.street.stalls.z1, y: MARKET_SLICE.street.y },
   { ...MARKET_SLICE.upperWalk, y: MARKET_SLICE.terrace.y },
 ];
 const GRID = 2.5;
@@ -109,7 +115,11 @@ export class TownManager {
   readonly spots: Vector3[] = [];
   /** Where people can walk, read from the world. */
   map: WalkMap | null = null;
+  /** Goods to stop and look at (stalls, tables, counters) that the walk map reaches, and the way to face them. */
+  readonly sights: Array<{ at: Vector3; facing: number }> = [];
   private frame = 0;
+  /** Where the hero stood this frame. */
+  private readonly hero = new Vector3(Infinity, 0, Infinity);
   private readonly order: LiveTownsperson[] = [];
 
   constructor(private readonly scene: Scene, private readonly space: CombatSpace | null = null,
@@ -122,9 +132,14 @@ export class TownManager {
    * read from it first: everyone walks routes along it, and wanderers start on its open street cells.
    */
   async init(bodies: ReadonlyMap<string, TownsfolkBody>, people: readonly Townsperson[] = SINDR_TOWNSFOLK,
-    streets: readonly StreetArea[] = SINDR_STREETS, walk: { seeds: readonly Vector3[]; bounds: WalkBounds; water?: WaterQuery } = SINDR_WALK): Promise<void> {
+    streets: readonly StreetArea[] = SINDR_STREETS, walk: { seeds: readonly Vector3[]; bounds: WalkBounds; water?: WaterQuery } = SINDR_WALK,
+    browse: readonly Browse[] = []): Promise<void> {
     if (this.space) {
       this.map = await WalkMap.over(this.space, walk.seeds, walk.bounds, walk.water ?? null);
+      for (const s of browse) {
+        const at = new Vector3(s.x, s.y, s.z), i = this.map.nearest(at, 1.2);
+        if (i !== null && Math.abs(this.map.y[i]! - s.y) < 0.5) this.sights.push({ at, facing: s.facing });
+      }
       for (let i = 0; i < this.map.size; i++) {
         const x = this.map.x[i]!, z = this.map.z[i]!;
         if (streets.some(a => x >= a.x0 && x <= a.x1 && z >= a.z0 && z <= a.z1)) this.spots.push(new Vector3(x, this.map.y[i]!, z));
@@ -157,7 +172,7 @@ export class TownManager {
         position: start.clone(), targetPosition: start.clone(), path: [],
         targetFacing: facing, facing,
         currentActivity: getTownspersonActivity(0, npc), walking: false, feelingScore: 50,
-        rest: this.random() * REST_MAX, animDebt: 0, far: 0, fleeing: false, cowering: false,
+        rest: this.random() * REST_MAX, animDebt: 0, far: 0, fleeing: false, cowering: false, looking: null,
       });
     }
   }
@@ -182,8 +197,23 @@ export class TownManager {
     if (person.data.post && this.map && (!last || last.distanceTo(goal) > 0.05)) person.path.push(goal.clone());
   }
 
-  /** A wanderer's next spot: some way off on the open street. */
+  /** A wanderer's next stop: goods to look at, half the time, else some way off on the open street. */
   private nextSpot(person: LiveTownsperson): void {
+    person.looking = null;
+    if (this.sights.length && this.random() < BROWSE_CHANCE) {
+      for (let tries = 0; tries < 8; tries++) {
+        const s = this.sights[Math.floor(this.random() * this.sights.length)]!;
+        const d = Math.hypot(s.at.x - person.position.x, s.at.z - person.position.z);
+        if (d < 2 || d > LEG_MAX) continue;
+        this.goTo(person, s.at);
+        if (!person.path.length) continue;
+        // The walk map ends on its cell; the last step up to the goods is taken when the body fits.
+        const last = person.path[person.path.length - 1]!;
+        if (last.distanceTo(s.at) > 0.05 && this.space?.clear(scratchFrom.copy(last).setY(last.y + 1), scratchTo.copy(s.at).setY(s.at.y + 1), BODY_RADIUS)) person.path.push(s.at.clone());
+        person.looking = s.facing;
+        return;
+      }
+    }
     for (let tries = 0; tries < 8; tries++) {
       const s = this.spots[Math.floor(this.random() * this.spots.length)]!;
       const d = Math.hypot(s.x - person.position.x, s.z - person.position.z);
@@ -195,11 +225,15 @@ export class TownManager {
 
   update(delta: number, minute: number, playerPos: Vector3, threats: readonly Vector3[] = [], camera?: Camera): void {
     this.frame++;
+    this.hero.copy(playerPos);
     for (const person of this.townsfolk) {
       if (person.data.wander) {
         if (!person.path.length) {
           person.rest -= delta;
-          if (person.rest <= 0) { this.nextSpot(person); person.rest = REST_MIN + this.random() * (REST_MAX - REST_MIN); }
+          if (person.rest <= 0) {
+            this.nextSpot(person);
+            person.rest = person.looking !== null ? BROWSE_MIN + this.random() * (BROWSE_MAX - BROWSE_MIN) : REST_MIN + this.random() * (REST_MAX - REST_MIN);
+          }
         }
       } else {
         const activity = getTownspersonActivity(minute, person.data);
@@ -214,6 +248,7 @@ export class TownManager {
       const threat = nearest(threats, person.position);
       const fleeing = threat !== null && threat.distance < FEAR_RADIUS;
       // With no open street (behind a counter, in a doorway) they duck down where they are.
+      if (fleeing) person.looking = null;
       const cowering = fleeing && !this.fleeTarget(person, threat.at, person.position.y);
       if (cowering) person.path = [];
       // Once the fight is over, people on a schedule head back to where they belong.
@@ -223,7 +258,7 @@ export class TownManager {
 
       const next = person.path[0];
       if (!next) {
-        if (person.walking && person.data.wander) person.targetFacing = person.facing;
+        if (person.walking && person.data.wander) person.targetFacing = person.looking ?? person.facing;
         person.walking = false;
         person.facing = person.targetFacing;
         continue;
@@ -278,9 +313,13 @@ export class TownManager {
   }
 
   /**
-   * The one way a person moves: the step is taken only if the body fits all the way.
+   * The one way a person moves: the step is taken only if the body fits all the way, and never deeper into the
+   * hero's space (a person walking at the hero stops as at a wall, and chooses again).
    */
   private move(p: LiveTownsperson, dx: number, dz: number): boolean {
+    const now = Math.hypot(p.position.x - this.hero.x, p.position.z - this.hero.z);
+    const next = Math.hypot(p.position.x + dx - this.hero.x, p.position.z + dz - this.hero.z);
+    if (next < HERO_SPACE && next < now) return false;
     if (!this.space) { p.position.x += dx; p.position.z += dz; return true; }
     const y = p.position.y + 1;
     if (this.space && !this.space.clear(scratchFrom.set(p.position.x, y, p.position.z), scratchTo.set(p.position.x + dx, y, p.position.z + dz), BODY_RADIUS)) return false;
@@ -311,7 +350,7 @@ export class TownManager {
       if (p.face[0] && p.face[0].visible !== close) for (const m of p.face) m.visible = close;
       const shadow = rank < SHADOWED;
       if (p.meshes[0]?.castShadow !== shadow) for (const m of p.meshes) m.castShadow = shadow;
-      if (p.data.wander && !p.walking) this.faceCompany(p);
+      if (p.data.wander && !p.walking && p.looking === null) this.faceCompany(p);
       p.anim?.play(p.cowering ? 'cower' : p.walking ? p.walkClip : p.idleClip);
       if (p.anim) p.anim.mixer.timeScale = p.fleeing ? RUN_SPEED / WALK_SPEED : 1;
       p.animDebt += delta;

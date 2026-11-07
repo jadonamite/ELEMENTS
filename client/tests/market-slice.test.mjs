@@ -163,3 +163,26 @@ test('the server places nobody in the canal, in a shop or across the water, and 
   assert.notEqual(cell, null, 'the hideout is on the walk map');
   assert.ok(SINDR_COLLISION_BOXES.length > 0);
 });
+
+test('people have goods to stop at all along the market, every spot reachable and none in the fight lane', () => {
+  const spots = town.builder.browse.filter((p) => inSlice(p));
+  assert.ok(spots.length >= 12, `browse spots in the market: ${spots.length}`);
+  for (const s of spots) {
+    assert.ok(s.z < M.street.fight.z0 || s.z > M.street.fight.z1, `browse spot at ${s.x.toFixed(1)}, ${s.z.toFixed(1)} is out of the fight lane`);
+    const cell = town.map.nearest(v(s), 1.2);
+    assert.ok(cell !== null && Math.abs(town.map.y[cell] - s.y) < 0.5, `browse spot at ${s.x.toFixed(1)}, ${s.z.toFixed(1)} is on the walk map`);
+    assert.ok(arrives(town.map.route(street, v(s)), v(s), 1.3), `browse spot at ${s.x.toFixed(1)}, ${s.z.toFixed(1)} is reached from the street`);
+  }
+  // Every stall and every street shop has goods laid out to look at.
+  for (const a of SINDR_ANCHORS.filter((k) => k.kind === 'stall' && inSlice(k))) {
+    assert.ok(spots.some((s) => Math.hypot(s.x - a.x, s.z - a.z) < 3), `${a.id} has customers' places`);
+  }
+});
+
+test('the ground is found everywhere, also over the seams between terrain triangles', () => {
+  // x 112 lies on a line of the 3 m terrain grid: a ray straight down it slips between two triangles.
+  for (const [x, z] of [[112, 9.9], [112, 2], [115, 9.9]]) {
+    const f = town.space.floor(x, 0.5, z, 1);
+    assert.ok(f !== null && Math.abs(f) < 0.01, `floor at (${x}, ${z}): ${f}`);
+  }
+});

@@ -46,6 +46,8 @@ export type PostKind = 'keeper' | 'smith' | 'household' | 'guard' | 'sentry' | '
 export type PostHours = 'day' | 'always';
 /** A spot that always has someone at it, built with the place it belongs to. */
 export interface Post { kind: PostKind; hours: PostHours; x: number; y: number; z: number; facing: number }
+/** A spot where passers-by stop to look: before a counter, a stall, a goods table. `facing` looks at the goods. */
+export interface Browse { x: number; y: number; z: number; facing: number }
 
 export interface HouseSpec {
   x: number; z: number;
@@ -160,6 +162,8 @@ export class WorldBuilder {
   readonly emitters: Emitter[] = [];
   /** Where people belong: behind every counter, at every anvil and door. */
   readonly posts: Post[] = [];
+  /** Where passers-by stop to look at goods, built with the counters, stalls and tables they look at. */
+  readonly browse: Browse[] = [];
   readonly fires: Array<{ position: Vector3; scale: number }> = [];
   readonly chimneys: Vector3[] = [];
   readonly embers: Vector3[] = [];
@@ -267,6 +271,13 @@ export class WorldBuilder {
     const p = this.world(x, y, z);
     const frameYaw = Math.atan2(this.frame.elements[8]!, this.frame.elements[10]!);
     this.posts.push({ kind, hours, x: p.x, y: p.y, z: p.z, facing: facing + frameYaw });
+  }
+
+  /** A browsing spot in frame coordinates; `facing` 0 looks along the frame's +z. */
+  browseAt(x: number, z: number, facing = 0, y = 0): void {
+    const p = this.world(x, y, z);
+    const frameYaw = Math.atan2(this.frame.elements[8]!, this.frame.elements[10]!);
+    this.browse.push({ x: p.x, y: p.y, z: p.z, facing: facing + frameYaw });
   }
 
   prop(id: string, x: number, z: number, yaw: number, scale = 1, y = 0): void {

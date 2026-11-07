@@ -329,3 +329,54 @@ export function parkedCart(b: WorldBuilder, x: number, z: number, y: number, yaw
   handCart(b, rand);
   b.at(0, 0, 0);
 }
+
+/** Produce for baskets and tables: reds, greens, pale roots, yellow fruit. */
+const PRODUCE: Surface[] = ['terracotta', 'moss', 'pale_stone', 'gold_trim', 'terracotta', 'moss'];
+
+/** A woven basket heaped with produce, in the current frame at (x, y, z). */
+export function basket(b: WorldBuilder, x: number, z: number, y: number, rand: () => number, r = 0.24): void {
+  b.cylinder('raw_timber', x, y + r * 0.55, z, r, r * 0.8, r * 1.1, 10);
+  b.cylinder('charred_timber_beams', x, y + r * 1.1, z, r * 1.04, r * 1.04, 0.03, 10);
+  const goods = PRODUCE[Math.floor(rand() * PRODUCE.length)]!;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + rand(), d = i ? r * 0.55 : 0;
+    b.cylinder(goods, x + Math.cos(a) * d, y + r * 1.15 + (i ? 0 : 0.05), z + Math.sin(a) * d, r * 0.3, r * 0.34, r * 0.4, 7);
+  }
+}
+
+/** A tied grain sack standing on the ground, in the current frame. */
+export function sack(b: WorldBuilder, x: number, z: number, y: number, rand: () => number): void {
+  const h = 0.45 + rand() * 0.15;
+  b.cylinder('ash_plaster', x, y + h / 2, z, 0.19, 0.24, h, 9);
+  b.cylinder('ash_plaster', x, y + h + 0.05, z, 0.07, 0.17, 0.1, 8);
+  b.cylinder('raw_timber', x, y + h + 0.11, z, 0.06, 0.06, 0.03, 6);
+}
+
+/**
+ * A trestle table of goods, its front along +z in the current frame: baskets and heaps on a cloth, sacks
+ * beside it, a crate under it. The customer stands before it; with `keeper`, someone works behind it.
+ */
+export function goodsTable(b: WorldBuilder, w: number, rand: () => number, keeper = false): void {
+  const H = 0.85, D = 0.8;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box('charred_timber_beams', sx * (w / 2 - 0.08), H / 2, sz * (D / 2 - 0.08), 0.07, H, 0.07);
+  b.box('raw_timber', 0, H, 0, w, 0.05, D);
+  b.box(rand() < 0.5 ? 'indigo_cloth' : 'red_lacquer', 0, H - 0.2, D / 2 + 0.01, w, 0.4, 0.02);
+  for (let gx = -w / 2 + 0.3; gx < w / 2 - 0.2; gx += 0.55 + rand() * 0.15) basket(b, gx, (rand() - 0.5) * 0.25, H + 0.03, rand, 0.2);
+  b.prop('crate', (rand() - 0.5) * (w - 0.8), -0.05, rand(), 0.6);
+  sack(b, w / 2 + 0.3, 0.1, 0, rand);
+  if (rand() < 0.6) sack(b, -w / 2 - 0.3, -0.05, 0, rand);
+  b.solid(0, H / 2, 0, w + 0.9, H, D + 0.1);
+  b.ao([-w / 2 - 0.4, 0.012, -D / 2], [w / 2 + 0.4, 0.012, -D / 2], [0, 0, D + 0.4], 0.4);
+  b.browseAt(0, D / 2 + 0.75, Math.PI);
+  if (keeper) b.post('keeper', 0, -D / 2 - 0.5, 0);
+}
+
+/** Dried goods hung on a pole: peppers, fish, bundles of herbs, along x from x0 to x1 at height y, in the current frame. */
+export function hangingGoods(b: WorldBuilder, x0: number, x1: number, y: number, z: number, rand: () => number): void {
+  b.box('charred_timber_beams', (x0 + x1) / 2, y, z, x1 - x0, 0.05, 0.05);
+  for (let x = x0 + 0.15; x < x1 - 0.1; x += 0.22 + rand() * 0.12) {
+    const len = 0.25 + rand() * 0.35, k = rand();
+    b.box('charred_timber_beams', x, y - 0.06, z, 0.01, 0.12, 0.01);
+    b.box(k < 0.4 ? 'terracotta' : k < 0.7 ? 'raw_timber' : 'moss', x, y - 0.12 - len / 2, z, 0.07, len, 0.05, { z: (rand() - 0.5) * 0.2 });
+  }
+}
