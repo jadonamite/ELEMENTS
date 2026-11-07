@@ -1,7 +1,30 @@
 import type { DrawingResult } from '../opening.js';
+import { roll } from '../../../shared/src/rising/roll.js';
 
 const STORAGE_SESSION_TOKEN_KEY = 'elements_session_token';
 const STORAGE_ACCOUNT_ID_KEY = 'elements_account_id';
+const STORAGE_DRAWING_KEY = 'elements_drawing_result';
+
+export function hasGameServer(): boolean {
+  return (import.meta as unknown as { env?: { VITE_NO_SERVER?: string } }).env?.VITE_NO_SERVER !== '1';
+}
+
+function localDrawing(): DrawingResult | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_DRAWING_KEY);
+    const result = raw ? JSON.parse(raw) as DrawingResult : null;
+    if (result?.role === 'Hush') return { role: 'Hush' };
+    if (result?.role === 'Shaper' && ['IGNIS', 'AQUES', 'TERRA', 'AURA'].includes(result.element)) return result;
+  } catch { /* Storage may be unavailable. */ }
+  return null;
+}
+
+export function localSession(accountId?: string): SessionResponse {
+  if (accountId) setStoredAccountId(accountId);
+  const id = accountId ?? getStoredAccountId();
+  if (!id) throw new Error('Sign in to resume your character.');
+  return { accountId: id, rising: localDrawing() };
+}
 
 export function getStoredAuthToken(): string | null {
   try {
@@ -51,6 +74,7 @@ export function isOfflineMode(): boolean {
 }
 
 export function getServerUrl(): string {
+  if (!hasGameServer()) return '';
   if (typeof window === 'undefined') return 'http://127.0.0.1:2567';
 
   const params = new URLSearchParams(window.location.search);
@@ -85,6 +109,7 @@ export interface SessionResponse {
 }
 
 export async function postSession(token: string): Promise<SessionResponse> {
+  if (!hasGameServer()) return localSession();
   const url = `${getServerUrl()}/api/session`;
   const response = await fetch(url, {
     method: 'POST',
@@ -113,6 +138,11 @@ export interface RisingApiResponse {
 }
 
 export async function postRising(token?: string): Promise<DrawingResult> {
+  if (!hasGameServer()) {
+    const result = localDrawing() ?? roll(() => crypto.getRandomValues(new Uint32Array(1))[0]! / 2 ** 32);
+    localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(result));
+    return result;
+  }
   const url = `${getServerUrl()}/api/rising`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

@@ -12,6 +12,25 @@ import { ShoulderCamera, cameraCollisionRadius } from '../src/camera.ts';
 const close = (a, b, tolerance = 1e-4) => assert.ok(Math.abs(a - b) < tolerance, `${a} != ${b}`);
 const move = (forward = 0, right = 0, running = false) => ({ forward, right, running });
 
+test('each arena stays grounded after settling and returns to ground after a jump', async () => {
+  for (const nation of ['IGNIS', 'AQUES', 'TERRA', 'AURA']) {
+    const physics = await initPhysics(nation);
+    const hero = new HeroController(physics.world);
+    try {
+      for (let tick = 0; tick < 120; tick++) { hero.step(move(), 0); physics.step(); }
+      close(hero.position.y, 0, 1e-3);
+      assert.equal(hero.grounded, true, `${nation}: settled feet must select a grounded animation`);
+      hero.launch(balance.controller.jumpSpeed);
+      hero.step(move(), 0); physics.step();
+      assert.equal(hero.grounded, false, `${nation}: a real jump remains airborne`);
+      assert.ok(hero.position.y > 0);
+      for (let tick = 0; tick < 240; tick++) { hero.step(move(), 0); physics.step(); }
+      assert.equal(hero.grounded, true, `${nation}: landing restores ground contact`);
+      close(hero.position.y, 0, 1e-3);
+    } finally { hero.dispose(); physics.dispose(); }
+  }
+});
+
 test('movement follows camera yaw, normalizes diagonals and uses Shift speed', () => {
   close(movementVelocity(move(1), 0).z, -balance.controller.walkSpeed);
   close(movementVelocity(move(1), Math.PI / 2).x, -balance.controller.walkSpeed);

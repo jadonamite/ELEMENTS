@@ -1,0 +1,8 @@
+workbench/
+client/dist/
+shared/dist/
+server/dist/
+node_modules/
+.env
+.env.*
+*.sqlite

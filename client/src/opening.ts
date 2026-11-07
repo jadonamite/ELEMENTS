@@ -13,6 +13,8 @@ import {
   postRising,
   postSession,
 } from './auth/index.js';
+import { roll } from '../../shared/src/rising/roll.js';
+import { isTownMode } from './world-mode.js';
 
 /**
  * Opening sequence: Age verification gate, character creation studio,
@@ -37,14 +39,7 @@ export function getStoredDrawing(): DrawingResult | null {
 }
 
 export function performDrawingRoll(): DrawingResult {
-  const roll = Math.random();
-  if (roll < 0.15) {
-    return { role: 'Hush' };
-  }
-  const elements = ['IGNIS', 'AQUES', 'TERRA', 'AURA'] as const;
-  const elementIndex = Math.floor(Math.random() * elements.length);
-  const element = elements[elementIndex]!;
-  return { role: 'Shaper', element };
+  return roll();
 }
 
 export function calculateAge(dobString: string, referenceDate = new Date()): number {
@@ -293,7 +288,7 @@ export class OpeningFlow {
       <div class="opening-modal drawing-ceremony">
         <div class="ceremony-badge">The Lord's Drawing</div>
         <h2>Awakening...</h2>
-        <p class="opening-subtitle">Connecting to the realm ledger to determine your rising.</p>
+        <p class="opening-subtitle">Your rising is being drawn.</p>
         <div class="login-loading-spinner"></div>
       </div>
     `;
@@ -362,7 +357,7 @@ export class OpeningFlow {
         </div>
         <h2 class="ceremony-result ${result.role === 'Shaper' ? result.element.toLowerCase() : 'hush'}">${title}</h2>
         <p class="ceremony-desc">${desc}</p>
-        <button type="button" id="enter-arena-button" class="opening-button primary">Enter the Arena</button>
+        <button type="button" id="enter-arena-button" class="opening-button primary">${isTownMode(new URLSearchParams(window.location.search)) ? 'Enter Sindr' : 'Enter the arena'}</button>
       </div>
     `;
 

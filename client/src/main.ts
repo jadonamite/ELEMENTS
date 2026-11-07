@@ -39,6 +39,8 @@ import { ClientDeserterBand } from './agents/outlaws/deserterBand.js';
 import type { OutlawSenses } from '../../shared/src/agents/types.js';
 import type { Quarry } from './enemy.js';
 import { CombatSpace } from './attacks/space.js';
+import { hasGameServer } from './auth/server-api.js';
+import { isTownMode } from './world-mode.js';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -50,20 +52,22 @@ const dispose = (): void => {
 import.meta.hot?.dispose(dispose);
 
 async function main(): Promise<void> {
+  const params = new URLSearchParams(window.location.search);
+  const inTown = isTownMode(params);
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('Game canvas is missing.');
   canvas.tabIndex = 0;
-  canvas.setAttribute('aria-label', 'Arena. WASD to move. Shift to run. Click to capture the mouse.');
+  canvas.setAttribute('aria-label', `${inTown ? 'Sindr' : 'Arena'}. WASD to move. Shift to run. Click to capture the mouse.`);
 
   const panel = document.createElement('section');
   panel.id = 'hero-hud';
-  panel.setAttribute('aria-label', 'Arena controls');
+  panel.setAttribute('aria-label', inTown ? 'Town controls' : 'Arena controls');
   panel.innerHTML = '<button type="button" disabled>Loading</button>' +
     '<p class="hud-keys"><kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Mouse</kbd> look <kbd>Tab</kbd> lock-on</p>' +
     '<p class="hud-keys"><kbd>Left click</kbd> strike <kbd>Right click</kbd> heavy <kbd>Q</kbd> rise ' +
     '<kbd>E</kbd> ground <kbd>F</kbd> move <kbd>G</kbd> ultimate <kbd>R</kbd> block (tap to parry) <kbd>Alt</kbd> dodge <kbd>Space</kbd> jump (tap again in the air: super jump)</p>' +
     '<p class="hud-keys"><kbd>1</kbd> weapon <kbd>2</kbd> hands <kbd>3</kbd> legs <kbd>X</kbd> weapon or hands <kbd>B</kbd> bending on/off</p>' +
-    '<p id="control-status" class="hud-status" role="status">Loading the arena.</p>' +
+    `<p id="control-status" class="hud-status" role="status">${inTown ? 'Loading Sindr.' : 'Loading the arena.'}</p>` +
     '<button type="button" class="hud-secondary" hidden>Change fighter</button>';
   document.body.appendChild(panel);
   cleanup.push(() => panel.remove());
@@ -71,9 +75,6 @@ async function main(): Promise<void> {
   const changeFighter = panel.querySelector<HTMLButtonElement>('.hud-secondary')!;
   const status = (message: string): void => { panel.querySelector('#control-status')!.textContent = message; };
 
-  // ?town walks Sindr from the Shrine of Embers; without it the fight arena opens.
-  const inTown = new URLSearchParams(window.location.search).has('town');
-  const params = new URLSearchParams(window.location.search);
   const forcedElement = ELEMENTS.find(e => e === params.get('element')?.toUpperCase() || e === params.get('nation')?.toUpperCase()) ?? null;
   const forcedHush = params.has('hush') || params.has('dim');
   const storedChoice = lastFighter();
@@ -122,7 +123,7 @@ async function main(): Promise<void> {
   const togglePlaying = (): void => { document.body.classList.toggle('playing', document.pointerLockElement === canvas); };
   document.addEventListener('pointerlockchange', togglePlaying);
   cleanup.push(() => { document.removeEventListener('pointerlockchange', togglePlaying); document.body.classList.remove('playing'); });
-  const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status);
+  const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status, inTown ? 'Enter Sindr' : 'Enter the arena');
   cleanup.push(() => input.dispose());
   let heroElement: BendingType = 'IGNIS';
   let isDim = false;
@@ -134,7 +135,7 @@ async function main(): Promise<void> {
   let refreshStyle: (() => void) | null = null;
   // Test flags: ?element=AQUES picks the element, ?dim (or ?hush) plays a Dim, ?tier=N sets the tier (default 5: every move open, no extra strength).
   // Online, the server owns every enemy: no local spawns that other players can't see.
-  const playingOnline = params.has('online');
+  const playingOnline = hasGameServer() && params.has('online');
   const tier = Math.max(1, Math.min(7, Number(params.get('tier')) || 5));
   /** The element a Hush's shards carry; a Shaper's own element otherwise. */
   let kitElement: Element = 'IGNIS';
@@ -886,7 +887,7 @@ async function main(): Promise<void> {
   };
 
   // --- Online: ?online joins this zone's room on the game server. ---
-  if (new URLSearchParams(window.location.search).has('online')) {
+  if (playingOnline) {
     const online = await import('./net/online.js');
     const { getServerUrl, getStoredAuthToken } = await import('./auth/server-api.js');
     const { loadHoundTemplate } = await import('./monsters/hound.js');

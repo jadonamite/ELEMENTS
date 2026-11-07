@@ -28,7 +28,7 @@ export class GameInput {
   onJump?: () => void;
 
   constructor(private readonly canvas: HTMLCanvasElement, button: HTMLButtonElement,
-    orbit: (dx: number, dy: number) => void, status: (text: string) => void) {
+    orbit: (dx: number, dy: number) => void, status: (text: string) => void, entryLabel = 'Enter the arena') {
     const options = { signal: this.events.signal };
     const clear = (): void => this.keys.clear();
     const capture = (): void => {
@@ -40,10 +40,10 @@ export class GameInput {
       try {
         const request = canvas.requestPointerLock();
         request?.catch(() => {
-          if (!this.disposed) status('The mouse could not be captured. Select Enter the arena to try again.');
+          if (!this.disposed) status(`The mouse could not be captured. Select ${entryLabel} to try again.`);
         });
       } catch {
-        status('The mouse could not be captured. Select Enter the arena to try again.');
+        status(`The mouse could not be captured. Select ${entryLabel} to try again.`);
       }
     };
     canvas.addEventListener('click', capture, options);
@@ -120,12 +120,12 @@ export class GameInput {
     document.addEventListener('pointerlockchange', () => {
       clear();
       const locked = document.pointerLockElement === canvas;
-      button.textContent = 'Enter the arena';
+      button.textContent = entryLabel;
       status(locked ? '' : 'Paused. Press Escape any time to release the mouse.');
     }, options);
     document.addEventListener('pointerlockerror', () => {
       clear();
-      status('The mouse could not be captured. Select Enter the arena to try again.');
+      status(`The mouse could not be captured. Select ${entryLabel} to try again.`);
     }, options);
     // Mouse buttons attack only while the mouse is captured; the first click captures it.
     document.addEventListener('mousedown', event => {

@@ -10,7 +10,7 @@ export class ConsentBanner {
 
   constructor() {
     if (typeof window === 'undefined') return;
-    if (localStorage.getItem(STORAGE_CONSENT_KEY) === 'true') return;
+    if (['true', 'declined'].includes(localStorage.getItem(STORAGE_CONSENT_KEY) ?? '')) return;
     this.render();
   }
 
@@ -24,6 +24,7 @@ export class ConsentBanner {
           <a href="/legal/privacy.html" target="_blank">Privacy</a>
           <a href="/legal/cookies.html" target="_blank">Cookies</a>
           <button type="button" id="consent-accept-btn" class="consent-btn">Accept</button>
+          <button type="button" id="consent-decline-btn" class="consent-btn">Decline optional cookies</button>
         </div>
       </div>
     `;
@@ -33,6 +34,11 @@ export class ConsentBanner {
     const btn = this.element.querySelector<HTMLButtonElement>('#consent-accept-btn');
     btn?.addEventListener('click', () => {
       localStorage.setItem(STORAGE_CONSENT_KEY, 'true');
+      this.element?.remove();
+      this.element = null;
+    });
+    this.element.querySelector('#consent-decline-btn')?.addEventListener('click', () => {
+      localStorage.setItem(STORAGE_CONSENT_KEY, 'declined');
       this.element?.remove();
       this.element = null;
     });

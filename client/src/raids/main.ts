@@ -20,10 +20,11 @@ import { Ally, Figure, RaidFoe } from './bodies.js';
 import { RaidNet, type Board, type RunView } from './net.js';
 import { buildHall, buildRoom, HALL, layoutRun, type PlacedRoom } from './places.js';
 import { Stage } from './stage.js';
+import { hasGameServer } from '../auth/server-api.js';
 import { Banner, BossBar, Counter, h, layer, Log, modal, NameTags, PartyFrame, Prompt, Status, type Tab } from './ui.js';
 
 const params = new URLSearchParams(location.search);
-const SERVER = params.get('server') ?? `http://${location.hostname}:2670`;
+const SERVER = hasGameServer() ? params.get('server') ?? `http://${location.hostname}:2670` : '';
 const FIGHTERS = (balance as unknown as { raids: { fighters: FightersConfig } }).raids.fighters;
 const rules = createCombatRules(balance.combat as unknown as CombatBalance);
 
@@ -77,6 +78,7 @@ class Pilot {
 }
 
 async function main(): Promise<void> {
+  if (!SERVER) return;
   const name = await signIn();
   const net = new RaidNet(SERVER, `dev:${name}`);
   await fetch(`${SERVER}/api/raids/dev/grant`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => null);

@@ -197,13 +197,13 @@ export class HomeMenu {
 
     // Modes
     this.overlay.querySelector('#btn-goto-town')?.addEventListener('click', () => {
-      this.navigate({ town: '' });
+      this.navigate({ town: '' }, ['arena']);
     });
     this.overlay.querySelector('#btn-goto-arena')?.addEventListener('click', () => {
-      this.navigate({}, ['town']);
+      this.navigate({ arena: '' }, ['town']);
     });
     this.overlay.querySelector('#btn-goto-fast')?.addEventListener('click', () => {
-      this.navigate({ town: '', skipIntro: '' });
+      this.navigate({ town: '', skipIntro: '' }, ['arena']);
     });
 
     // Fighter & Appearance
