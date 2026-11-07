@@ -72,6 +72,13 @@ export class WorldClock {
     this.update(0);
   }
 
+  /** Sets the minute and optional speed, refreshing nightness and lighting immediately. */
+  setMinute(minute: number, speed?: number): void {
+    this.minute = ((minute % CYCLE) + CYCLE) % CYCLE;
+    if (speed !== undefined) this.speed = speed;
+    this.update(0);
+  }
+
   /** Whether the full moon currently exerts its peak lunar power. */
   get isFullMoon(): boolean {
     return this.moonPhase === 'full' && nightness.value > 0.45;

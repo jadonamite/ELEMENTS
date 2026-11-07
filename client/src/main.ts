@@ -21,7 +21,7 @@ import { BendingEffects, type BendingType } from './bending-fx.js';
 import { OpeningFlow, getStoredDrawing, type DrawingResult } from './opening.js';
 import { ConsentBanner } from './consent.js';
 import type { Enemy } from './enemy.js';
-import { createCombatRules, ELEMENTS, isBendMove, type BendMoveId, type CombatBalance, type Element, type Kit, type MoveId } from '../../shared/src/index.js';
+import { createCombatRules, ELEMENTS, isBendMove, NIGHT_FROM, sindrSentryDistance, sindrStreet, type BendMoveId, type CombatBalance, type Element, type Kit, type MoveId } from '../../shared/src/index.js';
 import { BendState, type BendRefusal } from './bend-state.js';
 import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
@@ -924,10 +924,15 @@ async function main(): Promise<void> {
         }
       },
       onStatus: status,
+      onNotice: notice,
       onTier: applyTier,
+      clock: zone?.clock,
     }, {
       server: getServerUrl(), zone: inTown ? 'sindr' : 'arena', token: getStoredAuthToken(),
       element: kitElement, role: isDim ? 'Hush' : 'Shaper', lag: lagMs / 1000,
+      forcedCarry: forcedCarry ?? undefined,
+      night: params.has('night') ? Number(params.get('night')) : undefined,
+      clock: params.has('clock') ? Number(params.get('clock')) : undefined,
     }).then((session) => {
       cleanup.push(() => session.dispose());
       townEconomy?.goOnline(session.channel, () => {
@@ -1076,19 +1081,17 @@ async function main(): Promise<void> {
 
       // --- [creatures: outlaw encounter evaluation in Sindr] ---
       if (robberGang && alive) {
-        const isNight = nightness.value >= 0.45;
+        const isNight = nightness.value >= NIGHT_FROM;
         const hour = isNight ? 23 : 14;
-        const inAlley = controller.position.x >= 70 && controller.position.x <= 160 && Math.abs(controller.position.z) > 7;
-        const onRoad = controller.position.x > 220;
-        const zoneType = onRoad ? 'road_out_of_town' : (inAlley ? 'alley' : 'open_street');
+        const zoneType = sindrStreet(controller.position.x, controller.position.z);
 
         const quarry: Quarry = {
           position: controller.position,
           alive: fight.heroAlive,
         };
 
-        const sentryNearShrine = controller.position.x < 48;
-        const sentryDistance = sentryNearShrine ? 12 : 60;
+        const sentryDistance = sindrSentryDistance(controller.position.x);
+        const sentryNearShrine = sentryDistance < 25;
 
         const senses: OutlawSenses = {
           playerCarry: {
@@ -1107,7 +1110,7 @@ async function main(): Promise<void> {
           sentryDistance,
         };
 
-        if (onRoad && deserterBand) {
+        if (zoneType === 'road_out_of_town' && deserterBand) {
           deserterBand.update(delta, quarry, senses.playerCarry, senses.playerLocation);
         } else {
           robberGang.update(delta, quarry, senses);

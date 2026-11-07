@@ -75,7 +75,7 @@ const HOUND_CLIPS: Record<string, string> = {
   idle: 'idle', notice: 'notice', stalk: 'walk', charge: 'run', recoil: 'hit', return: 'walk', dead: 'death', chase: 'run',
 };
 const VILLAIN_CLIPS: Record<string, string> = {
-  idle: 'idle', chase: 'run', recoil: 'idle', return: 'walk', dead: 'death',
+  idle: 'idle', chase: 'run', recoil: 'idle', return: 'walk', flee: 'run', dead: 'death',
 };
 
 /** An enemy the server moves. The browser only draws it and tells the server when a swing touched it. */

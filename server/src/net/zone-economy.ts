@@ -103,6 +103,9 @@ export class ZoneEconomy {
 
   /** What a player carries, as robbers judge it. */
   carried(p: ServerPlayer): { chroma: number; weight: number } {
+    if (typeof p.forcedCarry === 'number') {
+      return { chroma: p.forcedCarry, weight: p.forcedCarry >= 300 ? 8 : 1 };
+    }
     if (isGuest(p.accountId)) return { chroma: 0, weight: 0 };
     const weight = Object.values(getSatchel(p.accountId, this.db)).reduce((a, b) => a + b, 0);
     return { chroma: getAccountBalance(p.accountId, this.db), weight };
