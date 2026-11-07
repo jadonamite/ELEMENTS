@@ -295,8 +295,11 @@ export function createWetMaterial(): MeshStandardMaterial {
 }
 
 /** Hot spring water in the runnel: near black, glossy, slowly rippling, with a faint warmth after dark. */
-export function createWaterMaterial(): MeshStandardMaterial {
-  const material = new MeshStandardMaterial({ color: 0x0b1112, roughness: 0.06, metalness: 0, envMapIntensity: 1.4, emissive: 0x3a1408 });
+export function createWaterMaterial(kind: 'hot' | 'fresh' = 'hot'): MeshStandardMaterial {
+  // Hot spring water is near black with a coal glow at night; the fresh canal is a deep clear green-teal.
+  const material = kind === 'hot'
+    ? new MeshStandardMaterial({ color: 0x0b1112, roughness: 0.06, metalness: 0, envMapIntensity: 1.4, emissive: 0x3a1408 })
+    : new MeshStandardMaterial({ color: 0x1c4844, roughness: 0.04, metalness: 0, envMapIntensity: 1.6, emissive: 0x05100e });
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = worldTime;
     shader.uniforms.uNight = nightness;

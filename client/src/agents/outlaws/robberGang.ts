@@ -71,7 +71,7 @@ export class ClientRobberGang {
     this.state = createRobberGang(
       options.id ?? 'sindr_alleys_gang',
       options.name ?? 'Sindr Alley Cutthroats',
-      options.hideout ?? { x: 110, z: -15, name: 'Sindr Alley Hideout' },
+      options.hideout,
       this.limits
     );
     this.onKill = options.onKill;

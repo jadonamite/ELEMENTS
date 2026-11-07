@@ -38,7 +38,7 @@
     {
       "id": "market",
       "kind": "market",
-      "name": "Market Square",
+      "name": "Market street",
       "x": 125,
       "y": 0,
       "z": 0,
@@ -50,10 +50,10 @@
       "kind": "stall",
       "name": "Shard stall",
       "merchant": "sindr_shards",
-      "x": 113,
+      "x": 91,
       "y": 0,
-      "z": -8,
-      "yaw": 0,
+      "z": 10,
+      "yaw": 3.1416,
       "reach": 3.6
     },
     {
@@ -61,10 +61,10 @@
       "kind": "stall",
       "name": "Supplies stall",
       "merchant": "sindr_supplies",
-      "x": 137,
+      "x": 107,
       "y": 0,
-      "z": -8,
-      "yaw": 0,
+      "z": 10,
+      "yaw": 3.1416,
       "reach": 3.6
     },
     {
@@ -72,20 +72,9 @@
       "kind": "stall",
       "name": "Arms stall",
       "merchant": "sindr_arms",
-      "x": 113,
+      "x": 138,
       "y": 0,
-      "z": 8,
-      "yaw": 3.1416,
-      "reach": 3.6
-    },
-    {
-      "id": "stall_spare",
-      "kind": "stall",
-      "name": "Empty stall",
-      "merchant": null,
-      "x": 137,
-      "y": 0,
-      "z": 8,
+      "z": 10,
       "yaw": 3.1416,
       "reach": 3.6
     },
@@ -101,14 +90,14 @@
       "reach": 3.6
     },
     {
-      "id": "slag_well",
+      "id": "bridge_b1",
       "kind": "landmark",
-      "name": "Slag well",
+      "name": "Market bridge",
       "x": 125,
       "y": 0,
-      "z": 0,
+      "z": -12,
       "yaw": 0,
-      "reach": 4.5
+      "reach": 5
     },
     {
       "id": "notice_board",
@@ -116,7 +105,7 @@
       "name": "Notice board",
       "x": 117,
       "y": 0,
-      "z": -13.5,
+      "z": -5.8,
       "yaw": 0,
       "reach": 3
     },
@@ -136,12 +125,12 @@
       "name": "Raid Hall branch",
       "x": 124,
       "y": 0,
-      "z": 34,
+      "z": 40.5,
       "yaw": 3.1416,
       "reach": 4,
       "door": {
         "x": 124,
-        "z": 28.4
+        "z": 34.9
       }
     },
     {
@@ -149,8 +138,8 @@
       "kind": "lane",
       "name": "Foot of the Rise",
       "x": 125,
-      "y": 0,
-      "z": -17,
+      "y": 3,
+      "z": -24,
       "yaw": 3.1416,
       "reach": 5
     },
@@ -302,10 +291,10 @@
     {
       "id": "watch_square",
       "kind": "watch_post",
-      "name": "Watch post, square",
-      "x": 146,
+      "name": "Watch post, market",
+      "x": 126,
       "y": 0,
-      "z": -14,
+      "z": 5.5,
       "yaw": 0,
       "reach": 2
     },
@@ -342,10 +331,10 @@
     {
       "id": "alley_hideout",
       "kind": "hideout",
-      "name": "Back alley behind the square",
-      "x": 101,
+      "name": "Back alley behind the market shops",
+      "x": 103.5,
       "y": 0,
-      "z": -15,
+      "z": 22,
       "yaw": 0,
       "reach": 3
     },

@@ -3,13 +3,11 @@ import type { HeroController } from '../controller.js';
 import type { CombatSpace } from '../attacks/space.js';
 import type { SoundManager } from '../audio.js';
 import type { WorldClock } from '../world/clock.js';
-import { nightness } from '../world/effects.js';
 import { TownManager } from './town-manager.js';
 import { loadLookBodies, ownLooks } from './townsfolk-bodies.js';
 import { makeCrowd, staffPosts } from './crowd.js';
 import type { Post } from '../world/builder.js';
 import { SINDR_TOWNSFOLK } from './townsfolk.js';
-import { ShuttersAndLanterns } from './shutters-lanterns.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
 import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
 import { LeadManager, type Lead } from '../../../shared/src/story/leads.js';
@@ -41,7 +39,6 @@ export interface SindrLifeOptions {
 
 export class SindrLifeSystem {
   readonly townManager: TownManager;
-  readonly shuttersLanterns: ShuttersAndLanterns;
   readonly leadManager: LeadManager;
   readonly waypointMarker: WaypointMarker;
   readonly dialogueUI: NpcDialogueUI;
@@ -70,8 +67,6 @@ export class SindrLifeSystem {
     this.getThreats = options.getThreats;
 
     this.townManager = new TownManager(this.scene, options.space ?? null);
-    this.shuttersLanterns = new ShuttersAndLanterns();
-    this.scene.add(this.shuttersLanterns.group);
 
     this.leadManager = new LeadManager();
     this.waypointMarker = new WaypointMarker(this.scene);
@@ -105,10 +100,7 @@ export class SindrLifeSystem {
     // 1. Update townsfolk routines and locomotion
     this.townManager.update(delta, minute, heroPos, this.getThreats(), this.camera);
 
-    // 2. Update dusk & night world changes (shutters, lanterns, robbers)
-    this.shuttersLanterns.update(minute, nightness.value);
-
-    // 3. Update active waypoint marker & check lead completion
+    // 2. Update active waypoint marker & check lead completion
     this.waypointMarker.update(delta, this.camera, heroPos);
     const completedLead = this.leadManager.checkTargetReached(heroPos.x, heroPos.z);
     if (completedLead) {
@@ -156,7 +148,6 @@ export class SindrLifeSystem {
   dispose(): void {
     this.disposed = true;
     this.townManager.dispose();
-    this.shuttersLanterns.dispose();
     this.waypointMarker.dispose();
     this.dialogueUI.dispose();
   }

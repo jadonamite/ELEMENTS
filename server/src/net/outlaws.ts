@@ -14,6 +14,7 @@ import {
   recordPlayerDefeat,
   recordPlayerFled,
   GANG_DEFAULTS,
+  SINDR_HIDEOUT,
 } from '@elements/shared';
 import { balance } from './balance.js';
 import { ServerEnemy } from './enemies.js';
@@ -42,7 +43,7 @@ export class ServerRobberGang {
   constructor(
     id = 'sindr_alleys_gang',
     name = 'Sindr Alley Cutthroats',
-    hideout = { x: 110, z: -15, name: 'Sindr Alley Hideout' },
+    hideout = SINDR_HIDEOUT,
     limits: OutlawLimits = DEFAULT_ROBBER_LIMITS,
   ) {
     this.limits = limits;

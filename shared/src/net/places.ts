@@ -1,3 +1,4 @@
+import { MARKET_SLICE } from '../world/ignis/market-slice.js';
 import { SINDR_ANCHORS, SINDR_MANIFEST } from '../world/ignis/sindr.js';
 
 /**
@@ -27,6 +28,11 @@ export const SINDR_COUNTING_HOUSES: Place[] = SINDR_ANCHORS.filter(a => a.kind =
 const board = SINDR_ANCHORS.find(a => a.kind === 'notice_board');
 if (!board) throw new Error('Sindr needs a notice board anchor');
 export const SINDR_NOTICE_BOARD: Place = { id: board.id, x: board.x, z: board.z };
+
+/** Where Sindr's robber gang goes to ground: the hideout anchor, for the browser's gang and the server's alike. */
+const hideout = SINDR_ANCHORS.find(a => a.kind === 'hideout');
+if (!hideout) throw new Error('Sindr needs a hideout anchor');
+export const SINDR_HIDEOUT = { x: hideout.x, z: hideout.z, name: hideout.name };
 
 /** How close a player stands to a stall, counting house or notice board to use it, metres. */
 export const PLACE_REACH = 3.6;
@@ -64,20 +70,18 @@ export interface CollisionBox {
   hz: number;
 }
 
-/** Sindr town collision boxes for stalls, well, and key obstacles to prevent bodies standing inside them. */
+const box = (id: string, r: { x0: number; x1: number; z0: number; z1: number }): CollisionBox =>
+  ({ id, x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2, hx: (r.x1 - r.x0) / 2, hz: (r.z1 - r.z0) / 2 });
+
+/**
+ * Ground in Sindr's market where nobody can be placed, for the server, which has no town collision of its own:
+ * every stall (from the anchors the town builds them on), the shells along the street, and the canal with the
+ * raised terrace behind it (one band, so a body placed from the street never lands across the water).
+ */
 export const SINDR_COLLISION_BOXES: CollisionBox[] = [
-  // Stalls: 4.8m wide (hx 2.4), 3m deep (hz 1.5), plus clearance for awnings and crates
-  { id: 'stall_shards', x: 113, z: -8, hx: 2.6, hz: 1.8 },
-  { id: 'stall_supplies', x: 137, z: -8, hx: 2.6, hz: 1.8 },
-  { id: 'stall_arms', x: 113, z: 8, hx: 2.6, hz: 1.8 },
-  // Slag well at centre of market square: 7.2m x 7.2m (hx 3.6, hz 3.6)
-  { id: 'slag_well', x: 125, z: 0, hx: 3.8, hz: 3.8 },
-  // Ginkgo trees at square corners
-  { id: 'ginkgo_nw', x: 106.5, z: -12.5, hx: 1.4, hz: 1.4 },
-  { id: 'ginkgo_se', x: 143.5, z: 12.5, hx: 1.4, hz: 1.4 },
-  { id: 'ginkgo_sw', x: 106.5, z: 12.6, hx: 1.4, hz: 1.4 },
-  // Alley cache behind west square
-  { id: 'alley_cache', x: 109, z: -14.5, hx: 1.2, hz: 1.2 },
+  ...SINDR_ANCHORS.filter(a => a.kind === 'stall' && a.y === 0).map(a => ({ id: a.id, x: a.x, z: a.z, hx: 2.8, hz: 2.0 })),
+  ...MARKET_SLICE.shells.filter(s => s.face === 'north').map(s => box(s.id, s)),
+  box('canal_and_terrace', { x0: MARKET_SLICE.canal.x0, x1: MARKET_SLICE.canal.x1, z0: MARKET_SLICE.terrace.z0, z1: MARKET_SLICE.canal.z1 }),
 ];
 
 /** True if (x, z) falls inside any collision box (with character radius padding). */

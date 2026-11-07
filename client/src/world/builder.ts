@@ -25,8 +25,8 @@ import { roof } from './roofs.js';
 
 export type PlantKind = 'ginkgo' | 'maple' | 'weed' | 'fern';
 
-/** Surfaces with their own made material instead of scanned textures: glows, shadow strips, water. */
-export type Glow = 'window' | 'forge' | 'lava' | 'ao' | 'wet' | 'water' | 'paper';
+/** Surfaces with their own made material instead of scanned textures: glows, shadow strips, hot and fresh water. */
+export type Glow = 'window' | 'forge' | 'lava' | 'ao' | 'wet' | 'water' | 'fresh_water' | 'paper';
 export type Bucket = Surface | Glow;
 
 export interface Collider {
@@ -37,8 +37,11 @@ export interface Collider {
 /** A light source the nearest-lights pool may pick: braziers, forge mouths, windows. */
 export interface Emitter { position: Vector3; color: number; intensity: number; range: number; flicker: number }
 
-/** What a person at a post does: keeps a shop or stall, works an anvil, or lives behind a door. */
-export type PostKind = 'keeper' | 'smith' | 'household';
+/**
+ * What a person at a post does: keeps a shop or stall, works an anvil, lives behind a door, keeps watch (a town
+ * guard, or one of the Lord's Sentries), carries for a cart bay, or tends a sluice.
+ */
+export type PostKind = 'keeper' | 'smith' | 'household' | 'guard' | 'sentry' | 'porter' | 'crew';
 /** When a post is kept: shops and anvils by day, homes all the time. */
 export type PostHours = 'day' | 'always';
 /** A spot that always has someone at it, built with the place it belongs to. */
@@ -62,7 +65,7 @@ export interface HouseSpec {
   y?: number;
 }
 
-const GLOWS: Glow[] = ['window', 'forge', 'lava', 'ao', 'wet', 'water', 'paper'];
+const GLOWS: Glow[] = ['window', 'forge', 'lava', 'ao', 'wet', 'water', 'fresh_water', 'paper'];
 /** Made surfaces that are flat films over other ground, drawn after it. */
 const FILMS: Glow[] = ['ao', 'wet'];
 

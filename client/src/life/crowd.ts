@@ -118,6 +118,7 @@ export function makeCrowd(count: number, lookCount: number, seed = 7): Crowd {
 /** The trade of whoever keeps each kind of post. */
 const POST_ROLE: Record<Post['kind'], readonly TownsfolkRole[]> = {
   keeper: ['trader'], smith: ['smith'], household: ['porter', 'worshipper', 'trader', 'smith', 'child'],
+  guard: ['guard'], sentry: ['guard'], porter: ['porter'], crew: ['porter'],
 };
 
 /**

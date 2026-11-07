@@ -7,7 +7,8 @@ import {
   type Townsperson,
   getTownspersonActivity,
 } from './townsfolk.js';
-import { WalkMap, type WalkBounds } from './walk-map.js';
+import { WalkMap, type WalkBounds, type WaterQuery } from './walk-map.js';
+import { MARKET_SLICE, waterAt } from '../../../shared/src/world/ignis/market-slice.js';
 import { IDLE, walkFor, type TownsfolkBody } from './townsfolk-bodies.js';
 import type { CombatSpace } from '../attacks/space.js';
 
@@ -79,14 +80,18 @@ export interface LiveTownsperson {
 /** Where wanderers may stand and walk: street areas, sampled on a grid. */
 export interface StreetArea { x0: number; x1: number; z0: number; z1: number; y: number }
 
-/** Sindr's open ground: Cinder Row from gate to gate and the market square. */
+/** Sindr's open ground: Cinder Row from gate to gate, the market street to the stalls, the upper walk over the canal. */
 export const SINDR_STREETS: readonly StreetArea[] = [
   { x0: 56, x1: 220, z0: -5, z1: 5, y: 0 },
-  { x0: 104, x1: 146, z0: -15, z1: 15, y: 0 },
+  { x0: MARKET_SLICE.street.x0, x1: MARKET_SLICE.street.x1, z0: MARKET_SLICE.canal.z1, z1: MARKET_SLICE.street.stalls.z0, y: MARKET_SLICE.street.y },
+  { ...MARKET_SLICE.upperWalk, y: MARKET_SLICE.terrace.y },
 ];
 const GRID = 2.5;
 /** Sindr's walk map starts on the market square and Cinder Row and spreads over the whole town. */
-export const SINDR_WALK = { seeds: [new Vector3(125, 0, 3), new Vector3(80, 0, 0)], bounds: { x0: -10, x1: 240, z0: -200, z1: 60 } };
+export const SINDR_WALK: { seeds: readonly Vector3[]; bounds: WalkBounds; water: WaterQuery } = {
+  seeds: [new Vector3(125, 0, 3), new Vector3(80, 0, 0)], bounds: { x0: -10, x1: 240, z0: -200, z1: 60 },
+  water: (x, z) => waterAt(x, z)?.surface ?? null,
+};
 
 function nearest(points: readonly Vector3[], from: Vector3): { at: Vector3; distance: number } | null {
   let best: { at: Vector3; distance: number } | null = null;
@@ -117,9 +122,9 @@ export class TownManager {
    * read from it first: everyone walks routes along it, and wanderers start on its open street cells.
    */
   async init(bodies: ReadonlyMap<string, TownsfolkBody>, people: readonly Townsperson[] = SINDR_TOWNSFOLK,
-    streets: readonly StreetArea[] = SINDR_STREETS, walk: { seeds: readonly Vector3[]; bounds: WalkBounds } = SINDR_WALK): Promise<void> {
+    streets: readonly StreetArea[] = SINDR_STREETS, walk: { seeds: readonly Vector3[]; bounds: WalkBounds; water?: WaterQuery } = SINDR_WALK): Promise<void> {
     if (this.space) {
-      this.map = await WalkMap.over(this.space, walk.seeds, walk.bounds);
+      this.map = await WalkMap.over(this.space, walk.seeds, walk.bounds, walk.water ?? null);
       for (let i = 0; i < this.map.size; i++) {
         const x = this.map.x[i]!, z = this.map.z[i]!;
         if (streets.some(a => x >= a.x0 && x <= a.x1 && z >= a.z0 && z <= a.z1)) this.spots.push(new Vector3(x, this.map.y[i]!, z));

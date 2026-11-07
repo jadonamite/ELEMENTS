@@ -4,6 +4,7 @@ import type {
   PlayerEncounterMemory,
   RobberGangState,
 } from './types.js';
+import { SINDR_HIDEOUT } from '../net/places.js';
 
 export const GANG_DEFAULTS: OutlawLimits = {
   gangSizeMin: 2,
@@ -22,7 +23,7 @@ export const GANG_DEFAULTS: OutlawLimits = {
 export function createRobberGang(
   id: string,
   name: string,
-  hideout = { x: 120, z: -15, name: "Sindr Alley Cache" },
+  hideout: { x: number; z: number; name: string } = SINDR_HIDEOUT,
   limits = GANG_DEFAULTS,
   memberCount?: number
 ): RobberGangState {

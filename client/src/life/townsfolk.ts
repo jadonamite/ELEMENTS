@@ -1,3 +1,6 @@
+import { MARKET_SLICE } from '../../../shared/src/world/ignis/market-slice.js';
+import { SINDR_ANCHORS } from '../../../shared/src/world/ignis/sindr.js';
+
 export type TownsfolkRole =
   | 'smith'
   | 'trader'
@@ -38,6 +41,20 @@ export interface Townsperson {
   };
 }
 
+/** The keeper's place behind a stall, from the anchor the stall is built on (see style-kit marketStall). */
+function atStall(id: string): LocationWaypoint {
+  const a = SINDR_ANCHORS.find((k) => k.id === id);
+  if (!a) throw new Error(`Sindr has no stall ${id}`);
+  return { x: a.x + Math.sin(a.yaw) * 0.2, y: a.y, z: a.z + Math.cos(a.yaw) * 0.2, facing: a.yaw };
+}
+
+/** A post in the market slice's layout. */
+function atPost(id: string, facing: number): LocationWaypoint {
+  const p = MARKET_SLICE.posts.find((k) => k.id === id);
+  if (!p) throw new Error(`The market has no post ${id}`);
+  return { x: p.x, y: p.y, z: p.z, facing };
+}
+
 /**
  * 30 Authentic Sindr townsfolk.
  * Exactly 24 Dim (80%) and 6 Lit (20%) per LORE rules (Jadon, 1 Nov).
@@ -55,7 +72,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 78, y: 0.4, z: 34.5, facing: Math.PI },
       market: { x: 114, y: 0, z: -2, facing: 0 },
-      inn: { x: 108, y: 0, z: -18, facing: -Math.PI * 0.4 },
+      inn: { x: 133.5, y: 4.5, z: -53, facing: -Math.PI * 0.4 },
       home: { x: 72, y: 0, z: 12, facing: Math.PI },
     },
   },
@@ -70,7 +87,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 86, y: 0.4, z: 34.5, facing: 0 },
       market: { x: 120, y: 0, z: 4, facing: Math.PI * 0.2 },
-      inn: { x: 110, y: 0, z: -19, facing: 0 },
+      inn: { x: 131.9, y: 4.5, z: -53, facing: 0 },
       home: { x: 74, y: 0, z: 12, facing: Math.PI },
     },
   },
@@ -85,7 +102,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 82, y: 0.4, z: 33.5, facing: 0 },
       market: { x: 116, y: 0, z: -4, facing: Math.PI },
-      inn: { x: 107, y: 0, z: -17, facing: Math.PI * 0.5 },
+      inn: { x: 130.3, y: 4.5, z: -53, facing: Math.PI * 0.5 },
       home: { x: 70, y: 0, z: 14, facing: Math.PI * 0.5 },
     },
   },
@@ -100,12 +117,12 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 90, y: 0.4, z: 34.5, facing: 0 },
       market: { x: 122, y: 0, z: -6, facing: Math.PI * 0.5 },
-      inn: { x: 112, y: 0, z: -20, facing: -Math.PI * 0.8 },
-      home: { x: 98, y: 0, z: 16, facing: 0 },
+      inn: { x: 128.7, y: 4.5, z: -53, facing: -Math.PI * 0.8 },
+      home: { x: 98, y: 0, z: 13.2, facing: 0 },
     },
   },
 
-  // Traders in the Square (x: 104..146, z: -16..16)
+  // Traders at the market stalls and the service counter
   {
     id: 'trader_surna',
     name: 'Surna Shard-Seller',
@@ -115,10 +132,10 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     element: 'DIM',
     sex: 'female',
     schedule: {
-      work: { x: 113, y: 0, z: -7, facing: 0 },
+      work: atStall('stall_shards'),
       market: { x: 125, y: 0, z: -2, facing: 0 },
-      inn: { x: 106, y: 0, z: -18, facing: Math.PI * 0.3 },
-      home: { x: 138, y: 0, z: -22, facing: 0 },
+      inn: { x: 127.1, y: 4.5, z: -53, facing: Math.PI * 0.3 },
+      home: { x: 138, y: 3, z: -21.5, facing: 0 },
     },
   },
   {
@@ -130,10 +147,10 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     element: 'DIM',
     sex: 'male',
     schedule: {
-      work: { x: 137, y: 0, z: -7, facing: Math.PI },
+      work: atStall('stall_supplies'),
       market: { x: 128, y: 0, z: 2, facing: -Math.PI * 0.5 },
-      inn: { x: 109, y: 0, z: -17, facing: Math.PI * 0.8 },
-      home: { x: 142, y: 0, z: -22, facing: 0 },
+      inn: { x: 133.5, y: 4.5, z: -54.8, facing: Math.PI * 0.8 },
+      home: { x: 142, y: 3, z: -21.5, facing: 0 },
     },
   },
   {
@@ -145,10 +162,10 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     element: 'DIM',
     sex: 'male',
     schedule: {
-      work: { x: 113, y: 0, z: 7, facing: 0 },
+      work: atStall('stall_arms'),
       market: { x: 122, y: 0, z: 0, facing: Math.PI * 0.5 },
-      inn: { x: 108, y: 0, z: -20, facing: -Math.PI * 0.2 },
-      home: { x: 112, y: 0, z: 22, facing: Math.PI },
+      inn: { x: 131.9, y: 4.5, z: -54.8, facing: -Math.PI * 0.2 },
+      home: { x: 112, y: 0, z: 13.2, facing: Math.PI },
     },
   },
   {
@@ -160,10 +177,10 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     element: 'DIM',
     sex: 'female',
     schedule: {
-      work: { x: 137, y: 0, z: 7, facing: 0 },
+      work: atPost('service', Math.PI),
       market: { x: 126, y: 0, z: -3, facing: -Math.PI * 0.3 },
-      inn: { x: 111, y: 0, z: -18, facing: Math.PI * 0.5 },
-      home: { x: 138, y: 0, z: 22, facing: Math.PI },
+      inn: { x: 130.3, y: 4.5, z: -54.8, facing: Math.PI * 0.5 },
+      home: { x: 138, y: 0, z: 13.2, facing: Math.PI },
     },
   },
   {
@@ -177,12 +194,12 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 124, y: 0, z: 1, facing: -Math.PI * 0.5 },
       market: { x: 124, y: 0, z: 1, facing: -Math.PI * 0.5 },
-      inn: { x: 107, y: 0, z: -19, facing: Math.PI * 0.1 },
-      home: { x: 104, y: 0, z: -22, facing: 0 },
+      inn: { x: 128.7, y: 4.5, z: -54.8, facing: Math.PI * 0.1 },
+      home: { x: 104, y: 3, z: -21.5, facing: 0 },
     },
   },
 
-  // Innkeeper at Hearth & Anvil (x: 109, z: -18)
+  // Innkeepers at the Banked Hearth, the inn on the well yard
   {
     id: 'innkeeper_greta',
     name: 'Greta Warm-Hearth',
@@ -192,10 +209,10 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     element: 'DIM',
     sex: 'female',
     schedule: {
-      work: { x: 109, y: 0, z: -18, facing: Math.PI * 0.5 },
-      market: { x: 118, y: 0, z: -10, facing: 0 },
-      inn: { x: 109, y: 0, z: -18, facing: Math.PI * 0.5 },
-      home: { x: 109, y: 0, z: -22, facing: 0 },
+      work: { x: 134, y: 4.5, z: -55, facing: Math.PI * 0.5 },
+      market: { x: 118, y: 0, z: -4.5, facing: 0 },
+      inn: { x: 127.1, y: 4.5, z: -54.8, facing: Math.PI * 0.5 },
+      home: { x: 109, y: 3, z: -21.5, facing: 0 },
     },
   },
   {
@@ -207,10 +224,10 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     element: 'DIM',
     sex: 'male',
     schedule: {
-      work: { x: 106, y: 0, z: -19, facing: 0 },
-      market: { x: 115, y: 0, z: -12, facing: Math.PI },
-      inn: { x: 106, y: 0, z: -19, facing: 0 },
-      home: { x: 106, y: 0, z: -22, facing: 0 },
+      work: { x: 134, y: 4.5, z: -57.5, facing: Math.PI * 0.5 },
+      market: { x: 115, y: 0, z: -4.5, facing: Math.PI },
+      inn: { x: 133.5, y: 4.5, z: -56.6, facing: 0 },
+      home: { x: 106, y: 3, z: -21.5, facing: 0 },
     },
   },
 
@@ -256,7 +273,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 54, y: 0, z: -3, facing: -Math.PI * 0.5 },
       market: { x: 58, y: 0, z: 0, facing: Math.PI * 0.5 },
-      inn: { x: 105, y: 0, z: -17, facing: Math.PI * 0.3 },
+      inn: { x: 131.9, y: 4.5, z: -56.6, facing: Math.PI * 0.3 },
       home: { x: 56, y: 0, z: 8, facing: Math.PI },
     },
   },
@@ -271,7 +288,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 220, y: 0, z: 3, facing: Math.PI * 0.5 },
       market: { x: 215, y: 0, z: 0, facing: -Math.PI * 0.5 },
-      inn: { x: 112, y: 0, z: -17, facing: -Math.PI * 0.6 },
+      inn: { x: 130.3, y: 4.5, z: -56.6, facing: -Math.PI * 0.6 },
       home: { x: 216, y: 0, z: 8, facing: Math.PI },
     },
   },
@@ -335,7 +352,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 115, y: 0, z: 4.5, facing: Math.PI * 0.3 },
       market: { x: 115, y: 0, z: 4.5, facing: Math.PI * 0.3 },
-      inn: { x: 105, y: 0, z: -19, facing: 0 },
+      inn: { x: 128.7, y: 4.5, z: -56.6, facing: 0 },
       home: { x: 62, y: 0, z: -10, facing: 0 },
     },
   },
@@ -350,7 +367,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 120, y: 0, z: 2.5, facing: -Math.PI * 0.5 },
       market: { x: 120, y: 0, z: 2.5, facing: -Math.PI * 0.5 },
-      inn: { x: 113, y: 0, z: -18, facing: -Math.PI * 0.4 },
+      inn: { x: 127.1, y: 4.5, z: -56.6, facing: -Math.PI * 0.4 },
       home: { x: 160, y: 0, z: -12, facing: 0 },
     },
   },
@@ -365,8 +382,8 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 122, y: 0, z: 5.0, facing: Math.PI * 0.2 },
       market: { x: 122, y: 0, z: 5.0, facing: Math.PI * 0.2 },
-      inn: { x: 108, y: 0, z: -16, facing: Math.PI * 0.7 },
-      home: { x: 92, y: 0, z: -12, facing: 0 },
+      inn: { x: 133.5, y: 4.5, z: -58.4, facing: Math.PI * 0.7 },
+      home: { x: 92, y: 3, z: -21.5, facing: 0 },
     },
   },
   {
@@ -380,7 +397,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 117, y: 0, z: 1.5, facing: Math.PI * 0.8 },
       market: { x: 117, y: 0, z: 1.5, facing: Math.PI * 0.8 },
-      inn: { x: 104, y: 0, z: -18, facing: Math.PI * 0.2 },
+      inn: { x: 131.9, y: 4.5, z: -58.4, facing: Math.PI * 0.2 },
       home: { x: 170, y: 0, z: -12, facing: 0 },
     },
   },
@@ -397,8 +414,8 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 114, y: 0, z: 3.5, facing: Math.PI * 0.6 },
       market: { x: 114, y: 0, z: 3.5, facing: Math.PI * 0.6 },
-      inn: { x: 111, y: 0, z: -16, facing: 0 },
-      home: { x: 116, y: 0, z: 22, facing: Math.PI },
+      inn: { x: 130.3, y: 4.5, z: -58.4, facing: 0 },
+      home: { x: 116, y: 0, z: 13.2, facing: Math.PI },
     },
   },
   {
@@ -412,8 +429,8 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 116, y: 0, z: 5.5, facing: -Math.PI * 0.3 },
       market: { x: 116, y: 0, z: 5.5, facing: -Math.PI * 0.3 },
-      inn: { x: 112, y: 0, z: -16, facing: -Math.PI * 0.5 },
-      home: { x: 118, y: 0, z: 22, facing: Math.PI },
+      inn: { x: 128.7, y: 4.5, z: -58.4, facing: -Math.PI * 0.5 },
+      home: { x: 118, y: 0, z: 13.2, facing: Math.PI },
     },
   },
   {
@@ -427,8 +444,8 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 119, y: 0, z: 4.0, facing: 0 },
       market: { x: 119, y: 0, z: 4.0, facing: 0 },
-      inn: { x: 109, y: 0, z: -16, facing: Math.PI },
-      home: { x: 136, y: 0, z: -22, facing: 0 },
+      inn: { x: 127.1, y: 4.5, z: -58.4, facing: Math.PI },
+      home: { x: 136, y: 3, z: -21.5, facing: 0 },
     },
   },
 
@@ -444,8 +461,8 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 113, y: 0, z: 2.0, facing: 0 },
       market: { x: 113, y: 0, z: 2.0, facing: 0 },
-      inn: { x: 107, y: 0, z: -17, facing: Math.PI * 0.4 },
-      home: { x: 144, y: 0, z: -22, facing: 0 },
+      inn: { x: 133.5, y: 4.5, z: -60.2, facing: Math.PI * 0.4 },
+      home: { x: 144, y: 3, z: -21.5, facing: 0 },
     },
   },
   {
@@ -459,8 +476,8 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 121, y: 0, z: 6.0, facing: Math.PI },
       market: { x: 121, y: 0, z: 6.0, facing: Math.PI },
-      inn: { x: 110, y: 0, z: -17, facing: -Math.PI * 0.5 },
-      home: { x: 108, y: 0, z: -22, facing: 0 },
+      inn: { x: 131.9, y: 4.5, z: -60.2, facing: -Math.PI * 0.5 },
+      home: { x: 108, y: 3, z: -21.5, facing: 0 },
     },
   },
   {
@@ -474,7 +491,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 123, y: 0, z: 3.0, facing: Math.PI * 0.4 },
       market: { x: 123, y: 0, z: 3.0, facing: Math.PI * 0.4 },
-      inn: { x: 106, y: 0, z: -16, facing: Math.PI * 0.6 },
+      inn: { x: 130.3, y: 4.5, z: -60.2, facing: Math.PI * 0.6 },
       home: { x: 64, y: 0, z: -10, facing: 0 },
     },
   },
@@ -489,7 +506,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 118, y: 0, z: 6.5, facing: -Math.PI * 0.5 },
       market: { x: 118, y: 0, z: 6.5, facing: -Math.PI * 0.5 },
-      inn: { x: 108, y: 0, z: -19, facing: 0 },
+      inn: { x: 128.7, y: 4.5, z: -60.2, facing: 0 },
       home: { x: 68, y: 0, z: 12, facing: Math.PI },
     },
   },
@@ -504,7 +521,7 @@ export const SINDR_TOWNSFOLK: Townsperson[] = [
     schedule: {
       work: { x: 121, y: 0, z: 1.5, facing: -Math.PI * 0.5 },
       market: { x: 121, y: 0, z: 1.5, facing: -Math.PI * 0.5 },
-      inn: { x: 113, y: 0, z: -19, facing: -Math.PI * 0.7 },
+      inn: { x: 127.1, y: 4.5, z: -60.2, facing: -Math.PI * 0.7 },
       home: { x: 180, y: 0, z: 10, facing: 0 },
     },
   },

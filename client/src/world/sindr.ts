@@ -6,16 +6,19 @@ import type { Surface } from './materials.js';
 import { brackets, roof } from './roofs.js';
 import { SINDR_SPAWN } from '../../../shared/src/net/index.js';
 import { SINDR_ANCHORS, type SindrAnchor } from '../../../shared/src/world/ignis/sindr.js';
+import { MARKET_SLICE } from '../../../shared/src/world/ignis/market-slice.js';
+import { buildMarket } from './market.js';
 import { stairRun, stairs } from './stairs.js';
-import { compoundWall, hall, noticeBoard, roofedGate, stall, townHouse, well, type Rank } from './style-kit.js';
+import { compoundWall, hall, roofedGate, stall, townHouse, well, type Rank } from './style-kit.js';
 import { awning, clutter, handCart, lampPost, lanternString, paperLantern, parkedCart, paveStreet, runnel, timberStack, wetPatch, type Strip } from './street.js';
 import { dressTerrace, planter, retainingWall, terraceTop } from './walls.js';
 
 /**
  * Sindr, the IGNIS forge town, built as a hill town: a long lower street (Cinder Row) runs east from the
- * Shrine of Embers past the market square to the Gorge Road; from the square one lane, the Rise, climbs north
- * in short flights between stepped rows of houses, commoners low and merchants above, through the well yard
- * to the Lord's Gate and the Master's Hall; behind the hall a switchback road climbs the crag to Brandr's Keep.
+ * Shrine of Embers through the market on the canal to the Gorge Road; over the market's bridge and up its stair,
+ * one lane, the Rise, climbs north in short flights between stepped rows of houses, commoners low and guild
+ * houses above, through the well yard to the Lord's Gate and the Master's Hall; behind the hall a switchback road
+ * climbs the crag to Brandr's Keep.
  * Named places and service entrances come from the shared Sindr manifest. x runs east, north is -z.
  */
 
@@ -30,15 +33,17 @@ export function anchor(id: string): Anchor {
 export const SPAWN = SINDR_SPAWN;
 /** Cinder Row: house fronts stand `half` either side of z 0. */
 const STREET = { x0: 52, x1: 224, half: 8 };
-const SQUARE = { x0: 104, x1: 146, z0: -16, z1: 16 };
+/** The market: Cinder Row's middle stretch, built from the shared slice layout (market.ts). */
+const MARKET = { x0: MARKET_SLICE.street.x0, x1: MARKET_SLICE.street.x1 };
 /** The Rise: its lane between the house fronts, and the terraces' width. */
 const LANE = { x0: 120, x1: 130, cx: 125 };
 const BAND = { x0: 98, x1: 152 };
-/** The Rise's levels, south to north: z1 is the south edge (where the wall below stands), z0 the north. */
+/**
+ * The Rise's levels above the market terrace, south to north: z1 is the south edge (where the wall below stands),
+ * z0 the north. The first stands level with the terrace the market's stair climbs to.
+ */
 const RISE: Array<{ name: string; z0: number; z1: number; y: number }> = [
-  { name: 'rise-0', z0: -22, z1: -16, y: 0 },
-  { name: 'rise-1', z0: -36, z1: -22, y: 1.5 },
-  { name: 'rise-2', z0: -50, z1: -36, y: 3 },
+  { name: 'rise-2', z0: -50, z1: MARKET_SLICE.terrace.z0, y: MARKET_SLICE.terrace.y },
   { name: 'rise-yard', z0: -68, z1: -50, y: 4.5 },
   { name: 'rise-4', z0: -86, z1: -68, y: 7.5 },
   { name: 'rise-top', z0: -128, z1: -86, y: 11 },
@@ -79,6 +84,8 @@ export const WALKABLE = new Levels([
 ]);
 
 const EAST = Math.PI / 2, WEST = -Math.PI / 2;
+/** The lane from Cinder Row south to the Great Forge, between the west houses and the market's first shop. */
+const FORGE_LANE = { x0: 79, x1: MARKET_SLICE.street.x0 };
 const SHRINE_R = 16;
 
 /**
@@ -91,7 +98,7 @@ export function buildSindr(b: WorldBuilder): Area[] {
   shrine(b);
   road(b);
   cinderRow(b, rand);
-  square(b, rand);
+  areas.push(...buildMarket(b, rand));
   rise(b, rand, areas);
   topTerrace(b, rand, areas);
   keepRoad(b, rand, areas);
@@ -115,7 +122,7 @@ const ROW_STRIPS: Strip[] = [
 const RUNNEL_Z = -6.3;
 
 function cinderRow(b: WorldBuilder, rand: () => number): void {
-  const spans: Array<[number, number]> = [[STREET.x0, SQUARE.x0], [SQUARE.x1, STREET.x1]];
+  const spans: Array<[number, number]> = [[STREET.x0, MARKET.x0], [MARKET.x1, STREET.x1]];
   for (const [x0, x1] of spans) {
     paveStreet(b, { x0, z0: 0, x1, z1: 0, y: 0, strips: ROW_STRIPS, verge: [1.5, 2.6], crossEvery: 12, wet: 1.1 }, rand);
   }
@@ -166,13 +173,14 @@ function cinderRow(b: WorldBuilder, rand: () => number): void {
       x += w + (rand() < 0.25 ? 1.2 + rand() * 1.5 : 0.25);
     }
   };
-  row(STREET.x0, SQUARE.x0, -1, [], SQUARE.x0);
-  row(SQUARE.x1, STREET.x1, -1, [], SQUARE.x1);
-  row(STREET.x0, SQUARE.x0, 1, [[84, 95]], SQUARE.x0);
-  row(SQUARE.x1, STREET.x1, 1, [[183, 195]], SQUARE.x1);
+  row(STREET.x0, MARKET.x0, -1, [], MARKET.x0);
+  row(MARKET.x1, STREET.x1, -1, [], MARKET.x1);
+  // The south row leaves the forge lane open beside the market's first shop.
+  row(STREET.x0, MARKET.x0, 1, [[FORGE_LANE.x0, MARKET.x0]], MARKET.x0);
+  row(MARKET.x1, STREET.x1, 1, [[183, 195]], MARKET.x1);
   b.at(0, 0, 0);
-  runnel(b, STREET.x0 + 4, SQUARE.x0 - 1, RUNNEL_Z, 1.0, 1, bridges.filter((x) => x < SQUARE.x0), rand);
-  runnel(b, SQUARE.x1 + 1, STREET.x1 - 3, RUNNEL_Z, 1.0, 1, bridges.filter((x) => x > SQUARE.x1), rand);
+  runnel(b, STREET.x0 + 4, MARKET.x0 - 4, RUNNEL_Z, 1.0, 1, bridges.filter((x) => x < MARKET.x0), rand);
+  runnel(b, MARKET.x1 + 4, STREET.x1 - 3, RUNNEL_Z, 1.0, 1, bridges.filter((x) => x > MARKET.x1), rand);
   // Lamps along the south edge, arms over the street; trees on the south verge, crowns over the road.
   for (const [x0, x1] of spans) {
     let i = 0;
@@ -182,10 +190,10 @@ function cinderRow(b: WorldBuilder, rand: () => number): void {
     }
   }
   // Red lanterns strung across the street near the square, and at the gates.
-  for (const x of [70, 96, 156, 176, 206]) lanternString(b, [x, 5.6, -7.6], [x + 2, 5.4, 7.6], 5);
+  for (const x of [70, 156, 176, 206]) lanternString(b, [x, 5.6, -7.6], [x + 2, 5.4, 7.6], 5);
   // Weeds at the foot of the runnel kerbs and along the south verge.
   for (let x = STREET.x0 + 3; x < STREET.x1 - 3; x += 1.7 + rand() * 2.5) {
-    if (x > SQUARE.x0 - 1 && x < SQUARE.x1 + 1) continue;
+    if (x > MARKET.x0 - 4 && x < MARKET.x1 + 4) continue;
     b.plant(rand() < 0.6 ? 'weed' : 'fern', x, RUNNEL_Z - 0.9, 0.5 + rand() * 0.6, 0, rand() * 6);
     if (rand() < 0.5) b.plant('weed', x + rand(), 7.6 + rand() * 0.3, 0.6 + rand() * 0.6, 0, rand() * 6);
   }
@@ -194,88 +202,14 @@ function cinderRow(b: WorldBuilder, rand: () => number): void {
 const UP_FACE = Math.PI;
 
 // ---------------------------------------------------------------------------------------------------------------
-// The market square: flagstones ringed by cobble bands, the four stalls the merchants trade from, the slag well.
-
-function square(b: WorldBuilder, rand: () => number): void {
-  const cx = (SQUARE.x0 + SQUARE.x1) / 2;
-  paveStreet(b, {
-    x0: SQUARE.x0, z0: 0, x1: SQUARE.x1, z1: 0, y: 0, verge: [1.8, 1.8], wet: 0.7, keepClear: [[15, 27]],
-    strips: [{ w: 2.4, surface: 'basalt_cobblestone' }, { w: 1.2, surface: 'river_cobbles' }, { w: 24.8, surface: 'worn_flagstones' },
-      { w: 1.2, surface: 'river_cobbles' }, { w: 2.4, surface: 'basalt_cobblestone' }],
-  }, rand);
-  // Cobble bands crossing the square, framing the well.
-  b.at(0, 0, 0);
-  for (const x of [cx - 6.5, cx + 6.5]) b.box('river_cobbles', x, 0.008, 0, 1.2, 0.012, 24.8);
-  // The slag well: a stone rim over molten run-off.
-  b.add('ashlar_stone_blocks', new CylinderGeometry(3.2, 3.4, 0.8, 28, 1, true), new Matrix4().makeTranslation(cx, 0.4, 0));
-  b.add('ashlar_stone_blocks', new CylinderGeometry(3.6, 3.6, 0.18, 28), new Matrix4().makeTranslation(cx, 0.82, 0));
-  b.add('basalt_rock_face', new CylinderGeometry(2.7, 2.7, 0.18, 28), new Matrix4().makeTranslation(cx, 0.82, 0));
-  b.add('lava', new CylinderGeometry(2.6, 2.6, 0.05, 28), new Matrix4().makeTranslation(cx, 0.55, 0));
-  b.add('blackened_rusted_iron', new CylinderGeometry(0.12, 0.12, 3.4, 8), new Matrix4().makeTranslation(cx - 2.2, 2.0, 0));
-  b.add('blackened_rusted_iron', new CylinderGeometry(0.12, 0.12, 3.4, 8), new Matrix4().makeTranslation(cx + 2.2, 2.0, 0));
-  b.box('blackened_rusted_iron', cx, 3.6, 0, 4.8, 0.2, 0.2);
-  b.ao([cx - 4, 0.012, -3.6], [cx + 4, 0.012, -3.6], [0, 0, 7.2], 0.25);
-  b.light(cx, 1.6, 0, 0xff5a18, 45, 18, 0.12);
-  b.embers.push(new Vector3(cx, 0.8, 0), new Vector3(cx + 1, 0.8, 0.6));
-  b.steam.push(new Vector3(cx - 1.5, 0.9, 0.5), new Vector3(cx + 1.2, 0.9, -0.8));
-  b.solid(cx, 0.5, 0, 7.2, 1, 7.2);
-  // Stalls where the merchants trade (the anchors), under cloth roofs with goods and crates.
-  for (const a of ANCHORS.filter((k) => k.kind === 'stall' && k.y === 0)) {
-    b.at(a.x, a.z, a.yaw);
-    for (const px of [-2.2, 2.2]) for (const pz of [-1.3, 1.3]) b.box('charred_timber_beams', px, 1.3, pz, 0.16, 2.6, 0.16);
-    b.box('charred_timber_beams', 0, 0.95, 1.2, 4.6, 0.12, 0.9);
-    b.box('charred_timber_beams', 0, 0.5, 1.45, 4.4, 0.9, 0.08);
-    b.box(rand() < 0.5 ? 'indigo_cloth' : 'red_lacquer', 0, 2.75, 0.2, 5.2, 0.04, 3.6, { x: 0.22 });
-    b.box('indigo_cloth', 0, 2.42, 2.02, 5.2, 0.32, 0.02);
-    for (let gx = -1.9; gx < 2; gx += 0.38 + rand() * 0.2) b.cylinder(rand() < 0.5 ? 'terracotta' : 'raw_timber', gx, 1.12, 1.2 + (rand() - 0.5) * 0.4, 0.13, 0.16, 0.22 + rand() * 0.14, 9);
-    b.prop('crate', -1.4, -0.6, 0.3, 0.8);
-    b.prop('barrel', 1.5, -0.7, 0, 0.8);
-    b.post('keeper', 0, 0.35);
-    b.solid(0, 1.3, 0, 4.8, 2.6, 3);
-  }
-  b.at(0, 0, 0);
-  for (const [x, z] of [[-18, -13], [18, -13], [-18, 13], [18, 13]] as const) brazier(b, cx + x, z, 1);
-  const nb = anchor('notice_board');
-  noticeBoard(b, nb.x, nb.z, nb.y, nb.yaw, rand);
-  // Frontage: houses on the square's north side either side of the Rise, and on the south either side of the Raid Hall lane.
-  for (const [x0, x1] of [[SQUARE.x0 + 0.2, LANE.x0 - 0.3], [LANE.x1 + 0.3, SQUARE.x1 - 0.2]] as const) {
-    const n = 2, w = (x1 - x0) / n;
-    for (let i = 0; i < n; i++) {
-      townHouse(b, { x: x0 + w * (i + 0.5), z: SQUARE.z0 - 2.9, y: 0, yaw: 0, w: w - 0.3, d: 5.6, floors: 2, rank: 'merchant',
-        shop: i % 2 === 0, balcony: true, sign: 3, awning: true, lantern: true, footing: 1.6 }, rand);
-    }
-  }
-  for (const [x0, x1] of [[SQUARE.x0 + 0.2, 119.5], [128.5, SQUARE.x1 - 0.2]] as const) {
-    const n = 2, w = (x1 - x0) / n;
-    for (let i = 0; i < n; i++) {
-      townHouse(b, { x: x0 + w * (i + 0.5), z: SQUARE.z1 + 4, y: 0, yaw: UP_FACE, w: w - 0.3, d: 8, floors: 2, rank: 'merchant',
-        shop: i % 2 === 1, balcony: i % 2 === 0, sign: 2, awning: true, lantern: true }, rand);
-    }
-  }
-  b.at(0, 0, 0);
-  // Ginkgos at the square's corners, the tallest trees in the lower town.
-  for (const [x, z] of [[SQUARE.x0 + 2.5, -12.5], [SQUARE.x1 - 2.5, 12.5], [SQUARE.x0 + 2.5, 12.6]] as const) {
-    b.plant('ginkgo', x, z, 1.05 + rand() * 0.2, 0, rand() * 6);
-    b.cylinder('ashlar_stone_blocks', x, 0.2, z, 1.3, 1.4, 0.4, 14);
-    b.solid(x, 0.25, z, 2.4, 0.5, 2.4);
-  }
-  // Alley behind the square's west houses: a cramped corner the robbers favour.
-  const hide = anchor('alley_hideout');
-  b.prop('crate', hide.x - 1, hide.z + 0.5, 0.4, 0.9); b.prop('barrel', hide.x + 0.8, hide.z - 0.6, 0, 0.9);
-  b.solid(hide.x - 1, 0.4, hide.z + 0.5, 0.9, 0.8, 0.9);
-}
-
-// ---------------------------------------------------------------------------------------------------------------
 // The Rise: terraces up the lane, a flight at each, retaining walls between, houses facing the lane.
 
 function rise(b: WorldBuilder, rand: () => number, areas: Area[]): void {
+  // The lane starts on the market terrace, between the rock houses, at the upper walk.
+  paveLane(b, MARKET_SLICE.upperWalk.z0, MARKET_SLICE.terrace.z0, MARKET_SLICE.terrace.y, rand);
   RISE.forEach((lv, k) => {
-    if (k === 0) {
-      paveLane(b, lv.z1, lv.z0, lv.y, rand);
-      return;
-    }
     if (lv.name === 'rise-top') return;
-    level(b, areas, lv.name, { x0: BAND.x0, x1: BAND.x1, z0: lv.z0, z1: lv.z1 }, lv.y, RISE[k - 1]!.y);
+    level(b, areas, lv.name, { x0: BAND.x0, x1: BAND.x1, z0: lv.z0, z1: lv.z1 }, lv.y, k === 0 ? MARKET_SLICE.street.y : RISE[k - 1]!.y);
     paveLane(b, lv.z1, lv.z0, lv.y, rand);
   });
   // Flights and the walls they break, at each level's north edge.
@@ -288,13 +222,14 @@ function rise(b: WorldBuilder, rand: () => number, areas: Area[]): void {
     lampPost(b, LANE.x0 + 0.6, lo.z0 + run + 1.2, lo.y, EAST);
     lampPost(b, LANE.x1 - 0.6, lo.z0 + run + 3.4, lo.y, WEST);
   }
-  // Houses on the levels below the yard: two each side, gable ends stepping up the lane.
-  const rows: Array<{ k: number; rank: Rank }> = [{ k: 1, rank: 'common' }, { k: 2, rank: 'merchant' }, { k: 4, rank: 'merchant' }];
-  for (const { k, rank } of rows) {
-    const lv = RISE[k]!, len = lv.z1 - lv.z0 - 0.8;
+  // Houses on the levels below and above the yard: two each side, gable ends stepping up the lane; merchants
+  // by the counting houses, guild houses in lacquer and gold above the yard, toward the hall.
+  const rows: Array<{ name: string; rank: Rank }> = [{ name: 'rise-2', rank: 'merchant' }, { name: 'rise-4', rank: 'guild' }];
+  for (const { name, rank } of rows) {
+    const lv = level_(name), len = lv.z1 - lv.z0 - 0.8;
     for (const side of [-1, 1] as const) {
       const front = side < 0 ? LANE.x0 - 0.3 : LANE.x1 + 0.3;
-      if (k === 2) {
+      if (name === 'rise-2') {
         countingHouse(b, anchor(side < 0 ? 'counting_house_w' : 'counting_house_e'));
         houseAlong(b, front, side, lv.z0 + 0.4, lv.z0 + 0.4 + (len - 10.2), lv.y, rank, rand);
         continue;
@@ -311,14 +246,21 @@ function rise(b: WorldBuilder, rand: () => number, areas: Area[]): void {
     }
   }
   // Heaps at the house feet on each level, clear of the flight at the level's north end and its lamps.
-  for (const lv of [RISE[1]!, RISE[2]!, RISE[4]!]) {
+  for (const lv of [level_('rise-2'), level_('rise-4')]) {
     const z = lv.z1 - 2.6 - rand() * 3;
     clutter(b, LANE.x0 + 0.45, z, lv.y, EAST, rand);
     clutter(b, LANE.x1 - 0.45, z - 3 - rand() * 2, lv.y, WEST, rand);
   }
   yard(b, rand);
   // Red lanterns over the lane at each level, strung from eave to eave.
-  for (const lv of RISE.slice(1, 5)) lanternString(b, [LANE.x0 - 0.2, lv.y + 5.2, (lv.z0 + lv.z1) / 2 + 2], [LANE.x1 + 0.2, lv.y + 5.0, (lv.z0 + lv.z1) / 2 + 1], 4);
+  for (const lv of RISE.slice(0, 3)) lanternString(b, [LANE.x0 - 0.2, lv.y + 5.2, (lv.z0 + lv.z1) / 2 + 2], [LANE.x1 + 0.2, lv.y + 5.0, (lv.z0 + lv.z1) / 2 + 1], 4);
+}
+
+/** A level of the Rise by name. */
+function level_(name: string): (typeof RISE)[number] {
+  const lv = RISE.find((l) => l.name === name);
+  if (!lv) throw new Error(`The Rise has no level ${name}`);
+  return lv;
 }
 
 /** A terrace: paved, filled solid, and its ground recorded so the land is shaped to it. */
@@ -378,7 +320,7 @@ function countingHouse(b: WorldBuilder, a: Anchor): void {
 
 /** The well yard: the inn, the well, a stall, a great ginkgo, benches and braziers; the widest ground on the Rise. */
 function yard(b: WorldBuilder, rand: () => number): void {
-  const lv = RISE[3]!;
+  const lv = level_('rise-yard');
   const inn = anchor('inn');
   townHouse(b, { x: inn.x, z: inn.z, y: lv.y, yaw: inn.yaw, w: 12, d: 9, floors: 2, rank: 'merchant', balcony: true, sign: 4,
     lantern: true, door: 0, footing: 4.6 }, rand);
@@ -577,7 +519,7 @@ function brazier(b: WorldBuilder, x: number, z: number, scale = 1): void {
 function greatForge(b: WorldBuilder, rand: () => number): void {
 
   b.at(0, 0, 0);
-  b.box('basalt_cobblestone', 90, -0.03, 14, 8, 0.1, 19);
+  b.box('basalt_cobblestone', (FORGE_LANE.x0 + FORGE_LANE.x1) / 2, -0.03, 17.5, FORGE_LANE.x1 - FORGE_LANE.x0, 0.1, 19);
   // A raised basalt terrace under an open timber hall.
   const cx = 82, cz = 36;
   b.at(cx, cz, 0);
@@ -624,10 +566,12 @@ function greatForge(b: WorldBuilder, rand: () => number): void {
 }
 
 function raidHall(b: WorldBuilder, rand: () => number): void {
+  const h = anchor('raid_hall');
   b.at(0, 0, 0);
-  b.box('basalt_cobblestone', 124, -0.03, 22, 9, 0.1, 12);
-  b.house({ x: 124, z: 34, yaw: Math.PI, w: 13, d: 11, floors: 2, stone: true, chimney: 0, pitch: 0.55, door: 0 }, rand);
-  b.at(124, 34, Math.PI);
+  // The yard in front of the hall: the back lane from the market's gap (E4) to the Great Forge.
+  b.box('basalt_cobblestone', h.x, -0.03, h.door!.z - 2.5, 13, 0.1, 5);
+  b.house({ x: h.x, z: h.z, yaw: Math.PI, w: 13, d: 11, floors: 2, stone: true, chimney: 0, pitch: 0.55, door: 0 }, rand);
+  b.at(h.x, h.z, Math.PI);
   // Boarded door and a faded banner: closed until raids open.
   for (let i = 0; i < 3; i++) b.box('charred_timber_beams', 0, 0.9 + i * 0.6, 5.65, 1.8, 0.22, 0.12, { z: (i - 1) * 0.12 });
   b.box('sooted_plaster', 0, 5.2, 5.62, 2.2, 3.2, 0.04);

@@ -32,23 +32,21 @@ function setup(zone = 'sindr') {
 }
 
 test('Collision boxes: town stalls, well, and obstacles are defined and standClear prevents standing inside them', () => {
-  // Stalls in Sindr
+  // Stalls in Sindr stand where their anchors build them.
   const suppliesStall = SINDR_STALLS.find((s) => s.id === 'sindr_supplies')!;
   assert.ok(suppliesStall);
-  assert.equal(suppliesStall.x, 137);
-  assert.equal(suppliesStall.z, -8);
+  const { x, z } = suppliesStall;
 
-  // A spot right inside the stall
-  assert.equal(isColliding(137, -8, 0.5), true);
-  // Old spawn spot at (140, -8) touched the stall boundary
-  assert.equal(isColliding(140, -8, 0.5), true);
+  // A spot right inside the stall, and one at its edge
+  assert.equal(isColliding(x, z, 0.5), true);
+  assert.equal(isColliding(x + 3, z, 0.5), true);
 
   // standClear pushes it out to clear ground
-  const cleared = standClear(140, -8, 0.5);
+  const cleared = standClear(x + 3, z, 0.5);
   assert.equal(isColliding(cleared.x, cleared.z, 0.5), false);
 
-  // Stand-off near a stall pulls back or steps clear of the box
-  const pos = standOff({ x: 137, z: -4 }, -Math.PI / 2, 6, 0.5);
+  // Stand-off toward a stall pulls back or steps clear of the box
+  const pos = standOff({ x, z: z - 4.5 }, 0, 6, 0.5);
   assert.equal(isColliding(pos.x, pos.z, 0.5), false);
 
   // Initial server enemies in Sindr all stand clear of collision boxes

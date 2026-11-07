@@ -13,6 +13,10 @@ const BODY_HEIGHT = 1.0;
 const a = new Vector3(), b = new Vector3();
 
 export interface WalkBounds { x0: number; x1: number; z0: number; z1: number }
+/** The water surface over (x, z), or null on dry ground. People do not walk where the floor lies under water. */
+export type WaterQuery = (x: number, z: number) => number | null;
+/** How far under the surface a floor may lie and still be walked: wet stone at the water's edge. */
+const WADE = 0.3;
 
 /**
  * Where people can walk, read from the physics world: cells spread out from known open ground, each kept
@@ -26,19 +30,19 @@ export class WalkMap {
   readonly links: number[][] = [];
   private readonly index = new Map<number, number>();
 
-  private constructor(private readonly space: CombatSpace) {}
+  private constructor(private readonly space: CombatSpace, private readonly water: WaterQuery | null) {}
 
   /** Reads the map from the world all at once. */
-  static now(space: CombatSpace, seeds: readonly Vector3[], bounds: WalkBounds): WalkMap {
-    const map = new WalkMap(space);
+  static now(space: CombatSpace, seeds: readonly Vector3[], bounds: WalkBounds, water: WaterQuery | null = null): WalkMap {
+    const map = new WalkMap(space, water);
     const spread = map.spread(seeds, bounds);
     while (!spread.next().done);
     return map;
   }
 
   /** Reads the map a few milliseconds per frame, so a loading screen keeps moving. */
-  static async over(space: CombatSpace, seeds: readonly Vector3[], bounds: WalkBounds, budgetMs = 6): Promise<WalkMap> {
-    const map = new WalkMap(space);
+  static async over(space: CombatSpace, seeds: readonly Vector3[], bounds: WalkBounds, water: WaterQuery | null = null, budgetMs = 6): Promise<WalkMap> {
+    const map = new WalkMap(space, water);
     const spread = map.spread(seeds, bounds);
     for (;;) {
       const until = performance.now() + budgetMs;
@@ -93,6 +97,8 @@ export class WalkMap {
   /** A cell at (cx, cz) standing on `floor`, if a body fits there. */
   private add(cx: number, cz: number, floor: number): number | null {
     const wx = cx * CELL, wz = cz * CELL;
+    const surface = this.water?.(wx, wz) ?? null;
+    if (surface !== null && floor < surface - WADE) return null;
     a.set(wx, floor + BODY_HEIGHT, wz);
     if (!this.space.clear(a, b.set(wx + 0.01, floor + BODY_HEIGHT, wz), BODY_RADIUS + 0.05)) return null;
     const i = this.x.length;

@@ -10,8 +10,12 @@ function signAt(b: WorldBuilder, h: TownHouseSpec, x: number, y: number, front: 
   hangingSign(b, n);
 }
 
-/** Who lives in a building: sets walls, timber colour, roof tile and trim. Rank rises with height in every style. */
-export type Rank = 'common' | 'merchant' | 'noble';
+/**
+ * Who lives in a building: sets walls, timber colour, roof tile and trim. Rank rises with height in every style:
+ * commoners in stone and charred timber, merchants in plaster, guild houses in red lacquer with red tiles and gold
+ * on the brackets and ridge, nobles in white plaster, lacquer and gold throughout.
+ */
+export type Rank = 'common' | 'merchant' | 'guild' | 'noble';
 
 export interface TownHouseSpec {
   x: number; z: number; y: number;
@@ -37,11 +41,18 @@ export interface TownHouseSpec {
   awning?: boolean;
   /** Grass and weeds at the plinth's foot. */
   weeds?: boolean;
+  /** A walk-in front room instead of a door: a service counter or an open forge, its floor level with the street. */
+  room?: FrontRoom;
 }
 
-const WALL: Record<Rank, Surface> = { common: 'ashlar_stone_blocks', merchant: 'ash_plaster', noble: 'lime_plaster' };
-const UPPER: Record<Rank, Surface> = { common: 'ash_plaster', merchant: 'ash_plaster', noble: 'lime_plaster' };
-const TIMBER: Record<Rank, Surface> = { common: 'charred_timber_beams', merchant: 'charred_timber_beams', noble: 'red_lacquer' };
+/** A front room open to the street: centred `x` along the front, `w` wide, `d` deep. */
+export interface FrontRoom { x: number; w: number; d: number; kind: 'service' | 'forge' }
+
+const WALL: Record<Rank, Surface> = { common: 'ashlar_stone_blocks', merchant: 'ash_plaster', guild: 'ash_plaster', noble: 'lime_plaster' };
+const UPPER: Record<Rank, Surface> = { common: 'ash_plaster', merchant: 'ash_plaster', guild: 'lime_plaster', noble: 'lime_plaster' };
+const TIMBER: Record<Rank, Surface> = { common: 'charred_timber_beams', merchant: 'charred_timber_beams', guild: 'red_lacquer', noble: 'red_lacquer' };
+/** Guild and noble houses carry red tiles, gold ridges and lacquered brackets. */
+const rich = (rank: Rank): boolean => rank === 'guild' || rank === 'noble';
 
 /**
  * A town house from real East Asian street fronts: a stone footing, a ground floor with posts, a tie beam,
@@ -53,13 +64,22 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
   const P = 0.45, G = 3.1, U = 2.4, { w, d } = h, front = d / 2;
   const foot = h.footing ?? 0.6;
   const wall = WALL[h.rank], timber = TIMBER[h.rank];
-  b.box('basalt_rock_face', 0, (P - foot) / 2, 0, w + 0.24, P + foot, d + 0.24);
-  // Ground floor body, set back so the posts and beam stand proud.
-  b.box(wall, 0, P + G / 2, -0.12, w - 0.1, G, d - 0.24);
+  const room = h.room;
+  if (room) {
+    frontRoom(b, h, room, P, G, wall, timber, foot, rand);
+  } else {
+    b.box('basalt_rock_face', 0, (P - foot) / 2, 0, w + 0.24, P + foot, d + 0.24);
+    // Ground floor body, set back so the posts and beam stand proud.
+    b.box(wall, 0, P + G / 2, -0.12, w - 0.1, G, d - 0.24);
+  }
   for (const px of [-w / 2 + 0.13, w / 2 - 0.13]) b.box(timber, px, P + G / 2, front - 0.1, 0.26, G, 0.26);
   b.box(timber, 0, P + G - 0.13, front - 0.08, w + 0.1, 0.26, 0.3);
   const door = h.door ?? (rand() - 0.5) * Math.max(0, w - 3);
-  if (h.shop) {
+  if (room) {
+    // The family living above keeps the front, beside the opening (at `door` when it is clear of the opening).
+    const beside = h.door !== undefined && Math.abs(h.door - room.x) > room.w / 2 + 0.4 ? h.door : room.x - room.w / 2 - 0.7;
+    b.post('household', beside, front + 0.9, 0);
+  } else if (h.shop) {
     // Open front: shutters up, a deep dark interior, a counter with goods, a cloth hanging over the opening.
     const ow = w - 1.2;
     b.box('charred_timber_beams', 0, P + 1.3, front - 1.6, ow, 2.6, 0.06);
@@ -73,7 +93,7 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
       b.box('red_lacquer', -ow / 2 + (k + 0.5) * (ow / 4), P + G - 0.6, front + 0.02, ow / 4 - 0.06, 0.75, 0.02);
     }
     b.light(0, P + 2, front - 0.8, 0xffa060, 4, 6, 0.1);
-    b.post('keeper', (rand() - 0.5) * (ow - 1.2), front - 1.05, 0, P);
+    b.post('keeper', (rand() - 0.5) * (ow - 1.2), front - 1.2, 0, P);
   } else {
     // Recessed door in a lacquer frame, a step before it.
     b.box('charred_timber_beams', door, P + 1.05, front - 0.36, 1.1, 2.1, 0.08);
@@ -89,7 +109,7 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
       const room = side < 0 ? door - 0.75 - (-w / 2 + 0.3) : w / 2 - 0.3 - (door + 0.75);
       if (room < 1.1) continue;
       const lw = Math.min(2.4, room - 0.3), cx = side < 0 ? -w / 2 + 0.3 + room / 2 : door + 0.75 + room / 2;
-      slats(b, cx, P + 1.55, front - 0.02, lw, 1.3, h.rank === 'noble' ? 'red_lacquer' : 'charred_timber_beams');
+      slats(b, cx, P + 1.55, front - 0.02, lw, 1.3, rich(h.rank) ? 'red_lacquer' : 'charred_timber_beams');
     }
   }
   let top = P + G;
@@ -122,14 +142,19 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
   // Soot under the eaves, where rain never washes the plaster.
   b.ao([-w / 2 + 0.1, top - 0.02, front - 0.19], [w / 2 - 0.1, top - 0.02, front - 0.19], [0, -1.2, 0], 0.45);
   roof(b, {
-    w: w + 0.3, d: d + 0.1, base: top, pitch: h.rank === 'noble' ? 0.58 : 0.5, overhang: h.balcony ? 1.45 : 1.15, curve: 0.16,
-    cornerLift: h.rank === 'noble' ? 0.32 : 0.1, gableRatio: 0.45,
-    tile: h.rank === 'noble' ? 'roof_tile_red' : 'roof_tile_charcoal', trim: h.rank === 'noble',
+    w: w + 0.3, d: d + 0.1, base: top, pitch: rich(h.rank) ? 0.58 : 0.5, overhang: h.balcony ? 1.45 : 1.15, curve: rich(h.rank) ? 0.2 : 0.16,
+    cornerLift: h.rank === 'noble' ? 0.32 : h.rank === 'guild' ? 0.26 : 0.1, gableRatio: 0.45,
+    tile: rich(h.rank) ? 'roof_tile_red' : 'roof_tile_charcoal', trim: rich(h.rank),
   }, rand);
-  if (h.rank !== 'common') brackets(b, 'x', [-w / 2 + 0.4, w / 2 - 0.4], top, front - 0.2, h.rank === 'noble');
-  if (h.lantern) lantern(b, door + (door > 0 ? -1.1 : 1.1), P + 2.2, front + 0.25);
+  if (h.rank !== 'common') {
+    const n = rich(h.rank) ? Math.max(2, Math.round(w / 2.2)) : 1;
+    const xs = Array.from({ length: n + 1 }, (_, k) => -w / 2 + 0.4 + k * (w - 0.8) / n);
+    brackets(b, 'x', xs, top, front - 0.2, rich(h.rank));
+  }
+  const mouth = room ? room.x : door;
+  if (h.lantern) lantern(b, mouth + (mouth > 0 ? -1 : 1) * (room ? room.w / 2 + 0.5 : 1.1), P + 2.2, front + 0.25);
   if (h.sign) {
-    const sx = h.shop ? (rand() < 0.5 ? -1 : 1) * (w / 2 - 0.35) : door + (door > 0 ? 1 : -1) * 0.95;
+    const sx = h.shop || room ? (mouth > 0 ? -1 : 1) * (w / 2 - 0.35) : door + (door > 0 ? 1 : -1) * 0.95;
     signAt(b, h, sx, P + G - 0.35, front, h.sign);
     b.at(h.x, h.z, h.yaw, h.y);
   }
@@ -138,13 +163,99 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
     for (let k = 0; k < Math.round(w / 1.6); k++) {
       if (rand() < 0.45) continue;
       const wx = -w / 2 + rand() * w;
-      if (Math.abs(wx - door) < 0.9 && !h.shop) continue;
+      if (Math.abs(wx - mouth) < (room ? room.w / 2 + 0.3 : 0.9) && !h.shop) continue;
       b.plant(rand() < 0.65 ? 'weed' : 'fern', wx, front + 0.2 + rand() * 0.15, 0.6 + rand() * 0.7, 0, rand() * 6);
     }
   }
   b.ao([-w / 2 - 0.12, 0.02, front + 0.13], [w / 2 + 0.12, 0.02, front + 0.13], [0, 0, 1.1], 0.8);
-  b.solid(0, (top + 1.5 - foot) / 2, -0.1, w, top + 1.5 + foot, d - 0.2);
+  if (h.shop && !room) {
+    // A shop is open behind its counter: solid behind the dark back wall, above the shop, under its floor and at
+    // the counter, so the keeper stands in real space between counter and wall.
+    const inner = front - 1.6, ow = w - 1.2, H = top + 1.5;
+    b.solid(0, (H - foot) / 2, (-d / 2 + 0.1 + inner) / 2, w, H + foot, inner + d / 2 - 0.1);
+    b.solid(0, (P + G + H) / 2, (inner + front) / 2, w, H - P - G, front - inner);
+    b.solid(0, (P - foot) / 2, (inner + front) / 2, w, P + foot, front - inner);
+    b.solid(0, P + 0.45, front - 0.45, ow, 0.9, 0.7);
+    for (const sx of [-1, 1]) b.solid(sx * (w / 2 - (w - ow) / 4), P + G / 2, (inner + front) / 2, (w - ow) / 2, G, front - inner);
+  } else if (!room) {
+    b.solid(0, (top + 1.5 - foot) / 2, -0.1, w, top + 1.5 + foot, d - 0.2);
+  } else {
+    // Solid all round the room, open in front of it: the sides, the back, and the floors above.
+    const rx0 = room.x - room.w / 2, rx1 = room.x + room.w / 2, back = front - room.d;
+    if (rx0 > -w / 2 + 0.05) b.solid((-w / 2 + rx0) / 2, (top + 1.5 - foot) / 2, -0.1, rx0 + w / 2, top + 1.5 + foot, d - 0.2);
+    if (rx1 < w / 2 - 0.05) b.solid((rx1 + w / 2) / 2, (top + 1.5 - foot) / 2, -0.1, w / 2 - rx1, top + 1.5 + foot, d - 0.2);
+    b.solid(room.x, (top + 1.5 - foot) / 2, (-d / 2 + 0.1 + back) / 2, room.w, top + 1.5 + foot, back + d / 2 - 0.1);
+    b.solid(room.x, (P + G + top + 1.5) / 2, back + room.d / 2, room.w, top + 1.5 - P - G, room.d);
+  }
   b.at(0, 0, 0);
+}
+
+/**
+ * The ground floor of a house with a walk-in front room: plinth and walls around an opening whose floor is level
+ * with the street, a beamed ceiling, and what the room is for. A service room has a counter with its keeper behind
+ * and room to stand before it; a forge room has a hearth at the back, an anvil and its smith.
+ */
+function frontRoom(b: WorldBuilder, h: TownHouseSpec, r: FrontRoom, P: number, G: number, wall: Surface, timber: Surface,
+  foot: number, rand: () => number): void {
+  const { w, d } = h, front = d / 2, back = front - r.d;
+  const rx0 = r.x - r.w / 2, rx1 = r.x + r.w / 2;
+  // Plinth and walls in three pieces round the opening.
+  const piece = (x0: number, x1: number, z0: number, z1: number): void => {
+    if (x1 - x0 < 0.05 || z1 - z0 < 0.05) return;
+    b.box('basalt_rock_face', (x0 + x1) / 2, (P - foot) / 2, (z0 + z1) / 2, x1 - x0, P + foot, z1 - z0);
+    b.box(wall, (x0 + x1) / 2, P + G / 2, (z0 + z1) / 2 - 0.06, x1 - x0, G, z1 - z0 - 0.12);
+  };
+  piece(-w / 2 - 0.12, rx0, -d / 2 - 0.12, front + 0.12);
+  piece(rx1, w / 2 + 0.12, -d / 2 - 0.12, front + 0.12);
+  piece(rx0, rx1, -d / 2 - 0.12, back);
+  // The room: worn stone floor at street level, plastered sides, a beamed ceiling, a lintel across the opening.
+  b.box('worn_flagstones', r.x, -0.05, back + r.d / 2, r.w, 0.12, r.d);
+  b.box('basalt_rock_face', r.x, -(foot + 0.1) / 2 - 0.1, back + r.d / 2, r.w, foot, r.d);
+  for (const sx of [rx0 + 0.04, rx1 - 0.04]) b.box('sooted_plaster', sx, (P + G) / 2, back + r.d / 2, 0.08, P + G, r.d);
+  b.box('sooted_plaster', r.x, (P + G) / 2, back + 0.04, r.w, P + G, 0.08);
+  b.box(timber, r.x, P + G - 0.08, back + r.d / 2, r.w, 0.16, r.d);
+  for (let k = 0; k < Math.max(2, Math.round(r.d / 1.2)); k++) b.box(timber, r.x, P + G - 0.24, back + 0.6 + k * 1.2, r.w, 0.18, 0.16);
+  b.box(timber, r.x, P + G - 0.18, front - 0.08, r.w + 0.4, 0.36, 0.3);
+  for (const sx of [rx0, rx1]) b.box(timber, sx, (P + G) / 2, front - 0.1, 0.3, P + G, 0.3);
+  b.ao([rx0, 0.012, back + 0.08], [rx1, 0.012, back + 0.08], [0, 0, 1.2], 0.6);
+  b.ao([rx0, P + G - 0.33, back + 0.1], [rx1, P + G - 0.33, back + 0.1], [0, -1.4, 0], 0.5);
+  b.ao([rx0 + 0.08, 0.012, back], [rx0 + 0.08, 0.012, front], [0.8, 0, 0], 0.5);
+  b.ao([rx1 - 0.08, 0.012, back], [rx1 - 0.08, 0.012, front], [-0.8, 0, 0], 0.5);
+  if (r.kind === 'service') {
+    // Counter across the room 1.6 m in from the back; shelves of goods on the back wall; a lamp over the counter.
+    const cz = back + 1.6;
+    b.box('charred_timber_beams', r.x, 0.5, cz, r.w - 0.5, 1.0, 0.6);
+    b.box(timber, r.x, 1.04, cz, r.w - 0.4, 0.08, 0.72);
+    b.solid(r.x, 0.6, cz, r.w - 0.5, 1.2, 0.6);
+    for (const y of [1.1, 1.75, 2.4]) {
+      b.box('raw_timber', r.x, y, back + 0.3, r.w - 0.6, 0.05, 0.4);
+      for (let gx = rx0 + 0.5; gx < rx1 - 0.4; gx += 0.32 + rand() * 0.2) b.cylinder(rand() < 0.5 ? 'terracotta' : 'pale_stone', gx, y + 0.14, back + 0.3, 0.1, 0.13, 0.22, 8);
+    }
+    b.post('keeper', r.x, back + 0.85, 0);
+    paperLanternAt(b, r.x, P + G - 0.7, cz + 0.6);
+    b.light(r.x, P + 2, cz + 0.8, 0xffa060, 5, 7, 0.1);
+  } else {
+    // Hearth against the back wall, glowing; an anvil in the room; the smith beside it.
+    b.box('ashlar_stone_blocks', r.x, 0.5, back + 0.75, Math.min(2.2, r.w - 0.8), 1.0, 1.3);
+    b.box('lava', r.x, 1.02, back + 0.75, Math.min(1.8, r.w - 1.2), 0.04, 0.9);
+    b.box('forge', r.x, 1.9, back + 0.1, Math.min(1.8, r.w - 1.2), 1.4, 0.04, undefined, { u: 1, v: 1 });
+    b.fire(r.x, 1.04, back + 0.75, 0.7);
+    b.solid(r.x, 0.5, back + 0.75, Math.min(2.2, r.w - 0.8), 1.0, 1.3);
+    b.light(r.x, 1.8, back + 1.6, 0xff6a20, 30, 11, 0.35);
+    // The smith works between the hearth and the anvil, facing out over it.
+    b.prop('anvil', r.x, back + 2.7, 0.3 + rand() * 0.3, 1.1);
+    b.solid(r.x, 0.4, back + 2.7, 0.9, 0.8, 0.6);
+    b.post('smith', r.x + 0.4, back + 1.85, 0);
+    b.chimneys.push(b.world(r.x, P + G + 2.4 + 2.2, -d / 2 + 0.8));
+  }
+}
+
+/** A hanging paper lantern inside a room, in the current frame. */
+function paperLanternAt(b: WorldBuilder, x: number, y: number, z: number): void {
+  b.box('charred_timber_beams', x, y + 0.45, z, 0.03, 0.4, 0.03);
+  b.cylinder('window', x, y, z, 0.18, 0.18, 0.45, 10);
+  b.cylinder('charred_timber_beams', x, y + 0.25, z, 0.12, 0.12, 0.06, 10);
+  b.cylinder('charred_timber_beams', x, y - 0.25, z, 0.12, 0.12, 0.06, 10);
 }
 
 /** Vertical slatted lattice (koshi) over a dim glowing window, in the current frame, face at z = face. */
@@ -236,6 +347,33 @@ export function stall(b: WorldBuilder, x: number, z: number, y: number, yaw: num
   for (let gx = -1.1; gx < 1.1; gx += 0.35) b.cylinder(rand() < 0.5 ? 'terracotta' : 'moss', gx, 1.0, 0.6, 0.13, 0.15, 0.2, 8);
   b.post('keeper', 0, -0.2);
   b.ao([-1.5, 0.01, -1.1], [1.5, 0.01, -1.1], [0, 0, 2.2], 0.45);
+  b.at(0, 0, 0);
+}
+
+/**
+ * A merchant's stall: four posts, a sloping cloth roof with a valance, a counter of goods across the front, stock
+ * crated behind, and the keeper standing between the two. Open at the sides, so the keeper walks in and out.
+ * Front faces +z.
+ */
+export function marketStall(b: WorldBuilder, x: number, z: number, y: number, yaw: number, rand: () => number,
+  cloth: Surface = rand() < 0.5 ? 'indigo_cloth' : 'red_lacquer'): void {
+  b.at(x, z, yaw, y);
+  for (const px of [-2.2, 2.2]) for (const pz of [-1.3, 1.3]) {
+    b.box('charred_timber_beams', px, 1.3, pz, 0.16, 2.6, 0.16);
+    b.solid(px, 1.3, pz, 0.22, 2.6, 0.22);
+  }
+  b.box('charred_timber_beams', 0, 0.95, 1.2, 4.6, 0.12, 0.9);
+  b.box('charred_timber_beams', 0, 0.5, 1.45, 4.4, 0.9, 0.08);
+  b.solid(0, 0.55, 1.2, 4.4, 1.1, 0.9);
+  b.box(cloth, 0, 2.75, 0.2, 5.2, 0.04, 3.6, { x: 0.22 });
+  b.box(cloth, 0, 2.42, 2.02, 5.2, 0.32, 0.02);
+  for (let gx = -1.9; gx < 2; gx += 0.38 + rand() * 0.2) b.cylinder(rand() < 0.5 ? 'terracotta' : 'raw_timber', gx, 1.12, 1.2 + (rand() - 0.5) * 0.4, 0.13, 0.16, 0.22 + rand() * 0.14, 9);
+  b.prop('crate', -1.4, -0.9, 0.3, 0.8);
+  b.prop('barrel', 1.5, -0.95, 0, 0.8);
+  b.solid(-1.4, 0.4, -0.9, 0.8, 0.8, 0.8);
+  b.solid(1.5, 0.4, -0.95, 0.7, 0.8, 0.7);
+  b.post('keeper', 0, 0.2);
+  b.ao([-2.4, 0.012, -1.5], [2.4, 0.012, -1.5], [0, 0, 3.4], 0.4);
   b.at(0, 0, 0);
 }
 

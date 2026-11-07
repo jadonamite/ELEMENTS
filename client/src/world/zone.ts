@@ -50,6 +50,7 @@ import { createSky, fieldMesh, heightAt, sampleField, slopeBlend } from './lands
 import { LOOKS, SurfaceLibrary, worldUv, type Surface } from './materials.js';
 import { buildSindr, PEAKS, WALKABLE } from './sindr.js';
 import { createPlants } from './trees.js';
+import { addTownPhysics } from './town-physics.js';
 import { installHaze } from './haze.js';
 import { warm } from './warmup.js';
 import { buildGorge } from './gorge.js';
@@ -177,11 +178,10 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     renderer.toneMappingExposure = 0.9 + 0.7 * night;
   };
 
-  // Physics: a floor under everything, then the land and the town's solids.
+  // Physics: the land and the town's solids over a last floor (town-physics.ts), added once the town is built.
   await RAPIER.init();
   const world = new RAPIER.World({ x: 0, y: -balance.controller.gravity, z: 0 });
   world.timestep = balance.controller.fixedStep;
-  world.createCollider(RAPIER.ColliderDesc.cuboid(2000, 0.05, 2000).setTranslation(0, -0.05, 0));
 
   const lib = new SurfaceLibrary(renderer, low ? '1k' : '2k');
   const terraceTest = params.has('terraceTest');
@@ -200,8 +200,6 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const terrain = fieldMesh(near, terrainMat);
   terrain.name = 'terrain';
   scene.add(terrain);
-  world.createCollider(RAPIER.ColliderDesc.heightfield(near.nz, near.nx, near.heights, { x: near.width, y: 1, z: near.depth })
-    .setTranslation(near.cx, 0, near.cz));
 
   // Far ranges and the volcano, coarse and lost in the haze.
   const volcano = { x: 380, z: -720, radius: 260, height: 330 };
@@ -232,14 +230,11 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   if (style) buildStyleStreet(style, builder);
   const glows: Record<string, Material> = {
     window: createWindowMaterial(), forge: createForgeMaterial(), lava: createLavaMaterial(), ao: createAoMaterial(),
-    wet: createWetMaterial(), water: createWaterMaterial(), paper: createPaperMaterial(),
+    wet: createWetMaterial(), water: createWaterMaterial(), fresh_water: createWaterMaterial('fresh'), paper: createPaperMaterial(),
   };
   const town = builder.build((bucket: Bucket) => glows[bucket] ?? lib.get(bucket as Surface));
   scene.add(town);
-  for (const c of builder.colliders) {
-    world.createCollider(RAPIER.ColliderDesc.cuboid(c.hx, c.hy, c.hz).setTranslation(c.x, c.y, c.z)
-      .setRotation(c.q ?? { x: 0, y: Math.sin(c.yaw / 2), z: 0, w: Math.cos(c.yaw / 2) }));
-  }
+  addTownPhysics(world, near, builder.colliders);
   if (params.has('debug') && params.has('showColliders')) scene.add(colliderLines(builder.colliders));
   world.step();
 
