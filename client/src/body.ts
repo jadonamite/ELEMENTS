@@ -1,7 +1,7 @@
 /**
- * Builds fighters in commoner's rags: the outfit carries the skeleton, the creator body
- * gives only its head, eyes and brows, plus skin tone, hair, body preset, and animation
- * clips fitted to the outfit's proportions.
+ * Builds fighters: the outfit carries the skeleton, the creator body gives the parts the
+ * outfit leaves bare (head, eyes and brows, and for armour the hands), plus skin tone, hair,
+ * body preset, and animation clips fitted to the outfit's proportions.
  */
 
 import {
@@ -41,15 +41,51 @@ const BODY_PATH: Record<Sex, string> = {
   male: '/assets/characters/creator/male.glb',
   female: '/assets/characters/creator/female.glb',
 };
-const OUTFIT_PATH: Record<Sex, string> = {
-  male: '/assets/characters/creator/peasant_male.glb',
-  female: '/assets/characters/creator/peasant_female.glb',
+
+export type OutfitId = 'rags' | 'shaper_ignis';
+
+interface Outfit {
+  /** The outfit file per sex; a sex without one wears rags. */
+  path: Partial<Record<Sex, string>>;
+  /** Bones whose creator-body vertices the outfit leaves bare. */
+  bareBones: ReadonlySet<string>;
+  /** Materials that are cloth the game may dye; every other outfit material is left as made. */
+  dyeable: (materialName: string) => boolean;
+  /** Materials that are the wearer's skin, tinted to their skin tone. */
+  skin: (materialName: string) => boolean;
+}
+
+const HEAD = ['Head', 'neck_01'];
+const HANDS = ['l', 'r'].flatMap(side => ['hand_' + side,
+  ...['thumb', 'index', 'middle', 'ring', 'pinky'].flatMap(f => ['01', '02', '03', '04_leaf'].map(i => `${f}_${i}_${side}`))]);
+
+const OUTFITS: Record<OutfitId, Outfit> = {
+  rags: {
+    path: { male: '/assets/characters/creator/peasant_male.glb', female: '/assets/characters/creator/peasant_female.glb' },
+    bareBones: new Set(HEAD),
+    dyeable: name => name.toLowerCase().includes('peasant'),
+    skin: name => !name.toLowerCase().includes('peasant'),
+  },
+  shaper_ignis: {
+    path: { male: '/assets/characters/outfits/shaper_ignis_male.glb' },
+    bareBones: new Set([...HEAD, ...HANDS]),
+    dyeable: () => false,
+    skin: name => name === 'MI_Shaper_Skin',
+  },
 };
-const OUTFIT_FILES = new Set(Object.values(OUTFIT_PATH));
+const OUTFIT_FILES = new Set(Object.values(OUTFITS).flatMap(o => Object.values(o.path)));
+
+export function parseOutfit(value: string | null | undefined): OutfitId {
+  return value && value in OUTFITS ? (value as OutfitId) : 'rags';
+}
+
+function outfitFor(id: OutfitId, sex: Sex): { outfit: Outfit; path: string } {
+  const own = OUTFITS[id].path[sex];
+  return own ? { outfit: OUTFITS[id], path: own } : { outfit: OUTFITS.rags, path: OUTFITS.rags.path[sex]! };
+}
+
 /** Patched, greener rags for robbers. */
 const WORN_RAGS_PATH = '/assets/characters/creator/peasant_worn.webp';
-/** Bones whose vertices make up the head kept from the creator body. */
-const HEAD_BONES = new Set(['Head', 'neck_01']);
 
 interface SkinUniforms {
   uSkinColor: { value: Color };
@@ -93,8 +129,8 @@ function isBodyMesh(mesh: Mesh): boolean {
   return name.includes('superhero') || name.includes('retopology') || matName.includes('superhero');
 }
 
-/** The body's triangles whose vertices all hang mostly from the head or neck. */
-function headOnly(mesh: SkinnedMesh): BufferGeometry {
+/** The body's triangles whose vertices all hang mostly from the given bones. */
+function bareParts(mesh: SkinnedMesh, bones: ReadonlySet<string>): BufferGeometry {
   const src = mesh.geometry;
   const joints = src.getAttribute('skinIndex');
   const weights = src.getAttribute('skinWeight');
@@ -103,7 +139,7 @@ function headOnly(mesh: SkinnedMesh): BufferGeometry {
     let w = 0;
     for (let k = 0; k < 4; k++) {
       const bone = mesh.skeleton.bones[joints.getComponent(v, k)];
-      if (bone && HEAD_BONES.has(bone.name)) w += weights.getComponent(v, k);
+      if (bone && bones.has(bone.name)) w += weights.getComponent(v, k);
     }
     keep[v] = w >= 0.5 ? 1 : 0;
   }
@@ -139,12 +175,12 @@ function rebind(src: SkinnedMesh, rig: Skeleton, geometry = src.geometry): Skinn
 export class BodyKit {
   private readonly scenes = new Map<string, Object3D>();
   private readonly fitted = new Map<string, AnimationClip[]>();
-  private readonly heads = new Map<string, BufferGeometry>();
+  private readonly bare = new Map<string, BufferGeometry>();
   private wornRags: Promise<Texture> | null = null;
 
   constructor(private readonly loader = new GLTFLoader()) {}
 
-  async preload(paths: readonly string[] = [...Object.values(BODY_PATH), ...Object.values(OUTFIT_PATH)]): Promise<void> {
+  async preload(paths: readonly string[] = [...Object.values(BODY_PATH), ...Object.values(OUTFITS.rags.path)]): Promise<void> {
     await Promise.all(paths.map(p => this.scene(p)));
   }
 
@@ -167,9 +203,10 @@ export class BodyKit {
     return this.wornRags;
   }
 
-  /** A posable fighter for this configuration, with its own materials; `cloth` dyes the outfit. */
-  async build(config: CharacterConfig, look: BodyLook = 'hero', cloth?: number): Promise<Group> {
-    const model = cloneSkinned(await this.scene(OUTFIT_PATH[config.sex]));
+  /** A posable fighter for this configuration, with its own materials; `cloth` dyes a dyeable outfit. */
+  async build(config: CharacterConfig, look: BodyLook = 'hero', cloth?: number, outfitId: OutfitId = 'rags'): Promise<Group> {
+    const { outfit, path } = outfitFor(outfitId, config.sex);
+    const model = cloneSkinned(await this.scene(path));
     const group = new Group();
     group.name = look === 'hero' ? 'Hero' : 'Villain';
     group.add(model);
@@ -192,28 +229,30 @@ export class BodyKit {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       if ((mesh as SkinnedMesh).isSkinnedMesh && !rig) rig = mesh as SkinnedMesh;
-      if (mat.name.toLowerCase().includes('peasant')) {
+      if (outfit.dyeable(mat.name)) {
         if (worn) {
           mat.map = worn;
           mat.color.setRGB(0.62, 0.55, 0.5);
         }
         if (cloth !== undefined) mat.color.setHex(cloth);
-      } else {
+      } else if (outfit.skin(mat.name)) {
         applySkinShader(mat, uniforms);
       }
     });
     const rigMesh = rig as SkinnedMesh | null;
     if (!rigMesh) return group;
 
-    // Head, eyes and brows come from the creator body, following the outfit's bones.
+    // The bare parts (head, eyes and brows, hands under armour) come from the creator body,
+    // following the outfit's bones.
     const body = await this.scene(BODY_PATH[config.sex]);
     body.traverse((node) => {
       const src = node as SkinnedMesh;
       if (!src.isSkinnedMesh) return;
       let geometry = src.geometry;
       if (isBodyMesh(src)) {
-        geometry = this.heads.get(config.sex) ?? headOnly(src);
-        this.heads.set(config.sex, geometry);
+        const key = `${config.sex}:${path}`;
+        geometry = this.bare.get(key) ?? bareParts(src, outfit.bareBones);
+        this.bare.set(key, geometry);
       }
       const mesh = rebind(src, rigMesh.skeleton, geometry);
       const mat = mesh.material as MeshStandardMaterial;
@@ -246,11 +285,12 @@ export class BodyKit {
    * Clips fitted to an outfit's rig: only the pelvis keeps its translation (scaled to the
    * rig's hip height) and scale tracks go, so each rig keeps its own bone lengths.
    */
-  async fitClips(sex: Sex, clips: readonly AnimationClip[], cacheKey: string): Promise<AnimationClip[]> {
-    const key = `${sex}:${cacheKey}`;
+  async fitClips(sex: Sex, clips: readonly AnimationClip[], cacheKey: string, outfitId: OutfitId = 'rags'): Promise<AnimationClip[]> {
+    const { path } = outfitFor(outfitId, sex);
+    const key = `${path}:${cacheKey}`;
     const cached = this.fitted.get(key);
     if (cached) return cached;
-    const rig = await this.scene(OUTFIT_PATH[sex]);
+    const rig = await this.scene(path);
     const pelvis = rig.getObjectByName('pelvis');
     const ratio = pelvis ? pelvis.position.length() / CLIP_PELVIS_HEIGHT : 1;
     const out = clips.map(clip => fitClip(clip, ratio));

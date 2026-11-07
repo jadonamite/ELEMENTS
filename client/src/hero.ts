@@ -20,7 +20,7 @@ import {
   type Bone,
 } from 'three';
 import balance from '../../shared/balance.json';
-import { BodyKit } from './body.js';
+import { BodyKit, parseOutfit } from './body.js';
 import { getDefaultCharacterConfig, getStoredCharacter } from './creator/creator-types.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -187,7 +187,8 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
   const heroGltf = await loader.loadAsync('/assets/characters/hero.glb');
   const config = getStoredCharacter() ?? getDefaultCharacterConfig('male');
   const kit = new BodyKit(loader);
-  const heroModel = await kit.build(config, 'hero');
+  const outfit = parseOutfit(new URLSearchParams(window.location.search).get('outfit'));
+  const heroModel = await kit.build(config, 'hero', undefined, outfit);
 
   let weaponSlot: WeaponSlotData = SWORD_WEAPON;
   const initialHand = heroModel.getObjectByName(weaponSlot.handBone) as Bone | undefined;
@@ -406,7 +407,7 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
     if (clip) subclips.push(AnimationUtils.subclip(clip, name, Math.round(from * 30), Math.round(to * 30), 30));
   }
 
-  const allClips = await kit.fitClips(config.sex, [...heroGltf.animations, ...combatClips, ...subclips], 'hero');
+  const allClips = await kit.fitClips(config.sex, [...heroGltf.animations, ...combatClips, ...subclips], 'hero', outfit);
   const anim = new AnimationPlayer(heroModel, allClips, {
     defaultFadeDuration: 0.25,
   });

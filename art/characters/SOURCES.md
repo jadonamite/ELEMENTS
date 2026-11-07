@@ -48,3 +48,11 @@ Fighters wear the Peasant outfit from Quaternius **Modular Character Outfits - F
 - `client/public/assets/characters/creator/peasant_female.glb` from `Outfits/Female_Peasant.gltf` (gloved hands).
 - Both: textures resized to 1024 and converted to WebP with glTF-Transform (`resize`, `webp --quality 82`, `prune`).
 - `client/public/assets/characters/creator/peasant_worn.webp` from `Textures/Peasant/T_Peasant_2_BaseColor.png`, the worn variant used for villains.
+
+## Outfits
+
+- `client/public/assets/characters/outfits/shaper_ignis_male.glb`: IGNIS Shaper armour. Mesh and textures from
+  Tencent Hunyuan 3D (hosted, multi-view image-to-3D, 30 October 2026) of the concept
+  `art/raw/concepts/gpt/ignis_shaper_armour_v01_{front,side,back}.png`; decimated to about 42k triangles,
+  weighted to the Quaternius skeleton from the creator body, head and hands removed, leather recoloured toward the
+  concept, metal kept on iron only. Textures 2K colour and normal, 1K metal-roughness, WebP.
