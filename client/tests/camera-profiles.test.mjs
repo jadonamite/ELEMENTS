@@ -4,6 +4,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { PerspectiveCamera, Vector3 } from 'three';
 import balance from '../../shared/balance.json' with { type: 'json' };
 import { ShoulderCamera, cameraCollisionRadius } from '../src/camera.ts';
+import { THREAT_RADIUS, threatBearing } from '../src/threat-arrows.ts';
 
 const identity = { x: 0, y: 0, z: 0, w: 1 };
 const hero = new Vector3();
@@ -67,7 +68,7 @@ test('walking to crowd and back stays below 0.6 m per-frame height and distance 
           previousDistance = distance;
         }
         if (crowd) {
-          assert.ok(camera.position.y > 5, 'crowd rises above attackers');
+          assert.ok(camera.position.y > 3.5 && camera.position.y < 6, `crowd sits at middle height, not overhead: ${camera.position.y}`);
           close(forwardPitch(camera), balance.camera.crowd.pitch);
           close(camera.position.distanceTo(rig.target), Math.hypot(balance.camera.crowd.distance, balance.camera.crowd.shoulder));
         } else {
@@ -102,7 +103,7 @@ test('crowd profile keeps attackers behind and to both sides in frame', async ()
   } finally { world.free(); }
 });
 
-test('raised crowd framing includes rear attackers at 3 m and 6 m around cardinal headings', async () => {
+test('crowd framing shows rear attackers at 3 m; farther ones get warning arrows', async () => {
   const { world, camera, rig } = await setup();
   const player = new Vector3(119, 0, 5);
   const visibleBody = (point) => {
@@ -125,8 +126,12 @@ test('raised crowd framing includes rear attackers at 3 m and 6 m around cardina
               height,
               player.z - forwardZ * distance + sideZ * side,
             );
-            assert.ok(visibleBody(attacker),
+            const feet = attacker.clone().setY(0);
+            const arrow = threatBearing(player, feet, camera);
+            if (distance === 3) assert.ok(visibleBody(attacker),
               `rear attacker at ${distance} m, side ${side}, height ${height}, yaw ${yaw} clips`);
+            assert.ok(visibleBody(feet.clone().setY(1.2)) || arrow !== null,
+              `rear attacker at ${distance} m, side ${side}, yaw ${yaw} is neither seen nor warned`);
           }
         }
       }
@@ -208,5 +213,20 @@ test('camera sphere clears eaves, thin stall posts and stairs in walking, fight,
       }
     }
     assert.equal(cases, 1728);
+  } finally { world.free(); }
+});
+
+test('warning arrows point at unseen foes behind and beside, never at foes on screen or far off', async () => {
+  const { world, camera, rig } = await setup();
+  try {
+    rig.yaw = 0;
+    rig.fight = 1;
+    settle(rig);
+    // Yaw 0 looks toward -z: ahead is -z, behind is +z, right is +x.
+    assert.equal(threatBearing(hero, new Vector3(0, 0, -5), camera), null, 'a foe ahead is on screen');
+    close(threatBearing(hero, new Vector3(0, 0, 4), camera), Math.PI, 0.05);
+    const leftOrRightBehind = threatBearing(hero, new Vector3(3, 0, 3), camera);
+    assert.ok(leftOrRightBehind > Math.PI / 2 && leftOrRightBehind < Math.PI, `behind right: ${leftOrRightBehind}`);
+    assert.equal(threatBearing(hero, new Vector3(0, 0, THREAT_RADIUS + 1), camera), null, 'far foes get no arrow');
   } finally { world.free(); }
 });

@@ -1,0 +1,25 @@
+/* Foes close but out of view: arrows round the hero, red while they swing. */
+.threat-arrows {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.threat-arrow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 20px;
+  background: #ffe7b8;
+  clip-path: polygon(50% 0, 100% 100%, 50% 70%, 0 100%);
+  filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 3px rgba(0, 0, 0, 0.9));
+  transition: background-color 120ms ease-out, width 120ms ease-out, height 120ms ease-out;
+}
+.threat-arrow.striking {
+  width: 36px;
+  height: 26px;
+  background: #ff4411;
+  filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 6px #ff4411);
+}
+@media (prefers-reduced-motion: reduce) { .threat-arrow { transition: none; } }

@@ -1,5 +1,6 @@
 import '../ui/tokens.css';
 import './raids.css';
+import '../threat-arrows.css';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { BoxGeometry, Mesh, Vector3 } from 'three';
 import balance from '../../../shared/balance.json';
@@ -13,6 +14,7 @@ import { Fight, type HeroView } from '../fight.js';
 import { FpsCounter } from '../fps.js';
 import { loadHero } from '../hero.js';
 import { FightHud } from '../hud.js';
+import { ThreatArrows } from '../threat-arrows.js';
 import { GameInput } from '../input.js';
 import { SoundManager } from '../audio.js';
 import { SwordStance } from '../sword.js';
@@ -105,6 +107,7 @@ async function main(): Promise<void> {
   const fps = params.has('debug') ? new FpsCounter() : null;
   const sound = new SoundManager();
   const fightHud = new FightHud();
+  const threatArrows = new ThreatArrows();
   const frame = new PartyFrame();
   const banner = new Banner();
   const prompt = new Prompt();
@@ -653,6 +656,7 @@ async function main(): Promise<void> {
     prompt.set(nearSpot?.text ?? null);
     fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight, false, sword.armed, locked, [], 'IGNIS', undefined, style, false);
     shoulder.update(drawn, delta, reduced.matches);
+    threatArrows.update(controller.position, fight.enemies, camera);
     stage.focus.copy(drawn);
     sound.update(delta, camera, controller, fight.enemies, sword);
     fps?.tick();

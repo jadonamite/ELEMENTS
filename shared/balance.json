@@ -79,11 +79,11 @@
       "fov": 55
     },
     "crowd": {
-      "distance": 12,
-      "pitch": 0.85,
-      "shoulder": 0.25,
-      "targetHeight": 1.9,
-      "fov": 70
+      "distance": 7,
+      "pitch": 0.45,
+      "shoulder": 0.4,
+      "targetHeight": 1.8,
+      "fov": 60
     }
   },
   "look": {

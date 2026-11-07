@@ -1,6 +1,7 @@
 import './ui/tokens.css';
 import './style.css';
 import './opening.css';
+import './threat-arrows.css';
 import balance from '../../shared/balance.json';
 import { createArena, disposeObject, loadProps } from './scene.js';
 import { createZone, SPAWN } from './world/zone.js';
@@ -15,6 +16,7 @@ import { loadEnemyTemplate, villainLooks, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
 import { inFront } from './hits.js';
 import { FightHud, type RoundHudInfo } from './hud.js';
+import { ThreatArrows } from './threat-arrows.js';
 import { SwordStance } from './sword.js';
 import { SoundManager } from './audio.js';
 import { BendingEffects, type BendingType } from './bending-fx.js';
@@ -239,6 +241,7 @@ async function main(): Promise<void> {
   };
 
   const fightHud = new FightHud();
+  const threatArrows = new ThreatArrows();
   cleanup.push(() => fightHud.dispose());
   let hitStop = 0;
   let hurtAt = -Infinity;
@@ -1270,6 +1273,7 @@ async function main(): Promise<void> {
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, baseSupply);
     fightHud.setPurse(zone ? (forcedCarry ?? townEconomy?.carried?.chroma ?? null) : null);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
+    threatArrows.update(controller.position, fight.enemies, camera);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     lifeSystem?.update(delta);
     contextAction.update();
