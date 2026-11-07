@@ -1,3 +1,4 @@
+import { withinLocalBounds } from '@elements/shared';
 import type { ActionState, Element, Weapon } from '@elements/shared';
 import { balance, rules } from './balance.js';
 import { ServerEnemy, type Strike } from './enemies.js';
@@ -97,7 +98,7 @@ export class ServerPlayer implements Attacker {
     const nums = [m.x, m.y, m.z, m.vx, m.vz, m.f, m.t, m.r];
     if (!nums.every(n => typeof n === 'number' && Number.isFinite(n))) return false;
     const [x, y, z, vx, vz, f, t, r] = nums as number[];
-    if (Math.abs(x!) > 5000 || Math.abs(z!) > 5000 || Math.abs(y!) > 500) return false;
+    if (!withinLocalBounds({ x: x!, y: y!, z: z! })) return false;
     const elapsed = Math.max(0, now - this.movedAt);
     const moved = Math.hypot(x! - this.x, z! - this.z);
     const warping = this.warpWindow > 0;
