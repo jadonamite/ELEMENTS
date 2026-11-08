@@ -4,6 +4,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import balance from '../../../shared/balance.json';
 import { RemoteTrack, type EnemyView, type PlayerView, type TrackDelay } from '../../../shared/src/net/index.js';
 import { AnimationPlayer } from '../anim/index.js';
+import { parseOutfit, type OutfitId } from '../body.js';
 import type { HeroInstance } from '../hero.js';
 
 const { clipSpeeds, idleSpeedThreshold, runSpeedThreshold } = balance.controller;
@@ -15,9 +16,15 @@ export class RemotePlayer {
   view: PlayerView | null = null;
   private clip = '';
 
-  constructor(readonly id: string, scene: Scene, load: () => Promise<HeroInstance>, delay: TrackDelay = 'auto') {
+  constructor(
+    readonly id: string,
+    scene: Scene,
+    load: (outfit?: OutfitId) => Promise<HeroInstance>,
+    delay: TrackDelay = 'auto',
+    initialOutfit?: OutfitId,
+  ) {
     this.track = new RemoteTrack(delay);
-    load().then((hero) => {
+    load(initialOutfit).then((hero) => {
       if (this.disposed) { hero.anim.dispose(); return; }
       this.hero = hero;
       scene.add(hero.model);
@@ -28,6 +35,10 @@ export class RemotePlayer {
 
   push(v: PlayerView, now: number): void {
     this.view = v;
+    const outfit = parseOutfit(v.outfit);
+    if (this.hero && this.hero.outfit !== outfit) {
+      void this.hero.switchOutfit(outfit);
+    }
     this.track.push({ at: v.sampledAt, x: v.x, y: v.y, z: v.z, vx: v.vx, vz: v.vz, facing: v.facing }, now);
   }
 

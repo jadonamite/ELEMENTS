@@ -2,7 +2,7 @@
 export const CONTROL_ACTIONS = [
   'move', 'look', 'run', 'strike', 'heavy', 'rise', 'ground', 'bend_move', 'ultimate',
   'block', 'parry', 'dodge', 'jump', 'weapon', 'hands', 'legs', 'stance', 'bending',
-  'interact', 'lock', 'menu', 'technique', 'duel', 'spark',
+  'interact', 'lock', 'menu', 'technique', 'duel', 'spark', 'satchel',
 ] as const;
 export type ControlAction = typeof CONTROL_ACTIONS[number];
 export type ControlProgress = Partial<Record<ControlAction, { uses: number; shown: number }>>;

@@ -32,6 +32,7 @@ export const ACTIONS: readonly ActionDefinition[] = [
   { id: 'technique', label: 'Element technique', group: 'Bending', key: 'V', touch: 'Technique', shaper: true },
   { id: 'interact', label: 'Talk or pick up', group: 'The world', key: 'E', touch: 'Interact' },
   { id: 'duel', label: 'Challenge a fighter', group: 'The world', key: 'K', touch: 'Challenge' },
+  { id: 'satchel', label: 'Open your satchel', group: 'The world', key: 'I', touch: 'Satchel' },
   { id: 'menu', label: 'Open menu and help', group: 'The world', key: 'Esc', touch: 'Menu' },
 ];
 const rules = createCombatRules(balance.combat as unknown as CombatBalance);
@@ -45,5 +46,5 @@ export const KEY_BINDINGS: Readonly<Record<string, ControlAction>> = {
   Space: 'jump', Tab: 'lock', Digit1: 'weapon', Numpad1: 'weapon', Digit2: 'hands', Numpad2: 'hands',
   Digit3: 'legs', Numpad3: 'legs', KeyX: 'stance', KeyB: 'bending', KeyE: 'interact',
   KeyQ: 'rise', KeyT: 'spark', KeyF: 'bend_move', KeyG: 'ultimate', KeyR: 'block', AltLeft: 'dodge', AltRight: 'dodge',
-  KeyC: 'interact', KeyK: 'duel', KeyV: 'technique', Escape: 'menu',
+  KeyC: 'interact', KeyK: 'duel', KeyI: 'satchel', KeyV: 'technique', Escape: 'menu',
 };

@@ -1,7 +1,7 @@
 import { withinLocalBounds } from '@elements/shared';
 import type { ActionState, Element, Weapon } from '@elements/shared';
-import { standClear } from '@elements/shared';
-import { balance, rules } from './balance.js';
+import { armourOf, outfitOf, standClear } from '@elements/shared';
+import { armour, balance, rules } from './balance.js';
 import { ServerEnemy, type Strike } from './enemies.js';
 import { PoseHistory } from './history.js';
 import { judgeHit, parseHit, type Attacker } from './hit-check.js';
@@ -22,6 +22,8 @@ export interface Identity {
   tier?: number | undefined;
   /** Optional forced carry amount for testing. */
   forcedCarry?: number | undefined;
+  /** The armour piece the account wears, from its stored character; null in rags. */
+  worn?: string | null | undefined;
 }
 
 /** The tier every rising holds until trials raise or set it: every move but the strongest open. */
@@ -36,6 +38,8 @@ export class ServerPlayer implements Attacker {
   readonly hush: boolean;
   readonly tier: number;
   readonly forcedCarry?: number | undefined;
+  /** The armour piece worn; the outfit others draw and the armour blows must beat. */
+  worn: string | null;
   x: number;
   y = 0;
   z: number;
@@ -69,6 +73,7 @@ export class ServerPlayer implements Attacker {
     this.hush = who.role === 'Hush';
     this.tier = who.tier ?? OPEN_TIER;
     this.forcedCarry = who.forcedCarry;
+    this.worn = who.worn ?? null;
     this.weapon = !this.hush && who.element === 'AURA' ? 'staff' : 'sword';
     this.x = spawn.x;
     this.z = spawn.z;
@@ -81,6 +86,14 @@ export class ServerPlayer implements Attacker {
   }
 
   get alive(): boolean { return this.hp > 0; }
+
+  /** The outfit this fighter draws in, from the armour worn. */
+  get outfit(): string { return outfitOf(armour, this.worn); }
+
+  /** What the worn armour adds when a blow lands, in the combat rules' scale. */
+  get armour(): number { return armourOf(armour, this.worn); }
+
+  setWorn(itemId: string | null): void { this.worn = itemId; }
 
   /** Opens a short window in which the next report may land anywhere (spawn, respawn). */
   allowWarp(seconds = 3): void { this.warpWindow = seconds; }
@@ -135,7 +148,9 @@ export class ServerPlayer implements Attacker {
     if (!this.alive) return 0;
     const toward = Math.atan2(s.fromX - this.x, s.fromZ - this.z);
     const facing = Math.abs(Math.atan2(Math.sin(toward - this.facing), Math.cos(toward - this.facing))) <= balance.hero.blockAngle;
-    const damage = this.guard && facing ? s.damage * balance.hero.blockDamageScale : s.damage;
+    // Worn armour takes its share of every blow that gets through the guard.
+    const raw = this.guard && facing ? s.damage * balance.hero.blockDamageScale : s.damage;
+    const damage = rules.calculateDamage(raw, this.armour);
     this.hp = Math.max(0, this.hp - damage);
     if (this.hp === 0) this.downFor = balance.hero.respawnSeconds;
     return damage;
@@ -249,7 +264,7 @@ export class ZoneWorld {
   snapshot(now: number): { t: number; p: unknown[]; e: unknown[] } {
     const r = (n: number): number => Math.round(n * 100) / 100;
     const p = [...this.players.values()].map(pl => [
-      pl.id, r(pl.x), r(pl.y), r(pl.z), r(pl.vx), r(pl.vz), r(pl.facing), pl.clip, r(pl.rate), r(pl.sampledAt), Math.ceil(pl.hp), pl.maxHp,
+      pl.id, r(pl.x), r(pl.y), r(pl.z), r(pl.vx), r(pl.vz), r(pl.facing), pl.clip, r(pl.rate), r(pl.sampledAt), Math.ceil(pl.hp), pl.maxHp, pl.outfit,
     ]);
     const e = [...this.enemies.values()].map(en => [
       en.id, en.kind, r(en.x), r(en.z), r(en.vx), r(en.vz), r(en.facing), en.shownState, Math.ceil(en.hp), en.tune.maxHealth,

@@ -20,13 +20,15 @@ import {
   type Bone,
 } from 'three';
 import balance from '../../shared/balance.json';
-import { BodyKit, parseOutfit } from './body.js';
+import { BodyKit, parseOutfit, type OutfitId } from './body.js';
 import { getDefaultCharacterConfig, getStoredCharacter } from './creator/creator-types.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { AnimationPlayer } from './anim/index.js';
 import { StrikeLimbs, type StrikeLimb } from './anim/strike-limb.js';
 import { STAFF_WEAPON, SWORD_WEAPON, heroWeaponFor, type WeaponSlotData } from './weapon.js';
+import { fetchWornArmour } from './economy/api.js';
+import { getStoredAuthToken, hasGameServer } from './auth/server-api.js';
 
 export type Limb = 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'knee_r' | 'knee_l';
 
@@ -63,6 +65,10 @@ export interface HeroInstance {
   /** Ignites or extinguishes elemental bending mode (Lit vs Unlit). */
   setElemental(lit: boolean, element?: string): void;
   readonly elemental: boolean;
+  /** Current outfit drawn by the body model. */
+  readonly outfit: OutfitId;
+  /** Switches the outfit model without page reload, keeping animation state and weapons. */
+  switchOutfit(outfitId: OutfitId): Promise<void>;
 }
 
 /** Keep only part of the run clip's hip bounce, measured up from its lowest (planted) point. */
@@ -181,28 +187,38 @@ function createProceduralStaff(): Group {
  * Loads the hero character, dresses it, attaches the sword to the right hand
  * and sets up the animation player.
  */
-export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance> {
+export async function loadHero(loader = new GLTFLoader(), initialOutfit?: OutfitId): Promise<HeroInstance> {
   loader.setMeshoptDecoder(MeshoptDecoder);
   // The body is the player's own creation; hero.glb now only supplies animation clips.
   const heroGltf = await loader.loadAsync('/assets/characters/hero.glb');
   const config = getStoredCharacter() ?? getDefaultCharacterConfig('male');
   const kit = new BodyKit(loader);
-  const outfit = parseOutfit(new URLSearchParams(window.location.search).get('outfit'));
-  const heroModel = await kit.build(config, 'hero', undefined, outfit);
+
+  let currentOutfit: OutfitId = initialOutfit ?? 'rags';
+  if (!initialOutfit && hasGameServer() && getStoredAuthToken()) {
+    try {
+      const worn = await fetchWornArmour();
+      currentOutfit = parseOutfit(worn.outfit);
+    } catch {
+      currentOutfit = 'rags';
+    }
+  }
+
+  const heroModel = await kit.build(config, 'hero', undefined, currentOutfit);
 
   let weaponSlot: WeaponSlotData = SWORD_WEAPON;
   const initialHand = heroModel.getObjectByName(weaponSlot.handBone) as Bone | undefined;
   if (!initialHand) throw new Error(`Hand bone ${weaponSlot.handBone} not found in hero rig.`);
   let handBone: Bone = initialHand;
-  const handL = heroModel.getObjectByName('hand_l') as Bone | undefined;
+  let handL = heroModel.getObjectByName('hand_l') as Bone | undefined;
   if (!handL) throw new Error('Left hand bone (hand_l) not found in hero rig.');
-  const footR = heroModel.getObjectByName('foot_r') as Bone | undefined;
+  let footR = heroModel.getObjectByName('foot_r') as Bone | undefined;
   if (!footR) throw new Error('Right foot bone (foot_r) not found in hero rig.');
-  const footL = heroModel.getObjectByName('foot_l') as Bone | undefined;
+  let footL = heroModel.getObjectByName('foot_l') as Bone | undefined;
   if (!footL) throw new Error('Left foot bone (foot_l) not found in hero rig.');
-  const kneeR = heroModel.getObjectByName('calf_r') as Bone | undefined;
+  let kneeR = heroModel.getObjectByName('calf_r') as Bone | undefined;
   if (!kneeR) throw new Error('Right calf bone (calf_r) not found in hero rig.');
-  const kneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
+  let kneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
   if (!kneeL) throw new Error('Left calf bone (calf_l) not found in hero rig.');
   let swordMesh: Object3D;
   try {
@@ -407,14 +423,61 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
     if (clip) subclips.push(AnimationUtils.subclip(clip, name, Math.round(from * 30), Math.round(to * 30), 30));
   }
 
-  const allClips = await kit.fitClips(config.sex, [...heroGltf.animations, ...combatClips, ...subclips], 'hero', outfit, config.person);
+  const rawAnimationClips: readonly AnimationClip[] = [
+    ...heroGltf.animations,
+    ...combatClips,
+    ...subclips,
+  ];
+
+  const allClips = await kit.fitClips(config.sex, rawAnimationClips, 'hero', currentOutfit, config.person);
   const anim = new AnimationPlayer(heroModel, allClips, {
     defaultFadeDuration: 0.25,
   });
-  const strikeLimbs = new StrikeLimbs(heroModel, allClips, balance.combat.activeWindow as [number, number],
+  let strikeLimbs = new StrikeLimbs(heroModel, allClips, balance.combat.activeWindow as [number, number],
     balance.controller.modelForwardYaw);
   anim.play('idle_relaxed');
   arm(false);
+
+  const switchOutfit = async (newOutfitId: OutfitId): Promise<void> => {
+    if (newOutfitId === currentOutfit) return;
+    currentOutfit = newOutfitId;
+
+    if (holder.parent) holder.parent.remove(holder);
+    if (backSocket.parent) backSocket.parent.remove(backSocket);
+
+    const nextBody = await kit.build(config, 'hero', undefined, newOutfitId);
+
+    while (heroModel.children.length > 0) {
+      heroModel.remove(heroModel.children[0]!);
+    }
+    while (nextBody.children.length > 0) {
+      heroModel.add(nextBody.children[0]!);
+    }
+    heroModel.scale.copy(nextBody.scale);
+
+    const nextHand = heroModel.getObjectByName(weaponSlot.handBone) as Bone | undefined;
+    if (nextHand) handBone = nextHand;
+    const nextHandL = heroModel.getObjectByName('hand_l') as Bone | undefined;
+    if (nextHandL) handL = nextHandL;
+    const nextFootR = heroModel.getObjectByName('foot_r') as Bone | undefined;
+    if (nextFootR) footR = nextFootR;
+    const nextFootL = heroModel.getObjectByName('foot_l') as Bone | undefined;
+    if (nextFootL) footL = nextFootL;
+    const nextKneeR = heroModel.getObjectByName('calf_r') as Bone | undefined;
+    if (nextKneeR) kneeR = nextKneeR;
+    const nextKneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
+    if (nextKneeL) kneeL = nextKneeL;
+    const nextSpine = heroModel.getObjectByName(weaponSlot.sheatheBone);
+    if (nextSpine) spine = nextSpine;
+
+    spine.add(backSocket);
+    updateBackSocketTransform(weaponSlot);
+    arm(isArmedState);
+
+    const newFittedClips = await kit.fitClips(config.sex, rawAnimationClips, 'hero', newOutfitId, config.person);
+    anim.rebind(heroModel, newFittedClips);
+    strikeLimbs = new StrikeLimbs(heroModel, newFittedClips, balance.combat.activeWindow as [number, number], balance.controller.modelForwardYaw);
+  };
 
   return {
     model: heroModel,
@@ -422,11 +485,11 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
     sword: holder,
     get weaponSlot(): WeaponSlotData { return weaponSlot; },
     get handBone(): Bone { return handBone!; },
-    handL,
-    footR,
-    footL,
-    kneeR,
-    kneeL,
+    get handL(): Bone { return handL!; },
+    get footR(): Bone { return footR!; },
+    get footL(): Bone { return footL!; },
+    get kneeR(): Bone { return kneeR!; },
+    get kneeL(): Bone { return kneeL!; },
     bladeBase,
     bladeTip,
     backSocket,
@@ -436,5 +499,7 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
     strikeLimbOf: (clip: string) => strikeLimbs.of(clip),
     setElemental,
     get elemental(): boolean { return elemental; },
+    get outfit(): OutfitId { return currentOutfit; },
+    switchOutfit,
   };
 }

@@ -31,6 +31,7 @@ export class GameInput {
   onStyleSelect?: (style: FightingStyle) => void;
   onInteract?: () => boolean | void;
   onDuelToggle?: () => void;
+  onSatchelToggle?: () => void;
   onTechnique?: () => void;
   onJump?: () => void;
 
@@ -130,6 +131,7 @@ export class GameInput {
     else if (action === 'jump') this.onJump?.();
     else if (action === 'technique') this.onTechnique?.();
     else if (action === 'duel') this.onDuelToggle?.();
+    else if (action === 'satchel') this.onSatchelToggle?.();
     else if (action === 'menu') { this.clear(); this.onMenu?.(); }
     this.onAction?.(action);
     return true;

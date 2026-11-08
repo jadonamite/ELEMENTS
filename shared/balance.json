@@ -1164,6 +1164,19 @@
       "monsterNationDropChance": 0.4,
       "monsterChromaraDropChance": 0.3
     },
+    "armour": {
+      "defaultOutfit": "rags",
+      "pieces": {
+        "armour_shaper_ignis": {
+          "name": "IGNIS Shaper armour",
+          "outfit": "shaper_ignis",
+          "armour": 40,
+          "nation": "IGNIS",
+          "set": "shaper",
+          "dropChance": 0.04
+        }
+      }
+    },
     "merchants": {
       "sindr": [
         {
@@ -1216,10 +1229,10 @@
               "maxStock": 50,
               "basePrice": 150
             },
-            "armour": {
+            "armour_shaper_ignis": {
               "stock": 25,
               "maxStock": 50,
-              "basePrice": 150
+              "basePrice": 60
             }
           }
         }

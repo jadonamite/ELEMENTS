@@ -17,27 +17,16 @@ export class SwordStance {
   private elapsed = 0;
   private length = 0;
   private swapped = false;
-  private readonly upper: Bone;
-  private readonly lower: Bone;
-  private readonly hand: Bone;
-  private readonly upperL: Bone;
-  private readonly lowerL: Bone;
-  private readonly handL: Bone;
+  private get upper(): Bone { return (this.hero.model.getObjectByName('upperarm_r') as Bone) ?? this.hero.handBone; }
+  private get lower(): Bone { return (this.hero.model.getObjectByName('lowerarm_r') as Bone) ?? this.hero.handBone; }
+  private get hand(): Bone { return this.hero.handBone; }
+  private get upperL(): Bone { return (this.hero.model.getObjectByName('upperarm_l') as Bone) ?? this.hero.handL; }
+  private get lowerL(): Bone { return (this.hero.model.getObjectByName('lowerarm_l') as Bone) ?? this.hero.handL; }
+  private get handL(): Bone { return this.hero.handL; }
   private readonly staffTrail: StaffAirTrail;
   private readonly tipPrev = new Vector3();
 
   constructor(private readonly hero: HeroInstance) {
-    const bone = (name: string): Bone => {
-      const found = hero.model.getObjectByName(name) as Bone | undefined;
-      if (!found) throw new Error(`Bone ${name} not found in hero rig.`);
-      return found;
-    };
-    this.upper = bone('upperarm_r');
-    this.lower = bone('lowerarm_r');
-    this.hand = bone('hand_r');
-    this.upperL = bone('upperarm_l');
-    this.lowerL = bone('lowerarm_l');
-    this.handL = bone('hand_l');
     this.staffTrail = new StaffAirTrail(hero.model);
   }
 

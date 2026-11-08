@@ -7,6 +7,7 @@ import {
   type ClockMsg, type EnemyDiedMsg, type EnemyHitMsg, type HitResultMsg, type HurtMsg, type MoveMsg, type PongMsg, type SnapMsg, type TrackDelay, type WelcomeMsg,
 } from '../../../shared/src/net/index.js';
 import type { Combat } from '../combat.js';
+import { parseOutfit, type OutfitId } from '../body.js';
 import type { EnemyTemplate } from '../enemy.js';
 import type { HeroInstance } from '../hero.js';
 import type { HoundTemplate } from '../monsters/hound.js';
@@ -30,7 +31,7 @@ export interface OnlineGame {
   kit: () => Kit;
   alive: () => boolean;
   isLit: () => boolean;
-  loadAvatar: () => Promise<HeroInstance>;
+  loadAvatar: (outfit?: OutfitId) => Promise<HeroInstance>;
   loadHound: () => Promise<HoundTemplate>;
   villains: Promise<EnemyTemplate>;
   clock?: { setMinute?: (m: number, s?: number) => void } | undefined;
@@ -42,6 +43,8 @@ export interface OnlineGame {
   onNotice?: ((text: string) => void) | undefined;
   /** The server's fighting tier for this player, sent on joining. */
   onTier?: ((tier: number) => void) | undefined;
+  /** The outfit the server holds for this player, sent on joining. */
+  onOutfit?: ((outfit: string) => void) | undefined;
 }
 
 export interface OnlineOptions {
@@ -89,6 +92,7 @@ export class OnlineSession {
       const w = m as WelcomeMsg;
       this.you = w.you;
       if (typeof w.tier === 'number') game.onTier?.(w.tier);
+      if (typeof w.outfit === 'string') game.onOutfit?.(w.outfit);
     });
     link.on('pong', (m) => {
       const p = m as PongMsg;
@@ -198,7 +202,7 @@ export class OnlineSession {
       seen.add(v.id);
       let rp = this.players.get(v.id);
       if (!rp) {
-        rp = new RemotePlayer(v.id, this.game.scene, this.game.loadAvatar, this.trackDelay);
+        rp = new RemotePlayer(v.id, this.game.scene, this.game.loadAvatar, this.trackDelay, parseOutfit(v.outfit));
         this.players.set(v.id, rp);
       }
       rp.push(v, arrived);

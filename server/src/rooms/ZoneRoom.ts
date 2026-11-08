@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { cycleMinutes, ELEMENTS, type Element } from '@elements/shared';
 import { verifyToken } from '../auth.js';
 import { getRising } from '../db.js';
+import { takeOffArmour, wearArmour, wornLook } from '../economy/armourService.js';
 import { balance } from '../net/balance.js';
 import { SNAPSHOT_RATE } from '../net/constants.js';
 import { isGuest } from '../net/money.js';
@@ -40,7 +41,11 @@ export async function identify(options: Record<string, unknown> | undefined, tok
     const { userId } = await verifyToken(token);
     const rising = getRising(userId);
     if (!rising) throw new Error('This account has not risen yet');
-    return { accountId: userId, role: rising.role, element: (rising.element ?? 'IGNIS') as Element, tier: rising.tier ?? OPEN_TIER, forcedCarry };
+    // The character's armour comes from the account's stored look, not from a message.
+    return {
+      accountId: userId, role: rising.role, element: (rising.element ?? 'IGNIS') as Element, tier: rising.tier ?? OPEN_TIER, forcedCarry,
+      worn: wornLook(userId).item,
+    };
   }
   if (!guestsAllowed()) throw new Error('Login required');
   const asked = typeof options?.element === 'string' ? options.element.toUpperCase() : 'IGNIS';
@@ -128,6 +133,10 @@ export class ZoneRoom extends Room {
     });
 
     // Money: the message names the player's choice; who and where come from the room.
+    // Armour: the player names a piece they own (or null to take it off). The room holds the account's
+    // satchel and the stored look, and judges whether it may be worn.
+    this.onMessage('wear', (client: Client, message: unknown) => this.wear(client, message));
+
     this.onMessage('loot_claim', (client: Client, message: unknown) => this.pay(this.economy.claim(client.sessionId, message)));
     this.onMessage('shop', (client: Client, message: unknown) => this.pay(this.economy.shop(client.sessionId, message)));
     this.onMessage('bank', (client: Client, message: unknown) => this.pay(this.economy.bank(client.sessionId, message)));
@@ -170,7 +179,7 @@ export class ZoneRoom extends Room {
   override onJoin(client: Client, _options: unknown, who: Identity): void {
     const player = this.world.join(client.sessionId, who, this.now());
     if (!isGuest(who.accountId)) enterRoom(who.accountId);
-    client.send('welcome', { you: client.sessionId, t: this.now(), zone: this.world.zone, element: player.element, role: player.role, tier: player.tier });
+    client.send('welcome', { you: client.sessionId, t: this.now(), zone: this.world.zone, element: player.element, role: player.role, tier: player.tier, outfit: player.outfit });
     client.send('clock', { minute: this.clockMinute, speed: this.clockSpeed });
     client.send('snap', this.world.snapshot(this.now()));
     this.pay(this.economy.join(client.sessionId));
@@ -188,6 +197,31 @@ export class ZoneRoom extends Room {
     this.outlaws?.despawn(this.world);
     this.economy.dispose();
     closeZone(this.world.zone);
+  }
+
+  /**
+   * Puts on or takes off armour. The piece must be the player's own, so the account is read from
+   * the room, never from the message; everyone else sees the new outfit in the next snapshot.
+   */
+  private wear(client: Client, message: unknown): void {
+    const p = this.world.players.get(client.sessionId);
+    if (!p) return;
+    const raw = (message as { item?: unknown } | null | undefined)?.item ?? null;
+    const item = raw === null ? null : typeof raw === 'string' ? raw.slice(0, 64) : undefined;
+    if (item === undefined) {
+      client.send('outfit', { error: 'invalid_input' });
+      return;
+    }
+    try {
+      if (isGuest(p.accountId)) throw new Error('Sign in to wear armour');
+      if (item === null) takeOffArmour({ accountId: p.accountId });
+      else wearArmour({ accountId: p.accountId, itemId: item });
+      p.setWorn(item);
+    } catch (err) {
+      client.send('outfit', { error: err instanceof Error ? err.message : 'Refused' });
+      return;
+    }
+    client.send('outfit', { item: p.worn, outfit: p.outfit, armour: p.armour });
   }
 
   /** Sends money events to the one player they concern, or to everyone. */

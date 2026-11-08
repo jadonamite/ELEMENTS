@@ -3,7 +3,11 @@ import type { LootContents } from './types.js';
 // Pure rules for the items a player carries. Item ids:
 //   shard_ignis, shard_aques, shard_terra, shard_aura   one per shard colour
 //   material_<name>                                       a named material, e.g. material_linen
-//   any merchant stock key (potion, armour, ...)          goods bought from a shop
+//   any merchant stock key (potion, item, ...)            goods bought from a shop
+//   armour_<set>_<nation>                                 a piece of armour, see armour.ts
+//
+// Armour is a whole piece, not a stack of cloth: `satchelAsCarried` leaves it out, because a
+// fallen player keeps their gear (only shards and materials drop).
 
 export type Satchel = Record<string, number>;
 
@@ -31,6 +35,9 @@ export function itemsFromLoot(contents: LootContents): ItemStack[] {
   }
   for (const [name, count] of Object.entries(contents.materials ?? {})) {
     if (count > 0) stacks.push({ itemId: materialItemId(name), quantity: count });
+  }
+  for (const [itemId, count] of Object.entries(contents.gear ?? {})) {
+    if (count > 0) stacks.push({ itemId, quantity: count });
   }
   return stacks;
 }

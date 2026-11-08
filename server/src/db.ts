@@ -255,6 +255,13 @@ export function migrateDatabase(database: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_item_ledger_from ON item_ledger(from_id);
     CREATE INDEX IF NOT EXISTS idx_item_ledger_to ON item_ledger(to_id);
+
+    -- What each account wears. The piece stays in player_items; this only says it is on.
+    CREATE TABLE IF NOT EXISTS worn_armour (
+      account_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
 
   const ledgerCount = database

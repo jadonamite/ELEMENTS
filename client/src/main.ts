@@ -8,6 +8,7 @@ import { createZone, SPAWN } from './world/zone.js';
 import { initPhysics } from './physics.js';
 import { FpsCounter } from './fps.js';
 import { loadHero, type HeroInstance } from './hero.js';
+import { parseOutfit } from './body.js';
 import { FixedStepper, HeroController, locomotionForSpeed, movementVelocity, turnToward } from './controller.js';
 import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
@@ -130,6 +131,7 @@ async function main(): Promise<void> {
   document.addEventListener('pointerlockchange', togglePlaying);
   cleanup.push(() => { document.removeEventListener('pointerlockchange', togglePlaying); document.body.classList.remove('playing'); });
   const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status, inTown ? 'Enter Sindr' : 'Enter the arena');
+  input.onSatchelToggle = () => townEconomy?.toggleSatchel();
   cleanup.push(() => input.dispose());
   let controls: Controls | null = null;
   let heroElement: BendingType = 'IGNIS';
@@ -246,6 +248,7 @@ async function main(): Promise<void> {
   };
 
   const fightHud = new FightHud();
+  fightHud.onSatchelClick = () => townEconomy?.toggleSatchel();
   const threatArrows = new ThreatArrows();
   cleanup.push(() => fightHud.dispose());
   let hitStop = 0;
@@ -576,6 +579,10 @@ async function main(): Promise<void> {
   townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', {
     notice,
     standingChanged: (s) => fightHud.setStanding(s.redFlags, s.hasBounty),
+    wornChanged: (worn) => {
+      void hero.switchOutfit(parseOutfit(worn.outfit));
+      fight.setHeroArmour(worn.armour);
+    },
     nightness: () => nightness.value,
   }) : null;
   cleanup.push(() => townEconomy?.dispose());
@@ -951,7 +958,7 @@ async function main(): Promise<void> {
       kit: () => fight.kit,
       alive: () => fight.heroAlive,
       isLit: () => isLit,
-      loadAvatar: () => loadHero(),
+      loadAvatar: (outfit) => loadHero(undefined, outfit),
       loadHound: () => loadHoundTemplate(undefined, renderer),
       villains,
       onMyHit(at, damage, killed) {
@@ -981,6 +988,7 @@ async function main(): Promise<void> {
       onStatus: status,
       onNotice: notice,
       onTier: applyTier,
+      onOutfit: (outfit) => { void hero.switchOutfit(parseOutfit(outfit)); },
       clock: zone?.clock,
     }, {
       server: getServerUrl(), zone: inTown ? 'sindr' : 'arena', token: getStoredAuthToken(),

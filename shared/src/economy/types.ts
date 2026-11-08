@@ -154,6 +154,8 @@ export interface LootContents {
   chroma: number;
   shards: Record<Colour, number>;
   materials: Record<string, number>;
+  /** Whole items a foe carried, by satchel id: armour and, later, other gear. */
+  gear?: Record<string, number> | undefined;
 }
 
 export interface LootPile {

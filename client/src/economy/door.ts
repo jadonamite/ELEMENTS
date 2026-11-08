@@ -5,6 +5,7 @@ import {
   depositCountingHouse,
   fetchAccountNotes,
   sell,
+  setWornArmour,
   withdrawCountingHouse,
   type CountingHouseNote,
   type LootContents,
@@ -47,6 +48,7 @@ export interface MoneyDoor {
   acceptTrade(): void;
   cancelTrade(): void;
   listenTrade(listener: ((state: TradeState) => void) | null): void;
+  wear(item: string | null): Promise<{ item: string | null; outfit: string; armour: number }>;
 }
 
 export const httpDoor: MoneyDoor = {
@@ -60,6 +62,7 @@ export const httpDoor: MoneyDoor = {
   acceptTrade: () => {},
   cancelTrade: () => {},
   listenTrade: () => {},
+  wear: (item) => setWornArmour(item),
 };
 
 /** The part of the room connection the money needs. */
@@ -76,6 +79,7 @@ export class RoomDoor implements MoneyDoor {
   private nextReq = 1;
   private readonly replies = new Map<number, (body: Record<string, unknown>) => void>();
   private readonly claims = new Map<string, (body: Record<string, unknown>) => void>();
+  private readonly wearResolvers: Array<(body: { item?: string | null; outfit?: string; armour?: number; error?: string }) => void> = [];
   private tradeListener: ((state: TradeState) => void) | null = null;
 
   constructor(private readonly room: RoomChannel) {
@@ -93,6 +97,11 @@ export class RoomDoor implements MoneyDoor {
     });
     room.on('trade', (m) => {
       this.tradeListener?.(m as TradeState);
+    });
+    room.on('outfit', (m) => {
+      const body = m as { item?: string | null; outfit?: string; armour?: number; error?: string };
+      const resolver = this.wearResolvers.shift();
+      resolver?.(body);
     });
   }
 
@@ -138,6 +147,23 @@ export class RoomDoor implements MoneyDoor {
 
   listenTrade(listener: ((state: TradeState) => void) | null): void {
     this.tradeListener = listener;
+  }
+
+  wear(item: string | null): Promise<{ item: string | null; outfit: string; armour: number }> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const idx = this.wearResolvers.indexOf(handle);
+        if (idx !== -1) this.wearResolvers.splice(idx, 1);
+        reject(new EconomyError('The world server did not answer', 504));
+      }, ANSWER_TIMEOUT_MS);
+      const handle = (body: { item?: string | null; outfit?: string; armour?: number; error?: string }): void => {
+        clearTimeout(timer);
+        if (body.error) reject(new EconomyError(body.error, 400));
+        else resolve({ item: body.item ?? null, outfit: body.outfit ?? 'rags', armour: body.armour ?? 0 });
+      };
+      this.wearResolvers.push(handle);
+      this.room.send('wear', { item });
+    });
   }
 
   private ask<K>(waiting: Map<K, (body: Record<string, unknown>) => void>, key: K, type: string, message: unknown): Promise<Record<string, unknown>> {

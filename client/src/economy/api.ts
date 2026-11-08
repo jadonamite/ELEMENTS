@@ -7,6 +7,7 @@ export interface LootContents {
   chroma: number;
   shards: Record<string, number>;
   materials: Record<string, number>;
+  gear?: Record<string, number>;
 }
 
 export interface LootPile {
@@ -78,6 +79,17 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export async function fetchSatchel(): Promise<{ accountId: string; items: Record<string, number> }> {
   return call('/api/economy/satchel');
+}
+
+export async function fetchWornArmour(): Promise<{ item: string | null; outfit: string; armour: number }> {
+  return call('/api/economy/armour');
+}
+
+export async function setWornArmour(item: string | null): Promise<{ item: string | null; outfit: string; armour: number }> {
+  return call('/api/economy/armour', {
+    method: 'POST',
+    body: JSON.stringify({ item }),
+  });
 }
 
 export async function fetchBalance(accountId: string): Promise<number> {
