@@ -53,9 +53,9 @@ export async function loadLookBodies(looks: readonly Look[], children: ReadonlyS
   const bodies = new Map<string, TownsfolkBody>();
   for (const look of looks) {
     const config = sanitizeCharacterConfig(look.config);
-    const model = await kit.build(config, 'hero', look.cloth);
+    const model = await kit.build(config, 'hero', look.cloth, look.outfit);
     model.scale.multiplyScalar(look.height * (children.has(look.id) ? CHILD_SCALE : 1));
-    bodies.set(look.id, { model, clips: await kit.fitClips(config.sex, clips, 'townsfolk') });
+    bodies.set(look.id, { model, clips: await kit.fitClips(config.sex, clips, 'townsfolk', look.outfit) });
   }
   return bodies;
 }

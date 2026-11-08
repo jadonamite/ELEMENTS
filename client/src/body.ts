@@ -42,7 +42,7 @@ const BODY_PATH: Record<Sex, string> = {
   female: '/assets/characters/creator/female.glb',
 };
 
-export type OutfitId = 'rags' | 'shaper_ignis';
+export type OutfitId = 'rags' | 'shaper_ignis' | 'hush_ignis' | 'robber';
 
 interface Outfit {
   /** The outfit file per sex; a sex without one wears rags. */
@@ -53,11 +53,17 @@ interface Outfit {
   dyeable: (materialName: string) => boolean;
   /** Materials that are the wearer's skin, tinted to their skin tone. */
   skin: (materialName: string) => boolean;
+  /** A whole person from a character sheet: their own head, hands, hair and skin; nothing is added. */
+  whole?: boolean;
 }
 
 const HEAD = ['Head', 'neck_01'];
 const HANDS = ['l', 'r'].flatMap(side => ['hand_' + side,
   ...['thumb', 'index', 'middle', 'ring', 'pinky'].flatMap(f => ['01', '02', '03', '04_leaf'].map(i => `${f}_${i}_${side}`))]);
+
+function person(): Pick<Outfit, 'bareBones' | 'dyeable' | 'skin' | 'whole'> {
+  return { bareBones: new Set(), dyeable: () => false, skin: () => false, whole: true };
+}
 
 const OUTFITS: Record<OutfitId, Outfit> = {
   rags: {
@@ -72,6 +78,8 @@ const OUTFITS: Record<OutfitId, Outfit> = {
     dyeable: () => false,
     skin: name => name === 'MI_Shaper_Skin',
   },
+  hush_ignis: { path: { male: '/assets/characters/people/hush_ignis_male.glb' }, ...person() },
+  robber: { path: { female: '/assets/characters/people/robber_female.glb' }, ...person() },
 };
 const OUTFIT_FILES = new Set(Object.values(OUTFITS).flatMap(o => Object.values(o.path)));
 
@@ -82,6 +90,11 @@ export function parseOutfit(value: string | null | undefined): OutfitId {
 function outfitFor(id: OutfitId, sex: Sex): { outfit: Outfit; path: string } {
   const own = OUTFITS[id].path[sex];
   return own ? { outfit: OUTFITS[id], path: own } : { outfit: OUTFITS.rags, path: OUTFITS.rags.path[sex]! };
+}
+
+/** Whether this outfit exists for this sex (otherwise rags are worn). */
+export function outfitFits(id: OutfitId, sex: Sex): boolean {
+  return OUTFITS[id].path[sex] !== undefined;
 }
 
 /** Patched, greener rags for robbers. */
@@ -241,6 +254,11 @@ export class BodyKit {
     });
     const rigMesh = rig as SkinnedMesh | null;
     if (!rigMesh) return group;
+    if (outfit.whole) {
+      cullAsOneBody(group, rigMesh);
+      group.userData.sex = config.sex;
+      return group;
+    }
 
     // The bare parts (head, eyes and brows, hands under armour) come from the creator body,
     // following the outfit's bones.

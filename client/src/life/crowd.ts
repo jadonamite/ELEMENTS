@@ -1,6 +1,7 @@
 import type { CharacterConfig } from '../creator/creator-types.js';
 import { BODY_PRESET_OPTIONS, HAIR_COLOR_PRESETS, HAIR_STYLE_OPTIONS, SKIN_TONE_PRESETS } from '../creator/creator-types.js';
 import type { Post } from '../world/builder.js';
+import { outfitFits, type OutfitId } from '../body.js';
 import type { Townsperson, TownsfolkRole } from './townsfolk.js';
 
 /** One way a person can look: body, hair, skin, build, height and cloth dye. Built once, copied for everyone who wears it. */
@@ -10,6 +11,8 @@ export interface Look {
   cloth: number;
   /** Height on top of the build preset; children are scaled again by the body loader. */
   height: number;
+  /** A person from a character sheet worn instead of the creator body and rags. */
+  outfit?: OutfitId | undefined;
 }
 
 /** Small seeded random, so the same town comes back every visit. */
@@ -38,6 +41,16 @@ export const CLOTH: Record<TownsfolkRole, readonly number[]> = {
 };
 
 /** A look rolled for a trade and sex, varied in every part the body kit offers. */
+/** Sindr's Hush as drawn on the character sheets; adults only, and one in three, so the street stays mixed. */
+const SHEET_TOWNSFOLK: readonly OutfitId[] = ['hush_ignis'];
+const SHEET_SHARE = 1 / 3;
+
+function sheetPerson(role: TownsfolkRole, sex: 'male' | 'female', r: () => number): OutfitId | undefined {
+  if (role === 'child' || role === 'guard') return undefined;
+  const fits = SHEET_TOWNSFOLK.filter(o => outfitFits(o, sex));
+  return fits.length && r() < SHEET_SHARE ? pick(r, fits) : undefined;
+}
+
 export function rollLook(id: string, role: TownsfolkRole, sex: 'male' | 'female', r: () => number): Look {
   const hairs = HAIR_STYLE_OPTIONS.filter(h => h.allowedSex.includes(sex));
   return {
@@ -51,6 +64,7 @@ export function rollLook(id: string, role: TownsfolkRole, sex: 'male' | 'female'
     },
     cloth: pick(r, CLOTH[role]),
     height: 0.93 + r() * 0.13,
+    outfit: sheetPerson(role, sex, r),
   };
 }
 

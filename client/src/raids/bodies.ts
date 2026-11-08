@@ -135,7 +135,8 @@ export class Figure {
   readonly model: Object3D;
   private readonly anim: AnimationPlayer;
   constructor(template: EnemyTemplate, scene: Scene, x: number, z: number, facing: number, variant = 0) {
-    const v = template.variants[variant % template.variants.length]!;
+    const plain = template.variants.filter(t => !t.kinds);
+    const v = plain[variant % plain.length]!;
     this.model = cloneSkinned(v.model);
     this.model.position.set(x, 0, z);
     this.model.rotation.y = facing;
