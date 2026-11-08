@@ -15,8 +15,9 @@ import {
   villainDrop,
   DROPS_CONFIG,
   TREASURY_ACCOUNT_ID,
+  type Colour,
 } from '@elements/shared';
-import { getDatabase } from '../db.js';
+import { getDatabase, getRising } from '../db.js';
 import { getAccountBalance, recordTransaction } from './ledgerService.js';
 import { addItems, getSatchel, removeItems, withSavepoint } from './satchelService.js';
 
@@ -33,6 +34,7 @@ interface RawLootPileRow {
   owner_until: number;
   expires_at: number;
   source: string;
+  nation: string | null;
   claimed: number;
   claimed_by: string | null;
   claimed_at: number | null;
@@ -62,6 +64,7 @@ function mapRowToPile(row: RawLootPileRow): LootPile {
     ownerUntil: row.owner_until,
     expiresAt: row.expires_at,
     source: row.source as LootSource,
+    nation: (row.nation as Colour) ?? undefined,
     claimed: row.claimed === 1,
     claimedBy: row.claimed_by,
     claimedAt: row.claimed_at,
@@ -76,6 +79,7 @@ export interface CreateLootPileParams {
   zone: string;
   contents: LootContents;
   source: LootSource;
+  nation?: Colour | string | null | undefined;
   ownerId?: string | null | undefined;
   sourceAccountId?: string | undefined;
   now?: number | undefined;
@@ -95,6 +99,7 @@ export function createLootPile(
     zone: params.zone,
     contents: params.contents,
     source: params.source,
+    nation: params.nation,
     droppedAt: now,
     ownerId: params.ownerId ?? null,
   });
@@ -123,8 +128,8 @@ export function createLootPile(
 
   db.prepare(
     `INSERT INTO loot_piles (
-      id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, claimed, claimed_by, claimed_at, expired
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 0)`,
+      id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, nation, claimed, claimed_by, claimed_at, expired
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 0)`,
   ).run(
     pile.id,
     pile.x,
@@ -136,6 +141,7 @@ export function createLootPile(
     pile.ownerUntil,
     pile.expiresAt,
     pile.source,
+    pile.nation ?? null,
   );
 
   return pile;
@@ -179,6 +185,15 @@ export function createLootPileFromFight(
   if (itemsFromLoot(contents).length === 0 && contents.chroma <= 0) return null;
 
   const pileId = params.id ?? `pile_${randomUUID()}`;
+  let nation = params.nation;
+  if (!nation && params.sourceAccountId) {
+    const rising = getRising(params.sourceAccountId, db);
+    if (rising?.element) nation = rising.element;
+  }
+  if (!nation && params.carried?.shards) {
+    const shards = params.carried.shards as Record<string, number>;
+    nation = Object.keys(shards).find((k) => (shards[k] ?? 0) > 0);
+  }
   return withSavepoint(db, () => {
     if (params.source === 'player_death' && params.sourceAccountId) {
       const stacks = itemsFromLoot(contents);
@@ -204,6 +219,7 @@ export function createLootPileFromFight(
         zone: params.zone,
         contents,
         source: params.source,
+        nation,
         ownerId: params.winnerId ?? null,
         sourceAccountId: params.sourceAccountId,
         now: params.now,
@@ -216,7 +232,7 @@ export function createLootPileFromFight(
 export function getLootPileById(pileId: string, db: DatabaseSync = getDatabase()): LootPile | null {
   const row = db
     .prepare(
-      `SELECT id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, claimed, claimed_by, claimed_at, expired
+      `SELECT id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, nation, claimed, claimed_by, claimed_at, expired
        FROM loot_piles WHERE id = ?`,
     )
     .get(pileId) as RawLootPileRow | undefined;
@@ -242,7 +258,7 @@ export function listLootPiles(
   const now = params.now ?? Date.now();
   const rows = db
     .prepare(
-      `SELECT id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, claimed, claimed_by, claimed_at, expired
+      `SELECT id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, nation, claimed, claimed_by, claimed_at, expired
        FROM loot_piles WHERE zone = ?`,
     )
     .all(params.zone) as unknown as RawLootPileRow[];
@@ -285,7 +301,7 @@ export function claimLootPile(
 ): { pile: LootPile; contents: LootContents } {
   const row = db
     .prepare(
-      `SELECT id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, claimed, claimed_by, claimed_at, expired
+      `SELECT id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, nation, claimed, claimed_by, claimed_at, expired
        FROM loot_piles WHERE id = ?`,
     )
     .get(params.pileId) as RawLootPileRow | undefined;
@@ -371,7 +387,7 @@ export function sweepExpiredPiles(
 ): { sweptPiles: LootPile[]; reclaimedChroma: number } {
   const rows = db
     .prepare(
-      `SELECT id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, claimed, claimed_by, claimed_at, expired
+      `SELECT id, x, z, zone, contents, dropped_at, owner_id, owner_until, expires_at, source, nation, claimed, claimed_by, claimed_at, expired
        FROM loot_piles WHERE claimed = 0 AND expired = 0 AND expires_at <= ?`,
     )
     .all(now) as unknown as RawLootPileRow[];
@@ -455,6 +471,7 @@ export function dropFromClientKill(
       z: params.z,
       zone: params.zone,
       source: 'villain',
+      nation,
       carried: { chroma: odds.chroma, shards },
       winnerId: params.accountId,
       now,

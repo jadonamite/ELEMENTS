@@ -763,6 +763,44 @@ test('Loot service: claiming from 1.6 m fails and 1.4 m succeeds', () => {
   assert.equal(verifyWorldSupply(db), true);
 });
 
+test('Loot service: loot pile preserves and queries nation from drops and fight', () => {
+  const db = new DatabaseSync(':memory:');
+  migrateDatabase(db);
+  setDatabase(db);
+
+  const pileAques = createLootPile(
+    {
+      x: 5,
+      z: 5,
+      zone: 'sindr',
+      contents: { chroma: 20, shards: { IGNIS: 0, AQUES: 1, TERRA: 0, AURA: 0 }, materials: {} },
+      source: 'villain',
+      nation: 'AQUES',
+    },
+    db,
+  );
+  assert.equal(pileAques.nation, 'AQUES');
+  const fetched = getLootPileById(pileAques.id, db);
+  assert.equal(fetched?.nation, 'AQUES');
+
+  const fightDrop = createLootPileFromFight(
+    {
+      x: 12,
+      z: -4,
+      zone: 'sindr',
+      source: 'villain',
+      nation: 'TERRA',
+      carried: { chroma: 40, shards: { TERRA: 1 } },
+    },
+    db,
+  );
+  assert.ok(fightDrop);
+  assert.equal(fightDrop.nation, 'TERRA');
+  const listed = listLootPiles({ zone: 'sindr' }, db);
+  const foundFight = listed.find((p) => p.id === fightDrop.id);
+  assert.equal(foundFight?.nation, 'TERRA');
+});
+
 test('Loot service: non-owner cannot claim in first 60 s and can claim after', () => {
   const db = new DatabaseSync(':memory:');
   migrateDatabase(db);

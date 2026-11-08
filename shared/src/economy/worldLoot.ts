@@ -173,6 +173,7 @@ export function createLootPile(params: {
   zone: string;
   contents: LootContents;
   source: LootSource;
+  nation?: Colour | string | null | undefined;
   droppedAt: number;
   ownerId?: string | null | undefined;
   ownerSeconds?: number | undefined;
@@ -195,6 +196,7 @@ export function createLootPile(params: {
     ownerUntil,
     expiresAt,
     source: params.source,
+    nation: params.nation ?? null,
     claimed: false,
     expired: false,
   };

@@ -180,6 +180,7 @@ export function migrateDatabase(database: DatabaseSync): void {
       owner_until INTEGER NOT NULL,
       expires_at INTEGER NOT NULL,
       source TEXT NOT NULL,
+      nation TEXT,
       claimed INTEGER NOT NULL DEFAULT 0,
       claimed_by TEXT,
       claimed_at INTEGER,
@@ -188,6 +189,12 @@ export function migrateDatabase(database: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_loot_piles_zone ON loot_piles(zone);
     CREATE INDEX IF NOT EXISTS idx_loot_piles_expires ON loot_piles(expires_at);
     CREATE INDEX IF NOT EXISTS idx_loot_piles_claimed ON loot_piles(claimed);
+  `);
+  const lootPileCols = database.prepare('PRAGMA table_info(loot_piles)').all() as Array<{ name: string }>;
+  if (!lootPileCols.some((c) => c.name === 'nation')) {
+    database.exec('ALTER TABLE loot_piles ADD COLUMN nation TEXT');
+  }
+  database.exec(`
 
     CREATE TABLE IF NOT EXISTS merchant_agent_mind (
       id TEXT PRIMARY KEY,

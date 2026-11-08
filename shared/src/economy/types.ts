@@ -167,6 +167,7 @@ export interface LootPile {
   ownerUntil: number;
   expiresAt: number;
   source: LootSource;
+  nation?: Colour | string | null | undefined;
   claimed?: boolean | undefined;
   claimedBy?: string | null | undefined;
   claimedAt?: number | null | undefined;

@@ -19,6 +19,8 @@ export interface LootPile {
   ownerUntil: number;
   expiresAt: number;
   claimed: boolean;
+  nation?: string | null;
+  source?: string | null;
 }
 
 export interface QuoteStep {
