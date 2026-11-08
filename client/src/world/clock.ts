@@ -31,7 +31,7 @@ export interface Light {
   intensity: number;
 }
 
-const SUN_LOW = new Color(1.0, 0.5, 0.24);
+const SUN_LOW = new Color(1.0, 0.65, 0.36);
 const SUN_HIGH = new Color(1.0, 0.94, 0.84);
 const MOONLIGHT = new Color(0.62, 0.72, 1.0);
 const FULL_MOONLIGHT = new Color(0.72, 0.84, 1.15);
@@ -113,7 +113,7 @@ export class WorldClock {
     if (sun.y > 0) {
       l.direction.copy(sun);
       l.color.copy(SUN_LOW).lerp(SUN_HIGH, smooth(0.15, 0.75, sun.y));
-      l.intensity = 2.4 * smooth(-0.01, 0.22, sun.y);
+      l.intensity = 2.8 * smooth(-0.01, 0.22, sun.y);
     } else {
       l.direction.copy(MOON);
       l.color.copy(this.isFullMoon ? FULL_MOONLIGHT : MOONLIGHT);

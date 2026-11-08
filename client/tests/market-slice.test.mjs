@@ -111,7 +111,7 @@ test('every approved post is staffed by a built post of its kind, standing clear
   }
 });
 
-test('the 8 m fight centre is clear from end to end', () => {
+test('the 5 m fight centre is clear from end to end', () => {
   const { radius } = balance.controller;
   for (let z = M.street.fight.z0 + radius; z <= M.street.fight.z1 - radius; z += 1) {
     const a = new Vector3(M.street.x0, 1, z), b = new Vector3(M.street.x1, 1, z);

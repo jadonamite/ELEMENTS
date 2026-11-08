@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { readFileSync, readdirSync } from 'node:fs';
+import { BoxGeometry, MeshStandardMaterial, PerspectiveCamera } from 'three';
+import { cellLods } from '../src/world/builder.ts';
+
+const glb = path => {const b=readFileSync(path);return {json:JSON.parse(b.subarray(20,20+b.readUInt32LE(12))),bin:b.subarray(28+b.readUInt32LE(12))};};
+const triangles = j => j.meshes.reduce((n,m)=>n+m.primitives.reduce((n,p)=>n+j.accessors[p.indices].count/3,0),0);
+
+test('offline crowd models preserve material references with fewer triangles and a valid reduced skeleton', () => {
+  const root = new URL('../public/assets/characters/creator/', import.meta.url);
+  for (const file of readdirSync(new URL('far/', root)).filter(f=>f.endsWith('.glb'))) {
+    const near=glb(new URL(file,root)).json, {json:far,bin}=glb(new URL(`far/${file}`,root));
+    assert.ok(triangles(far)<triangles(near)*0.35,file);
+    assert.equal(far.skins[0].joints.length,21,file);
+    const reachable=new Set(),visit=i=>{reachable.add(i);for(const c of far.nodes[i].children??[])visit(c);};
+    for(const i of far.scenes[0].nodes)visit(i);
+    assert.ok(far.skins[0].joints.every(i=>reachable.has(i)),`${file}: every joint is in the scene`);
+    for(const mesh of far.meshes)for(const p of mesh.primitives){
+      const a=far.accessors[p.attributes.JOINTS_0],view=far.bufferViews[a.bufferView];
+      const width=a.componentType===5121?1:2;
+      for(let i=0;i<a.count;i++)for(let k=0;k<4;k++){
+        const at=(view.byteOffset??0)+(a.byteOffset??0)+i*(view.byteStride??4*width)+k*width;
+        assert.ok((width===1?bin[at]:bin.readUInt16LE(at))<far.skins[0].joints.length,`${file}: joint index`);
+      }
+    }
+  }
+});
+
+test('prop instances choose their own detail and disappearance distances inside a large batch', () => {
+  const geometry=new BoxGeometry(),material=new MeshStandardMaterial();
+  const near={geometry,material,castShadow:true,name:'near'},far={...near,name:'far'};
+  const [batch]=cellLods([0,25,90,150].map(x=>({x,y:0,z:0,yaw:0,scale:1})),[{from:0,parts:[near]},{from:20,parts:[far]}],100,300);
+  const camera=new PerspectiveCamera();camera.position.set(0,1,0);camera.updateMatrixWorld();batch.update(camera);
+  assert.equal(batch.children[0].children[0].count,1);
+  assert.equal(batch.children[1].children[0].count,2);
+  camera.position.x=150;camera.updateMatrixWorld();batch.update(camera);
+  assert.equal(batch.children[0].children[0].count,1);
+  assert.equal(batch.children[1].children[0].count,1);
+  camera.position.x=1000;camera.updateMatrixWorld();batch.update(camera);
+  assert.ok(batch.children.every(g=>g.children.every(m=>!m.visible&&m.count===0)));
+});

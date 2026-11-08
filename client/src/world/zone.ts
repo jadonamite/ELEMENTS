@@ -150,7 +150,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   // Sun by day, moon by night (one light, so one shadow map); the town's fires do the rest.
   const sun = new DirectionalLight(0xffffff, 0);
   sun.castShadow = !low;
-  sun.shadow.mapSize.set(low ? 512 : 2048, low ? 512 : 2048);
+  sun.shadow.mapSize.set(low ? 512 : 1024, low ? 512 : 1024);
   const s = sun.shadow.camera;
   const shadowSpan = low ? 25 : 32;
   s.left = -shadowSpan; s.right = shadowSpan; s.top = shadowSpan; s.bottom = -shadowSpan; s.near = 1; s.far = 260;
@@ -162,9 +162,9 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const hemi = new HemisphereLight(0xffffff, 0xffffff, 1);
   scene.add(hemi);
   const look = {
-    daySky: new Color(0xb6c4dc), duskSky: new Color(0xc89a80), nightSky: new Color(0x8496c4),
-    dayGround: new Color(0x6e5644), nightGround: new Color(0x2e1c12),
-    dayFog: new Color(0xb2aca4), duskFog: new Color(0x8a6450), nightFog: new Color(0x161822),
+    daySky: new Color(0xbed4e4), duskSky: new Color(0xc89a80), nightSky: new Color(0x8496c4),
+    dayGround: new Color(0x8a7050), nightGround: new Color(0x2e1c12),
+    dayFog: new Color(0xbcc9ce), duskFog: new Color(0xc2a18b), nightFog: new Color(0x161822),
   };
   const applyHour = (): void => {
     const night = nightness.value, dusk = skyUniforms.uDusk.value * (1 - night);
@@ -173,12 +173,12 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     hemi.color.copy(look.daySky).lerp(look.duskSky, dusk * 0.6).lerp(look.nightSky, night);
     hemi.groundColor.copy(look.dayGround).lerp(look.nightGround, night);
     // Less sky fill as the sun lowers, so its long shadows read; the night's fill comes back with the moon.
-    hemi.intensity = 1.1 - 0.35 * dusk + 0.4 * night;
+    hemi.intensity = 1.0 - 0.30 * dusk + 0.4 * night;
     fog.color.copy(look.dayFog).lerp(look.duskFog, dusk).lerp(look.nightFog, night);
     // Haze down the streets: about a fifth gone at 50 m by day, warmer and a little thicker into the evening smoke.
     fog.density = 0.005 + 0.001 * dusk + 0.0025 * night;
-    scene.environmentIntensity = 0.8 - 0.2 * dusk - 0.2 * night;
-    renderer.toneMappingExposure = 0.9 + 0.7 * night;
+    scene.environmentIntensity = 0.9 - 0.12 * dusk - 0.28 * night;
+    renderer.toneMappingExposure = 0.98 + 0.62 * night;
   };
 
   // Physics: the land and the town's solids over a last floor (town-physics.ts), added once the town is built.
@@ -258,7 +258,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   (plume.material as unknown as { uniforms: Record<string, { value: unknown }> }).uniforms.uColor!.value = new Color(0x1a1614);
   scene.add(plume);
 
-  const pool = new LightPool(scene, builder.emitters, low ? 2 : 8);
+  const pool = new LightPool(scene, builder.emitters, low ? 2 : 6);
 
   // Kit models placed as instances, one draw call per model part.
   // Entry waits for every level and surface before warming the completed scene.

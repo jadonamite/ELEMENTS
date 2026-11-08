@@ -242,6 +242,7 @@ export function lanternString(b: WorldBuilder, p0: [number, number, number], p1:
 /** A red paper lantern: ribbed body, dark caps, a tassel. */
 export function paperLantern(b: WorldBuilder, x: number, y: number, z: number, r = 0.22): void {
   const body: Bucket = 'paper';
+  b.light(x, y, z, 0xffa45b, 3.8, 4.2, 0.04);
   b.add(body, new CylinderGeometry(r * 0.75, r * 0.75, r * 0.3, 10).translate(0, r * 0.95, 0), new Matrix4().makeTranslation(x, y, z));
   b.add(body, new CylinderGeometry(r, r * 0.75, r * 0.5, 10).translate(0, r * 0.55, 0), new Matrix4().makeTranslation(x, y, z));
   b.add(body, new CylinderGeometry(r, r, r * 0.6, 10), new Matrix4().makeTranslation(x, y, z));

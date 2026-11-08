@@ -131,16 +131,29 @@ export class WalkMap {
   }
 
   /** Shortest way between two points along the map, straightened wherever a body can walk the straight line. */
-  route(from: Vector3, to: Vector3): Vector3[] {
+  route(from: Vector3, to: Vector3, danger: readonly Vector3[] = [], radius = 3): Vector3[] {
     const s = this.nearest(from), t = this.nearest(to);
     if (s === null || t === null) return [];
-    const cells = this.search(s, t);
+    const limits = danger.map(p => Math.min(radius, from.distanceTo(p)));
+    const safe = (i: number, j: number): boolean => {
+      if (!danger.length) return true;
+      const steps = Math.max(1, Math.ceil(Math.hypot(this.x[j]! - this.x[i]!, this.z[j]! - this.z[i]!) / 0.5));
+      for (let n = 1; n <= steps; n++) {
+        const t = n / steps;
+        const x = this.x[i]! + (this.x[j]! - this.x[i]!) * t;
+        const y = this.y[i]! + (this.y[j]! - this.y[i]!) * t;
+        const z = this.z[i]! + (this.z[j]! - this.z[i]!) * t;
+        if (danger.some((p, k) => Math.hypot(x - p.x, y - p.y, z - p.z) < limits[k]! - 0.1)) return false;
+      }
+      return true;
+    };
+    const cells = this.search(s, t, safe);
     if (!cells.length) return [];
     const path: Vector3[] = [];
     let anchor = 0;
     while (anchor < cells.length - 1) {
       let next = anchor + 1;
-      while (next + 1 < cells.length && this.passable(cells[anchor]!, cells[next + 1]!)) next++;
+      while (next + 1 < cells.length && this.passable(cells[anchor]!, cells[next + 1]!) && safe(cells[anchor]!, cells[next + 1]!)) next++;
       path.push(new Vector3(this.x[cells[next]!]!, this.y[cells[next]!]!, this.z[cells[next]!]!));
       anchor = next;
     }
@@ -148,7 +161,7 @@ export class WalkMap {
   }
 
   /** A* over the cells. */
-  private search(s: number, t: number): number[] {
+  private search(s: number, t: number, safe: (i: number, j: number) => boolean): number[] {
     const n = this.size;
     const g = new Float64Array(n).fill(Infinity);
     const came = new Int32Array(n).fill(-1);
@@ -180,6 +193,7 @@ export class WalkMap {
       if (done[i]) continue;
       done[i] = 1;
       for (const j of this.links[i]!) {
+        if (!safe(i, j)) continue;
         const step = Math.hypot(this.x[j]! - this.x[i]!, this.y[j]! - this.y[i]!, this.z[j]! - this.z[i]!);
         if (g[i]! + step < g[j]!) { g[j] = g[i]! + step; came[j] = i; push(g[j]! + h(j), j); }
       }

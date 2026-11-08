@@ -36,7 +36,7 @@ export function resolveSurface(surface: Surface, low = false): Surface {
     return surface;
   }
   if (surface === 'river_cobbles') return 'basalt_cobblestone';
-  if (surface === 'dirt_verge') return 'packed_dirt_road';
+
   if (surface === 'moss') return 'ash_cinder_ground';
   if (surface === 'terracotta') return 'sooted_plaster';
   if (surface === 'ash_plaster' || surface === 'lime_plaster') return 'sooted_plaster';
