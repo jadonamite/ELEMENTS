@@ -42,7 +42,7 @@ const BODY_PATH: Record<Sex, string> = {
   female: '/assets/characters/creator/female.glb',
 };
 
-export type OutfitId = 'rags' | 'shaper_ignis' | 'hush_ignis' | 'robber' | 'deserter' | 'warlord_ignis' | 'soldier';
+export type OutfitId = 'rags' | 'shaper_ignis' | 'hush_ignis' | 'hush_aques' | 'hush_aura' | 'robber' | 'deserter' | 'warlord_ignis' | 'soldier';
 
 interface Outfit {
   /** The outfit file per sex; a sex without one wears rags. */
@@ -79,6 +79,8 @@ const OUTFITS: Record<OutfitId, Outfit> = {
     skin: name => name === 'MI_Shaper_Skin',
   },
   hush_ignis: { path: { male: '/assets/characters/people/hush_ignis_male.glb' }, ...person() },
+  hush_aques: { path: { female: '/assets/characters/people/hush_aques_female.glb' }, ...person() },
+  hush_aura: { path: { female: '/assets/characters/people/hush_aura_female.glb' }, ...person() },
   robber: { path: { female: '/assets/characters/people/robber_female.glb' }, ...person() },
   deserter: { path: { male: '/assets/characters/people/deserter_male.glb' }, ...person() },
   warlord_ignis: { path: { female: '/assets/characters/people/warlord_ignis_female.glb' }, ...person() },
