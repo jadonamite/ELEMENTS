@@ -19,6 +19,7 @@ import {
   PointLight,
   RingGeometry,
   type Scene,
+  Vector2,
   Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -139,29 +140,79 @@ function createMoteTexture(): CanvasTexture | null {
   return tex;
 }
 
-/** Procedural wood plank diffuse texture with horizontal timber grain. */
+/** Procedural brown oak wood plank diffuse texture with prominent timber grain and no red tint. */
 function createWoodTexture(): CanvasTexture | null {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
-  const size = 256;
+  const size = 512;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.fillStyle = '#7a4b2a';
+
+  // Base earthy brown oak (neutral warm umber/ochre, strictly no red tint)
+  ctx.fillStyle = '#685038';
   ctx.fillRect(0, 0, size, size);
-  const plankH = 64;
+
+  // 4 horizontal oak planks with subtle individual board shade differences
+  const plankH = 128;
+  const plankShades = ['#6b523a', '#624a34', '#6d543c', '#5f4731'];
   for (let p = 0; p < 4; p++) {
-    const shade = p % 2 === 0 ? 'rgba(142, 88, 50, 0.25)' : 'rgba(100, 58, 30, 0.25)';
-    ctx.fillStyle = shade;
+    ctx.fillStyle = plankShades[p]!;
     ctx.fillRect(0, p * plankH, size, plankH);
-    ctx.fillStyle = 'rgba(40, 22, 10, 0.85)';
-    ctx.fillRect(0, p * plankH, size, 2);
   }
+
+  // Draw natural oak grain striations (wavy fiber lines with rays and pores)
   for (let y = 0; y < size; y += 2) {
-    const alpha = 0.04 + 0.07 * Math.sin(y * 0.45 + Math.sin(y * 0.1) * 3);
-    ctx.fillStyle = `rgba(45, 24, 12, ${alpha.toFixed(3)})`;
-    ctx.fillRect(0, y, size, 1.5);
+    const isSeam = (y % plankH) < 4 || (y % plankH) > (plankH - 2);
+    if (isSeam) continue;
+
+    // Organic wavy grain path across the board
+    const grainWave = Math.sin(y * 0.12) * 12 + Math.sin(y * 0.035) * 24;
+    const waveFreq = 0.035 + 0.015 * Math.sin(y * 0.05);
+
+    // Dark oak grain line
+    const darkAlpha = 0.06 + 0.10 * Math.sin(y * 0.75 + Math.sin(y * 0.15) * 2.5);
+    if (darkAlpha > 0.04) {
+      ctx.fillStyle = `rgba(38, 27, 17, ${darkAlpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= size; x += 16) {
+        const gy = y + Math.sin((x + grainWave) * waveFreq) * 2.2;
+        ctx.lineTo(x, gy);
+      }
+      ctx.lineTo(size, y + 1.5);
+      ctx.lineTo(0, y + 1.5);
+      ctx.fill();
+    }
+
+    // Light ray fleck / golden pore accents
+    const lightAlpha = 0.04 + 0.06 * Math.cos(y * 0.55);
+    if (lightAlpha > 0.03) {
+      ctx.fillStyle = `rgba(138, 110, 80, ${lightAlpha.toFixed(3)})`;
+      ctx.fillRect(0, y, size, 1);
+    }
   }
+
+  // Fine longitudinal pores / fiber noise scattered across timber
+  for (let i = 0; i < 400; i++) {
+    const px = Math.floor((Math.sin(i * 17.3) * 0.5 + 0.5) * (size - 18));
+    const py = Math.floor((Math.sin(i * 41.7) * 0.5 + 0.5) * (size - 2));
+    const poreLen = 6 + (i % 12);
+    ctx.fillStyle = 'rgba(32, 22, 14, 0.22)';
+    ctx.fillRect(px, py, poreLen, 1);
+  }
+
+  // Dark plank v-groove joints between horizontal boards with top bevel highlight
+  for (let p = 0; p < 4; p++) {
+    const sy = p * plankH;
+    ctx.fillStyle = 'rgba(22, 15, 10, 0.95)';
+    ctx.fillRect(0, sy - 2, size, 3);
+    ctx.fillStyle = 'rgba(28, 20, 14, 0.65)';
+    ctx.fillRect(0, sy + 1, size, 1);
+    ctx.fillStyle = 'rgba(148, 120, 90, 0.35)';
+    ctx.fillRect(0, sy + 2, size, 1);
+  }
+
   const tex = new CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = 1000;
   tex.needsUpdate = true;
@@ -171,25 +222,31 @@ function createWoodTexture(): CanvasTexture | null {
 /** Procedural wood normal map providing plank grooves and fine timber grain. */
 function createWoodNormalMap(): CanvasTexture | null {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
-  const size = 256;
+  const size = 512;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
+
   ctx.fillStyle = 'rgb(128, 128, 255)';
   ctx.fillRect(0, 0, size, size);
-  const plankH = 64;
+
+  const plankH = 128;
   for (let p = 0; p < 4; p++) {
-    ctx.fillStyle = 'rgb(128, 85, 240)';
-    ctx.fillRect(0, p * plankH - 1, size, 1);
-    ctx.fillStyle = 'rgb(128, 170, 240)';
-    ctx.fillRect(0, p * plankH + 1, size, 1);
+    const sy = p * plankH;
+    ctx.fillStyle = 'rgb(128, 70, 245)';
+    ctx.fillRect(0, sy - 2, size, 2);
+    ctx.fillStyle = 'rgb(128, 185, 245)';
+    ctx.fillRect(0, sy + 1, size, 2);
   }
+
   for (let y = 0; y < size; y += 4) {
-    const g = Math.floor(128 + 14 * Math.sin(y * 0.75));
+    const wave = Math.sin(y * 0.85);
+    const g = Math.floor(128 + 18 * wave);
     ctx.fillStyle = `rgb(128, ${g}, 250)`;
     ctx.fillRect(0, y, size, 2);
   }
+
   const tex = new CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = 1000;
   tex.needsUpdate = true;
@@ -199,26 +256,29 @@ function createWoodNormalMap(): CanvasTexture | null {
 /** Procedural hammered metal normal map for forged iron fittings and straps. */
 function createIronNormalMap(): CanvasTexture | null {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
-  const size = 128;
+  const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
+
   ctx.fillStyle = 'rgb(128, 128, 255)';
   ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 80; i++) {
-    const x = (i * 37) % size;
-    const y = (i * 59) % size;
-    const r = 3 + (i % 3);
+
+  for (let i = 0; i < 140; i++) {
+    const x = (i * 47) % size;
+    const y = (i * 73) % size;
+    const r = 4 + (i % 4);
     const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, 'rgb(136, 136, 255)');
-    grad.addColorStop(0.7, 'rgb(120, 120, 245)');
+    grad.addColorStop(0, 'rgb(138, 138, 255)');
+    grad.addColorStop(0.65, 'rgb(118, 118, 240)');
     grad.addColorStop(1, 'rgb(128, 128, 255)');
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
   }
+
   const tex = new CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = 1000;
   tex.needsUpdate = true;
@@ -253,6 +313,7 @@ export class WorldLoot {
   private pollIn = 0;
   private polling = false;
   private time = 0;
+  private fxVisible = true;
   /** Off once the room pushes piles. */
   pollServer = true;
 
@@ -300,18 +361,20 @@ export class WorldLoot {
     scene.add(this.root);
 
     this.woodMat = new MeshStandardMaterial({
-      color: 0x764627,
+      color: 0xffffff,
       map: this.woodTex,
       normalMap: this.woodNorm,
-      roughness: 0.65,
-      metalness: 0.02,
+      normalScale: new Vector2(1.2, 1.2),
+      roughness: 0.92,
+      metalness: 0.0,
     });
 
     this.ironMat = new MeshStandardMaterial({
-      color: 0x545d6a,
+      color: 0x303337,
       normalMap: this.ironNorm,
-      roughness: 0.38,
-      metalness: 0.86,
+      normalScale: new Vector2(1.0, 1.0),
+      roughness: 0.70,
+      metalness: 0.78,
     });
 
     const createMoteMat = (col: Color): MeshBasicMaterial => {
@@ -551,6 +614,37 @@ export class WorldLoot {
     if (!this.shown.has(pile.id)) this.show(pile);
   }
 
+  getPile(id: string): LootPile | undefined {
+    return this.shown.get(id)?.pile;
+  }
+
+  getPileState(id: string): { inScene: boolean; lidAngleRad: number; lidAngleDeg: number; opening: boolean; claimDone: boolean } | null {
+    const s = this.shown.get(id);
+    if (!s) return null;
+    const lidAngleRad = s.lid.rotation.x;
+    const lidAngleDeg = +(lidAngleRad * (180 / Math.PI)).toFixed(1);
+    return {
+      inScene: s.mesh.visible,
+      lidAngleRad,
+      lidAngleDeg,
+      opening: s.opening,
+      claimDone: s.claimDone,
+    };
+  }
+
+  setFXVisible(enabled: boolean): void {
+    this.fxVisible = enabled;
+    for (const s of this.shown.values()) {
+      s.glow.visible = enabled;
+      s.seam.visible = enabled;
+      s.crest.visible = enabled;
+      s.motes.visible = enabled;
+    }
+    for (const light of this.lights) {
+      if (!enabled) light.intensity = 0;
+    }
+  }
+
   // A pile someone took or that expired.
   remove(id: string): void {
     const s = this.shown.get(id);
@@ -594,6 +688,18 @@ export class WorldLoot {
         s.burst.visible = false;
       }
 
+      if (!this.fxVisible) {
+        s.glow.visible = false;
+        s.seam.visible = false;
+        s.crest.visible = false;
+        s.motes.visible = false;
+      } else {
+        s.glow.visible = true;
+        s.seam.visible = true;
+        s.crest.visible = true;
+        s.motes.visible = true;
+      }
+
       const nation = this.resolveNation(s.pile.nation);
       const theme = this.themes[nation];
 
@@ -624,13 +730,14 @@ export class WorldLoot {
     );
     this.lights.forEach((light, i) => {
       const s = nearest[i];
-      if (s) {
+      if (s && this.fxVisible) {
         const nation = this.resolveNation(s.pile.nation);
         const theme = this.themes[nation];
         light.color.setHex(theme.lightHex);
+        light.distance = 2.5;
         light.intensity = s.opening ? 2.4 * Math.max(0, 1 - s.openProgress * 0.5) : 1.2;
         light.position.copy(s.mesh.position);
-        light.position.y += 0.52;
+        light.position.y += 0.04;
       } else {
         light.intensity = 0;
       }
@@ -839,12 +946,15 @@ export class WorldLoot {
     const glow = g.getObjectByName('ground-glow') as Mesh<PlaneGeometry, MeshBasicMaterial>;
     glow.material = theme.poolMat;
     glow.scale.set(1, 1, 1);
+    glow.visible = this.fxVisible;
 
     const seam = g.getObjectByName('seam-glow') as Mesh<BoxGeometry, MeshBasicMaterial>;
     seam.material = theme.seamMat;
+    seam.visible = this.fxVisible;
 
     const crest = g.getObjectByName('chest-crest') as Mesh<OctahedronGeometry, MeshBasicMaterial>;
     crest.material = theme.seamMat;
+    crest.visible = this.fxVisible;
 
     const burst = g.getObjectByName('chest-burst') as Mesh<RingGeometry, MeshBasicMaterial>;
     burst.material = theme.burstMat;
@@ -855,6 +965,7 @@ export class WorldLoot {
 
     const motes = g.getObjectByName('motes') as InstancedMesh<PlaneGeometry, MeshBasicMaterial>;
     motes.material = theme.moteMat;
+    motes.visible = this.fxVisible;
     for (let i = 0; i < MOTE_DEFS.length; i++) {
       motes.setColorAt(i, theme.moteColor);
     }
