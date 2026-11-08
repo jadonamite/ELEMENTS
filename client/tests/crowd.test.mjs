@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Group, Scene, Vector3 } from 'three';
-import { makeCrowd } from '../src/life/crowd.ts';
+import { drawnCrowd, makeCrowd, staffPosts } from '../src/life/crowd.ts';
 import { TownManager } from '../src/life/town-manager.ts';
 import { CombatSpace } from '../src/attacks/space.ts';
 
@@ -16,6 +16,18 @@ test('a crowd of 150 wears 30 looks, every person named once, about one in five 
   const lit = people.filter(p => p.isLit).length;
   assert.ok(lit > 15 && lit < 45, `lit ${lit}`);
   assert.deepEqual(makeCrowd(150, 30).people.map(p => p.name), people.map(p => p.name), 'same seed, same crowd');
+});
+
+test('only sheet people are drawn in town; posts no sheet person can keep stay empty', () => {
+  const all = makeCrowd(150, 30);
+  const { looks, people } = drawnCrowd(all);
+  assert.ok(looks.length > 0 && looks.length < 30, `drawn looks ${looks.length}`);
+  assert.ok(looks.every(l => l.outfit), 'every drawn look is a sheet person');
+  assert.ok(people.every(p => looks.some(l => l.id === p.look)), 'every drawn person wears a drawn look');
+  assert.ok(!people.some(p => p.role === 'child' || p.role === 'guard'), 'no sheet yet for children or guards');
+  const at = (kind) => ({ kind, x: 0, y: 0, z: 0, facing: 0, hours: 'day' });
+  const keepers = staffPosts([at('sentry'), at('keeper'), at('guard')], { looks, people }, []);
+  assert.ok(keepers.every(k => k.role !== 'guard'), 'no guard post staffed without a guard sheet');
 });
 
 test('wanderers stand and walk only on open street, and step aside for the hero', async () => {

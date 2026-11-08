@@ -40,16 +40,31 @@ export const CLOTH: Record<TownsfolkRole, readonly number[]> = {
   child: [0xd0b490, 0xc29a78, 0xb87a5a],
 };
 
-/** A look rolled for a trade and sex, varied in every part the body kit offers. */
-/** Sindr's Hush as drawn on the character sheets; adults only, and one in three, so the street stays mixed. */
+/** Sindr's Hush as drawn on the character sheets. Children and guards have no sheet yet. */
 const SHEET_TOWNSFOLK: readonly OutfitId[] = ['hush_ignis'];
-const SHEET_SHARE = 1 / 3;
 
 function sheetPerson(role: TownsfolkRole, sex: 'male' | 'female', r: () => number): OutfitId | undefined {
   if (role === 'child' || role === 'guard') return undefined;
   const fits = SHEET_TOWNSFOLK.filter(o => outfitFits(o, sex));
-  return fits.length && r() < SHEET_SHARE ? pick(r, fits) : undefined;
+  return fits.length ? pick(r, fits) : undefined;
 }
+
+/**
+ * Only sheet people are drawn in town: creator bodies beside them read as toys. A look with no sheet person
+ * for its trade and sex stays in the crowd's data and appears once its sheet is built.
+ */
+export function drawnInTown(look: Look): boolean {
+  return look.outfit !== undefined;
+}
+
+/** The part of a crowd that is drawn in town. */
+export function drawnCrowd(crowd: Crowd): Crowd {
+  const looks = crowd.looks.filter(drawnInTown);
+  const ids = new Set(looks.map(l => l.id));
+  return { looks, people: crowd.people.filter(p => ids.has(p.look!)) };
+}
+
+/** A look rolled for a trade and sex, varied in every part the body kit offers. */
 
 export function rollLook(id: string, role: TownsfolkRole, sex: 'male' | 'female', r: () => number): Look {
   const hairs = HAIR_STYLE_OPTIONS.filter(h => h.allowedSex.includes(sex));
@@ -147,9 +162,11 @@ export function staffPosts(posts: readonly Post[], crowd: Crowd, named: readonly
   const out: Townsperson[] = [];
   for (const [i, post] of posts.entries()) {
     if (named.some(n => Math.hypot(n.schedule.work.x - post.x, n.schedule.work.z - post.z) < 2.5)) continue;
-    const role = pick(r, POST_ROLE[post.kind]);
-    const looks = crowd.looks.filter(l => lookRole.get(l.id) === role);
-    const look = pick(r, looks.length ? looks : crowd.looks);
+    // Only trades the crowd has looks for; a post no one can keep stays empty.
+    const roles = POST_ROLE[post.kind].filter(ro => crowd.looks.some(l => lookRole.get(l.id) === ro));
+    if (!roles.length) continue;
+    const role = pick(r, roles);
+    const look = pick(r, crowd.looks.filter(l => lookRole.get(l.id) === role));
     const sex = look.config.sex;
     let name = '';
     for (let tries = 0; tries < 40 && (!name || used.has(name)); tries++) {
