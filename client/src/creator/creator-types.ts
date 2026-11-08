@@ -56,6 +56,7 @@ export interface CharacterConfig {
 /** People from the character sheets a player can start as, in their plain clothes. */
 export const PLAYER_PEOPLE: ReadonlyArray<{ id: string; sex: Sex; label: string }> = [
   { id: 'hush_ignis', sex: 'male', label: 'Forge hand of Sindr' },
+  { id: 'hush_ignis', sex: 'female', label: 'Forge hand of Sindr' },
 ];
 
 function defaultPerson(sex: Sex): string | undefined {
