@@ -3,7 +3,7 @@ import { SINDR_ANCHORS } from '../../../shared/src/world/ignis/sindr.js';
 import type { PostKind, WorldBuilder } from './builder.js';
 import { rectArea, type Area, type Rect } from './levels.js';
 import { stairRun, stairs } from './stairs.js';
-import { goodsTable, lampPost, lanternString, paveStreet, parkedCart } from './street.js';
+import { streetMarket, lampPost, lanternString, paveStreet, parkedCart, goodsTable } from './street.js';
 import { marketStall, noticeBoard, townHouse, type FrontRoom } from './style-kit.js';
 import { dressTerrace, retainingWall, terraceTop } from './walls.js';
 import { archBridge, balustrade, canal } from './water-works.js';
@@ -60,6 +60,7 @@ export function buildMarket(b: WorldBuilder, rand: () => number): Area[] {
   street_(b, rand);
   shells(b, rand);
   stallsAndPosts(b, rand);
+  laneEdges(b);
   b.at(0, 0, 0);
   return areas;
 }
@@ -176,7 +177,8 @@ function shells(b: WorldBuilder, rand: () => number): void {
       // On the street every house without the shell's door keeps a shop; up on the terrace they are homes.
       const shop = span.shop ?? (shell.face === 'north' && !span.room && !hasDoor && rand() < 0.8);
       townHouse(b, {
-        x: cx, z: cz, y: shell.y, yaw, w, d, floors: 2, rank: shell.rank, ...(span.room ? { room: span.room } : {}),
+        x: cx, z: cz, y: shell.y, yaw, w, d, floors: 2,
+        rank: shell.face === 'north' ? 'guild' : shell.rank, ...(span.room ? { room: span.room } : {}),
         shop, wares: shell.face === 'north', ...(doorAt !== undefined ? { door: doorAt } : {}),
         balcony: shell.rank !== 'common' || rand() < 0.4, sign: shop || span.room ? 3 : rand() < 0.5 ? 2 : 0,
         awning: shop, lantern: shell.rank !== 'common' || span.room !== undefined || rand() < 0.4, footing: shell.face === 'south' ? 1.6 : 0.8,
@@ -227,4 +229,11 @@ function stallsAndPosts(b: WorldBuilder, rand: () => number): void {
   b.prop('crate', hide.x - 1, hide.z + 1.5, 0.4, 0.9); b.prop('barrel', hide.x + 0.9, hide.z + 2.4, 0, 0.9);
   b.solid(hide.x - 1, 0.4, hide.z + 1.5, 0.9, 0.8, 0.9);
   b.solid(hide.x + 0.9, 0.45, hide.z + 2.4, 0.8, 0.9, 0.8);
+}
+
+/** Goods spill into the old lane margins while the central five metres and bridge approach stay open. */
+function laneEdges(b: WorldBuilder): void {
+  const doors = M.posts.filter(p => p.y === M.terrace.y).map((p): [number, number] => [p.x - 2, p.x + 2]);
+  streetMarket(b, M.street.x0, M.street.x1, M.street.y, [[120, 130], ...doors], [[120, 134]],
+    { z: M.upperWalk.z0 + 1, y: M.terrace.y });
 }

@@ -10,7 +10,7 @@ import { MARKET_SLICE } from '../../../shared/src/world/ignis/market-slice.js';
 import { buildMarket } from './market.js';
 import { stairRun, stairs } from './stairs.js';
 import { compoundWall, hall, roofedGate, stall, townHouse, well, type Rank } from './style-kit.js';
-import { awning, clutter, handCart, lampPost, lanternString, paperLantern, parkedCart, paveStreet, runnel, timberStack, wetPatch, type Strip } from './street.js';
+import { awning, clutter, handCart, lampPost, lanternString, paperLantern, parkedCart, paveStreet, runnel, streetMarket, timberStack, wetPatch, type Strip } from './street.js';
 import { dressTerrace, planter, retainingWall, terraceTop } from './walls.js';
 
 /**
@@ -197,6 +197,7 @@ function cinderRow(b: WorldBuilder, rand: () => number): void {
     b.plant(rand() < 0.6 ? 'weed' : 'fern', x, RUNNEL_Z - 0.9, 0.5 + rand() * 0.6, 0, rand() * 6);
     if (rand() < 0.5) b.plant('weed', x + rand(), 7.6 + rand() * 0.3, 0.6 + rand() * 0.6, 0, rand() * 6);
   }
+  for (const [x0, x1] of spans) streetMarket(b, x0, x1, 0, [], [[FORGE_LANE.x0, FORGE_LANE.x1], [183, 195]]);
 }
 /** Yaw for a front facing north (local +z turned to -z). */
 const UP_FACE = Math.PI;

@@ -36,7 +36,7 @@ export function resolveSurface(surface: Surface, low = false): Surface {
     return surface;
   }
   if (surface === 'river_cobbles') return 'basalt_cobblestone';
-  if (surface === 'dirt_verge') return 'packed_dirt_road';
+
   if (surface === 'moss') return 'ash_cinder_ground';
   if (surface === 'terracotta') return 'sooted_plaster';
   if (surface === 'ash_plaster' || surface === 'lime_plaster') return 'sooted_plaster';
@@ -68,7 +68,7 @@ export interface SurfaceLook {
 
 /** Repeat size and grade per scanned surface, pushed toward black basalt and soot. */
 export const LOOKS: Record<Surface, SurfaceLook> = {
-  basalt_cobblestone: { tile: 2.6, tint: 0x8a8580, scan: 0.224, albedo: 0.1, normalScale: 1.2 },
+  basalt_cobblestone: { tile: 2.6, tint: 0x9c866a, scan: 0.224, albedo: 0.115, normalScale: 0.85 },
   basalt_rock_face: { tile: 6, tint: 0x6e6862, scan: 0.14, albedo: 0.09, normalScale: 1.4 },
   ash_cinder_ground: { tile: 4, tint: 0x9a918a, scan: 0.094, albedo: 0.11 },
   cooled_lava_crust: { tile: 3, tint: 0x7a7470, scan: 0.095, albedo: 0.07 },
@@ -80,7 +80,7 @@ export const LOOKS: Record<Surface, SurfaceLook> = {
   sooted_plaster: { tile: 3, tint: 0x8a8580, scan: 0.234, albedo: 0.11 },
   // The palace and temple family: lime plaster, lacquered timber, pale floor stone, curved tile roofs, gold trim.
   lime_plaster: { tile: 3.5, tint: 0xf2ebe0, scan: 0.246, albedo: 0.42, normalScale: 0.8, source: 'clean_plaster' },
-  red_lacquer: { tile: 2.4, tint: 0xa3170e, scan: 0.202, albedo: 0.1, roughness: 0.55, normalScale: 0.5, source: 'charred_timber_beams' },
+  red_lacquer: { tile: 2.4, tint: 0x7e261c, scan: 0.202, albedo: 0.075, roughness: 0.34, normalScale: 0.5, source: 'charred_timber_beams' },
   pale_stone: { tile: 3.2, tint: 0xd9d2c6, scan: 0.036, albedo: 0.32, source: 'ashlar_stone_blocks' },
   roof_tile_charcoal: { tile: 2.4, tint: 0x6a6866, scan: 0.243, albedo: 0.07, normalScale: 0.6, source: 'roof_slates', courses: { rows: 8, courses: 7 } },
   roof_tile_red: { tile: 2.4, tint: 0x8c2a1e, scan: 0.243, albedo: 0.08, normalScale: 0.6, source: 'roof_slates', courses: { rows: 8, courses: 7 } },
@@ -88,7 +88,7 @@ export const LOOKS: Record<Surface, SurfaceLook> = {
   moss: { tile: 3, tint: 0x56603a, scan: 0.094, albedo: 0.055, normalScale: 1.4, source: 'ash_cinder_ground' },
   terracotta: { tile: 1.5, tint: 0x8a5e4a, scan: 0.234, albedo: 0.13, source: 'sooted_plaster' },
   // The street: big worn flagstones down the middle, rounded cobbles in bands, packed earth at the edges.
-  worn_flagstones: { tile: 7, tint: 0x8c8a88, scan: 0.276, albedo: 0.13, normalScale: 1.3 },
+  worn_flagstones: { tile: 7, tint: 0xb39a7c, scan: 0.276, albedo: 0.16, normalScale: 0.65 },
   river_cobbles: { tile: 2.2, tint: 0x9a948c, scan: 0.224, albedo: 0.15, normalScale: 1.5, source: 'basalt_cobblestone' },
   dirt_verge: { tile: 3.5, tint: 0x8a7a6a, scan: 0.046, albedo: 0.1, source: 'packed_dirt_road', overlay: true },
   // Sindr's plaster: lime washed over and greyed by the forges' ash, never the clean white of a lowland town.
@@ -97,6 +97,13 @@ export const LOOKS: Record<Surface, SurfaceLook> = {
   raw_timber: { tile: 2.0, tint: 0x9a7656, scan: 0.202, albedo: 0.17, source: 'charred_timber_beams' },
   gold_trim: { tile: 1.5, tint: 0xd8a84a, scan: 1, albedo: 0.55, roughness: 0.32, metal: 1 },
 };
+
+/** Linear colour multiplier that grades a scan to the surface's requested albedo. */
+export function surfaceColor(surface: Surface): Color {
+  const look = LOOKS[surface];
+  const color = new Color(look.tint ?? 0xffffff);
+  return color.multiplyScalar(look.albedo / look.scan / (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b));
+}
 
 /** Rounded cover tiles and overlapping courses, as shading and a derivative bump over the scanned base. */
 function addCourses(material: MeshStandardMaterial, rows: number, courses: number): void {
@@ -125,6 +132,30 @@ function addCourses(material: MeshStandardMaterial, rows: number, courses: numbe
   material.customProgramCacheKey = () => `courses-${rows}-${courses}`;
 }
 
+/** Damp stone and shallow pools share the paving draw, with the scanned texture visible under the film. */
+function addStreetWetness(material: MeshStandardMaterial): void {
+  material.envMapIntensity = 2.0;
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vStreetPos;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvStreetPos = (modelMatrix * vec4(position, 1.0)).xz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vStreetPos;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        float wetShape = sin(vStreetPos.x * 0.9 + sin(vStreetPos.y * 0.6))
+          * sin(vStreetPos.y * 0.73 + sin(vStreetPos.x * 0.38));
+        float streetWet = smoothstep(-0.15, 0.65, wetShape);
+        diffuseColor.rgb *= mix(1.0, 0.62, streetWet);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = mix(max(roughnessFactor, 0.72), 0.075, streetWet);`)
+      .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+        #if defined(RE_IndirectSpecular)
+          radiance *= mix(1.0, 1.8, streetWet);
+        #endif`);
+  };
+  material.customProgramCacheKey = () => 'street-wetness-1';
+}
+
 export class SurfaceLibrary {
   private readonly loader: KTX2Loader;
   private readonly cache = new Map<Surface, MeshStandardMaterial>();
@@ -143,9 +174,8 @@ export class SurfaceLibrary {
     const look = LOOKS[canonical];
     const files = look.source ?? canonical;
     // Colour = the tint's hue scaled so the textured surface lands on its target albedo.
-    const color = new Color(look.tint ?? 0xffffff);
-    color.multiplyScalar(look.albedo / look.scan / (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b));
-    const material = new MeshStandardMaterial({ color, roughness: look.roughness ?? 1, metalness: 0 });
+    const color = surfaceColor(canonical);
+    const material = new MeshStandardMaterial({ color, vertexColors: !look.overlay, roughness: look.roughness ?? 1, metalness: 0 });
     if (look.metal) {
       material.color.setHex(look.tint ?? 0xffffff);
       material.metalness = look.metal;
@@ -154,6 +184,7 @@ export class SurfaceLibrary {
       return material;
     }
     if (look.courses) addCourses(material, look.courses.rows, look.courses.courses);
+    if (canonical === 'worn_flagstones' || canonical === 'basalt_cobblestone') addStreetWetness(material);
     if (look.overlay) {
       material.transparent = true;
       material.vertexColors = true;

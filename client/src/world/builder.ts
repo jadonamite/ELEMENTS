@@ -18,9 +18,10 @@ import {
   Shape,
   Vector3,
   type Material,
+  type Camera,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LOOKS, resolveSurface, worldUv, type Surface } from './materials.js';
+import { LOOKS, resolveSurface, surfaceColor, worldUv, type Surface } from './materials.js';
 import { roof } from './roofs.js';
 
 export type PlantKind = 'ginkgo' | 'maple' | 'weed' | 'fern';
@@ -85,13 +86,7 @@ export function seeded(seed: number): () => number {
 
 const up = new Vector3(0, 1, 0);
 
-/**
- * Ground cells. The town is drawn per cell rather than as one mesh per material across the whole world, so
- * the renderer's frustum test skips what is behind the camera or outside the sun's shadow box. Bigger cells
- * mean fewer draw calls, smaller ones tighter culling: merged building pieces use 80 m cells (a street block);
- * props and plants use 40 m cells, because they also switch detail by distance from their cell's centre
- * (see cellLods) and a big cell would keep far items at full detail.
- */
+/** Architecture and props share large material batches; each prop still selects detail by its own distance. */
 export const BUILD_CELL = 300;
 export const PROP_CELL = 300;
 const cellKey = (x: number, z: number, size: number): string => `${Math.floor(x / size)},${Math.floor((z + 250) / size)}`;
@@ -111,36 +106,59 @@ export interface Placement { x: number; y: number; z: number; yaw: number; scale
 export interface Part { geometry: BufferGeometry; material: Material; local?: Matrix4 | undefined; castShadow: boolean; name: string }
 
 /**
- * Instanced placements as one LOD per ground cell. Level k draws its parts from `levels[k].from` metres
- * (camera to cell centre) on; past `hideAt` the cell draws nothing. Distances are padded by the cell's
- * half-diagonal so the farthest item of a cell is never cut early.
+ * Instanced placements batched per ground cell and material. Each placement picks its own detail level
+ * from its distance to the camera; placements beyond hideAt are omitted from the instance buffer.
  */
 export function cellLods(items: Placement[], levels: Array<{ from: number; parts: Part[] }>, hideAt: number, cellSize = PROP_CELL): LOD[] {
-  const pad = cellSize * 0.71;
   const m = new Matrix4(), q = new Quaternion(), s = new Vector3();
   return byCell(items, cellSize).map((cell) => {
     const centre = cell.reduce((c, p) => c.add(new Vector3(p.x, p.y, p.z)), new Vector3()).divideScalar(cell.length);
     const lod = new LOD();
     lod.position.copy(centre);
-    levels.forEach((level, k) => {
+    const transforms = cell.map(p => m.compose(new Vector3(p.x - centre.x, p.y - centre.y, p.z - centre.z),
+      q.setFromAxisAngle(up, p.yaw), s.setScalar(p.scale)).clone());
+    const batches = levels.map(level => {
       const group = new Group();
-      for (const part of level.parts) {
+      const meshes = level.parts.map(part => {
         const inst = new InstancedMesh(part.geometry, part.material, cell.length);
-        cell.forEach((p, i) => {
-          q.setFromAxisAngle(up, p.yaw);
-          m.compose(new Vector3(p.x - centre.x, p.y - centre.y, p.z - centre.z), q, s.setScalar(p.scale));
-          if (part.local) m.multiply(part.local);
-          inst.setMatrixAt(i, m);
-        });
+        transforms.forEach((matrix, i) => inst.setMatrixAt(i, part.local ? m.copy(matrix).multiply(part.local) : matrix));
         inst.castShadow = part.castShadow;
         inst.receiveShadow = true;
         inst.name = part.name;
         inst.computeBoundingSphere();
         group.add(inst);
-      }
-      lod.addLevel(group, k === 0 ? 0 : level.from + pad);
+        return inst;
+      });
+      lod.add(group);
+      return meshes;
     });
-    lod.addLevel(new Group(), hideAt + pad);
+    const eye = new Vector3();
+    const counts = new Uint32Array(levels.length);
+    // Keep each material batched while selecting detail and culling by the actual placement distance.
+    lod.update = (camera: Camera): void => {
+      eye.setFromMatrixPosition(camera.matrixWorld);
+      counts.fill(0);
+      for (let i = 0; i < cell.length; i++) {
+        const p = cell[i]!;
+        const distance = Math.hypot(eye.x - p.x, eye.y - p.y, eye.z - p.z) / ('zoom' in camera ? Number(camera.zoom) : 1);
+        if (distance > hideAt) continue;
+        let level = 0;
+        while (level + 1 < levels.length && distance >= levels[level + 1]!.from) level++;
+        const n = counts[level]!;
+        for (const [k, inst] of batches[level]!.entries()) {
+          const local = levels[level]!.parts[k]!.local;
+          inst.setMatrixAt(n, local ? m.copy(transforms[i]!).multiply(local) : transforms[i]!);
+        }
+        counts[level] = n + 1;
+      }
+      batches.forEach((batch, k) => {
+        for (const mesh of batch) {
+          mesh.visible = counts[k]! > 0;
+          mesh.count = counts[k]!;
+          mesh.instanceMatrix.needsUpdate = true;
+        }
+      });
+    };
     return lod;
   });
 }
@@ -153,6 +171,7 @@ const SHADOW_CASTERS = new Set<Bucket>([
   'sooted_plaster',
   'roof_tile_charcoal',
   'red_lacquer',
+  'indigo_cloth',
 ]);
 
 export class WorldBuilder {
@@ -182,11 +201,20 @@ export class WorldBuilder {
 
   /** Adds a piece in the current frame. Local UVs keep a box face's own 0..1 range scaled by size/tile. */
   add(bucket: Bucket, geometry: BufferGeometry, local: Matrix4, localUv?: { u: number; v: number }): void {
-    if (this.low && (bucket === 'wet' || bucket === 'ao')) return;
+    if (this.low && (bucket === 'wet' || bucket === 'ao' || bucket === 'dirt_verge')) return;
     const b = !GLOWS.includes(bucket as Glow)
       ? resolveSurface(bucket as Surface, this.low)
       : bucket;
     let g = geometry.index ? geometry.toNonIndexed() : geometry;
+    // Preserve each surface's grade while sharing a material and draw call with its scan family.
+    if (!GLOWS.includes(bucket as Glow) && !LOOKS[bucket as Surface].overlay) {
+      const tint = surfaceColor(bucket as Surface), base = surfaceColor(b as Surface);
+      const colors = new Float32Array(g.getAttribute('position').count * 3);
+      for (let i = 0; i < colors.length; i += 3) {
+        colors[i] = tint.r / base.r; colors[i + 1] = tint.g / base.g; colors[i + 2] = tint.b / base.b;
+      }
+      g.setAttribute('color', new BufferAttribute(colors, 3));
+    }
     if (localUv) {
       const uv = g.getAttribute('uv');
       for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * localUv.u, uv.getY(i) * localUv.v);

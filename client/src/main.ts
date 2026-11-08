@@ -387,7 +387,11 @@ async function main(): Promise<void> {
         hasBounty: townEconomy?.standing.hasBounty ?? false,
       }),
       onNotice: (msg) => notice(msg),
-      getThreats: () => fight.enemies.filter(e => e.alive && !e.challenging).map(e => e.controller.position),
+      warm: zone.warm,
+      getThreats: () => {
+        const foes = fight.enemies.filter(e => e.alive && !e.challenging).map(e => e.controller.position);
+        return foes.some(at => at.distanceTo(controller.position) < 24) ? [controller.position, ...foes] : foes;
+      },
       space,
       posts: zone.posts,
       browse: zone.browse,

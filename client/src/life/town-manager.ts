@@ -7,18 +7,19 @@ import {
   type Townsperson,
   getTownspersonActivity,
 } from './townsfolk.js';
+import { CrowdOcclusion, hidesHero } from './occlusion.js';
 import { WalkMap, type WalkBounds, type WaterQuery } from './walk-map.js';
 import { MARKET_SLICE, waterAt } from '../../../shared/src/world/ignis/market-slice.js';
 import { IDLE, walkFor, type TownsfolkBody } from './townsfolk-bodies.js';
 import type { CombatSpace } from '../attacks/space.js';
-import type { Browse } from '../world/builder.js';
+import type { Browse, Post } from '../world/builder.js';
 
 /** Beyond this a townsperson is neither drawn nor animated. */
 const DRAW_DISTANCE = 60;
 /** At most this many people are drawn at once: the nearest in view. */
 const DRAWN = 40;
 /** The nearest this many drawn people cast shadows. */
-const SHADOWED = 10;
+const SHADOWED = 6;
 /** Beyond this distance a drawn person's animation advances every third frame. */
 const SLOW_ANIM_DISTANCE = 25;
 /** Eyes and brows are too small to see beyond this, metres; further off they are not drawn. */
@@ -27,12 +28,10 @@ const WALK_SPEED = 1.8;
 /** Townsfolk inside this distance of a fight run from it. */
 const FEAR_RADIUS = 14;
 const RUN_SPEED = 4.2;
-/** How far ahead a fleeing person looks for open street, and the turns from straight away they try. */
-const FLEE_LOOK = 6;
-const FLEE_TURNS = [0, 0.6, -0.6, 1.2, -1.2];
+/** A short quiet pause keeps the crowd in cover between attacks. */
+const QUIET_SECONDS = 3;
 const BODY_RADIUS = 0.35;
-/** Less open street than this in every direction and a person cowers instead. */
-const MIN_FLEE_RUN = 1;
+
 /** People keep this far apart, and this far from the hero; closer, they step aside. */
 const PERSONAL_SPACE = 0.8;
 const HERO_SPACE = 1.0;
@@ -47,14 +46,18 @@ const TALK_FACE = 3;
 
 const scratchFrom = new Vector3();
 const scratchTo = new Vector3();
-const scratchEnd = new Vector3();
-const scratchFlee = new Vector3();
 const sphere = new Sphere(new Vector3(), 1.2);
 const frustum = new Frustum();
 const viewProjection = new Matrix4();
 
 export interface LiveTownsperson {
   data: Townsperson;
+  nearBody: Object3D;
+  occlusion: CrowdOcclusion;
+  farBody: Object3D | null;
+  farAnim: AnimationPlayer | null;
+  farLoading: boolean;
+  body: TownsfolkBody;
   object: Object3D;
   anim: AnimationPlayer | null;
   idleClip: string;
@@ -78,6 +81,11 @@ export interface LiveTownsperson {
   /** Metres from the hero, this frame. */
   far: number;
   fleeing: boolean;
+  shelter: Vector3 | null;
+  returnTo: Vector3 | null;
+  alarmAt: Vector3 | null;
+  quiet: number;
+  fearCheck: number;
   cowering: boolean;
   /** Where a browsing wanderer will look once there (the goods), or null on open street. */
   looking: number | null;
@@ -117,13 +125,16 @@ export class TownManager {
   map: WalkMap | null = null;
   /** Goods to stop and look at (stalls, tables, counters) that the walk map reaches, and the way to face them. */
   readonly sights: Array<{ at: Vector3; facing: number }> = [];
+  readonly refuges: Vector3[] = [];
   private frame = 0;
+  private refugeBudget = 0;
+  private disposed = false;
   /** Where the hero stood this frame. */
   private readonly hero = new Vector3(Infinity, 0, Infinity);
   private readonly order: LiveTownsperson[] = [];
 
   constructor(private readonly scene: Scene, private readonly space: CombatSpace | null = null,
-    private readonly random: () => number = Math.random) {
+    private readonly random: () => number = Math.random, private readonly low = false) {
     this.scene.add(this.group);
   }
 
@@ -133,7 +144,7 @@ export class TownManager {
    */
   async init(bodies: ReadonlyMap<string, TownsfolkBody>, people: readonly Townsperson[] = SINDR_TOWNSFOLK,
     streets: readonly StreetArea[] = SINDR_STREETS, walk: { seeds: readonly Vector3[]; bounds: WalkBounds; water?: WaterQuery } = SINDR_WALK,
-    browse: readonly Browse[] = []): Promise<void> {
+    browse: readonly Browse[] = [], posts: readonly Post[] = []): Promise<void> {
     if (this.space) {
       this.map = await WalkMap.over(this.space, walk.seeds, walk.bounds, walk.water ?? null);
       for (const s of browse) {
@@ -147,10 +158,18 @@ export class TownManager {
     } else {
       for (const a of streets) for (let x = a.x0; x <= a.x1; x += GRID) for (let z = a.z0; z <= a.z1; z += GRID) this.spots.push(new Vector3(x, a.y, z));
     }
+    for (const p of [...posts.filter(p => p.kind === 'household' || p.kind === 'keeper' || p.kind === 'smith'), ...browse]) {
+      const at = this.place(p);
+      if (Math.abs(at.y - p.y) < 0.6 && !this.refuges.some(r => r.distanceToSquared(at) < 0.5)) this.refuges.push(at);
+    }
     for (const [i, npc] of people.entries()) {
       const body = bodies.get(npc.look ?? npc.id);
       if (!body) continue;
-      const object = cloneSkinned(body.model);
+      const nearBody = cloneSkinned(body.model);
+      const object = new Group();
+      object.add(nearBody);
+      const occlusion = new CrowdOcclusion();
+      occlusion.attach(nearBody);
       const meshes: Mesh[] = [];
       object.traverse((n) => { if ((n as Mesh).isMesh) meshes.push(n as Mesh); });
       const face = meshes.filter(m => /^eye/i.test(m.name));
@@ -168,11 +187,11 @@ export class TownManager {
       object.visible = false;
       this.group.add(object);
       this.townsfolk.push({
-        data: npc, object, anim, idleClip: idle, walkClip: walkFor(npc, i), meshes, face,
+        data: npc, object, nearBody, occlusion, farBody: null, farAnim: null, farLoading: false, body, anim, idleClip: idle, walkClip: walkFor(npc, i), meshes, face,
         position: start.clone(), targetPosition: start.clone(), path: [],
         targetFacing: facing, facing,
         currentActivity: getTownspersonActivity(0, npc), walking: false, feelingScore: 50,
-        rest: this.random() * REST_MAX, animDebt: 0, far: 0, fleeing: false, cowering: false, looking: null,
+        rest: this.random() * REST_MAX, animDebt: 0, far: 0, fleeing: false, cowering: false, looking: null, shelter: null, returnTo: null, alarmAt: null, quiet: 0, fearCheck: 0,
       });
     }
   }
@@ -225,40 +244,33 @@ export class TownManager {
 
   update(delta: number, minute: number, playerPos: Vector3, threats: readonly Vector3[] = [], camera?: Camera): void {
     this.frame++;
+    this.refugeBudget = 2;
     this.hero.copy(playerPos);
     for (const person of this.townsfolk) {
-      if (person.data.wander) {
-        if (!person.path.length) {
-          person.rest -= delta;
-          if (person.rest <= 0) {
-            this.nextSpot(person);
-            person.rest = person.looking !== null ? BROWSE_MIN + this.random() * (BROWSE_MAX - BROWSE_MIN) : REST_MIN + this.random() * (REST_MAX - REST_MIN);
+      const fleeing = this.respondToFight(person, delta, minute, threats);
+      if (!fleeing) {
+        if (person.data.wander) {
+          if (!person.path.length) {
+            person.rest -= delta;
+            if (person.rest <= 0) {
+              this.nextSpot(person);
+              person.rest = person.looking !== null ? BROWSE_MIN + this.random() * (BROWSE_MAX - BROWSE_MIN) : REST_MIN + this.random() * (REST_MAX - REST_MIN);
+            }
+          }
+        } else {
+          const activity = getTownspersonActivity(minute, person.data);
+          if (activity !== person.currentActivity) {
+            person.currentActivity = activity;
+            const target = person.data.schedule[activity];
+            person.targetFacing = target.facing;
+            this.goTo(person, this.place(target, !!person.data.post));
           }
         }
-      } else {
-        const activity = getTownspersonActivity(minute, person.data);
-        if (activity !== person.currentActivity) {
-          person.currentActivity = activity;
-          const target = person.data.schedule[activity];
-          person.targetFacing = target.facing;
-          this.goTo(person, this.place(target, !!person.data.post));
-        }
       }
-      // A fight nearby overrides the routine: run straight away from the closest fighter.
-      const threat = nearest(threats, person.position);
-      const fleeing = threat !== null && threat.distance < FEAR_RADIUS;
-      // With no open street (behind a counter, in a doorway) they duck down where they are.
-      if (fleeing) person.looking = null;
-      const cowering = fleeing && !this.fleeTarget(person, threat.at, person.position.y);
-      if (cowering) person.path = [];
-      // Once the fight is over, people on a schedule head back to where they belong.
-      if (person.fleeing && !fleeing && !person.data.wander) this.goTo(person, this.place(person.data.schedule[person.currentActivity], !!person.data.post));
-      person.fleeing = fleeing;
-      person.cowering = cowering;
-
       const next = person.path[0];
       if (!next) {
-        if (person.walking && person.data.wander) person.targetFacing = person.looking ?? person.facing;
+        if (person.fleeing && person.alarmAt) person.targetFacing = Math.atan2(person.alarmAt.x - person.position.x, person.alarmAt.z - person.position.z);
+        else if (person.walking && person.data.wander) person.targetFacing = person.looking ?? person.facing;
         person.walking = false;
         person.facing = person.targetFacing;
         continue;
@@ -269,7 +281,7 @@ export class TownManager {
       person.walking = true;
       if (dist > 1e-3) person.facing = Math.atan2(dx, dz);
       const k = dist > 1e-3 ? step / dist : 1;
-      const ontoPost = !!person.data.post && person.path.length === 1 && dist < 3;
+      const ontoPost = !fleeing && !!person.data.post && person.path.length === 1 && dist < 3;
       if (ontoPost || this.move(person, dx * k, dz * k)) {
         if (ontoPost) { person.position.x += dx * k; person.position.z += dz * k; }
         person.position.y += (next.y - person.position.y) * k;
@@ -277,6 +289,7 @@ export class TownManager {
       } else if (person.data.wander || fleeing) {
         // The way is shut (someone shoved them off the line): stop here and choose again.
         person.path = [];
+        if (fleeing) person.shelter = null;
       } else if ((person.rest -= delta) <= 0) {
         // Shoved off their route: find the way again from here, at most once a second.
         person.rest = 1;
@@ -335,28 +348,45 @@ export class TownManager {
     for (const p of this.townsfolk) {
       p.object.position.copy(p.position);
       p.object.rotation.y = p.facing;
+      p.occlusion.update(!!camera && hidesHero(camera.position, hero, p.position, p.data.role === 'child' ? 1.3 : 1.9), delta);
       p.far = Math.hypot(p.position.x - hero.x, p.position.z - hero.z);
-      let shown = p.far < DRAW_DISTANCE;
+      let shown = p.far < (this.low ? 42 : DRAW_DISTANCE);
       if (shown && camera) shown = frustum.intersectsSphere(sphere.set(sphere.center.set(p.position.x, p.position.y + 0.9, p.position.z), 1.2));
       if (shown) order.push(p);
       else { p.object.visible = false; p.animDebt += delta; }
     }
     order.sort((a, b) => a.far - b.far);
     for (const [rank, p] of order.entries()) {
-      const shown = rank < DRAWN;
+      const shown = rank < (this.low ? 24 : DRAWN);
       p.object.visible = shown;
       if (!shown) { p.animDebt += delta; continue; }
+      const useFar = p.far > (this.low ? 10 : 16) || rank >= (this.low ? 4 : 8);
+      if (useFar && !p.farBody && !p.farLoading && p.body.loadFar) {
+        p.farLoading = true;
+        void p.body.loadFar().then(body => {
+          if (this.disposed) return;
+          const model = cloneSkinned(body.model);
+          p.farBody = model;
+          p.occlusion.attach(model);
+          model.visible = false;
+          p.object.add(model);
+          p.farAnim = body.clips.length ? new AnimationPlayer(model, body.clips) : null;
+        }).catch(error => { console.error('Townsperson detail failed to load:', error); });
+      }
+      p.nearBody.visible = !useFar || !p.farBody;
+      if (p.farBody) p.farBody.visible = useFar;
+      const anim = useFar && p.farBody ? p.farAnim : p.anim;
       const close = p.far < FACE_DISTANCE;
       if (p.face[0] && p.face[0].visible !== close) for (const m of p.face) m.visible = close;
-      const shadow = rank < SHADOWED;
+      const shadow = !this.low && rank < SHADOWED && !useFar;
       if (p.meshes[0]?.castShadow !== shadow) for (const m of p.meshes) m.castShadow = shadow;
-      if (p.data.wander && !p.walking && p.looking === null) this.faceCompany(p);
-      p.anim?.play(p.cowering ? 'cower' : p.walking ? p.walkClip : p.idleClip);
-      if (p.anim) p.anim.mixer.timeScale = p.fleeing ? RUN_SPEED / WALK_SPEED : 1;
+      if (p.data.wander && !p.fleeing && !p.walking && p.looking === null) this.faceCompany(p);
+      anim?.play(p.cowering ? 'cower' : p.walking ? p.walkClip : p.idleClip);
+      if (anim) anim.mixer.timeScale = p.fleeing && p.walking ? RUN_SPEED / WALK_SPEED : 1;
       p.animDebt += delta;
       if (p.far > SLOW_ANIM_DISTANCE && (this.frame + rank) % 3 !== 0) continue;
       // Time missed while hidden is capped, so a returning person does not jump through a clip.
-      p.anim?.update(Math.min(p.animDebt, 0.25));
+      anim?.update(Math.min(p.animDebt, 0.25));
       p.animDebt = 0;
     }
   }
@@ -373,25 +403,69 @@ export class TownManager {
     p.object.rotation.y = p.facing;
   }
 
-  /**
-   * The direction away from the fight with the most open street, as far as the world allows.
-   * False when every direction is shut.
-   */
-  private fleeTarget(person: LiveTownsperson, threat: Vector3, y: number): boolean {
-    const away = Math.atan2(person.position.x - threat.x, person.position.z - threat.z);
-    const from = scratchFrom.set(person.position.x, person.position.y + 1, person.position.z);
-    let best = -1;
-    for (const turn of FLEE_TURNS) {
-      const a = away + turn;
-      scratchTo.set(from.x + Math.sin(a) * FLEE_LOOK, from.y, from.z + Math.cos(a) * FLEE_LOOK);
-      const end = this.space ? this.space.reachable(from, scratchTo, BODY_RADIUS, scratchEnd) : scratchEnd.copy(scratchTo);
-      const run = Math.hypot(end.x - from.x, end.z - from.z);
-      if (run > best) { best = run; scratchFlee.set(end.x, y, end.z); }
+  /** Hold one refuge through the fight, then resume the current routine after a quiet interval. */
+  private respondToFight(p: LiveTownsperson, delta: number, minute: number, threats: readonly Vector3[]): boolean {
+    const threat = nearest(threats, p.position);
+    if (!p.fleeing && threat && threat.distance < FEAR_RADIUS) {
+      p.fleeing = true;
+      p.returnTo = p.position.clone();
+      p.alarmAt = threat.at.clone();
+      p.looking = null;
+      p.path = [];
+      p.fearCheck = 0;
     }
-    if (best < MIN_FLEE_RUN) return false;
-    const last = person.path[person.path.length - 1];
-    if (!person.fleeing || !last || last.distanceToSquared(scratchFlee) > 4) person.path = [scratchFlee.clone()];
+    if (!p.fleeing) return false;
+    const ongoing = p.alarmAt && threats.some(t => t.distanceToSquared(p.alarmAt!) < (FEAR_RADIUS * 2) ** 2);
+    p.quiet = ongoing ? QUIET_SECONDS : p.quiet - delta;
+    if (p.quiet <= 0) {
+      p.fleeing = false; p.cowering = false; p.shelter = null; p.alarmAt = null;
+      p.currentActivity = getTownspersonActivity(minute, p.data);
+      const goal = p.data.wander ? p.returnTo! : this.place(p.data.schedule[p.currentActivity], !!p.data.post);
+      this.goTo(p, goal);
+      if (!p.data.wander) p.targetFacing = p.data.schedule[p.currentActivity].facing;
+      p.returnTo = null;
+      p.rest = REST_MAX;
+      return false;
+    }
+    p.fearCheck -= delta;
+    if (p.fearCheck <= 0 && threats.length) {
+      if (p.shelter && !p.path.length && p.position.distanceTo(p.shelter) > 1.5) p.shelter = null;
+      if (!p.shelter || !this.sheltered(p.shelter, threats)) {
+        if (this.refugeBudget <= 0) return true;
+        this.refugeBudget--;
+        p.shelter = this.findRefuge(p, threats);
+        p.cowering = !p.shelter;
+        if (!p.shelter) p.path = [];
+      }
+      p.fearCheck = 1;
+    }
     return true;
+  }
+
+  private sheltered(at: Vector3, threats: readonly Vector3[]): boolean {
+    return threats.every(t => {
+      const d = at.distanceTo(t);
+      if (d < 3.5) return false;
+      if (d > FEAR_RADIUS + 1) return true;
+      return !!this.space && !this.space.clear(scratchFrom.copy(t).setY(t.y + 1), scratchTo.copy(at).setY(at.y + 1), BODY_RADIUS);
+    });
+  }
+
+  /** Prefer nearby doorways and the backs of stalls; open street beyond the fight is the fallback. */
+  private findRefuge(p: LiveTownsperson, threats: readonly Vector3[]): Vector3 | null {
+    const score = (at: Vector3): number => at.distanceTo(p.position)
+      + this.townsfolk.filter(o => o !== p && o.shelter && o.shelter.distanceToSquared(at) < 2).length * 3;
+    const candidates = [...this.refuges, ...this.spots.filter(s => nearest(threats, s)!.distance > FEAR_RADIUS + 1)]
+      .filter(at => at.distanceTo(p.position) < 32 && this.sheltered(at, threats))
+      .map(at => ({ at, score: score(at) })).sort((a, b) => a.score - b.score);
+    for (const { at } of candidates.slice(0, 24)) {
+      const path = this.map ? this.map.route(p.position, at, threats, 1.2) : [at.clone()];
+      if (!path.length && p.position.distanceTo(at) > 1.2) continue;
+      p.targetPosition.copy(at);
+      p.path = path;
+      return at.clone();
+    }
+    return null;
   }
 
   getNearestTownsperson(heroPos: Vector3, maxRadius = 3.5): LiveTownsperson | null {
@@ -408,7 +482,8 @@ export class TownManager {
   }
 
   dispose(): void {
-    for (const person of this.townsfolk) person.anim?.mixer.stopAllAction();
+    this.disposed = true;
+    for (const person of this.townsfolk) { person.anim?.dispose(); person.farAnim?.dispose(); person.occlusion.dispose(); }
     this.townsfolk.length = 0;
     this.group.clear();
     this.scene.remove(this.group);

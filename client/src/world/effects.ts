@@ -301,7 +301,7 @@ export function createWaterMaterial(kind: 'hot' | 'fresh' = 'hot'): MeshStandard
   // Hot spring water is near black with a coal glow at night; the fresh canal is a deep clear green-teal.
   const material = kind === 'hot'
     ? new MeshStandardMaterial({ color: 0x0b1112, roughness: 0.06, metalness: 0, envMapIntensity: 1.4, emissive: 0x3a1408 })
-    : new MeshStandardMaterial({ color: 0x1c4844, roughness: 0.04, metalness: 0, envMapIntensity: 1.6, emissive: 0x05100e });
+    : new MeshStandardMaterial({ color: 0x0b6974, roughness: 0.15, metalness: 0, envMapIntensity: 0.8, emissive: 0x075c60, emissiveIntensity: 0.8 });
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = worldTime;
     shader.uniforms.uNight = nightness;
@@ -311,19 +311,25 @@ export function createWaterMaterial(kind: 'hot' | 'fresh' = 'hot'): MeshStandard
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\nuniform float uTime;\nuniform float uNight;\nvarying vec3 vWaterPos;\n${NOISE}`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        vec2 wp = vWaterPos.xz * 1.7;
-        float h0 = wFbm(wp + vec2(uTime * 0.35, uTime * 0.12));
-        float hx = wFbm(wp + vec2(0.05, 0.0) + vec2(uTime * 0.35, uTime * 0.12));
-        float hz = wFbm(wp + vec2(0.0, 0.05) + vec2(uTime * 0.35, uTime * 0.12));
-        normal = normalize(normal + mat3(viewMatrix) * (vec3(h0 - hx, 0.0, h0 - hz) * 2.2));`)
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 0.15 + 0.85 * uNight;');
+        vec2 wp = vWaterPos.xz;
+        float ripple = cos(dot(wp, vec2(2.4, 3.7)) - uTime * 1.1);
+        float crossRipple = cos(dot(wp, vec2(-5.1, 1.8)) - uTime * 0.7);
+        vec2 slope = vec2(2.4, 3.7) * ripple * 0.022 + vec2(-5.1, 1.8) * crossRipple * 0.009;
+        normal = normalize(normal + mat3(viewMatrix) * vec3(slope.x, 0.0, slope.y));`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance *= ${kind === 'fresh' ? '0.65 + 0.35 * uNight' : '0.15 + 0.85 * uNight'};`);
+    if (kind === 'fresh') shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+      #if defined(RE_IndirectSpecular)
+        radiance *= vec3(0.16, 0.70, 0.78);
+      #endif`);
   };
+  material.customProgramCacheKey = () => `water-${kind}-2`;
   return material;
 }
 
 /** Red paper lanterns: deep red by day, glowing from the candle inside after dark. */
 export function createPaperMaterial(): MeshStandardMaterial {
-  const material = new MeshStandardMaterial({ color: 0x7a1a10, roughness: 0.8, metalness: 0, emissive: 0xff3a14 });
+  const material = new MeshStandardMaterial({ color: 0x7a1a10, roughness: 0.8, metalness: 0, emissive: 0xff6a28, emissiveIntensity: 0.32 });
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uNight = lamplight;
     shader.fragmentShader = shader.fragmentShader

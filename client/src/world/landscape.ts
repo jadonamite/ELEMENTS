@@ -237,7 +237,7 @@ export function createSky(): Mesh {
   const mesh = new Mesh(new SphereGeometry(1, 48, 24), material);
   mesh.scale.setScalar(1500);
   mesh.frustumCulled = false;
-  mesh.renderOrder = -10;
+  mesh.renderOrder = 10;
   mesh.name = 'sky';
   return mesh;
 }

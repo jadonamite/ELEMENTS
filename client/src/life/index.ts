@@ -1,4 +1,4 @@
-import { Scene, Vector3, type Camera } from 'three';
+import { Scene, Vector3, type Camera, type Object3D } from 'three';
 import type { HeroController } from '../controller.js';
 import type { CombatSpace } from '../attacks/space.js';
 import type { SoundManager } from '../audio.js';
@@ -35,6 +35,7 @@ export interface SindrLifeOptions {
   space?: CombatSpace | null;
   /** Where people belong, as the town was built; each gets someone. */
   posts?: readonly Post[];
+  warm?: (model: Object3D) => Promise<void>;
   /** Where passers-by stop to look at goods, as the town was built. */
   browse?: readonly Browse[];
 }
@@ -68,7 +69,7 @@ export class SindrLifeSystem {
     this.onNotice = options.onNotice;
     this.getThreats = options.getThreats;
 
-    this.townManager = new TownManager(this.scene, options.space ?? null);
+    this.townManager = new TownManager(this.scene, options.space ?? null, Math.random, new URLSearchParams(window.location.search).get('fxQuality') === 'low');
 
     this.leadManager = new LeadManager();
     this.waypointMarker = new WaypointMarker(this.scene);
@@ -93,8 +94,8 @@ export class SindrLifeSystem {
     const people = [...cast, ...keepers, ...crowd.people];
     const looks = [...named, ...crowd.looks];
     const children = new Set(people.filter(p => p.role === 'child').map(p => p.look ?? p.id));
-    this.ready = loadLookBodies(looks, children).then(async (bodies) => {
-      if (!this.disposed) await this.townManager.init(bodies, people, SINDR_STREETS, SINDR_WALK, options.browse ?? []);
+    this.ready = loadLookBodies(looks, children, undefined, options.warm).then(async (bodies) => {
+      if (!this.disposed) await this.townManager.init(bodies, people, SINDR_STREETS, SINDR_WALK, options.browse ?? [], options.posts ?? []);
     }).catch(console.error);
   }
 

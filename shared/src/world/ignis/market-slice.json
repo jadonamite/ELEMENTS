@@ -2,8 +2,8 @@
   "about": "The first 60 m of Sindr: the market street on the canal, bridge B1, the north terrace and the south shells. City metres (x east, z south, y above sea level). `placement` puts the slice into the town's own frame: town = city + placement.",
   "placement": { "x": -325, "y": -380, "z": -330 },
   "bounds": { "x0": 410, "x1": 470, "z0": 300, "z1": 360 },
-  "street": { "x0": 410, "x1": 470, "z0": 323, "z1": 337, "y": 380, "fight": { "z0": 326, "z1": 334 }, "stalls": { "z0": 337, "z1": 343 } },
-  "canal": { "id": "market_race", "x0": 410, "x1": 470, "z0": 313, "z1": 323, "source": "north_feeder_via_sluice", "kind": "fresh" },
+  "street": { "x0": 410, "x1": 470, "z0": 323, "z1": 337, "y": 380, "fight": { "z0": 327.5, "z1": 332.5 }, "stalls": { "z0": 337, "z1": 343 } },
+  "canal": { "id": "market_race", "x0": 410, "x1": 470, "z0": 313, "z1": 324.5, "source": "north_feeder_via_sluice", "kind": "fresh" },
   "water": [
     { "x": 410, "surface": 378.8, "bed": 377.3 },
     { "x": 470, "surface": 378.1333333333333, "bed": 376.6333333333333 }
@@ -41,11 +41,11 @@
     { "id": "anvil", "role": "smith", "x": 465, "z": 347, "y": 380 },
     { "id": "north-counter-1", "role": "keeper", "x": 416, "z": 305, "y": 383 },
     { "id": "north-counter-3", "role": "keeper", "x": 460, "z": 305, "y": 383 },
-    { "id": "sluice", "role": "crew", "x": 412, "z": 324.5, "y": 380 },
-    { "id": "B1-watch", "role": "guard", "x": 454, "z": 324.5, "y": 380 },
+    { "id": "sluice", "role": "crew", "x": 412, "z": 326, "y": 380 },
+    { "id": "B1-watch", "role": "guard", "x": 454, "z": 326, "y": 380 },
     { "id": "cart", "role": "porter", "x": 424, "z": 335.5, "y": 380 },
     { "id": "market-watch", "role": "guard", "x": 451, "z": 335.5, "y": 380 },
-    { "id": "sentry-west", "role": "sentry", "x": 416, "z": 324.5, "y": 380 },
-    { "id": "sentry-east", "role": "sentry", "x": 466, "z": 324.5, "y": 380 }
+    { "id": "sentry-west", "role": "sentry", "x": 416, "z": 326, "y": 380 },
+    { "id": "sentry-east", "role": "sentry", "x": 466, "z": 326, "y": 380 }
   ]
 }

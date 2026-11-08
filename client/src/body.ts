@@ -126,6 +126,7 @@ interface SkinUniforms {
  * the plain underwear fabric becomes cloth. Villains get ashen skin and ember-black cloth.
  */
 export function applySkinShader(mat: MeshStandardMaterial, uniforms: SkinUniforms): void {
+  mat.userData.skinTint = uniforms.uSkinColor.value;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.fragmentShader =
@@ -201,25 +202,28 @@ function rebind(src: SkinnedMesh, rig: Skeleton, geometry = src.geometry): Skinn
 
 /** Loads the creator's bodies and hair once; fighters are cloned from these. */
 export class BodyKit {
-  private readonly scenes = new Map<string, Object3D>();
+  private readonly scenes = new Map<string, Promise<Object3D>>();
   private readonly fitted = new Map<string, AnimationClip[]>();
   private readonly bare = new Map<string, BufferGeometry>();
   private wornRags: Promise<Texture> | null = null;
 
-  constructor(private readonly loader = new GLTFLoader()) {}
+  constructor(private readonly loader = new GLTFLoader(), private readonly detail: 'near' | 'far' = 'near') {}
 
   async preload(paths: readonly string[] = [...Object.values(BODY_PATH), ...Object.values(OUTFITS.rags.path)]): Promise<void> {
     await Promise.all(paths.map(p => this.scene(p)));
   }
 
   private async scene(path: string): Promise<Object3D> {
-    let s = this.scenes.get(path);
-    if (!s) {
-      s = (await this.loader.loadAsync(path)).scene;
-      if (OUTFIT_FILES.has(path)) joinByMaterial(s);
-      this.scenes.set(path, s);
+    let pending = this.scenes.get(path);
+    if (!pending) {
+      const file = this.detail === 'far' ? path.replace(/\/(creator|people)\//, '/$1/far/') : path;
+      pending = this.loader.loadAsync(file).then(({ scene }) => {
+        if (OUTFIT_FILES.has(path)) joinByMaterial(scene);
+        return scene;
+      });
+      this.scenes.set(path, pending);
     }
-    return s;
+    return pending;
   }
 
   private worn(): Promise<Texture> {

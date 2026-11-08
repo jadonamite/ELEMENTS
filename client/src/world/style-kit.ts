@@ -71,8 +71,14 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
     frontRoom(b, h, room, P, G, wall, timber, foot, rand);
   } else {
     b.box('basalt_rock_face', 0, (P - foot) / 2, 0, w + 0.24, P + foot, d + 0.24);
-    // Ground floor body, set back so the posts and beam stand proud.
-    b.box(wall, 0, P + G / 2, -0.12, w - 0.1, G, d - 0.24);
+    if (h.shop) {
+      // Walls stop at the opening; the counter, keeper and shelves occupy the recess behind it.
+      const inner = front - 1.6, depth = inner + d / 2;
+      b.box(wall, 0, P + G / 2, -d / 2 + depth / 2, w - 0.1, G, depth);
+      for (const side of [-1, 1]) b.box(wall, side * (w / 2 - 0.3), P + G / 2, front - 0.8, 0.6, G, 1.6);
+      b.box('raw_timber', 0, P + 0.02, front - 0.8, w - 1.2, 0.04, 1.6);
+      b.box('charred_timber_beams', 0, P + G - 0.08, front - 0.8, w - 1.2, 0.16, 1.6);
+    } else b.box(wall, 0, P + G / 2, -0.12, w - 0.1, G, d - 0.24);
   }
   // A merchant's shop front is lacquered: red posts and beam over the plain walls; commoners' stay charred timber.
   const frontTimber: Surface = h.shop && h.rank !== 'common' ? 'red_lacquer' : timber;
@@ -87,6 +93,13 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
     // Open front: shutters up, a deep dark interior, a counter with goods, a cloth hanging over the opening.
     const ow = w - 1.2;
     b.box('charred_timber_beams', 0, P + 1.3, front - 1.6, ow, 2.6, 0.06);
+    for (const shelf of [1.15, 1.8]) {
+      b.box('raw_timber', 0, P + shelf, front - 1.4, ow - 0.3, 0.07, 0.32);
+      for (let gx = -ow / 2 + 0.4; gx < ow / 2 - 0.3; gx += 0.55) {
+        b.cylinder('terracotta', gx, P + shelf + 0.16, front - 1.4, 0.1, 0.14, 0.28, 8);
+      }
+    }
+    b.box('window', 0, P + 1.95, front - 1.55, ow - 0.6, 0.85, 0.025, undefined, { u: 1, v: 1 });
     b.ao([-ow / 2, P + 2.6, front - 1.55], [ow / 2, P + 2.6, front - 1.55], [0, -2.2, 0], 0.9);
     b.box('charred_timber_beams', 0, P + 0.45, front - 0.45, ow, 0.9, 0.7);
     b.box('pale_stone', 0, P + 0.92, front - 0.45, ow + 0.1, 0.06, 0.8);
