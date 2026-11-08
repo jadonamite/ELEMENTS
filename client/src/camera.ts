@@ -15,6 +15,20 @@ export function cameraCollisionRadius(camera: PerspectiveCamera): number {
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
+/**
+ * When something behind the hero shortens the boom or hides the hero, these changes are tried cheapest first:
+ * a sideways step (metres, to look past a post) and a raise (radians, to look over a wall). The first that
+ * sees the hero and gives back CLEAR_ENOUGH of the boom wins; otherwise the one that sees the hero from furthest.
+ */
+const DODGES: readonly (readonly [side: number, raise: number])[] = [
+  [0, 0], [0.4, 0], [-0.4, 0], [0, 0.2], [0.8, 0], [-0.8, 0], [0, 0.4], [0.4, 0.2], [-0.4, 0.2], [1.2, 0], [-1.2, 0],
+  [0, 0.6], [0, 0.8],
+];
+const SIDE_REACH = 1.2;
+/** Half the hero's shoulder width: seeing either shoulder is seeing the hero. */
+const SHOULDER_HALF = 0.25;
+const CLEAR_ENOUGH = 0.85;
+
 const KILL_ZOOM = 0.62;
 const KILL_CLOSE_UP_SECONDS = 0.7;
 const fightProfile = {
@@ -38,6 +52,9 @@ export class ShoulderCamera {
   crowd = false;
   private shakeTimer = 0;
   private closeUp = 0;
+  /** Sideways step and extra pitch taken to see past a post or over a wall; eased in fast, out slowly. */
+  private side = 0;
+  private raise = 0;
   private readonly framing = { ...tuning.world };
   private initialized = false;
   private distance = 0;
@@ -49,6 +66,8 @@ export class ShoulderCamera {
   private readonly right = new Vector3();
   private readonly back = new Vector3();
   private readonly tempDir = new Vector3();
+  private readonly eye = new Vector3();
+  private readonly shoulderAt = new Vector3();
   private readonly ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
   private readonly probe = new RAPIER.Ball(tuning.collisionRadius);
 
@@ -136,24 +155,32 @@ export class ShoulderCamera {
     }
     this.right.set(Math.cos(yaw), 0, -Math.sin(yaw));
 
-    // Sweep the whole near-plane sphere sideways, including thin stall posts.
-    let lateralOffset = this.clearDistance(this.anchor, this.right, shoulder);
-    if (shoulder > 1e-3 && lateralOffset < shoulder * 0.5) {
-      this.tempDir.copy(this.right).negate();
-      const leftClear = this.clearDistance(this.anchor, this.tempDir, shoulder);
-      if (leftClear >= shoulder * 0.8) lateralOffset = -leftClear;
+    // How far the camera sphere can move to each side of the hero; the pivot never sits in anything.
+    const clearRight = this.clearDistance(this.anchor, this.right, SIDE_REACH);
+    this.tempDir.copy(this.right).negate();
+    const clearLeft = this.clearDistance(this.anchor, this.tempDir, SIDE_REACH);
+    let base = Math.min(shoulder, clearRight);
+    if (shoulder > 1e-3 && clearRight < shoulder * 0.5 && clearLeft >= shoulder * 0.8) base = -Math.min(shoulder, clearLeft);
+    const offset = (side: number): number => clamp(base + side, -clearLeft, clearRight);
+
+    // Past a post or over a wall rather than into it: the cheapest change that gives back most of the boom.
+    let wantSide = 0, wantRaise = 0, best = -Infinity;
+    for (const [side, raise] of DODGES) {
+      this.pivot.copy(this.anchor).addScaledVector(this.right, offset(side));
+      const p = Math.min(tuning.maxPitch, pitch + raise);
+      const clear = this.clearDistance(this.pivot, this.backAt(yaw, p), targetDistance);
+      const seen = this.sees(this.pivot, this.back, clear);
+      const score = seen ? clear : clear - targetDistance;
+      if (score > best + 0.05) { best = score; wantSide = side; wantRaise = p - pitch; }
+      if (seen && clear >= targetDistance * CLEAR_ENOUGH) break;
     }
-
-    this.pivot.copy(this.anchor).addScaledVector(this.right, lateralOffset);
-
-    // Direction backward from pivot along view pitch and yaw
-    const cos = Math.cos(pitch);
-    this.back.set(
-      Math.sin(yaw) * cos,
-      Math.sin(pitch),
-      Math.cos(yaw) * cos,
-    );
-
+    const ease = (now: number, goal: number): number => !wasInitialized || reducedMotion ? goal
+      : now + (goal - now) * (1 - Math.exp(-(Math.abs(goal) > Math.abs(now) ? 10 : 2.5) * delta));
+    this.side = ease(this.side, wantSide);
+    this.raise = ease(this.raise, wantRaise);
+    this.pivot.copy(this.anchor).addScaledVector(this.right, offset(this.side));
+    const finalPitch = Math.min(tuning.maxPitch, pitch + this.raise);
+    this.backAt(yaw, finalPitch);
     const maxSafeDist = this.clearDistance(this.pivot, this.back, targetDistance);
 
     // Never smooth inward or interpolate positions across a corner.
@@ -162,10 +189,29 @@ export class ShoulderCamera {
 
     this.camera.position.copy(this.pivot)
       .addScaledVector(this.back, this.distance);
-    const finalPitch = pitch;
     const finalCos = Math.cos(finalPitch);
     this.look.set(-Math.sin(yaw) * finalCos, -Math.sin(finalPitch), -Math.cos(yaw) * finalCos);
     this.camera.lookAt(this.look.add(this.camera.position));
+  }
+
+  /** The boom direction for a yaw and pitch, into `back`. */
+  private backAt(yaw: number, pitch: number): Vector3 {
+    const cos = Math.cos(pitch);
+    return this.back.set(Math.sin(yaw) * cos, Math.sin(pitch), Math.cos(yaw) * cos);
+  }
+
+  /** Whether the camera, `distance` along `direction` from `pivot`, sees either of the hero's shoulders. */
+  private sees(pivot: Vector3, direction: Vector3, distance: number): boolean {
+    for (const s of [-SHOULDER_HALF, SHOULDER_HALF]) {
+      this.shoulderAt.copy(this.anchor).addScaledVector(this.right, s);
+      this.eye.copy(pivot).addScaledVector(direction, distance).sub(this.shoulderAt);
+      const length = this.eye.length();
+      if (length < 1e-3) continue;
+      this.ray.origin = this.shoulderAt;
+      this.ray.dir = this.eye.divideScalar(length);
+      if (this.world.castRay(this.ray, length, true, RAPIER.QueryFilterFlags.ONLY_FIXED) === null) return true;
+    }
+    return false;
   }
 
   private clearDistance(origin: Vector3, direction: Vector3, distance: number): number {

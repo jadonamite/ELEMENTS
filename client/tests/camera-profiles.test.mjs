@@ -216,6 +216,43 @@ test('camera sphere clears eaves, thin stall posts and stairs in walking, fight,
   } finally { world.free(); }
 });
 
+test('the camera steps past a post behind the hero and looks over a low wall, never hugging either', async () => {
+  const { world, camera, rig } = await setup();
+  try {
+    world.createCollider(RAPIER.ColliderDesc.cuboid(20, 0.5, 20).setTranslation(0, -0.5, 0));
+    // Yaw 0 puts the camera at +z. A 0.4 m post 0.6 m behind the hero.
+    world.createCollider(RAPIER.ColliderDesc.cuboid(0.2, 1.8, 0.2).setTranslation(0, 1.8, 0.6));
+    world.step();
+    rig.yaw = 0; rig.pitch = balance.camera.initialPitch;
+    settle(rig);
+    const want = balance.camera.world.distance;
+    const d = camera.position.distanceTo(rig.target);
+    assert.ok(d > want * 0.8, `boom beside the post ${d}`);
+    const right = new Vector3(Math.cos(rig.yaw), 0, -Math.sin(rig.yaw));
+    const seen = [-0.25, 0.25].some((s) => {
+      const shoulder = rig.target.clone().addScaledVector(right, s), to = camera.position.clone().sub(shoulder);
+      return world.castRay(new RAPIER.Ray(shoulder, to.clone().normalize()), to.length(), true) === null;
+    });
+    assert.ok(seen, 'the post does not hide the hero');
+  } finally { world.free(); }
+  const s2 = await setup();
+  try {
+    s2.world.createCollider(RAPIER.ColliderDesc.cuboid(20, 0.5, 20).setTranslation(0, -0.5, 0));
+    // A 1.6 m parapet, 0.2 m thick, 0.5 m behind the hero.
+    s2.world.createCollider(RAPIER.ColliderDesc.cuboid(6, 0.8, 0.1).setTranslation(0, 0.8, 0.6));
+    s2.world.step();
+    s2.rig.yaw = 0; s2.rig.pitch = balance.camera.initialPitch;
+    settle(s2.rig);
+    const d = s2.camera.position.distanceTo(s2.rig.target);
+    assert.ok(d > balance.camera.world.distance * 0.8, `boom over the parapet ${d}`);
+    assert.ok(s2.camera.position.y > 1.6, 'camera above the parapet');
+    assert.ok(forwardPitch(s2.camera) > 0.2, 'looking down at the hero');
+    // Walking away from the wall, the camera settles back to walking height.
+    settle(s2.rig, 4, 60, false, new Vector3(0, 0, -6));
+    close(forwardPitch(s2.camera), balance.camera.world.pitch, 0.02);
+  } finally { s2.world.free(); }
+});
+
 test('warning arrows point at unseen foes behind and beside, never at foes on screen or far off', async () => {
   const { world, camera, rig } = await setup();
   try {
