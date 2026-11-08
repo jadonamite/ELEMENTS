@@ -8,7 +8,7 @@ import {
   type Object3D,
   Vector3,
 } from 'three';
-import { BodyKit } from './body.js';
+import { BodyKit, type OutfitId } from './body.js';
 import { rollRandomCharacter, sanitizeCharacterConfig } from './creator/creator-types.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -51,10 +51,16 @@ export interface VillainCast { origin: Vector3; facing: number; element: string;
 
 /** Shared model and clips; each enemy clones the rig and binds its own mixer. */
 const VILLAIN_VARIANTS = 6;
+/** Villains drawn on character sheets: the outfit, its sex, and the kinds that wear it. */
+const SHEET_VILLAINS: ReadonlyArray<[OutfitId, 'male' | 'female', readonly VillainKind[]]> = [
+  ['robber', 'female', ['robber']],
+  ['deserter', 'male', ['deserter']],
+];
 /** How close a challenger stands to the hero while waiting for an answer. */
 const CHALLENGE_STAND = 2.8;
 export interface EnemyTemplate {
-  variants: Array<{ model: Group; clips: AnimationClip[] }>;
+  /** Bodies; one with `kinds` is worn only by those kinds, and those kinds wear only such bodies. */
+  variants: Array<{ model: Group; clips: AnimationClip[]; kinds?: readonly VillainKind[] }>;
   weapons: Record<string, Object3D>;
 }
 
@@ -139,6 +145,16 @@ export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<Enem
       clips: await kit.fitClips(config.sex, clips, 'villain'),
     });
   }
+  // People from the character sheets, each worn by the kinds it was drawn for.
+  for (const [outfit, sex, kinds] of SHEET_VILLAINS) {
+    const config = rollRandomCharacter();
+    config.sex = sex;
+    variants.push({
+      model: await kit.build(sanitizeCharacterConfig(config), 'villain', undefined, outfit),
+      clips: await kit.fitClips(sex, clips, 'villain', outfit),
+      kinds,
+    });
+  }
   const swordMesh = sword?.scene.getObjectByName(SWORD_WEAPON.meshName ?? 'Sword') ?? null;
   const weapons: Record<string, Object3D> = { club: createClub() };
   if (swordMesh) weapons.sword = swordMesh;
@@ -187,7 +203,9 @@ export class Enemy {
     kind: VillainKind = 'brawler',
     bounded = Math.hypot(spawn.x, spawn.z) <= (balance.arena.size / 2),
   ) {
-    const variant = template.variants[Math.floor(Math.random() * template.variants.length)]!;
+    const own = template.variants.filter(v => v.kinds?.includes(kind));
+    const pool = own.length ? own : template.variants.filter(v => !v.kinds);
+    const variant = pool[Math.floor(Math.random() * pool.length)]!;
     this.kind = kind;
     this.fit = KINDS[kind];
     this.model = dressVillain(variant.model, this.materials);
