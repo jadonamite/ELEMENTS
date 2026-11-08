@@ -54,6 +54,7 @@ const VILLAIN_VARIANTS = 6;
 /** Villains drawn on character sheets: the outfit, its sex, and the kinds that wear it. */
 const SHEET_VILLAINS: ReadonlyArray<[OutfitId, 'male' | 'female', readonly VillainKind[]]> = [
   ['robber', 'female', ['robber']],
+  ['deserter', 'male', ['deserter']],
 ];
 /** How close a challenger stands to the hero while waiting for an answer. */
 const CHALLENGE_STAND = 2.8;

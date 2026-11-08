@@ -42,7 +42,7 @@ const BODY_PATH: Record<Sex, string> = {
   female: '/assets/characters/creator/female.glb',
 };
 
-export type OutfitId = 'rags' | 'shaper_ignis' | 'hush_ignis' | 'robber';
+export type OutfitId = 'rags' | 'shaper_ignis' | 'hush_ignis' | 'robber' | 'deserter' | 'warlord_ignis';
 
 interface Outfit {
   /** The outfit file per sex; a sex without one wears rags. */
@@ -80,6 +80,8 @@ const OUTFITS: Record<OutfitId, Outfit> = {
   },
   hush_ignis: { path: { male: '/assets/characters/people/hush_ignis_male.glb' }, ...person() },
   robber: { path: { female: '/assets/characters/people/robber_female.glb' }, ...person() },
+  deserter: { path: { male: '/assets/characters/people/deserter_male.glb' }, ...person() },
+  warlord_ignis: { path: { female: '/assets/characters/people/warlord_ignis_female.glb' }, ...person() },
 };
 const OUTFIT_FILES = new Set(Object.values(OUTFITS).flatMap(o => Object.values(o.path)));
 
