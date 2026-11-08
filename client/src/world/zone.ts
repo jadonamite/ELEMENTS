@@ -69,7 +69,7 @@ export interface Zone {
   physics: PhysicsWorld;
   clock: WorldClock;
   /** Readies something that will appear during play (a villain, an effect) so its first frame does not stall. */
-  warm(object: Object3D): Promise<void>;
+  warm(object: Object3D, onProgress?: (fraction: number) => void): Promise<void>;
   /** Resolves when the town surfaces and every prop LOD have loaded. */
   ready: Promise<void>;
   /** Where people belong, as the town was built: counters, anvils, doors. */
@@ -272,7 +272,8 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   composer.renderTarget2.texture.type = HalfFloatType;
   composer.addPass(new RenderPass(scene, camera));
   /** Readies an object to draw the way the scene pass draws it, before it first shows. */
-  const warmUp = (object: Object3D): Promise<void> => warm(renderer, scene, camera, object, composer.renderTarget1);
+  const warmUp = (object: Object3D, onProgress?: (fraction: number) => void): Promise<void> =>
+    warm(renderer, scene, camera, object, composer.renderTarget1, onProgress);
   composer.addPass(new ShaderPass(SANITIZE_SHADER));
   const bloom = new UnrealBloomPass(new Vector2(640, 360), 0.55, 0.6, 0.85);
   composer.addPass(bloom);
