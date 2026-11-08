@@ -468,6 +468,28 @@ export class TownManager {
     return null;
   }
 
+  /**
+   * Who the player means to talk to: people within reach in front of the camera, nearest and most
+   * centred first. Anyone closer than `besideRadius` counts even when off to the side.
+   */
+  getTalkTarget(heroPos: Vector3, facingX: number, facingZ: number, maxRadius: number, minDot: number,
+    besideRadius: number): LiveTownsperson | null {
+    let best: LiveTownsperson | null = null;
+    let bestScore = Infinity;
+    const len = Math.hypot(facingX, facingZ) || 1;
+    const fx = facingX / len, fz = facingZ / len;
+    for (const person of this.townsfolk) {
+      const dx = person.position.x - heroPos.x, dz = person.position.z - heroPos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist >= maxRadius) continue;
+      const dot = dist > 1e-3 ? (dx * fx + dz * fz) / dist : 1;
+      if (dot < minDot && dist >= besideRadius) continue;
+      const score = dist / (0.5 + Math.max(0, dot));
+      if (score < bestScore) { bestScore = score; best = person; }
+    }
+    return best;
+  }
+
   getNearestTownsperson(heroPos: Vector3, maxRadius = 3.5): LiveTownsperson | null {
     let nearest: LiveTownsperson | null = null;
     let minDist = maxRadius;

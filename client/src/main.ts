@@ -427,7 +427,8 @@ async function main(): Promise<void> {
     () => lifeSystem?.contextOffer() ?? null,
   ], camera, input, () => controls);
   cleanup.push(() => contextAction.dispose());
-  input.onInteract = () => contextAction.interact() || (lifeSystem?.closeTalk() ?? false);
+  input.onInteract = () => contextAction.interact();
+  if (lifeSystem) input.conversation = lifeSystem.conversation;
   // Space jumps; a second tap while still rising or falling from it is the super jump.
   let jumpedAt = -Infinity, superJumped = false;
   input.onJump = () => {

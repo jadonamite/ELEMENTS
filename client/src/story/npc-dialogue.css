@@ -1,0 +1,96 @@
+/* Conversation panel and lead marker. Shares the controls palette so prompts and talk read as one family. */
+.npc-talk {
+  position: fixed;
+  left: 50%;
+  bottom: max(var(--space-16), env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(34rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-4) var(--space-5);
+  color: var(--control-ink);
+  background: var(--control-surface);
+  border: 1px solid var(--control-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font: var(--font-size-base)/var(--line-height-normal) var(--font-family-body);
+  z-index: 105;
+}
+.npc-talk[hidden] { display: none; }
+.npc-talk-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--control-key-base);
+}
+.npc-talk-name {
+  font: var(--font-weight-bold) var(--font-size-lg)/var(--line-height-tight) var(--font-family-display);
+  letter-spacing: var(--letter-spacing-wide);
+}
+.npc-talk-badge {
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--letter-spacing-widest);
+  text-transform: uppercase;
+  color: var(--control-key-face);
+}
+.npc-talk-badge.lit { color: var(--control-ember-light); }
+.npc-talk-line { margin: 0 0 var(--space-4); min-height: 2.9em; }
+.npc-talk-choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.npc-talk-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--target-min-size);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
+  color: var(--control-ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.npc-talk-choice.selected { background: var(--control-key-base); border-color: var(--control-line); }
+.npc-talk-choice:focus-visible { outline: 2px solid var(--control-ember-light); outline-offset: 2px; }
+.npc-talk-key {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--control-key-ink);
+  background: var(--control-key-face);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 3px 0 var(--control-key-side);
+  font: var(--font-weight-bold) var(--font-size-sm)/1 var(--font-family-body);
+}
+.touch-input .npc-talk-key { display: none; }
+
+.lead-marker-hud { position: fixed; pointer-events: none; z-index: 95; }
+.lead-marker-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  color: var(--control-ink);
+  background: var(--control-surface);
+  border: 1px solid var(--control-line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font: var(--font-size-xs)/var(--line-height-normal) var(--font-family-body);
+  letter-spacing: var(--letter-spacing-wide);
+}
+.lead-marker-badge.offscreen { opacity: 0.85; }
+.lead-marker-title { font-weight: var(--font-weight-semibold); color: var(--control-key-light); }
+.lead-marker-dist { color: var(--control-key-face); }
+
+/* While talking, control lessons wait; the panel is the one prompt on screen. */
+body:has(.npc-talk:not([hidden])) .control-lesson { display: none; }

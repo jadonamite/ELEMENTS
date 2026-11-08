@@ -2,15 +2,37 @@ import type { SoundManager } from '../audio.js';
 import type { LiveTownsperson } from '../life/town-manager.js';
 import {
   pickDialogueLine,
+  type DialogueEventType,
   type DialogueMemory,
   type PlayerDialogueContext,
 } from '../../../shared/src/story/dialogue.js';
 import type { LeadManager, Lead } from '../../../shared/src/story/leads.js';
 import dialogueData from '../../../shared/dialogue.json';
+import './npc-dialogue.css';
 
+/** One reply the player can give. */
+interface Choice {
+  label: string;
+  run(): void;
+}
+
+/** Most replies a conversation offers at once; each has a number key. */
+const MAX_CHOICES = 4;
+
+/**
+ * The conversation panel. It is driven by keys, the mouse wheel and the left button while the mouse is
+ * captured, and by taps on phones: replies are numbered, one is highlighted, and confirming runs it.
+ */
 export class NpcDialogueUI {
-  private dialogueEl: HTMLElement;
+  private readonly el: HTMLElement;
+  private readonly nameEl: HTMLElement;
+  private readonly badgeEl: HTMLElement;
+  private readonly textEl: HTMLElement;
+  private readonly choicesEl: HTMLElement;
   private currentNpc: LiveTownsperson | null = null;
+  private player: PlayerDialogueContext | null = null;
+  private choices: Choice[] = [];
+  private selected = 0;
   private open = false;
 
   constructor(
@@ -19,154 +41,44 @@ export class NpcDialogueUI {
     private leadManager: LeadManager,
     private onLeadPurchased?: (lead: Lead) => void,
   ) {
-    this.dialogueEl = document.createElement('div');
-    this.dialogueEl.id = 'npc-dialogue-box';
-    this.dialogueEl.className = 'npc-dialogue-card';
-    this.dialogueEl.style.display = 'none';
-    document.body.appendChild(this.dialogueEl);
-
-    this.setupStyles();
-  }
-
-  private setupStyles(): void {
-    const style = document.createElement('style');
-    style.id = 'life-story-styles';
-    style.textContent = `
-      .npc-dialogue-card {
-        position: fixed;
-        bottom: 110px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 520px;
-        max-width: 90vw;
-        background: rgba(18, 16, 20, 0.94);
-        border: 1px solid #784824;
-        padding: 16px 20px;
-        color: #e6dfd5;
-        font-family: sans-serif;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
-        z-index: 105;
-      }
-      .dialogue-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        border-bottom: 1px solid #3a2818;
-        padding-bottom: 8px;
-        margin-bottom: 12px;
-      }
-      .dialogue-name {
-        font-size: 16px;
-        font-weight: bold;
-        color: #e8b060;
-        letter-spacing: 0.04em;
-      }
-      .dialogue-badge {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        padding: 2px 8px;
-        border: 1px solid #5a3820;
-        color: #c49a70;
-      }
-      .dialogue-badge.lit {
-        border-color: #a42818;
-        color: #ff6a4a;
-        background: rgba(160, 40, 20, 0.2);
-      }
-      .dialogue-badge.hush,
-      .dialogue-badge.dim {
-        border-color: #4a5460;
-        color: #a0b2c6;
-        background: rgba(40, 50, 60, 0.2);
-      }
-      .dialogue-text {
-        font-size: 15px;
-        line-height: 1.45;
-        color: #d8d0c4;
-        margin-bottom: 14px;
-        min-height: 42px;
-      }
-      .dialogue-actions {
-        display: flex;
-        gap: 10px;
-      }
-      .dialogue-btn {
-        background: #2a2018;
-        border: 1px solid #8c5828;
-        color: #f0e6d6;
-        padding: 6px 14px;
-        font-size: 13px;
-        cursor: pointer;
-        transition: background 0.15s, border-color 0.15s;
-      }
-      .dialogue-btn:hover {
-        background: #4a3420;
-        border-color: #d88838;
-      }
-      .dialogue-btn.secondary {
-        background: transparent;
-        border-color: #4a3c30;
-        color: #a09484;
-      }
-      .dialogue-btn.secondary:hover {
-        border-color: #706050;
-        color: #e0d4c4;
-      }
-      .lead-marker-hud {
-        position: fixed;
-        pointer-events: none;
-        z-index: 95;
-      }
-      .lead-marker-badge {
-        background: rgba(14, 12, 16, 0.88);
-        border: 1px solid #d89830;
-        padding: 4px 10px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: #f4eae0;
-        font-family: sans-serif;
-        font-size: 12px;
-        letter-spacing: 0.04em;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-      }
-      .lead-marker-badge.offscreen {
-        border-color: #886020;
-        opacity: 0.85;
-      }
-      .lead-marker-title {
-        font-weight: 600;
-        color: #f8c850;
-      }
-      .lead-marker-dist {
-        color: #a8a090;
-        font-size: 11px;
-      }
-    `;
-    document.head.appendChild(style);
+    this.el = document.createElement('section');
+    this.el.className = 'npc-talk';
+    this.el.setAttribute('aria-live', 'polite');
+    this.el.hidden = true;
+    this.el.innerHTML = `
+      <header class="npc-talk-header">
+        <span class="npc-talk-name"></span>
+        <span class="npc-talk-badge"></span>
+      </header>
+      <p class="npc-talk-line"></p>
+      <ol class="npc-talk-choices"></ol>`;
+    this.nameEl = this.el.querySelector('.npc-talk-name')!;
+    this.badgeEl = this.el.querySelector('.npc-talk-badge')!;
+    this.textEl = this.el.querySelector('.npc-talk-line')!;
+    this.choicesEl = this.el.querySelector('.npc-talk-choices')!;
+    document.body.appendChild(this.el);
   }
 
   isOpen(): boolean {
     return this.open;
   }
 
-  interact(player: PlayerDialogueContext, npc?: LiveTownsperson | null): void {
-    if (this.open) {
-      this.close();
-      return;
-    }
+  /** Who the player is talking to, while a conversation is open. */
+  get partner(): LiveTownsperson | null {
+    return this.open ? this.currentNpc : null;
+  }
 
+  interact(player: PlayerDialogueContext, npc?: LiveTownsperson | null): void {
     const target = npc ?? this.currentNpc;
     if (!target) return;
     this.openDialogue(target, player);
   }
 
-  openDialogue(npc: LiveTownsperson, player: PlayerDialogueContext, eventType = 'greeting'): void {
+  openDialogue(npc: LiveTownsperson, player: PlayerDialogueContext, eventType: DialogueEventType = 'greeting'): void {
     this.currentNpc = npc;
+    this.player = player;
     this.open = true;
 
-    // Pick line from dialogue table
     const result = pickDialogueLine(
       dialogueData as unknown as Record<string, Record<string, string[] | string>>,
       {
@@ -176,79 +88,100 @@ export class NpcDialogueUI {
         mood: npc.feelingScore > 65 ? 'friendly' : npc.feelingScore < 35 ? 'wary' : 'neutral',
       },
       player,
-      eventType as any,
+      eventType,
       this.dialogueMemory,
     );
-
-    // Play vocal bark sound
     this.soundManager.playBark(npc.data.role, npc.data.sex);
 
     const roleName = npc.data.role.charAt(0).toUpperCase() + npc.data.role.slice(1);
-    const badgeClass = npc.data.isLit ? 'lit' : 'hush';
-    const badgeLabel = npc.data.isLit ? 'Lit IGNIS' : 'Hush';
+    this.nameEl.textContent = npc.data.name;
+    this.badgeEl.textContent = `${npc.data.isLit ? 'Lit' : 'Hush'} · ${roleName}`;
+    this.badgeEl.classList.toggle('lit', npc.data.isLit);
+    this.textEl.textContent = result.text;
+    this.setChoices(this.choicesFor(npc));
+    this.el.hidden = false;
+  }
 
-    let actionsHtml = `<button type="button" class="dialogue-btn" id="dialogue-more-btn">Talk</button>`;
+  private choicesFor(npc: LiveTownsperson): Choice[] {
+    const choices: Choice[] = [{ label: 'Talk', run: () => this.again('talk') }];
     if (npc.data.role === 'innkeeper') {
-      const avail = this.leadManager.getAvailableLeads();
-      if (avail.length > 0) {
-        actionsHtml += `<button type="button" class="dialogue-btn" id="dialogue-lead-btn">Buy Lead (15 CHROMA)</button>`;
-      }
-      actionsHtml += `<button type="button" class="dialogue-btn" id="dialogue-rumour-btn">Ask of the Allborn</button>`;
+      if (this.leadManager.getAvailableLeads().length > 0) choices.push({ label: 'Buy a lead (15 CHROMA)', run: () => this.buyLead() });
+      choices.push({ label: 'Ask of the Allborn', run: () => this.again('rumour_allborn') });
     }
-    actionsHtml += `<button type="button" class="dialogue-btn secondary" id="dialogue-close-btn">Close</button>`;
+    choices.push({ label: 'Leave', run: () => this.close() });
+    return choices.slice(0, MAX_CHOICES);
+  }
 
-    this.dialogueEl.innerHTML = `
-      <div class="dialogue-header">
-        <span class="dialogue-name">${npc.data.name}</span>
-        <span class="dialogue-badge ${badgeClass}">${badgeLabel} (${roleName})</span>
-      </div>
-      <div class="dialogue-text">${result.text}</div>
-      <div class="dialogue-actions">${actionsHtml}</div>
-    `;
-    this.dialogueEl.style.display = 'block';
+  private again(event: DialogueEventType): void {
+    if (this.currentNpc && this.player) this.openDialogue(this.currentNpc, this.player, event);
+  }
 
-    // Wire buttons
-    const closeBtn = this.dialogueEl.querySelector('#dialogue-close-btn');
-    closeBtn?.addEventListener('click', () => this.close());
+  private buyLead(): void {
+    const npc = this.currentNpc;
+    const avail = this.leadManager.getAvailableLeads();
+    if (!npc || avail.length === 0) return;
+    const lead = this.leadManager.purchaseLead(avail[0]!.id);
+    if (!lead) return;
+    this.onLeadPurchased?.(lead);
+    this.showLine(npc, `Here is the map mark for the ${lead.title}. Follow the amber beacon and mind your back out on the road.`);
+    this.setChoices(this.choicesFor(npc));
+  }
 
-    const moreBtn = this.dialogueEl.querySelector('#dialogue-more-btn');
-    moreBtn?.addEventListener('click', () => {
-      this.openDialogue(npc, player, 'talk');
-    });
+  private setChoices(choices: Choice[]): void {
+    this.choices = choices;
+    this.selected = 0;
+    this.choicesEl.replaceChildren(...choices.map((choice, i) => {
+      const item = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'npc-talk-choice';
+      button.innerHTML = '<kbd class="npc-talk-key"></kbd><span></span>';
+      button.querySelector('kbd')!.textContent = String(i + 1);
+      button.querySelector('span')!.textContent = choice.label;
+      button.addEventListener('click', () => this.choose(i));
+      button.addEventListener('pointerenter', () => this.highlight(i));
+      item.appendChild(button);
+      return item;
+    }));
+    this.highlight(0);
+  }
 
-    const leadBtn = this.dialogueEl.querySelector('#dialogue-lead-btn');
-    leadBtn?.addEventListener('click', () => {
-      const avail = this.leadManager.getAvailableLeads();
-      if (avail.length > 0) {
-        const lead = this.leadManager.purchaseLead(avail[0]!.id);
-        if (lead) {
-          this.onLeadPurchased?.(lead);
-          this.showLine(npc, `Here is the map mark for the ${lead.title}. Follow the amber beacon and mind your back out on the road.`);
-        }
-      }
-    });
+  private highlight(index: number): void {
+    this.selected = index;
+    this.choicesEl.querySelectorAll('.npc-talk-choice').forEach((b, i) => b.classList.toggle('selected', i === index));
+  }
 
-    const rumourBtn = this.dialogueEl.querySelector('#dialogue-rumour-btn');
-    rumourBtn?.addEventListener('click', () => {
-      this.openDialogue(npc, player, 'rumour_allborn');
-    });
+  /** Runs reply `index` (0-based). False when there is no such reply. */
+  choose(index: number): boolean {
+    const choice = this.open ? this.choices[index] : undefined;
+    if (!choice) return false;
+    choice.run();
+    return true;
+  }
+
+  /** Moves the highlight up (-1) or down (+1), wrapping. */
+  step(direction: number): void {
+    if (!this.open || this.choices.length === 0) return;
+    const n = this.choices.length;
+    this.highlight(((this.selected + Math.sign(direction)) % n + n) % n);
+  }
+
+  /** Runs the highlighted reply. */
+  confirm(): boolean {
+    return this.choose(this.selected);
   }
 
   showLine(npc: LiveTownsperson, lineText: string): void {
-    const textEl = this.dialogueEl.querySelector('.dialogue-text');
-    if (textEl) {
-      textEl.textContent = lineText;
-      this.soundManager.playBark(npc.data.role, npc.data.sex);
-    }
+    this.textEl.textContent = lineText;
+    this.soundManager.playBark(npc.data.role, npc.data.sex);
   }
 
   close(): void {
     this.open = false;
-    this.dialogueEl.style.display = 'none';
+    this.el.hidden = true;
   }
 
   dispose(): void {
-    this.dialogueEl.remove();
-    document.getElementById('life-story-styles')?.remove();
+    this.el.remove();
   }
 }
