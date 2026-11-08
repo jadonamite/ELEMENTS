@@ -1,22 +1,30 @@
 import type { MoveInput } from './controller.js';
 import type { CombatAction, FightingStyle } from './combat.js';
-
-const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyR']);
-/** Keys that trigger one move per press. */
-const actionKeys: Record<string, CombatAction> = {
-  KeyQ: 'uppercut', KeyE: 'ground_pound', KeyF: 'dash', KeyG: 'ultimate', AltLeft: 'dodge',
-};
+import { KEY_BINDINGS, type ControlAction, type InputDevice } from './controls/actions.js';
 
 export function isEditable(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable ||
     target.closest('input, textarea, select, [contenteditable="true"]') !== null);
 }
+const COMBAT: Partial<Record<ControlAction, CombatAction>> = {
+  strike: 'light', heavy: 'heavy', rise: 'uppercut', ground: 'ground_pound', bend_move: 'dash',
+  ultimate: 'ultimate', spark: 'spark', dodge: 'dodge',
+};
 
+/** Device bindings feed semantic actions; gameplay reads only the resulting action state. */
 export class GameInput {
   private readonly keys = new Set<string>();
+  private readonly held = new Map<ControlAction, Set<string>>();
   private readonly actions: CombatAction[] = [];
   private readonly events = new AbortController();
   private disposed = false;
+  private touchMove = { forward: 0, right: 0 };
+  private currentDevice: InputDevice = 'desktop';
+  allowed: (action: ControlAction) => boolean = () => true;
+  onDeviceChange?: (device: InputDevice) => void;
+  onAction?: (action: ControlAction) => void;
+  onTargetTap?: (x: number, y: number) => boolean | void;
+  onMenu?: () => void;
   onLockToggle?: () => void;
   onStanceToggle?: () => void;
   onBendingToggle?: () => void;
@@ -24,142 +32,136 @@ export class GameInput {
   onInteract?: () => boolean | void;
   onDuelToggle?: () => void;
   onTechnique?: () => void;
-  /** Space: a jump, or the super jump when tapped again in the air. */
   onJump?: () => void;
 
   constructor(private readonly canvas: HTMLCanvasElement, button: HTMLButtonElement,
-    orbit: (dx: number, dy: number) => void, status: (text: string) => void, entryLabel = 'Enter the arena') {
+    private readonly orbit: (dx: number, dy: number) => void, status: (text: string) => void, entryLabel = 'Enter the arena') {
     const options = { signal: this.events.signal };
-    const clear = (): void => this.keys.clear();
     const capture = (): void => {
       canvas.focus();
-      if (!canvas.requestPointerLock) {
-        status('Mouse capture is unavailable. WASD and Shift still work.');
-        return;
-      }
+      if (this.device === 'touch') return;
+      if (!canvas.requestPointerLock) { status('Mouse capture is unavailable. WASD and Shift still work.'); return; }
       try {
-        const request = canvas.requestPointerLock();
-        request?.catch(() => {
+        canvas.requestPointerLock()?.catch(() => {
           if (!this.disposed) status(`The mouse could not be captured. Select ${entryLabel} to try again.`);
         });
-      } catch {
-        status(`The mouse could not be captured. Select ${entryLabel} to try again.`);
-      }
+      } catch { status(`The mouse could not be captured. Select ${entryLabel} to try again.`); }
     };
     canvas.addEventListener('click', capture, options);
     button.addEventListener('click', capture, options);
-    window.addEventListener('keydown', event => {
-      if (isEditable(event.target) || document.activeElement !== canvas) return;
-      if (event.code === 'Space') {
-        event.preventDefault();
-        if (!event.repeat) this.onJump?.();
-        return;
-      }
-      // Alt alone would focus the browser menu on some systems.
-      if (event.code === 'AltLeft') event.preventDefault();
-      if (event.code === 'Tab') {
-        event.preventDefault();
-        this.onLockToggle?.();
-        return;
-      }
-      if (event.code === 'Digit1' || event.code === 'Numpad1') {
-        event.preventDefault();
-        this.onStyleSelect?.('weapon');
-        return;
-      }
-      if (event.code === 'Digit2' || event.code === 'Numpad2') {
-        event.preventDefault();
-        this.onStyleSelect?.('bare_hands');
-        return;
-      }
-      if (event.code === 'Digit3' || event.code === 'Numpad3') {
-        event.preventDefault();
-        this.onStyleSelect?.('legs');
-        return;
-      }
-      if (event.code === 'KeyX' && !event.repeat) {
-        event.preventDefault();
-        this.onStanceToggle?.();
-        return;
-      }
-      if (event.code === 'KeyB' && !event.repeat) {
-        event.preventDefault();
-        this.onBendingToggle?.();
-        return;
-      }
-      if ((event.code === 'KeyC' || event.code === 'KeyE') && !event.repeat) {
-        if (this.onInteract && this.onInteract() === true) {
-          event.preventDefault();
-          return;
-        }
-      }
-      if (event.code === 'KeyK' && !event.repeat) {
-        event.preventDefault();
-        this.onDuelToggle?.();
-        return;
-      }
-      if (event.code === 'KeyV' && !event.repeat) {
-        event.preventDefault();
-        this.onTechnique?.();
-        return;
-      }
-      if (movementKeys.has(event.code)) {
-        event.preventDefault();
-        this.keys.add(event.code);
-      }
-      const action = actionKeys[event.code];
-      if (action) {
-        event.preventDefault();
-        if (!event.repeat) this.actions.push(action);
-      }
+    window.addEventListener('pointerdown', event => {
+      if (event.pointerType === 'touch') this.useDevice('touch');
+      else if (event.pointerType === 'mouse') this.useDevice('desktop');
     }, options);
-    window.addEventListener('keyup', event => { this.keys.delete(event.code); }, options);
-    window.addEventListener('blur', clear, options);
-    document.addEventListener('focusin', event => { if (event.target !== canvas) clear(); }, options);
-    document.addEventListener('visibilitychange', clear, options);
+    window.addEventListener('keydown', event => {
+      if (isEditable(event.target)) return;
+      this.useDevice('desktop');
+      const action = KEY_BINDINGS[event.code];
+      if (!action || (action !== 'menu' && document.activeElement !== canvas)) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      this.keys.add(event.code);
+      if (action === 'block' || action === 'run') this.hold(action, event.code, true);
+      else if (action !== 'move') this.press(action);
+    }, options);
+    window.addEventListener('keyup', event => {
+      this.keys.delete(event.code);
+      const action = KEY_BINDINGS[event.code];
+      if (action) this.hold(action, event.code, false);
+    }, options);
+    window.addEventListener('blur', () => this.clear(), options);
+    document.addEventListener('focusin', event => { if (event.target !== canvas) this.clear(); }, options);
+    document.addEventListener('visibilitychange', () => this.clear(), options);
+    let wasLocked = false;
     document.addEventListener('pointerlockchange', () => {
-      clear();
-      const locked = document.pointerLockElement === canvas;
+      this.clear();
       button.textContent = entryLabel;
-      status(locked ? '' : 'Paused. Press Escape any time to release the mouse.');
+      const locked = document.pointerLockElement === canvas;
+      if (wasLocked && !locked && this.device === 'desktop' && !this.paused && document.hasFocus?.()) this.onMenu?.();
+      wasLocked = locked;
+      status('');
     }, options);
     document.addEventListener('pointerlockerror', () => {
-      clear();
-      status(`The mouse could not be captured. Select ${entryLabel} to try again.`);
+      this.clear(); status(`The mouse could not be captured. Select ${entryLabel} to try again.`);
     }, options);
-    // Mouse buttons attack only while the mouse is captured; the first click captures it.
     document.addEventListener('mousedown', event => {
       if (document.pointerLockElement !== canvas) return;
-      if (event.button === 0) this.actions.push('light');
-      if (event.button === 2) this.actions.push('heavy');
+      this.useDevice('desktop');
+      if (event.button === 0) this.press('strike');
+      if (event.button === 2) this.press('heavy');
     }, options);
     canvas.addEventListener('contextmenu', event => event.preventDefault(), options);
     document.addEventListener('mousemove', event => {
-      if (document.pointerLockElement === canvas) orbit(event.movementX, event.movementY);
+      if (document.pointerLockElement === canvas && (event.movementX || event.movementY)) {
+        this.useDevice('desktop'); this.look(event.movementX, event.movementY);
+      }
     }, options);
   }
-
-  /** Move presses since the last call, oldest first. */
+  get device(): InputDevice { return this.currentDevice; }
+  useDevice(device: InputDevice): void {
+    if (this.currentDevice === device) return;
+    this.clear(); this.currentDevice = device;
+    if (device === 'touch' && document.pointerLockElement === this.canvas) document.exitPointerLock();
+    this.onDeviceChange?.(device);
+  }
+  get paused(): boolean {
+    return !!document.body?.matches('.home-open, .selecting, .shop-open') ||
+      !!document.getElementById?.('opening-overlay') || document.hidden === true;
+  }
+  /** Public action entry point for touch and future controllers. */
+  press(action: ControlAction, at?: { x: number; y: number }): boolean {
+    if (this.disposed || (action !== 'menu' && this.paused) || !this.allowed(action)) return false;
+    if (action === 'menu' && document.getElementById?.('opening-overlay')) return false;
+    if (action === 'interact') {
+      if (this.onInteract?.() === true) { this.onAction?.('interact'); return true; }
+      return this.press('ground');
+    }
+    const combat = COMBAT[action];
+    if (combat) this.actions.push(combat);
+    else if (action === 'lock') {
+      if (at) { if (this.onTargetTap?.(at.x, at.y) === false) return false; }
+      else this.onLockToggle?.();
+    }
+    else if (action === 'stance') this.onStanceToggle?.();
+    else if (action === 'bending') this.onBendingToggle?.();
+    else if (action === 'weapon') this.onStyleSelect?.('weapon');
+    else if (action === 'hands') this.onStyleSelect?.('bare_hands');
+    else if (action === 'legs') this.onStyleSelect?.('legs');
+    else if (action === 'jump') this.onJump?.();
+    else if (action === 'technique') this.onTechnique?.();
+    else if (action === 'duel') this.onDuelToggle?.();
+    else if (action === 'menu') { this.clear(); this.onMenu?.(); }
+    this.onAction?.(action);
+    return true;
+  }
+  hold(action: ControlAction, source: string, down: boolean): void {
+    if (!down) { this.held.get(action)?.delete(source); return; }
+    if (this.disposed || this.paused || !this.allowed(action)) return;
+    if (!this.held.has(action)) this.held.set(action, new Set());
+    this.held.get(action)!.add(source);
+  }
+  move(forward: number, right: number): void {
+    this.touchMove = { forward: Math.max(-1, Math.min(1, forward)), right: Math.max(-1, Math.min(1, right)) };
+  }
+  look(dx: number, dy: number): void {
+    if (!this.paused && this.allowed('look')) { this.orbit(dx, dy); this.onAction?.('look'); }
+  }
   takeActions(): CombatAction[] {
-    return this.actions.splice(0);
+    const queued = this.actions.splice(0);
+    return this.paused ? [] : queued;
   }
-
-  get blocking(): boolean {
-    return this.keys.has('KeyR');
-  }
-
+  get blocking(): boolean { return !this.paused && (this.held.get('block')?.size ?? 0) > 0; }
   read(): MoveInput {
+    if (this.paused) return { forward: 0, right: 0, running: false };
     return {
-      forward: Number(this.keys.has('KeyW')) - Number(this.keys.has('KeyS')),
-      right: Number(this.keys.has('KeyD')) - Number(this.keys.has('KeyA')),
-      running: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'),
+      forward: Math.max(-1, Math.min(1, Number(this.keys.has('KeyW')) - Number(this.keys.has('KeyS')) + this.touchMove.forward)),
+      right: Math.max(-1, Math.min(1, Number(this.keys.has('KeyD')) - Number(this.keys.has('KeyA')) + this.touchMove.right)),
+      running: (this.held.get('run')?.size ?? 0) > 0,
     };
   }
-
+  clear(): void { this.keys.clear(); this.held.clear(); this.actions.length = 0; this.move(0, 0); }
   dispose(): void {
-    this.disposed = true;
-    this.events.abort();
-    this.keys.clear();
+    this.disposed = true; this.events.abort(); this.clear();
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 }

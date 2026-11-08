@@ -1,6 +1,6 @@
 import express, { type Application, type Request, type Response } from 'express';
 import { verifyToken } from './auth.js';
-import { createOrGetAccount, createOrGetRising, getRising } from './db.js';
+import { createOrGetAccount, createOrGetRising, getRising, getControlProgress, saveControlProgress } from './db.js';
 import { isAccountAllowed, isIpAllowed } from './rate-limit.js';
 import { isOutsider } from './net/money.js';
 import { isInRoom, isZoneOnline } from './net/presence.js';
@@ -163,6 +163,25 @@ export function setupApi(app: Application): void {
         element: rising.element ?? null,
       },
     });
+  });
+
+  app.get('/api/character/controls', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (!isAccountAllowed(accountId)) { res.status(429).json({ error: 'Too many requests' }); return; }
+    const rising = getRising(accountId);
+    if (!rising) { res.status(409).json({ error: 'Create your character first' }); return; }
+    res.json({ progress: getControlProgress(accountId), tier: rising.tier ?? 5 });
+  });
+  app.post('/api/character/controls', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (!isAccountAllowed(accountId)) { res.status(429).json({ error: 'Too many requests' }); return; }
+    if (!getRising(accountId)) { res.status(409).json({ error: 'Create your character first' }); return; }
+    if (!req.body?.progress || typeof req.body.progress !== 'object' || Array.isArray(req.body.progress)) {
+      res.status(400).json({ error: 'A control learning record is required' }); return;
+    }
+    res.json({ progress: saveControlProgress(accountId, req.body.progress) });
   });
 
   // --- Economy endpoints (M5) ---

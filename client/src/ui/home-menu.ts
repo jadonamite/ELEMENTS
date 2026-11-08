@@ -1,4 +1,5 @@
 import './home-menu.css';
+import type { Controls } from '../controls/index.js';
 
 export interface HomeMenuOptions {
   inTown: boolean;
@@ -15,6 +16,8 @@ export class HomeMenu {
   private readonly lightboxImg: HTMLImageElement;
   private readonly lightboxCaption: HTMLParagraphElement;
   private isOpen = false;
+  private readonly events = new AbortController();
+  private returnFocus: HTMLElement | null = null;
 
   constructor(private readonly options: HomeMenuOptions) {
     // 1. Fixed HUD Button (Top Left)
@@ -48,9 +51,11 @@ export class HomeMenu {
           <button type="button" class="home-nav-tab active" data-tab="modes">World & Modes</button>
           <button type="button" class="home-nav-tab" data-tab="fighter">Fighter & Character</button>
           <button type="button" class="home-nav-tab" data-tab="environment">Environment & Time</button>
+          <button type="button" class="home-nav-tab" data-tab="help">Help</button>
         </nav>
 
         <div class="home-menu-body">
+          <div class="home-tab-pane" id="pane-help"><div class="controls-help"></div></div>
           <!-- Tab 1: World & Modes -->
           <div class="home-tab-pane active" id="pane-modes">
             <div class="home-grid-2">
@@ -154,6 +159,7 @@ export class HomeMenu {
       </div>
     `;
 
+    this.overlay.inert = true;
     document.body.appendChild(this.overlay);
 
     // 3. Lightbox for Reference Inspection
@@ -161,7 +167,7 @@ export class HomeMenu {
     this.lightbox.className = 'ref-lightbox';
     this.lightbox.innerHTML = `
       <button type="button" class="ref-lightbox-close" aria-label="Close image">Close</button>
-      <img src="" alt="Enlarged Reference" />
+      <img alt="Enlarged reference" />
       <p class="ref-lightbox-caption"></p>
     `;
     document.body.appendChild(this.lightbox);
@@ -243,29 +249,24 @@ export class HomeMenu {
       if (e.target === this.lightbox) this.lightbox.classList.remove('open');
     });
 
-    // Global Escape Key Handler
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        if (this.lightbox.classList.contains('open')) {
-          e.stopPropagation();
-          this.lightbox.classList.remove('open');
-          return;
-        }
-        if (this.isOpen) {
-          e.stopPropagation();
-          this.close();
-          return;
-        }
-        // If not in pointer lock and not already selecting, pressing Esc opens menu
-        if (!document.pointerLockElement && !document.body.classList.contains('selecting')) {
-          this.open();
-        }
-      }
-    });
+    window.addEventListener('keydown', e => {
+      if (!this.isOpen || e.key !== 'Tab') return;
+      const focusable = [...this.overlay.querySelectorAll<HTMLElement>('button:not(:disabled), [href], [tabindex="0"]')]
+        .filter(el => el.getClientRects().length > 0);
+      const first = focusable[0], last = focusable.at(-1);
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+    }, { signal: this.events.signal });
   }
 
+  mountControls(controls: Controls): void { controls.mountHelp(this.overlay.querySelector('.controls-help')!); }
+  toggle(): void { if (this.isOpen) this.close(); else this.open(); }
+
   open(): void {
+    this.returnFocus = document.activeElement as HTMLElement;
+    if (document.pointerLockElement) document.exitPointerLock();
     this.isOpen = true;
+    this.overlay.inert = false;
     this.overlay.classList.add('open');
     document.body.classList.add('home-open');
     (this.overlay.querySelector('.home-menu-close') as HTMLElement)?.focus();
@@ -273,9 +274,11 @@ export class HomeMenu {
 
   close(): void {
     this.isOpen = false;
+    this.overlay.inert = true;
     this.overlay.classList.remove('open');
     this.lightbox.classList.remove('open');
     document.body.classList.remove('home-open');
+    (document.querySelector<HTMLCanvasElement>('#game') ?? this.returnFocus)?.focus();
   }
 
   private navigate(setParams: Record<string, string>, removeParams: string[] = []): void {
@@ -289,9 +292,11 @@ export class HomeMenu {
   }
 
   dispose(): void {
+    this.events.abort();
     this.hudButton.remove();
     this.overlay.remove();
     this.lightbox.remove();
     document.body.classList.remove('home-open');
+    (document.querySelector<HTMLCanvasElement>('#game') ?? this.returnFocus)?.focus();
   }
 }

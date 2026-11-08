@@ -423,7 +423,7 @@ async function main(): Promise<void> {
     return out;
   }
   let nearSpot: Spot | null = null;
-  input.onInteract = () => nearSpot?.go();
+  input.onInteract = () => { if (!nearSpot) return false; nearSpot.go(); return true; };
 
   // ---------- the loop ----------
   showHall();
@@ -654,7 +654,7 @@ async function main(): Promise<void> {
     nearSpot = null;
     if (!paused) for (const s of spots()) if (Math.hypot(controller.position.x - s.at.x, controller.position.z - s.at.z) < s.r) { nearSpot = s; break; }
     prompt.set(nearSpot?.text ?? null);
-    fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight, false, sword.armed, locked, [], 'IGNIS', undefined, style, false);
+    fightHud.update(delta, fight.heroHealth, fight.enemies, camera, balance.enemy.healthBarHeight, false, sword.armed, locked, 'IGNIS', undefined, style, false);
     shoulder.update(drawn, delta, reduced.matches);
     threatArrows.update(controller.position, fight.enemies, camera);
     stage.focus.copy(drawn);

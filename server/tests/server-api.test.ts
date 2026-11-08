@@ -355,3 +355,33 @@ test('HTTP API: a guard seeing a street brawl flags the signed-in player, three 
     await ts.close();
   }
 });
+
+test('Character controls: authenticated, per-character, bounded, merged across devices and persistent', async () => {
+  const db = createDatabase(':memory:'); setDatabase(db); resetRateLimits();
+  setTokenVerifier(async token => {
+    if (!['learner-a', 'learner-b', 'newcomer'].includes(token)) throw new Error('Invalid token');
+    return { userId: token };
+  });
+  const ts = await startTestServer();
+  const call = (token: string, progress?: unknown) => fetch(`${ts.baseUrl}/api/character/controls`, {
+    method: progress === undefined ? 'GET' : 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    ...(progress === undefined ? {} : { body: JSON.stringify({ accountId: 'learner-b', progress }) }),
+  });
+  try {
+    assert.equal((await fetch(`${ts.baseUrl}/api/character/controls`)).status, 401);
+    assert.equal((await call('forged')).status, 401);
+    assert.equal((await call('newcomer')).status, 409);
+    for (const token of ['learner-a', 'learner-b']) await fetch(`${ts.baseUrl}/api/rising`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    assert.equal((await call('learner-a', [])).status, 400);
+    const write = await call('learner-a', { strike: { uses: 300, shown: 1 }, forged: { uses: 3, shown: 3 } });
+    assert.deepEqual(await write.json(), { progress: { strike: { uses: 3, shown: 1 } } });
+    const stale = await call('learner-a', { strike: { uses: 0, shown: 2 } });
+    assert.deepEqual(await stale.json(), { progress: { strike: { uses: 3, shown: 2 } } });
+    assert.deepEqual(await (await call('learner-b')).json(), { progress: {}, tier: 5 });
+    migrateDatabase(db);
+    assert.deepEqual(await (await call('learner-a')).json(), { progress: { strike: { uses: 3, shown: 2 } }, tier: 5 });
+  } finally { setTokenVerifier(null); await ts.close(); db.close(); }
+});

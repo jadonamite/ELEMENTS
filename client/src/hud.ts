@@ -1,17 +1,8 @@
 import { type Camera, Vector3 } from 'three';
 import balance from '../../shared/balance.json';
-import { createCombatRules, type CombatBalance, type Health, type MoveId } from '../../shared/src/index.js';
+import { type Health } from '../../shared/src/index.js';
 
-const rules = createCombatRules(balance.combat as unknown as CombatBalance);
-/** The move each tray slot stands for, for the tier rule. */
-const SLOT_MOVE: Record<string, MoveId> = { heavy: 'heavy_1', uppercut: 'uppercut', ground_pound: 'ground_pound', dash_strike: 'dash_strike', ultimate: 'ultimate' };
 import type { Enemy } from './enemy.js';
-
-export interface CooldownItem {
-  move: string;
-  remaining: number;
-  total: number;
-}
 
 export interface RoundHudInfo {
   round: number;
@@ -33,8 +24,8 @@ interface DamagePopup {
 const ART = '/assets/ui/hud';
 
 /**
- * The playing screen in three blocks: purse and standing top right, vitals bottom left, moves
- * bottom right. Vitals and moves show only in fight stance (the same signal that turns on the
+ * The playing screen keeps purse and standing top right, vitals bottom left.
+ * Vitals show only in fight stance (the same signal that turns on the
  * fight camera, which includes being hurt). ?debug shows every part all the time.
  */
 export class FightHud {
@@ -45,7 +36,6 @@ export class FightHud {
   private readonly banner: HTMLParagraphElement;
   private readonly modeBadge: HTMLSpanElement;
   private readonly stanceBadge: HTMLSpanElement;
-  private readonly perkBadge: HTMLSpanElement;
   private readonly purse: HTMLDivElement;
   private readonly coinAmount: HTMLElement;
   private readonly flags: HTMLDivElement;
@@ -57,7 +47,6 @@ export class FightHud {
   private readonly roundTitle: HTMLSpanElement;
   private readonly roundSub: HTMLSpanElement;
   private readonly lockReticle: HTMLDivElement;
-  private readonly abilitySlots = new Map<string, { fill: HTMLDivElement; timer: HTMLSpanElement; root: HTMLDivElement }>();
   private readonly bars = new Map<Enemy, HTMLDivElement>();
   private damagePopups: DamagePopup[] = [];
   private readonly meter: HTMLDivElement;
@@ -65,17 +54,11 @@ export class FightHud {
   private readonly meterLine: HTMLDivElement;
   private readonly supply: HTMLSpanElement;
   private trail = 1;
-  private throwName = 'throw';
-  private sweepName = 'sweep';
   private readonly point = new Vector3();
 
   constructor() {
     this.root = document.createElement('div');
     this.root.id = 'fight-hud';
-    // Basic moves (always known, no unlock) show only in ?debug; the rest show once unlocked.
-    const slot = (name: string, key: string, label: string, basic = false, timed = !basic): string =>
-      `<div class="ability-slot${basic ? ' basic-slot' : ''}" data-slot="${name}">${timed ? '<div class="cd-fill"></div>' : ''}` +
-      `<span class="slot-key">${key}</span><span class="slot-name">${label}</span>${timed ? '<span class="slot-timer"></span>' : ''}</div>`;
     this.root.innerHTML =
       '<div class="round-tracker">' +
       '<span class="round-title">ROUND 1/8</span>' +
@@ -97,13 +80,6 @@ export class FightHud {
       '<span class="mode-badge">Unlit</span>' +
       '<span class="stance-badge">Barehanded</span>' +
       '</div>' +
-      '<span class="perk-badge">Physical Mode</span>' +
-      '</div>' +
-      '<div class="ability-tray" aria-label="Moves">' +
-      slot('light', 'L-Click', 'Attack', true) + slot('heavy', 'R-Click', 'Heavy', true) +
-      slot('dodge', 'Alt', 'Dodge', true, true) + slot('block', 'R', 'Guard', true) +
-      slot('uppercut', 'Q', 'Uppercut') + slot('ground_pound', 'E', 'Slam') +
-      slot('dash_strike', 'F', 'Dash') + slot('ultimate', 'G', 'Ultimate') +
       '</div>' +
       '<div class="lock-reticle"></div>' +
       '<p class="fight-banner" role="status"></p>';
@@ -119,7 +95,6 @@ export class FightHud {
     this.banner = this.root.querySelector('.fight-banner')!;
     this.modeBadge = this.root.querySelector('.mode-badge')!;
     this.stanceBadge = this.root.querySelector('.stance-badge')!;
-    this.perkBadge = this.root.querySelector('.perk-badge')!;
     this.purse = this.root.querySelector('.hud-purse')!;
     this.coinAmount = this.root.querySelector('.coin-amount')!;
     this.flags = this.root.querySelector('.purse-flags')!;
@@ -130,39 +105,9 @@ export class FightHud {
     this.meterLine = this.root.querySelector('.meter-line')!;
     this.supply = this.root.querySelector('.hero-supply')!;
 
-    for (const slot of this.root.querySelectorAll<HTMLDivElement>('.ability-slot')) {
-      const name = slot.dataset.slot;
-      if (!name) continue;
-      const fill = slot.querySelector<HTMLDivElement>('.cd-fill');
-      const timer = slot.querySelector<HTMLSpanElement>('.slot-timer');
-      if (fill && timer) {
-        this.abilitySlots.set(name, {
-          root: slot,
-          fill,
-          timer,
-        });
-      }
-    }
   }
 
-  /** Names the Q, E, F and G slots after the element's own moves. */
-  setMoveNames(names: Partial<Record<string, string>>, element: string): void {
-    this.throwName = names.bend_palm ?? this.throwName;
-    this.sweepName = names.bend_sweep ?? this.sweepName;
-    for (const [move, slot] of this.abilitySlots) {
-      const name = names[move];
-      if (name) slot.root.querySelector('.slot-name')!.textContent = name;
-    }
-    this.root.dataset.element = element.toLowerCase();
-  }
-
-  /** Moves above the tier leave the tray; ?debug keeps them, marked locked. */
-  setTier(tier: number): void {
-    for (const el of this.root.querySelectorAll<HTMLElement>('.ability-slot')) {
-      const move = SLOT_MOVE[el.dataset.slot ?? ''];
-      el.classList.toggle('locked', move !== undefined && !rules.tierAllows(move, tier));
-    }
-  }
+  setElement(element: string): void { this.root.dataset.element = element.toLowerCase(); }
 
   /** The shard shown beside the bending meter: the kit's element, also for a Hush carrying its shards. */
   setElementArt(element: string): void {
@@ -219,7 +164,6 @@ export class FightHud {
     isLit = false,
     isArmed = false,
     lockedEnemy: Enemy | null = null,
-    cooldowns: CooldownItem[] = [],
     element = 'IGNIS',
     roundInfo?: RoundHudInfo,
     fightingStyle: 'weapon' | 'bare_hands' | 'legs' | 'bending' = 'weapon',
@@ -233,28 +177,6 @@ export class FightHud {
     this.stanceBadge.textContent = fightingStyle === 'weapon' ? (isArmed ? 'Blade drawn' : 'Blade')
       : fightingStyle === 'legs' ? 'Kicks' : fightingStyle === 'bare_hands' ? 'Hands' : 'Bending';
     this.stanceBadge.className = 'stance-badge';
-
-    // Update combat perk display
-    if (isDim) {
-      this.perkBadge.className = 'perk-badge dim';
-      this.perkBadge.textContent = 'Hush: 1 weapon • 2 hands • 3 kicks • Q shard spark • wider parry';
-    } else if (fightingStyle === 'bending') {
-      this.perkBadge.className = 'perk-badge lit';
-      this.perkBadge.textContent = `Bending: ${this.throwName} (left click) • ${this.sweepName} (right click)`;
-    } else if (fightingStyle === 'legs') {
-      this.perkBadge.className = isLit ? 'perk-badge lit' : 'perk-badge';
-      this.perkBadge.textContent = 'Kicks: snap and side kick (left click) • roundhouse (right click)';
-    } else if (fightingStyle === 'bare_hands') {
-      this.perkBadge.className = isLit ? 'perk-badge lit' : 'perk-badge';
-      this.perkBadge.textContent = isLit
-        ? `Hands, bending: ${this.throwName} (left click) • ${this.sweepName} (right click)`
-        : 'Bare hands: jab, cross, kick (left click) • hook (right click)';
-    } else {
-      this.perkBadge.className = isLit ? 'perk-badge lit' : 'perk-badge';
-      this.perkBadge.textContent = isLit
-        ? 'Weapon, bending: +60% damage • Q, E, F and G bend'
-        : 'Weapon: 1 weapon • 2 hands • 3 kicks • B bending';
-    }
 
     // Update round tracker; open zones have no rounds.
     this.roundTracker.style.display = roundInfo ? '' : 'none';
@@ -273,17 +195,6 @@ export class FightHud {
         const plural = roundInfo.target === 1 ? 'Villain' : 'Villains';
         this.roundSub.textContent = `${roundInfo.target} ${plural} • Remaining: ${roundInfo.remaining}`;
       }
-    }
-
-    // Update ability cooldown slots
-    for (const cd of cooldowns) {
-      const slot = this.abilitySlots.get(cd.move);
-      if (!slot) continue;
-      const onCd = cd.remaining > 0;
-      slot.root.classList.toggle('on-cooldown', onCd);
-      const ratio = onCd ? Math.min(1, cd.remaining / cd.total) : 0;
-      slot.fill.style.transform = `scaleY(${ratio})`;
-      slot.timer.textContent = onCd ? (cd.remaining > 1 ? cd.remaining.toFixed(0) : cd.remaining.toFixed(1)) : '';
     }
 
     const share = hero.current / hero.maximum;
@@ -382,6 +293,5 @@ export class FightHud {
     this.damagePopups = [];
     this.root.remove();
     this.bars.clear();
-    this.abilitySlots.clear();
   }
 }

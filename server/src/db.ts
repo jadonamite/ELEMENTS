@@ -1,3 +1,4 @@
+import { normalizeControlProgress, mergeControlProgress, type ControlProgress } from '@elements/shared';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { randomInt } from 'node:crypto';
@@ -82,6 +83,11 @@ export function migrateDatabase(database: DatabaseSync): void {
   if (!risingColumns.some((c) => c.name === 'tier')) {
     database.exec('ALTER TABLE risings ADD COLUMN tier INTEGER NOT NULL DEFAULT 5');
   }
+
+  database.exec(`CREATE TABLE IF NOT EXISTS character_controls (
+    account_id TEXT PRIMARY KEY REFERENCES risings(account_id),
+    progress TEXT NOT NULL DEFAULT '{}'
+  )`);
 
   database.exec(`
     INSERT OR IGNORE INTO risings (account_id, role, element, created_at)
@@ -780,3 +786,16 @@ export function getShopSales(
 }
 
 
+
+/** Learning belongs to the account's character, shared across devices. */
+export function getControlProgress(accountId: string, db: DatabaseSync = getDatabase()): ControlProgress {
+  const row = db.prepare('SELECT progress FROM character_controls WHERE account_id = ?').get(accountId) as { progress: string } | undefined;
+  return row ? normalizeControlProgress(JSON.parse(row.progress)) : {};
+}
+
+export function saveControlProgress(accountId: string, incoming: unknown, db: DatabaseSync = getDatabase()): ControlProgress {
+  const progress = mergeControlProgress(getControlProgress(accountId, db), normalizeControlProgress(incoming));
+  db.prepare('INSERT INTO character_controls (account_id, progress) VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET progress = excluded.progress')
+    .run(accountId, JSON.stringify(progress));
+  return progress;
+}
