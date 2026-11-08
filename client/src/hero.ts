@@ -407,7 +407,7 @@ export async function loadHero(loader = new GLTFLoader()): Promise<HeroInstance>
     if (clip) subclips.push(AnimationUtils.subclip(clip, name, Math.round(from * 30), Math.round(to * 30), 30));
   }
 
-  const allClips = await kit.fitClips(config.sex, [...heroGltf.animations, ...combatClips, ...subclips], 'hero', outfit);
+  const allClips = await kit.fitClips(config.sex, [...heroGltf.animations, ...combatClips, ...subclips], 'hero', outfit, config.person);
   const anim = new AnimationPlayer(heroModel, allClips, {
     defaultFadeDuration: 0.25,
   });

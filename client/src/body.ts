@@ -90,6 +90,18 @@ export function parseOutfit(value: string | null | undefined): OutfitId {
   return value && value in OUTFITS ? (value as OutfitId) : 'rags';
 }
 
+/** A sheet person the player is, if their configuration names one that exists for their sex. */
+function personOf(config: CharacterConfig): OutfitId | null {
+  const id = config.person as OutfitId | undefined;
+  return id && OUTFITS[id]?.whole && outfitFits(id, config.sex) ? id : null;
+}
+
+/** What a player actually wears: their sheet person in place of rags, else the outfit itself. */
+function wornBy(config: CharacterConfig, outfitId: OutfitId): OutfitId {
+  const person = personOf(config);
+  return outfitId === 'rags' && person ? person : outfitId;
+}
+
 function outfitFor(id: OutfitId, sex: Sex): { outfit: Outfit; path: string } {
   const own = OUTFITS[id].path[sex];
   return own ? { outfit: OUTFITS[id], path: own } : { outfit: OUTFITS.rags, path: OUTFITS.rags.path[sex]! };
@@ -221,7 +233,7 @@ export class BodyKit {
 
   /** A posable fighter for this configuration, with its own materials; `cloth` dyes a dyeable outfit. */
   async build(config: CharacterConfig, look: BodyLook = 'hero', cloth?: number, outfitId: OutfitId = 'rags'): Promise<Group> {
-    const { outfit, path } = outfitFor(outfitId, config.sex);
+    const { outfit, path } = outfitFor(wornBy(config, outfitId), config.sex);
     const model = cloneSkinned(await this.scene(path));
     const group = new Group();
     group.name = look === 'hero' ? 'Hero' : 'Villain';
@@ -263,26 +275,30 @@ export class BodyKit {
       return group;
     }
 
-    // The bare parts (head, eyes and brows, hands under armour) come from the creator body,
-    // following the outfit's bones.
-    const body = await this.scene(BODY_PATH[config.sex]);
+    // The bare parts (head, and hands under armour) come from the player's sheet person, who
+    // keeps their own face, hair and skin; without one, from the creator body with chosen hair.
+    const person = personOf(config);
+    const bodyPath = person ? OUTFITS[person].path[config.sex]! : BODY_PATH[config.sex];
+    const body = await this.scene(bodyPath);
     body.traverse((node) => {
       const src = node as SkinnedMesh;
       if (!src.isSkinnedMesh) return;
       let geometry = src.geometry;
-      if (isBodyMesh(src)) {
-        const key = `${config.sex}:${path}`;
+      const bare = person !== null || isBodyMesh(src);
+      if (bare) {
+        const key = `${bodyPath}:${path}`;
         geometry = this.bare.get(key) ?? bareParts(src, outfit.bareBones);
         this.bare.set(key, geometry);
       }
       const mesh = rebind(src, rigMesh.skeleton, geometry);
       const mat = mesh.material as MeshStandardMaterial;
-      if (isBodyMesh(src)) applySkinShader(mat, uniforms);
+      if (person) mesh.material = mat.clone();
+      else if (isBodyMesh(src)) applySkinShader(mat, uniforms);
       else if (mesh.name.toLowerCase().includes('eyebrow')) mat.color.setHex(hair.color);
       rigMesh.parent?.add(mesh);
     });
 
-    const style = HAIR_STYLE_OPTIONS.find(h => h.id === config.hairStyleId);
+    const style = person ? undefined : HAIR_STYLE_OPTIONS.find(h => h.id === config.hairStyleId);
     if (style?.assetFile) {
       const hairScene = await this.scene(`/assets/characters/creator/${style.assetFile}`);
       let source: SkinnedMesh | null = null;
@@ -306,8 +322,9 @@ export class BodyKit {
    * Clips fitted to an outfit's rig: only the pelvis keeps its translation (scaled to the
    * rig's hip height) and scale tracks go, so each rig keeps its own bone lengths.
    */
-  async fitClips(sex: Sex, clips: readonly AnimationClip[], cacheKey: string, outfitId: OutfitId = 'rags'): Promise<AnimationClip[]> {
-    const { path } = outfitFor(outfitId, sex);
+  async fitClips(sex: Sex, clips: readonly AnimationClip[], cacheKey: string, outfitId: OutfitId = 'rags',
+    person?: string): Promise<AnimationClip[]> {
+    const { path } = outfitFor(wornBy({ sex, person } as CharacterConfig, outfitId), sex);
     const key = `${path}:${cacheKey}`;
     const cached = this.fitted.get(key);
     if (cached) return cached;

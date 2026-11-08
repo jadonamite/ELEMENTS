@@ -49,6 +49,17 @@ export interface CharacterConfig {
   hairStyleId: HairStyleId;
   hairColorId: string;
   bodyPreset: BodyPreset;
+  /** A person from the character sheets the player is: their face, body and plain clothes. */
+  person?: string | undefined;
+}
+
+/** People from the character sheets a player can start as, in their plain clothes. */
+export const PLAYER_PEOPLE: ReadonlyArray<{ id: string; sex: Sex; label: string }> = [
+  { id: 'hush_ignis', sex: 'male', label: 'Forge hand of Sindr' },
+];
+
+function defaultPerson(sex: Sex): string | undefined {
+  return PLAYER_PEOPLE.find(p => p.sex === sex)?.id;
 }
 
 export const STORAGE_CHARACTER_KEY = 'elements_character';
@@ -118,6 +129,7 @@ export function getDefaultCharacterConfig(sex: Sex = 'female'): CharacterConfig 
     hairStyleId: sex === 'female' ? 'buns' : 'simple_parted',
     hairColorId: 'dark_brown',
     bodyPreset: 'average',
+    person: defaultPerson(sex),
   };
 }
 
@@ -149,19 +161,26 @@ export function sanitizeCharacterConfig(input: unknown): CharacterConfig {
       ? (raw.bodyPreset as BodyPreset)
       : fallback.bodyPreset;
 
+  const person = typeof raw.person === 'string' && PLAYER_PEOPLE.some(p => p.id === raw.person && p.sex === sex)
+    ? raw.person
+    : undefined;
+
   return {
     sex,
     skinToneId,
     hairStyleId,
     hairColorId,
     bodyPreset,
+    person,
   };
 }
 
 export function getStoredCharacter(): CharacterConfig | null {
   try {
     const raw = localStorage.getItem(STORAGE_CHARACTER_KEY);
-    return raw ? sanitizeCharacterConfig(JSON.parse(raw)) : null;
+    if (!raw) return null;
+    const config = sanitizeCharacterConfig(JSON.parse(raw));
+    return { ...config, person: config.person ?? defaultPerson(config.sex) };
   } catch {
     return null;
   }

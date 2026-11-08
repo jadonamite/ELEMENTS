@@ -207,7 +207,7 @@ export class CreatorScene {
     try {
       const config = { ...this.activeConfig };
       const model = await this.kit.build(config);
-      const clips = this.idleClip ? await this.kit.fitClips(config.sex, [this.idleClip], 'creator-idle') : [];
+      const clips = this.idleClip ? await this.kit.fitClips(config.sex, [this.idleClip], 'creator-idle', 'rags', config.person) : [];
       if (this.isDisposed || this.loadToken !== token) return;
 
       const time = this.activeMixer?.time ?? 0;
