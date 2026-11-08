@@ -1,4 +1,5 @@
 import './ui/tokens.css';
+import './ui/loader.css';
 import './style.css';
 import './opening.css';
 import './threat-arrows.css';
@@ -48,6 +49,7 @@ import type { OnlineSession } from './net/online.js';
 import type { NetEnemy } from './net/puppets.js';
 import { isTownMode } from './world-mode.js';
 import './controls/controls.css';
+import { Loader } from './ui/loader.js';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -69,6 +71,7 @@ async function main(): Promise<void> {
   const panel = document.createElement('section');
   panel.id = 'hero-hud';
   panel.setAttribute('aria-label', inTown ? 'Town controls' : 'Arena controls');
+  panel.hidden = true;
   panel.innerHTML = '<button type="button" disabled>Loading</button>' +
     '<p id="control-status" class="hud-status" role="status"></p>' +
     '<button type="button" class="hud-secondary" hidden>Change fighter</button>';
@@ -88,6 +91,22 @@ async function main(): Promise<void> {
   const initialChoice: Element = forcedElement || (storedChoice && 'element' in storedChoice ? storedChoice.element : null) || 'IGNIS';
   const isFullMoon = params.get('moon') === 'full';
 
+  let picker: FighterSelect | null = null;
+  const loader = new Loader({
+    destination: inTown ? 'town' : 'arena',
+    element: initialChoice,
+    onEnter: () => {
+      picker?.close();
+      button.click();
+    },
+    onChangeFighter: !forcedElement && !forcedHush ? () => {
+      picker?.open(true);
+    } : undefined,
+  });
+  cleanup.push(() => loader.dispose());
+  loader.setProgress(0.05, 'Reading the world manifest');
+
+  loader.setProgress(0.12, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
   const zoneStart = performance.now();
   const zone = inTown ? await createZone(canvas) : null;
   if (zone) (window as unknown as { zoneLoadMs?: number }).zoneLoadMs = performance.now() - zoneStart;
@@ -98,6 +117,7 @@ async function main(): Promise<void> {
   const { scene, camera, renderer } = arena;
   if (!zone) loadProps(scene, undefined, initialChoice).catch((error: unknown) => console.error('Arena props failed to load:', error));
   cleanup.push(() => { renderer.setAnimationLoop(null); arena.dispose(); });
+  loader.setProgress(0.35, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
   const controller = new HeroController(physics.world, zone ? SPAWN : undefined, undefined, !zone);
   cleanup.push(() => controller.dispose());
   zone?.follow(controller.position);
@@ -107,9 +127,11 @@ async function main(): Promise<void> {
   const windskiffBones = ['thigh_l', 'thigh_r', 'calf_l', 'calf_r', 'upperarm_l', 'upperarm_r', 'spine_01'] as const;
   const initialBoneRotations = new Map<string, { x: number; y: number; z: number }>();
   let wasWindskiffActive = false;
+  loader.setProgress(0.42, 'Forging the hero');
   const villains = loadEnemyTemplate();
   try {
     hero = await loadHero();
+    loader.setProgress(0.55, 'Forging the hero');
     for (const name of windskiffBones) {
       const b = hero.model.getObjectByName(name);
       if (b) initialBoneRotations.set(name, { x: b.rotation.x, y: b.rotation.y, z: b.rotation.z });
@@ -148,8 +170,6 @@ async function main(): Promise<void> {
   const tier = Math.max(1, Math.min(7, Number(params.get('tier')) || 5));
   /** The element a Hush's shards carry; a Shaper's own element otherwise. */
   let kitElement: Element = 'IGNIS';
-  /** The fighter picker; ?element= and ?hush skip it. */
-  let picker: FighterSelect | null = null;
   const applyDrawing = (res: DrawingResult | null): void => {
     isDim = forcedHush || (!forcedElement && res?.role === 'Hush');
     kitElement = forcedElement ?? (res?.element as Element | undefined) ?? 'IGNIS';
@@ -371,6 +391,7 @@ async function main(): Promise<void> {
   if (zone) { fight.stopWaves(); fightHud.say(''); }
   let yardSpawned = false;
   if (zone) {
+    loader.setProgress(0.70, 'Waking the crowd');
     lifeSystem = new SindrLifeSystem({
       scene,
       camera,
@@ -1018,19 +1039,34 @@ async function main(): Promise<void> {
   // --- End online ---
 
   if (zone) {
+    loader.setProgress(0.80, 'Lighting the braziers');
     await Promise.all([zone.ready, bending.ready, lifeSystem?.ready]);
     if (disposed) return;
+    loader.setProgress(0.88, 'Attuning the elements');
     const looks = new Group();
     looks.add(...villainLooks(await villains));
     scene.add(looks);
-    try { await zone.warm(scene); } finally { looks.removeFromParent(); }
+    loader.setProgress(0.92, 'Warming the world');
+    try {
+      await zone.warm(scene, (p) => {
+        loader.setProgress(0.92 + p * 0.07, 'Warming the world');
+      });
+    } finally {
+      looks.removeFromParent();
+    }
     if (disposed) return;
+  } else {
+    loader.setProgress(0.85, 'Lighting the braziers');
+    await bending.ready;
+    loader.setProgress(0.92, 'Attuning the elements');
   }
+  loader.setProgress(1.0, zone ? 'Sindr is ready' : 'The arena is ready');
   resetTime();
   button.disabled = false;
   button.textContent = zone ? 'Enter Sindr' : 'Enter the arena';
   status('');
   panel.hidden = true;
+  loader.ready(zone ? 'Enter Sindr' : 'Enter the arena');
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();

@@ -2,7 +2,7 @@ import { Vector4, type BufferGeometry, type Camera, type InstancedBufferGeometry
 
 /** Uploads textures, compiles materials and exercises the scene's depth and shadow passes before play. */
 export async function warm(renderer: WebGLRenderer, scene: Scene, camera: Camera, object: Object3D,
-  target: WebGLRenderTarget | null): Promise<void> {
+  target: WebGLRenderTarget | null, onProgress?: (fraction: number) => void): Promise<void> {
   const textures = new Set<Texture>();
   const collect = (value: unknown): void => {
     if ((value as Texture | null)?.isTexture) {
@@ -20,8 +20,11 @@ export async function warm(renderer: WebGLRenderer, scene: Scene, camera: Camera
     }
   });
   let slice = performance.now();
+  let texIndex = 0;
   for (const t of textures) {
     renderer.initTexture(t);
+    texIndex++;
+    onProgress?.(0.35 * (texIndex / Math.max(1, textures.size)));
     if (performance.now() - slice > 8) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       slice = performance.now();
@@ -44,6 +47,7 @@ export async function warm(renderer: WebGLRenderer, scene: Scene, camera: Camera
       renderer.setRenderTarget(was, wasFace, wasMip);
     }
     await ready;
+    onProgress?.(0.8);
     if (!attached) { scene.add(object); added = true; }
 
     const instanceCounts = new Map<InstancedMesh, number>();
@@ -87,6 +91,7 @@ export async function warm(renderer: WebGLRenderer, scene: Scene, camera: Camera
       // Passes that draw only when needed (soft depth) draw now, so their programs are made too.
       scene.userData.warming = true;
       renderer.render(scene, camera);
+      onProgress?.(1.0);
     } finally {
       scene.userData.warming = false;
       for (const [mesh, count] of instanceCounts) mesh.count = count;

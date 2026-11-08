@@ -1,0 +1,437 @@
+{
+  "version": 1,
+  "hints": [
+    {
+      "id": "ctrl-move",
+      "kind": "controls",
+      "title": "Move",
+      "text": "Traverse streets, markets, and open ground.",
+      "action": "move",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-look",
+      "kind": "controls",
+      "title": "Look around",
+      "text": "Survey your surroundings and keep sight of approaching fighters.",
+      "action": "look",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-run",
+      "kind": "controls",
+      "title": "Sprint",
+      "text": "Sprint across open ground to close distance against ranged opponents.",
+      "action": "run",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-jump",
+      "kind": "controls",
+      "title": "Jump and rise",
+      "text": "Leap over obstacles. Tap again while airborne to rise higher.",
+      "action": "jump",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-strike",
+      "kind": "controls",
+      "title": "Light strike",
+      "text": "Deliver quick strikes with weapon or bare fists to open combat.",
+      "action": "strike",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-heavy",
+      "kind": "controls",
+      "title": "Heavy strike",
+      "text": "Break through enemy defenses with heavy attacks. Slower to wind up, harder to stop.",
+      "action": "heavy",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    },
+    {
+      "id": "ctrl-block",
+      "kind": "controls",
+      "title": "Guard",
+      "text": "Raise your guard to absorb the force of incoming blows.",
+      "action": "block",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-parry",
+      "kind": "controls",
+      "title": "Parry",
+      "text": "Raise guard within 0.15 seconds of an impact to deflect the blow and stagger the attacker.",
+      "action": "parry",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "ctrl-dodge",
+      "kind": "controls",
+      "title": "Dodge",
+      "text": "Evade incoming swings with brief invulnerability during the roll.",
+      "action": "dodge",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-lock",
+      "kind": "controls",
+      "title": "Lock target",
+      "text": "Focus your camera and attacks onto a single opponent.",
+      "action": "lock",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-bending",
+      "kind": "controls",
+      "title": "Toggle bending",
+      "text": "Ignite elemental power to imbue strikes or sheath it to move unnoticed.",
+      "action": "bending",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    },
+    {
+      "id": "ctrl-rise",
+      "kind": "controls",
+      "title": "Rising attack",
+      "text": "Launch opponents skyward with an elemental uppercut.",
+      "action": "rise",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-ground",
+      "kind": "controls",
+      "title": "Ground slam",
+      "text": "Slam downward to shake the earth and destabilize surrounding enemies.",
+      "action": "ground",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-ultimate",
+      "kind": "controls",
+      "title": "Ultimate power",
+      "text": "Unleash your nation's signature elemental storm once combat reaches its peak.",
+      "action": "ultimate",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    },
+    {
+      "id": "ctrl-stance",
+      "kind": "controls",
+      "title": "Switch fighting stance",
+      "text": "Alternate between armed weapons, bare-fisted brawling, and kicking styles.",
+      "action": "stance",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    },
+    {
+      "id": "ctrl-satchel",
+      "kind": "controls",
+      "title": "Open satchel",
+      "text": "Check your carried coin, gathered materials, and crafted gear.",
+      "action": "satchel",
+      "element": null,
+      "where": ["town"],
+      "minSeconds": 4
+    },
+    {
+      "id": "ctrl-interact",
+      "kind": "controls",
+      "title": "Interact and claim",
+      "text": "Talk to townsfolk, bargain with merchants, and gather dropped loot from the cobblestones.",
+      "action": "interact",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    },
+    {
+      "id": "ctrl-spark",
+      "kind": "controls",
+      "title": "Shard spark",
+      "text": "As the Hush, fling shard fragments to strike foes from range.",
+      "action": "spark",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 4
+    },
+    {
+      "id": "lore-rising",
+      "kind": "lore",
+      "title": "The rising",
+      "text": "You don't choose what you become. The world decides as you rise: Shaper or Hush.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-shapers",
+      "kind": "lore",
+      "title": "The Shapers",
+      "text": "Born with elemental fire, water, earth, or wind. They fight on the frontline and channel raw forces.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-hush",
+      "kind": "lore",
+      "title": "The Hush",
+      "text": "Born without an element. Derided as the Dim, they alone hold the skill to smelt ore, tan hide, and craft weapons from raw goods.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 7
+    },
+    {
+      "id": "lore-allborn",
+      "kind": "lore",
+      "title": "Rumours of the Allborn",
+      "text": "Whispers speak of an Allborn who commands all four elements and knows how to break out of this world.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-ignis",
+      "kind": "lore",
+      "title": "The nation of Ignis",
+      "text": "A volcanic fortress of black iron and ember-lit streets. Ambitious, unyielding, and at war with all neighbours.",
+      "element": "IGNIS",
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-aques",
+      "kind": "lore",
+      "title": "The delta of Aques",
+      "text": "Canals, waterways, and timber houses on stilts. Travelers journey to its pools to recuperate and heal.",
+      "element": "AQUES",
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-terra",
+      "kind": "lore",
+      "title": "The canyon of Terra",
+      "text": "A canyon fortress hewn directly from ochre cliffs. The wealthiest territory outside Chromara.",
+      "element": "TERRA",
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-aura",
+      "kind": "lore",
+      "title": "The towers of Aura",
+      "text": "Tall stone spires and rope bridges high above the clouds. Aloof and peaceable toward outsiders.",
+      "element": "AURA",
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-edict",
+      "kind": "lore",
+      "title": "The Edict",
+      "text": "The ruling power abolished the true names of the elements to fracture the nations and weaken their masters.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-chromara",
+      "kind": "lore",
+      "title": "The city of Chromara",
+      "text": "The seat of authority spans the center of the world, housing the Great Treasury and the Lord's garrisons.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-sentries",
+      "kind": "lore",
+      "title": "The Lord's Sentries",
+      "text": "Heavily armoured peacekeepers enforce order across the plazas. Violating local laws invites swift confiscation.",
+      "element": null,
+      "where": ["town"],
+      "minSeconds": 6
+    },
+    {
+      "id": "lore-monsters",
+      "kind": "lore",
+      "title": "Beasts of the wild",
+      "text": "Nameless elemental currents coalesce in untamed lands, spawning ember hounds and river serpents.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "fight-meter",
+      "kind": "fighting",
+      "title": "The combo meter",
+      "text": "Landing hits, parrying attacks, and guarding blows fills your combat meter. It slowly drains between clashes.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    },
+    {
+      "id": "fight-empty-meter",
+      "kind": "fighting",
+      "title": "Faded strikes",
+      "text": "When meter drops below 25, bending attacks deal only 60% damage and elemental hazards dissipate quickly.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "fight-chains",
+      "kind": "fighting",
+      "title": "Chained moves",
+      "text": "With meter above 25, chaining one bending move into another cancels cooldowns and increases damage.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "fight-ignis-burn",
+      "kind": "fighting",
+      "title": "Ignis burns",
+      "text": "Fire attacks leave targets ablaze, dealing continuous damage after the initial strike.",
+      "element": "IGNIS",
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    },
+    {
+      "id": "fight-aques-ice",
+      "kind": "fighting",
+      "title": "Aques shatter",
+      "text": "Water moves slow enemies and freeze ground. Hitting a frozen target shatters the ice for bonus damage.",
+      "element": "AQUES",
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "fight-terra-walls",
+      "kind": "fighting",
+      "title": "Terra stone walls",
+      "text": "Raising an earth wall creates an impenetrable barrier that halts projectile barrages and advancing foes.",
+      "element": "TERRA",
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "fight-aura-blades",
+      "kind": "fighting",
+      "title": "Aura gale blades",
+      "text": "Air blades slice through multiple enemies in a single stroke, piercing ranks of attackers.",
+      "element": "AURA",
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    },
+    {
+      "id": "fight-slow-mo",
+      "kind": "fighting",
+      "title": "The finishing blow",
+      "text": "Striking down the final opponent in a skirmish slows time to survey the battlefield.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    },
+    {
+      "id": "world-red-flags",
+      "kind": "world",
+      "title": "Watch standing and fines",
+      "text": "Street brawling and theft raise red flags with the watch. If fines go unpaid, you face arrest and seizure of carried goods.",
+      "element": null,
+      "where": ["town"],
+      "minSeconds": 7
+    },
+    {
+      "id": "world-challengers",
+      "kind": "world",
+      "title": "Street challengers",
+      "text": "Wandering duelists test their skills in town. Stand before a challenger to initiate single combat.",
+      "element": null,
+      "where": ["town"],
+      "minSeconds": 5
+    },
+    {
+      "id": "world-crowd-shelter",
+      "kind": "world",
+      "title": "Crowd reactions",
+      "text": "Townsfolk retreat to doorways and stalls when blades are drawn, returning only after peace is restored.",
+      "element": null,
+      "where": ["town"],
+      "minSeconds": 6
+    },
+    {
+      "id": "world-shrine-awakening",
+      "kind": "world",
+      "title": "The shrine",
+      "text": "If you fall in combat, you awaken at your nation's local shrine. Any materials carried in your hands remain at the site of your fall.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 7
+    },
+    {
+      "id": "world-loot-pickup",
+      "kind": "world",
+      "title": "Ground drops",
+      "text": "Defeated outlaws drop coin and shards onto the flagstones. Walk over each drop to collect it into your pouch.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 6
+    },
+    {
+      "id": "world-counting-houses",
+      "kind": "world",
+      "title": "Counting houses",
+      "text": "Visit Sindr's counting houses to bank coin securely beyond the reach of footpads and corrupt bailiffs.",
+      "element": null,
+      "where": ["town"],
+      "minSeconds": 6
+    },
+    {
+      "id": "world-night-ambush",
+      "kind": "world",
+      "title": "Night curfew",
+      "text": "After dark, shops bolt their shutters and guards draw closer to lit braziers. Deserted alleys attract desperate outlaws.",
+      "element": null,
+      "where": ["town"],
+      "minSeconds": 6
+    },
+    {
+      "id": "tip-barehanded",
+      "kind": "tip",
+      "title": "Fists and bending",
+      "text": "Shapers channel stronger elemental surges when fighting bare-handed than when holding forged steel.",
+      "element": null,
+      "where": ["town", "arena"],
+      "minSeconds": 5
+    }
+  ]
+}
