@@ -314,6 +314,7 @@ export function migrateDatabase(database: DatabaseSync): void {
 export function createDatabase(dbPath?: string): DatabaseSync {
   const resolvedPath = dbPath ?? path.resolve(process.cwd(), 'elements-server.sqlite');
   const db = new DatabaseSync(resolvedPath);
+  db.exec('PRAGMA busy_timeout = 5000;');
   migrateDatabase(db);
   return db;
 }
