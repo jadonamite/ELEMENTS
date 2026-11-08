@@ -1,4 +1,6 @@
 import { type Camera, Vector3 } from 'three';
+import type { GameInput } from '../input.js';
+import type { Controls } from '../controls/index.js';
 
 /** How far toward the screen edge an off-screen prompt sits, in screen units (1 = edge). */
 const EDGE = 0.86;
@@ -20,15 +22,25 @@ export type ContextSource = () => ContextOffer | null;
  * through to its move when nothing is offered.
  */
 export class ContextAction {
-  private readonly el: HTMLDivElement;
+  private readonly el: HTMLButtonElement;
   private current: ContextOffer | null = null;
   private readonly point = new Vector3();
 
-  constructor(private readonly sources: ContextSource[], private readonly camera: Camera, key = 'E') {
-    this.el = document.createElement('div');
+  private glyphReady = false;
+  private device = '';
+  private teachOffer = false;
+  private lessonInitialized = false;
+  constructor(private readonly sources: ContextSource[], private readonly camera: Camera,
+    private readonly input: GameInput, private readonly controls: () => Controls | null) {
+    this.el = document.createElement('button');
     this.el.className = 'context-prompt';
-    this.el.setAttribute('role', 'status');
-    this.el.innerHTML = `<kbd>${key}</kbd><span></span>`;
+    this.el.type = 'button';
+    this.el.innerHTML = '<span class="context-glyph"></span><span class="context-verb"></span>';
+    this.el.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') { e.preventDefault(); input.useDevice('touch'); }
+    });
+    this.el.addEventListener('click', e => { if ((e as PointerEvent).pointerType !== 'touch') input.press('interact'); });
+    this.el.addEventListener('pointerup', e => { if (e.pointerType === 'touch') { e.preventDefault(); input.press('interact'); } });
     this.el.hidden = true;
     document.body.appendChild(this.el);
   }
@@ -39,7 +51,21 @@ export class ContextAction {
       offer = source();
       if (offer) break;
     }
-    if (offer?.verb !== this.current?.verb) this.el.querySelector('span')!.textContent = offer?.verb ?? '';
+    if (offer?.verb !== this.current?.verb) {
+      this.el.querySelector('.context-verb')!.textContent = offer?.verb ?? '';
+      this.el.setAttribute('aria-label', offer?.verb ?? 'Interact');
+      this.lessonInitialized = false;
+    }
+    const controls = this.controls();
+    if (offer && !this.lessonInitialized && controls?.learning.ready) {
+      this.teachOffer = controls.learning.needs('interact');
+      controls.contextShown(); this.lessonInitialized = true; this.glyphReady = false;
+    }
+    if (controls && (!this.glyphReady || this.device !== this.input.device)) {
+      this.glyphReady = true;
+      this.device = this.input.device;
+      this.el.querySelector('.context-glyph')!.innerHTML = controls.contextGlyph(this.teachOffer);
+    }
     this.current = offer;
     if (!offer) {
       this.el.hidden = true;
@@ -60,6 +86,8 @@ export class ContextAction {
     const y = (1 - this.point.y) / 2 * window.innerHeight;
     this.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
   }
+
+  get hasOffer(): boolean { return this.current !== null; }
 
   /** Runs the offer shown. False when there is none, so the key does its move instead. */
   interact(): boolean {

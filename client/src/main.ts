@@ -11,6 +11,7 @@ import { loadHero, type HeroInstance } from './hero.js';
 import { FixedStepper, HeroController, locomotionForSpeed, movementVelocity, turnToward } from './controller.js';
 import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
+import { Controls } from './controls/index.js';
 import { Combat, strikeKind, type CombatAction, type FightingStyle } from './combat.js';
 import { loadEnemyTemplate, villainLooks, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
@@ -42,7 +43,10 @@ import type { OutlawSenses } from '../../shared/src/agents/types.js';
 import type { Quarry } from './enemy.js';
 import { CombatSpace } from './attacks/space.js';
 import { hasGameServer } from './auth/server-api.js';
+import type { OnlineSession } from './net/online.js';
+import type { NetEnemy } from './net/puppets.js';
 import { isTownMode } from './world-mode.js';
+import './controls/controls.css';
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -65,17 +69,17 @@ async function main(): Promise<void> {
   panel.id = 'hero-hud';
   panel.setAttribute('aria-label', inTown ? 'Town controls' : 'Arena controls');
   panel.innerHTML = '<button type="button" disabled>Loading</button>' +
-    '<p class="hud-keys"><kbd>W A S D</kbd> move <kbd>Shift</kbd> run <kbd>Mouse</kbd> look <kbd>Tab</kbd> lock-on</p>' +
-    '<p class="hud-keys"><kbd>Left click</kbd> strike <kbd>Right click</kbd> heavy <kbd>Q</kbd> rise ' +
-    '<kbd>E</kbd> ground <kbd>F</kbd> move <kbd>G</kbd> ultimate <kbd>R</kbd> block (tap to parry) <kbd>Alt</kbd> dodge <kbd>Space</kbd> jump (tap again in the air: super jump)</p>' +
-    '<p class="hud-keys"><kbd>1</kbd> weapon <kbd>2</kbd> hands <kbd>3</kbd> legs <kbd>X</kbd> weapon or hands <kbd>B</kbd> bending on/off</p>' +
-    `<p id="control-status" class="hud-status" role="status">${inTown ? 'Loading Sindr.' : 'Loading the arena.'}</p>` +
+    '<p id="control-status" class="hud-status" role="status"></p>' +
     '<button type="button" class="hud-secondary" hidden>Change fighter</button>';
   document.body.appendChild(panel);
   cleanup.push(() => panel.remove());
   const button = panel.querySelector('button')!;
   const changeFighter = panel.querySelector<HTMLButtonElement>('.hud-secondary')!;
-  const status = (message: string): void => { panel.querySelector('#control-status')!.textContent = message; };
+  const status = (message: string): void => {
+    panel.querySelector('#control-status')!.textContent = message;
+    if (message) panel.hidden = false;
+    else if (!button.disabled) panel.hidden = true;
+  };
 
   const forcedElement = ELEMENTS.find(e => e === params.get('element')?.toUpperCase() || e === params.get('nation')?.toUpperCase()) ?? null;
   const forcedHush = params.has('hush') || params.has('dim');
@@ -127,6 +131,7 @@ async function main(): Promise<void> {
   cleanup.push(() => { document.removeEventListener('pointerlockchange', togglePlaying); document.body.classList.remove('playing'); });
   const input = new GameInput(canvas, button, (dx, dy) => shoulderCamera.orbit(dx, dy), status, inTown ? 'Enter Sindr' : 'Enter the arena');
   cleanup.push(() => input.dispose());
+  let controls: Controls | null = null;
   let heroElement: BendingType = 'IGNIS';
   let isDim = false;
   /** Bending is switched on by the player (B); a fight starts with it off. */
@@ -258,6 +263,8 @@ async function main(): Promise<void> {
     shoulderCamera.killCloseUp();
   };
   let lockedEnemy: Enemy | null = null;
+  let onlineSession: OnlineSession | null = null;
+  let remoteLock: NetEnemy | null = null;
 
   const fight = new Fight(await villains, physics.world, scene, {
     heroHit(blocked) {
@@ -310,6 +317,7 @@ async function main(): Promise<void> {
       townEconomy?.heroDied(controller.position.clone());
     },
     heroParried() {
+      controls?.used('parry');
       bend.gain('parry');
       shoulderCamera.shake(0.22);
       sound.playImpact(false, true);
@@ -389,7 +397,7 @@ async function main(): Promise<void> {
     () => streetChallenges?.contextOffer() ?? null,
     () => townEconomy?.contextOffer() ?? null,
     () => lifeSystem?.contextOffer() ?? null,
-  ], camera);
+  ], camera, input, () => controls);
   cleanup.push(() => contextAction.dispose());
   input.onInteract = () => contextAction.interact() || (lifeSystem?.closeTalk() ?? false);
   // Space jumps; a second tap while still rising or falling from it is the super jump.
@@ -404,6 +412,7 @@ async function main(): Promise<void> {
       }
       return;
     }
+    controls?.used('jump');
     controller.launch(balance.controller.jumpSpeed);
     jumpedAt = now;
     superJumped = false;
@@ -425,9 +434,13 @@ async function main(): Promise<void> {
   const applyTier = (t: number): void => {
     fight.tier = t;
     bend.tier = t;
-    fightHud.setTier(t);
   };
   applyTier(tier);
+  controls = new Controls(input, canvas, {
+    tier, hush: isDim, online: playingOnline, alive: true, nearFoe: false, incoming: false,
+    bending: false, ultimateReady: false, interact: false,
+  }, applyTier);
+  cleanup.push(() => controls?.dispose());
 
   // --- [creatures: outlaws in Sindr] ---
   const carryParam = params.get('chroma');
@@ -482,7 +495,11 @@ async function main(): Promise<void> {
     let targetDx = 0;
     let targetDz = 0;
     let hasTarget = false;
-    if (lockedEnemy && lockedEnemy.alive) {
+    if (remoteLock && remoteLock.view.hp > 0) {
+      targetDx = remoteLock.model.position.x - controller.position.x;
+      targetDz = remoteLock.model.position.z - controller.position.z;
+      hasTarget = true;
+    } else if (lockedEnemy && lockedEnemy.alive) {
       targetDx = lockedEnemy.controller.position.x - controller.position.x;
       targetDz = lockedEnemy.controller.position.z - controller.position.z;
       hasTarget = true;
@@ -512,6 +529,7 @@ async function main(): Promise<void> {
     (move) => move === chainPass || fight.ready(move, isLit),
     (move, swingAt) => {
       fight.startMove(move, swingAt, isLit);
+      controls?.usedMove(move);
       if (move !== 'dodge' && move !== 'hit' && move !== 'death') {
         alignToTarget();
       }
@@ -533,12 +551,7 @@ async function main(): Promise<void> {
     bend.hasWaterEnvironment = kitElement === 'AQUES';
     combat.element = kitElement;
     bend.setKit(kit);
-    const names: Record<string, string> = {};
-    for (const move of ['bend_palm', 'bend_sweep', 'uppercut', 'ground_pound', 'dash_strike', 'ultimate'] as const) {
-      names[move] = rules.moveFor(move, kit).name ?? move;
-    }
-    if (isDim) { names.uppercut = 'Spark'; names.ground_pound = '—'; names.dash_strike = '—'; names.ultimate = '—'; }
-    fightHud.setMoveNames(names, isDim ? 'hush' : kitElement);
+    fightHud.setElement(isDim ? 'hush' : kitElement);
     fightHud.setElementArt(kitElement);
   };
   applyKit();
@@ -597,6 +610,35 @@ async function main(): Promise<void> {
     onOpenCreator: () => picker?.open(true),
   });
   cleanup.push(() => homeMenu.dispose());
+  input.onMenu = () => homeMenu.toggle();
+  homeMenu.mountControls(controls!);
+  input.onTargetTap = (x, y) => {
+    const point = new Vector3(); let target: Enemy | null = null, nearest = 48;
+    for (const foe of fight.enemies) {
+      if (!foe.alive || foe.controller.position.distanceTo(controller.position) > 30) continue;
+      point.copy(foe.controller.position); point.y += 1; point.project(camera);
+      if (point.z > 1) continue;
+      const distance = Math.hypot((point.x + 1) * window.innerWidth / 2 - x, (1 - point.y) * window.innerHeight / 2 - y);
+      if (distance < nearest) { target = foe; nearest = distance; }
+    }
+    if (playingOnline && onlineSession) {
+      let found: NetEnemy | null = null;
+      for (const foe of onlineSession.enemies.values()) {
+        if (foe.view.hp <= 0 || foe.model.position.distanceTo(controller.position) > 30) continue;
+        point.copy(foe.model.position); point.y += 1; point.project(camera);
+        if (point.z > 1) continue;
+        const distance = Math.hypot((point.x + 1) * window.innerWidth / 2 - x, (1 - point.y) * window.innerHeight / 2 - y);
+        if (distance < nearest) { found = foe; nearest = distance; }
+      }
+      if (!found) return false;
+      remoteLock = found === remoteLock ? null : found;
+      return true;
+    }
+    if (!target) return false;
+    lockedEnemy = target === lockedEnemy ? null : target;
+    return true;
+  };
+  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction });
   /** Whether this element keeps its current weapon in hand while bending. */
   const bendsArmed = (): boolean => {
     const allowed = (balance.combat.bendWithWeapon as Record<string, string | string[]>)[kitElement];
@@ -625,6 +667,11 @@ async function main(): Promise<void> {
   };
 
   input.onLockToggle = () => {
+    if (playingOnline && onlineSession) {
+      const foes = [...onlineSession.enemies.values()].filter(foe => foe.view.hp > 0 && foe.model.position.distanceTo(controller.position) < 30);
+      remoteLock = foes[remoteLock ? foes.indexOf(remoteLock) + 1 : 0] ?? null;
+      return;
+    }
     lockedEnemy = fight.findLockTarget(controller.position, lockedEnemy);
     shoulderCamera.lockTarget = lockedEnemy ? lockedEnemy.controller.position : null;
   };
@@ -702,7 +749,7 @@ async function main(): Promise<void> {
   /** Starts a bending move through the meter, the waterskin and the tier; false when refused. */
   const startBending = (action: CombatAction, move: BendMoveId): { ok: boolean; strength: number } => {
     if (isDim) {
-      if (action !== 'uppercut') { notice(refusals.hush); return { ok: false, strength: 0 }; }
+      if (action !== 'spark') { notice(refusals.hush); return { ok: false, strength: 0 }; }
       const go = bend.spark(fight.ready('shard_spark', false));
       if (!go.go) { if (refusals[go.why]) notice(refusals[go.why]); return { ok: false, strength: 0 }; }
       fight.setBend(1, false);
@@ -727,7 +774,7 @@ async function main(): Promise<void> {
 
   const triggerAttackEffects = (action: CombatAction, strength = 1, bendMove?: BendMoveId | null): void => {
     // Thrown moves are drawn when they leave the hand (projectileLaunched), not on the key press.
-    if (isDim && action === 'uppercut') return;
+    if (action === 'spark') return;
     if (bendMove && strikeKind(bendMove, fightingStyle) === 'projectile') return;
     if (bendMove === 'dash_strike' && kitElement === 'AQUES') {
       const spec = rules.moveFor('dash_strike', fight.kit);
@@ -856,7 +903,7 @@ async function main(): Promise<void> {
     }
     const bendMove = bendingMoveFor(action);
     let strength = 1;
-    if (bendMove || isDim && action === 'uppercut') {
+    if (bendMove || action === 'spark') {
       const started = startBending(action, bendMove ?? 'bend_palm');
       if (!started.ok) return;
       strength = started.strength;
@@ -942,6 +989,7 @@ async function main(): Promise<void> {
       night: params.has('night') ? Number(params.get('night')) : undefined,
       clock: params.has('clock') ? Number(params.get('clock')) : undefined,
     }).then((session) => {
+      onlineSession = session;
       cleanup.push(() => session.dispose());
       townEconomy?.goOnline(session.channel, () => {
         const list: Array<{ id: string; name: string; position: Vector3 }> = [];
@@ -970,6 +1018,7 @@ async function main(): Promise<void> {
   button.disabled = false;
   button.textContent = zone ? 'Enter Sindr' : 'Enter the arena';
   status('');
+  panel.hidden = true;
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();
@@ -989,7 +1038,8 @@ async function main(): Promise<void> {
     if (lockedEnemy && !lockedEnemy.alive) {
       lockedEnemy = fight.findLockTarget(controller.position, null);
     }
-    shoulderCamera.lockTarget = lockedEnemy ? lockedEnemy.controller.position : null;
+    if (remoteLock && remoteLock.view.hp <= 0) remoteLock = null;
+    shoulderCamera.lockTarget = remoteLock?.model.position ?? lockedEnemy?.controller.position ?? null;
 
     const alive = fight.heroAlive;
     townEconomy?.update(rawDelta, controller.position);
@@ -1017,6 +1067,7 @@ async function main(): Promise<void> {
     if (alive && input.blocking && fightingStyle === 'weapon' && !sword.engaged) { sword.draw(true); heldCalm = false; }
     combat.blocking = alive && input.blocking && (fightingStyle !== 'weapon' || sword.armed) && !combat.current;
     if (combat.blocking) {
+      controls?.used('block');
       const threat = lockedEnemy ?? fight.nearestInFront(controller.position, controller.facing, balance.hero.guardTurnRange, Math.PI);
       const toward = threat
         ? Math.atan2(threat.controller.position.x - controller.position.x, threat.controller.position.z - controller.position.z)
@@ -1237,13 +1288,6 @@ async function main(): Promise<void> {
     scene.userData.cameraQuaternion = camera.quaternion;
     elementFx.update(delta);
     fight.draw(picking ? 0 : animDelta, alpha, controller.position);
-    const cooldowns = [
-      { move: 'uppercut', remaining: fight.cooldownRemaining('uppercut', isLit), total: fight.cooldownTotal('uppercut', isLit) },
-      { move: 'ground_pound', remaining: fight.cooldownRemaining('ground_pound', isLit), total: fight.cooldownTotal('ground_pound', isLit) },
-      { move: 'dash_strike', remaining: fight.cooldownRemaining('dash_strike', isLit), total: fight.cooldownTotal('dash_strike', isLit) },
-      { move: 'ultimate', remaining: fight.cooldownRemaining('ultimate', isLit), total: fight.cooldownTotal('ultimate', isLit) },
-      { move: 'dodge', remaining: fight.cooldownRemaining('dodge', isLit), total: fight.cooldownTotal('dodge', isLit) },
-    ];
     const roundInfo: RoundHudInfo = {
       round: fight.currentRoundNumber,
       totalRounds: fight.totalRounds,
@@ -1261,7 +1305,6 @@ async function main(): Promise<void> {
       isLit,
       sword.armed,
       lockedEnemy,
-      cooldowns,
       heroElement,
       zone ? undefined : roundInfo,
       fightingStyle,
@@ -1277,6 +1320,14 @@ async function main(): Promise<void> {
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     lifeSystem?.update(delta);
     contextAction.update();
+    const remoteNearby = onlineSession ? [...onlineSession.enemies.values()].filter(foe => foe.view.hp > 0 && foe.model.position.distanceTo(controller.position) < 6) : [];
+    const nearby = fight.enemies.filter(foe => foe.alive && foe.controller.position.distanceTo(controller.position) < 6);
+    controls?.update({
+      tier: fight.tier, hush: isDim, online: playingOnline, alive,
+      nearFoe: nearby.length > 0 || remoteNearby.length > 0, incoming: nearby.some(foe => foe.attacking) || remoteNearby.some(foe => foe.view.state === 'strike' || foe.view.state === 'charge'),
+      bending: isLit, ultimateReady: bend.meter >= bend.max && fight.ready('ultimate', isLit),
+      interact: contextAction.hasOffer,
+    });
     sound.update(delta, camera, controller, fight.enemies, sword, zone ? {
       minute: zone.clock.minute,
       playerPos: controller.position,

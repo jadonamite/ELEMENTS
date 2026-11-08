@@ -97,3 +97,103 @@ test('capture errors have a retry message and capture can be requested by keyboa
     assert.match(f.messages.at(-1), /could not be captured.*try again/);
   } finally { f.restore(); }
 });
+
+test('touch and desktop feed the same action queue, held guard, run and movement state', () => {
+  const f = fixture();
+  try {
+    f.input.useDevice('touch');
+    f.input.press('strike'); f.input.press('heavy'); f.input.press('rise');
+    assert.deepEqual(f.input.takeActions(), ['light', 'heavy', 'uppercut']);
+    f.input.hold('block', 'finger1', true); f.input.hold('run', 'finger2', true);
+    f.input.move(.6, -.8);
+    assert.equal(f.input.blocking, true);
+    assert.deepEqual(f.input.read(), { forward: .6, right: -.8, running: true });
+    f.input.hold('block', 'finger1', false);
+    assert.equal(f.input.blocking, false);
+    key('KeyQ', f.canvas);
+    assert.equal(f.input.device, 'desktop');
+    assert.deepEqual(f.input.takeActions(), ['uppercut']);
+    assert.deepEqual(f.input.read(), { forward: 0, right: 0, running: false });
+  } finally { f.restore(); }
+});
+
+test('locked actions cannot be queued and an interaction consumes E before its ground move', () => {
+  const f = fixture();
+  try {
+    f.input.allowed = action => action !== 'ultimate';
+    key('KeyG', f.canvas); f.input.press('ultimate');
+    assert.deepEqual(f.input.takeActions(), []);
+    let interactions = 0;
+    f.input.onInteract = () => { interactions++; return true; };
+    key('KeyE', f.canvas);
+    assert.equal(interactions, 1); assert.deepEqual(f.input.takeActions(), []);
+    f.input.onInteract = () => false;
+    key('KeyE', f.canvas);
+    assert.deepEqual(f.input.takeActions(), ['ground_pound']);
+    f.input.press('strike'); dispatch(window, 'blur');
+    assert.deepEqual(f.input.takeActions(), []);
+  } finally { f.restore(); }
+});
+
+test('Rise and shard spark have distinct keys and respect the character role', () => {
+  const f = fixture();
+  try {
+    f.input.allowed = action => action !== 'rise';
+    key('KeyQ', f.canvas);
+    assert.deepEqual(f.input.takeActions(), []);
+    key('KeyT', f.canvas);
+    f.input.press('spark');
+    assert.deepEqual(f.input.takeActions(), ['spark', 'spark']);
+    f.input.allowed = action => action !== 'spark';
+    key('KeyT', f.canvas);
+    key('KeyQ', f.canvas);
+    assert.deepEqual(f.input.takeActions(), ['uppercut']);
+  } finally { f.restore(); }
+});
+
+test('device changes include menu touches and keyboard navigation away from the canvas', () => {
+  const f = fixture();
+  try {
+    dispatch(window, 'pointerdown', { pointerType: 'touch' });
+    assert.equal(f.input.device, 'touch');
+    document.activeElement = f.button;
+    key('Tab', f.button);
+    assert.equal(f.input.device, 'desktop');
+    assert.deepEqual(f.input.takeActions(), []);
+    dispatch(window, 'pointerdown', { pointerType: 'touch' });
+    assert.equal(f.input.device, 'touch');
+  } finally { f.restore(); }
+});
+
+test('the opening flow pauses combat actions and menu access', () => {
+  const f = fixture();
+  try {
+    document.getElementById = () => ({});
+    let menu = 0; f.input.onMenu = () => { menu++; };
+    assert.equal(f.input.paused, true);
+    assert.equal(f.input.press('strike'), false);
+    assert.equal(f.input.press('menu'), false);
+    assert.deepEqual(f.input.takeActions(), []);
+    assert.equal(menu, 0);
+    document.getElementById = () => null;
+    assert.equal(f.input.press('strike'), true);
+  } finally { f.restore(); }
+});
+
+
+test('touch releases a captured mouse without opening the menu or accepting stale mouse motion', () => {
+  const f = fixture();
+  try {
+    document.hasFocus = () => true;
+    let menus = 0; f.input.onMenu = () => { menus++; };
+    document.pointerLockElement = f.canvas;
+    dispatch(document, 'pointerlockchange');
+    dispatch(window, 'pointerdown', { pointerType: 'touch' });
+    assert.equal(document.pointerLockElement, null);
+    assert.equal(f.input.device, 'touch');
+    assert.equal(menus, 0);
+    dispatch(document, 'mousemove', { movementX: 5, movementY: 2 });
+    assert.equal(f.input.device, 'touch');
+    assert.deepEqual(f.orbits, []);
+  } finally { f.restore(); }
+});
