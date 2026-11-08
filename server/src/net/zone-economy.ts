@@ -30,7 +30,15 @@ export type EconEvent =
 
 /** The parts of a pile a browser draws. */
 export const pileView = (p: LootPile): Record<string, unknown> => ({
-  id: p.id, x: p.x, z: p.z, contents: p.contents, ownerId: p.ownerId, ownerUntil: p.ownerUntil, expiresAt: p.expiresAt,
+  id: p.id,
+  x: p.x,
+  z: p.z,
+  contents: p.contents,
+  ownerId: p.ownerId,
+  ownerUntil: p.ownerUntil,
+  expiresAt: p.expiresAt,
+  nation: p.nation,
+  source: p.source,
 });
 
 interface Offer {

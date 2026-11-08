@@ -34,6 +34,7 @@ const symbols: Record<ControlAction, string> = {
   stance: '<path d="M9 13h21V7l12 10-12 10v-7H9Zm30 15H18v-7L6 31l12 10v-6h21Z"/>',
   spark: '<path d="M24 4 10 27h12l-3 17 20-28H26l4-12Z"/><path d="m23 18-4 6h8l-2 7 8-11H23Z" fill="var(--control-key-base)"/>',
   technique: '<path d="M7 14c7-11 14 6 21 0l4-4 5 4-5 5c-9 9-16-7-21-1Zm4 11c7-11 14 6 21 0l4-4 5 4-5 5c-9 9-16-7-21-1Zm-4 10c7-11 14 6 21 0l4-4 5 4-5 5c-9 9-16-7-21-1Z"/>',
+  satchel: '<path d="M18 12a6 6 0 0 1 12 0v3h-3v-3a3 3 0 0 0-6 0v3h-3Z"/><path d="M10 16h28l3 24a3 3 0 0 1-3 3H10a3 3 0 0 1-3-3Z"/><path d="M15 22h18v5H15Z" fill="var(--control-key-base)"/>',
   duel: '<path d="M6 5h8l23 27 6-4 2 4-14 12-3-4 4-5L6 13Zm36 0v8L16 35l4 5-3 4L3 32l2-4 6 4L34 5Z"/>',
   block: shield + '<path d="m24 14 9 4v7c0 4-6 9-9 11Z" fill="var(--control-key-base)"/>',
   parry: shield + '<path d="m16 23 6 6 11-14 4 4-15 18-10-10Z" fill="var(--control-key-base)"/>',

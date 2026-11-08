@@ -344,9 +344,9 @@ export class TownEconomy {
     room.send('econ_sync', {});
   }
 
-  enemyKilled(kind: string, at: Vector3): void {
+  enemyKilled(kind: string, at: Vector3, nation?: string): void {
     if (!this.enabled || this.door.online) return;
-    reportKill(LOOT_KIND[kind] ?? kind, at.x, at.z, this.zone, this.nation)
+    reportKill(LOOT_KIND[kind] ?? kind, at.x, at.z, this.zone, nation ?? this.nation)
       .then((pile) => { if (pile) this.loot?.add(pile); })
       .catch(() => {
         // No drop: the server refused (production, or too many kills too fast).

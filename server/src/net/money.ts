@@ -74,7 +74,7 @@ export function dropForKill(kill: KillReport, rng: () => number = Math.random, d
   // A defeated foe may be carrying armour: it is won, not given.
   const gear = rollArmourDrop(armour, rng);
   return createLootPileFromFight(
-    { x: kill.x, z: kill.z, zone: kill.zone, source: 'villain', carried: { chroma: odds.chroma, shards, gear }, winnerId: kill.killerAccountId, rng },
+    { x: kill.x, z: kill.z, zone: kill.zone, source: 'villain', nation, carried: { chroma: odds.chroma, shards, gear }, winnerId: kill.killerAccountId, rng },
     db,
   );
 }
@@ -82,7 +82,9 @@ export function dropForKill(kill: KillReport, rng: () => number = Math.random, d
 /** A player fell in the room's own fight: what the server holds for them drops where the room has them. */
 export function dropForDeath(accountId: string, zone: string, x: number, z: number, db: DatabaseSync = getDatabase()): LootPile | null {
   if (isGuest(accountId)) return null;
-  return createLootPileFromFight({ x, z, zone, source: 'player_death', sourceAccountId: accountId }, db);
+  const rising = getRising(accountId, db);
+  const nation = rising?.element ?? ZONE_NATION[zone] ?? 'IGNIS';
+  return createLootPileFromFight({ x, z, zone, source: 'player_death', sourceAccountId: accountId, nation }, db);
 }
 
 /** A red flag the room's own rules saw earned (a banished name in chat, a robbery). */

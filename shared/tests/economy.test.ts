@@ -745,6 +745,19 @@ test('World loot expiry: expired pile cannot be claimed', () => {
   assert.equal(canClaim(pile, 'player_1', 0, 0, afterExpiry), false);
 });
 
+test('World loot: createLootPile retains nation from creation params', () => {
+  const pile = createLootPile({
+    x: 10,
+    z: 20,
+    zone: 'sindr',
+    contents: { chroma: 50, shards: createEmptyShards(), materials: {} },
+    source: 'villain',
+    nation: 'AQUES',
+    droppedAt: 1000,
+  });
+  assert.equal(pile.nation, 'AQUES');
+});
+
 test('World loot monster drops: monster drop rate over 10,000 seeded rolls is 40% plus or minus 2%', () => {
   function makeSeededRng(seed: number) {
     let s = seed >>> 0;

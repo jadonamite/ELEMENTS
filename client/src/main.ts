@@ -337,7 +337,7 @@ async function main(): Promise<void> {
       const pos = hitPos ?? _enemy.controller.position;
       bending.spawnHitBurst(pos, heroElement);
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
-      if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone());
+      if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone(), _enemy.element);
       if (killed) markKill(fight.allDead);
       else if (combat.current === 'ultimate') {
         slowMotion = Math.max(slowMotion, ULTIMATE_SLOW_SECONDS);

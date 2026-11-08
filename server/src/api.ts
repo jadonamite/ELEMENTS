@@ -476,12 +476,14 @@ export function setupApi(app: Application): void {
       return;
     }
     try {
+      const rising = getRising(accountId);
       const pile = createLootPileFromFight({
         x: numX,
         z: numZ,
         zone,
         source: 'player_death',
         sourceAccountId: accountId,
+        nation: rising?.element ?? undefined,
       });
       res.json({ pile });
     } catch (err: unknown) {
