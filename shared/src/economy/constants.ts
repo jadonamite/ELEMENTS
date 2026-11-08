@@ -162,7 +162,7 @@ export const SINDR_MERCHANTS: SindrMerchantConfig[] = economyBalance?.merchants?
     startingPurse: 20000,
     inventory: {
       item: { stock: 25, maxStock: 50, basePrice: 150 },
-      armour: { stock: 25, maxStock: 50, basePrice: 150 },
+      armour_shaper_ignis: { stock: 25, maxStock: 50, basePrice: 60 },
     },
   },
 ];

@@ -24,6 +24,7 @@ export class GameInput {
   onInteract?: () => boolean | void;
   onDuelToggle?: () => void;
   onTechnique?: () => void;
+  onSatchelToggle?: () => void;
   /** Space: a jump, or the super jump when tapped again in the air. */
   onJump?: () => void;
 
@@ -101,6 +102,11 @@ export class GameInput {
       if (event.code === 'KeyV' && !event.repeat) {
         event.preventDefault();
         this.onTechnique?.();
+        return;
+      }
+      if (event.code === 'KeyI' && !event.repeat) {
+        event.preventDefault();
+        this.onSatchelToggle?.();
         return;
       }
       if (movementKeys.has(event.code)) {

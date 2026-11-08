@@ -94,10 +94,15 @@ export class Fight {
   private readonly a = new Vector3();
   private readonly b = new Vector3();
   heroHealth: Health = rules.createHealth(balance.hero.maxHealth);
+  heroArmour = 0;
   /** The hero's element and weapon; moves take their numbers from it. */
   kit: Kit = { element: 'IGNIS', weapon: 'sword' };
   /** The hero's fighting tier: moves above it are not ready, ever. Online the room sets it. */
   tier = 5;
+
+  setHeroArmour(armour: number): void {
+    this.heroArmour = Math.max(0, armour);
+  }
   /** Strength of the bending move about to start, and whether the meter chained it. */
   private bend = { scale: 1, chained: false };
   private heroState: ActionState = rules.createActionState();
@@ -525,7 +530,7 @@ export class Fight {
     }
     if (guarded) { this.events.heroHit(true); return; }
     if (element && this.isAttackCountered?.(element)) { this.events.elementBlocked?.(source); return; }
-    const damage = rules.calculateDamage(rawDamage);
+    const damage = rules.calculateDamage(rawDamage, this.heroArmour);
     this.heroHealth = rules.applyDamage(this.heroHealth, damage);
     if (damage >= 14) {
       // Heavy unblocked trauma leaves scars that water healing cannot close.

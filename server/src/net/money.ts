@@ -1,9 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 import {
   calculateVillainDrop,
+  rollArmourDrop,
   type LootPile,
   TREASURY_ACCOUNT_ID,
 } from '@elements/shared';
+import { armour } from './balance.js';
 import { getDatabase, getRising } from '../db.js';
 import {
   addRedFlag,
@@ -69,8 +71,10 @@ export function dropForKill(kill: KillReport, rng: () => number = Math.random, d
   }
   const odds = calculateVillainDrop(LOOT_KIND[kill.kind] ?? kill.kind);
   const shards: Record<string, number> = rng() < odds.shardChance ? { [nation]: 1 } : {};
+  // A defeated foe may be carrying armour: it is won, not given.
+  const gear = rollArmourDrop(armour, rng);
   return createLootPileFromFight(
-    { x: kill.x, z: kill.z, zone: kill.zone, source: 'villain', carried: { chroma: odds.chroma, shards }, winnerId: kill.killerAccountId, rng },
+    { x: kill.x, z: kill.z, zone: kill.zone, source: 'villain', carried: { chroma: odds.chroma, shards, gear }, winnerId: kill.killerAccountId, rng },
     db,
   );
 }

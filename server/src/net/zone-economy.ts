@@ -11,6 +11,7 @@ import {
   getAccountNotes,
   getMerchant,
   getSatchel,
+  getWornArmour,
   listLootPiles,
   quoteMerchantTrade,
   removeItems,
@@ -190,7 +191,15 @@ export class ZoneEconomy {
         return reply(true, { result });
       }
       const result = sellToMerchant({ merchantId, sellerAccountId: p.accountId, itemType: item, quantity, isOutsider: outsider }, this.db);
-      return reply(true, { result });
+      const events = reply(true, { result });
+      if (p.worn === item) {
+        const stillWorn = getWornArmour(p.accountId, this.db);
+        if (stillWorn !== p.worn) {
+          p.setWorn(stillWorn);
+          events.push({ to: id, type: 'outfit', body: { item: p.worn, outfit: p.outfit, armour: p.armour } });
+        }
+      }
+      return events;
     } catch (err) {
       return reply(false, { error: err instanceof Error ? err.message : 'Trade failed' });
     }
@@ -347,11 +356,22 @@ export class ZoneEconomy {
     }
     this.offers.delete(aId);
     this.offers.delete(bId);
+    const outfitEvents: EconEvent[] = [];
+    for (const [p, id] of [[a, aId], [b, bId]] as const) {
+      if (p.worn) {
+        const stillWorn = getWornArmour(p.accountId, this.db);
+        if (stillWorn !== p.worn) {
+          p.setWorn(stillWorn);
+          outfitEvents.push({ to: id, type: 'outfit', body: { item: p.worn, outfit: p.outfit, armour: p.armour } });
+        }
+      }
+    }
     return [
       { to: aId, type: 'trade', body: { open: false, done: true } },
       { to: bId, type: 'trade', body: { open: false, done: true } },
       ...this.purse(aId),
       ...this.purse(bId),
+      ...outfitEvents,
     ];
   }
 

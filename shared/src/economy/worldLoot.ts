@@ -25,6 +25,8 @@ export interface CarriedLootInput {
   chroma?: number | undefined;
   shards?: Record<Colour, number> | Partial<Record<Colour, number>> | number | undefined;
   materials?: Record<string, number> | number | undefined;
+  /** Whole items the foe carried, by satchel id (armour). */
+  gear?: Record<string, number> | undefined;
 }
 
 /**
@@ -57,10 +59,16 @@ export function villainDrop(
     materials = { ...carried.materials };
   }
 
+  const gear: Record<string, number> = {};
+  for (const [itemId, count] of Object.entries(carried?.gear ?? {})) {
+    if (count > 0) gear[itemId] = count;
+  }
+
   return {
     chroma,
     shards,
     materials,
+    gear,
   };
 }
 

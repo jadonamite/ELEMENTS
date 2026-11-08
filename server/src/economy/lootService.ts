@@ -13,9 +13,11 @@ import {
   monsterDrop,
   calculateVillainDrop,
   villainDrop,
+  rollArmourDrop,
   DROPS_CONFIG,
   TREASURY_ACCOUNT_ID,
 } from '@elements/shared';
+import { armour } from '../net/balance.js';
 import { getDatabase } from '../db.js';
 import { getAccountBalance, recordTransaction } from './ledgerService.js';
 import { addItems, getSatchel, removeItems, withSavepoint } from './satchelService.js';
@@ -449,13 +451,14 @@ export function dropFromClientKill(
   }
   const odds = calculateVillainDrop(params.kind);
   const shards: Record<string, number> = rng() < odds.shardChance ? { [nation]: 1 } : {};
+  const gear = rollArmourDrop(armour, rng);
   return createLootPileFromFight(
     {
       x: params.x,
       z: params.z,
       zone: params.zone,
       source: 'villain',
-      carried: { chroma: odds.chroma, shards },
+      carried: { chroma: odds.chroma, shards, gear },
       winnerId: params.accountId,
       now,
       rng,

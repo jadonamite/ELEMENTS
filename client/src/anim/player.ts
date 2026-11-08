@@ -155,6 +155,41 @@ export class AnimationPlayer {
   }
 
   /**
+   * Rebinds the player to a new character root and its fitted clips,
+   * preserving the currently playing clip, playback time, and speed.
+   */
+  rebind(root: Object3D, clips: readonly AnimationClip[]): void {
+    if (this.isDisposed) return;
+    const prevClip = this.currentClipName;
+    const prevAction = prevClip ? this.actions.get(prevClip) : null;
+    const prevTime = prevAction ? prevAction.time : 0;
+    const prevSpeed = prevAction ? prevAction.timeScale : 1;
+    const prevLoop = prevAction ? prevAction.loop : undefined;
+
+    this.mixer.stopAllAction();
+    this.mixer.uncacheRoot(this.mixer.getRoot());
+    this.actions.clear();
+    this.contributingActions.clear();
+    this.transition = null;
+    this.currentClipName = null;
+
+    (this as { mixer: AnimationMixer }).mixer = new AnimationMixer(root);
+    for (const clip of clips) {
+      const action = this.mixer.clipAction(clip);
+      this.actions.set(clip.name, action);
+    }
+
+    if (prevClip && this.actions.has(prevClip)) {
+      this.play(prevClip, 0, prevLoop === undefined ? true : prevLoop !== LoopOnce);
+      const action = this.actions.get(prevClip);
+      if (action) {
+        action.time = prevTime;
+        action.setEffectiveTimeScale(prevSpeed);
+      }
+    }
+  }
+
+  /**
    * Clean up mixer actions and listeners.
    */
   dispose(): void {

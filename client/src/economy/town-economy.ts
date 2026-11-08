@@ -8,6 +8,7 @@ import {
   fetchSatchel,
   fetchOpenBounties,
   fetchStanding,
+  fetchWornArmour,
   isGuestSession,
   reportBrawlSeen,
   reportDeath,
@@ -16,7 +17,9 @@ import {
 import type { LootPile, Standing } from './api.js';
 import { CountingHouseWindow } from './counting-house-window.js';
 import { httpDoor, RoomDoor, type MoneyDoor, type RoomChannel, type TradeState } from './door.js';
+import { itemName } from './items.js';
 import { NoticeBoardWindow } from './notice-board-window.js';
+import { SatchelWindow } from './satchel-window.js';
 import { ShopWindow } from './shop-window.js';
 import { TradeWindow } from './trade-window.js';
 import { placesFor, PLACE_REACH, TRADE_REACH } from '../../../shared/src/net/index.js';
@@ -44,6 +47,7 @@ export interface NearbyPlayerInfo {
 export interface TownEconomyEvents {
   notice(text: string): void;
   standingChanged(standing: Standing): void;
+  wornChanged?(worn: { item: string | null; outfit: string; armour: number }): void;
   /** How dark the world is, 0 by day, 1 at night. The market closes at night. */
   nightness(): number;
 }
@@ -53,11 +57,13 @@ export class TownEconomy {
   private items: Record<string, number> = {};
   private coin = 0;
   private accountId: string | null = null;
+  private worn: { item: string | null; outfit: string; armour: number } = { item: null, outfit: 'rags', armour: 0 };
   readonly loot: WorldLoot | null = null;
   private readonly shop: ShopWindow | null = null;
   private readonly countingHouse: CountingHouseWindow | null = null;
   private readonly noticeBoard: NoticeBoardWindow | null = null;
   private readonly tradeWindow: TradeWindow | null = null;
+  private readonly satchelWindow: SatchelWindow | null = null;
   private nearStall: string | null = null;
   private stallAt: Vector3 | null = null;
   private nearHouse: string | null = null;
@@ -125,6 +131,13 @@ export class TownEconomy {
       listen: (handler) => this.door.listenTrade(handler),
       isGuest: () => isGuestSession(),
     });
+    this.satchelWindow = new SatchelWindow({
+      satchel: () => this.items,
+      coin: () => this.coin,
+      worn: () => this.worn,
+      wear: (item) => this.wear(item),
+      changed: () => this.refresh(),
+    });
     void this.start();
   }
 
@@ -156,9 +169,47 @@ export class TownEconomy {
     return this.noticeBoard?.isOpen ?? false;
   }
 
+  get satchelOpen(): boolean {
+    return this.satchelWindow?.isOpen ?? false;
+  }
+
+  get wornArmour(): { item: string | null; outfit: string; armour: number } {
+    return this.worn;
+  }
+
+  openSatchel(): void {
+    void this.satchelWindow?.open();
+  }
+
+  closeSatchel(): void {
+    this.satchelWindow?.close();
+  }
+
+  toggleSatchel(): void {
+    this.satchelWindow?.toggle();
+  }
+
+  async wear(itemId: string | null): Promise<{ item: string | null; outfit: string; armour: number }> {
+    const result = await this.door.wear(itemId);
+    this.worn = result;
+    this.events.wornChanged?.(result);
+    this.events.notice(result.item ? `Put on ${itemName(result.item)}` : 'Took off armour');
+    await this.refresh();
+    return result;
+  }
+
   /** The market is shut once the world is dark enough; the stalls' shutters are already down. */
   private get shuttered(): boolean {
     return stallsShut(this.events.nightness());
+  }
+
+  openShop(merchantId?: string): void {
+    const id = merchantId ?? this.nearStall ?? placesFor(this.zone).stalls[0]?.id;
+    if (id) void this.shop?.open(id);
+  }
+
+  closeShop(): void {
+    this.shop?.close();
   }
 
   openCountingHouse(houseId?: string): void {
@@ -205,7 +256,7 @@ export class TownEconomy {
 
   /** Trading, banking, reading the board or a player trade is what the context key does. */
   contextOffer(): ContextOffer | null {
-    if (!this.enabled || this.shopOpen || this.countingHouseOpen || this.tradeOpen || this.noticeBoardOpen) return null;
+    if (!this.enabled || this.shopOpen || this.countingHouseOpen || this.tradeOpen || this.noticeBoardOpen || this.satchelOpen) return null;
 
     if (this.incomingTrade) {
       return {
@@ -268,6 +319,18 @@ export class TownEconomy {
     room.on('loot', (m) => this.loot?.replace((m as { piles: LootPile[] }).piles));
     room.on('loot_new', (m) => this.loot?.add((m as { pile: LootPile }).pile));
     room.on('loot_gone', (m) => this.loot?.remove((m as { id: string }).id));
+    room.on('outfit', (m) => {
+      const body = m as { item?: string | null; outfit?: string; armour?: number; error?: string };
+      if (!body.error) {
+        this.worn = {
+          item: body.item ?? null,
+          outfit: body.outfit ?? 'rags',
+          armour: body.armour ?? 0,
+        };
+        this.events.wornChanged?.(this.worn);
+        void this.refresh();
+      }
+    });
     room.on('trade', (m) => {
       const s = m as TradeState;
       if (s.incoming && !this.tradeOpen) {
@@ -320,6 +383,7 @@ export class TownEconomy {
     this.countingHouse?.dispose();
     this.noticeBoard?.dispose();
     this.tradeWindow?.dispose();
+    this.satchelWindow?.dispose();
   }
 
   private async start(): Promise<void> {
@@ -333,6 +397,13 @@ export class TownEconomy {
       await claimStartingPurse();
     } catch {
       // Already granted, or the server is down; refresh shows what we have.
+    }
+    try {
+      const initialWorn = await fetchWornArmour();
+      this.worn = initialWorn;
+      if (this.worn.outfit !== 'rags') this.events.wornChanged?.(this.worn);
+    } catch {
+      // Default is rags
     }
     await this.refresh();
   }
@@ -351,6 +422,11 @@ export class TownEconomy {
       this.coin = await fetchBalance(this.accountId);
       this.known = true;
       this.setStanding(await fetchStanding());
+      const worn = await fetchWornArmour().catch(() => null);
+      if (worn && (worn.item !== this.worn.item || worn.outfit !== this.worn.outfit)) {
+        this.worn = worn;
+        this.events.wornChanged?.(worn);
+      }
     } catch {
       // Keep the last known view.
     }

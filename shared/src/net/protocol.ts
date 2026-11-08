@@ -39,8 +39,8 @@ export interface HitMsg {
 export interface PingMsg { c: number }
 export interface PongMsg { c: number; t: number }
 
-/** [id, x, y, z, vx, vz, facing, clip, rate, sampledAt, hp, maxHp] */
-export type PlayerTuple = [string, number, number, number, number, number, number, string, number, number, number, number];
+/** [id, x, y, z, vx, vz, facing, clip, rate, sampledAt, hp, maxHp, outfit] */
+export type PlayerTuple = [string, number, number, number, number, number, number, string, number, number, number, number, string];
 /** [id, kind, x, z, vx, vz, facing, state, hp, maxHp] */
 export type EnemyTuple = [string, string, number, number, number, number, number, string, number, number];
 
@@ -54,6 +54,21 @@ export interface WelcomeMsg {
   role: string;
   /** The player's fighting tier, as the server holds it. */
   tier?: number;
+  /** The outfit the player's worn armour draws, e.g. rags or shaper_ignis. */
+  outfit?: string;
+}
+
+/** Client to server: put on armour by satchel id, or null to strip to rags. */
+export interface WearMsg {
+  item: string | null;
+}
+
+/** Server to client: the outfit the player now draws, and the armour blows must beat. */
+export interface OutfitMsg {
+  item?: string | null;
+  outfit?: string;
+  armour?: number;
+  error?: string;
 }
 
 export interface HitResultMsg { e: string; sw: number; ok: boolean; reason?: string; damage?: number }
@@ -71,6 +86,8 @@ export interface PlayerView {
   sampledAt: number;
   hp: number;
   maxHp: number;
+  /** The outfit this player's worn armour draws. */
+  outfit: string;
 }
 
 export interface EnemyView {
@@ -86,6 +103,7 @@ export interface EnemyView {
 
 export const playerFromTuple = (p: PlayerTuple): PlayerView => ({
   id: p[0], x: p[1], y: p[2], z: p[3], vx: p[4], vz: p[5], facing: p[6], clip: p[7], rate: p[8], sampledAt: p[9], hp: p[10], maxHp: p[11],
+  outfit: typeof p[12] === 'string' ? p[12] : 'rags',
 });
 
 export const enemyFromTuple = (e: EnemyTuple): EnemyView => ({

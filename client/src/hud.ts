@@ -64,6 +64,7 @@ export class FightHud {
   private readonly meterFill: HTMLDivElement;
   private readonly meterLine: HTMLDivElement;
   private readonly supply: HTMLSpanElement;
+  onSatchelClick?: () => void;
   private trail = 1;
   private throwName = 'throw';
   private sweepName = 'sweep';
@@ -82,7 +83,7 @@ export class FightHud {
       '<span class="round-sub">1 Villain • Remaining: 1</span>' +
       '</div>' +
       '<div class="hud-purse" hidden>' +
-      `<span class="purse-coin"><img src="${ART}/coin.png" alt=""><b class="coin-amount" aria-label="CHROMA">0</b></span>` +
+      `<button type="button" class="purse-coin" aria-label="Open satchel (I)" title="Open satchel (I)"><img src="${ART}/coin.png" alt=""><b class="coin-amount" aria-label="CHROMA">0</b></button>` +
       '<div class="purse-flags" role="status"></div>' +
       '</div>' +
       '<div class="hud-vitals">' +
@@ -122,6 +123,10 @@ export class FightHud {
     this.perkBadge = this.root.querySelector('.perk-badge')!;
     this.purse = this.root.querySelector('.hud-purse')!;
     this.coinAmount = this.root.querySelector('.coin-amount')!;
+    this.purse.querySelector('.purse-coin')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onSatchelClick?.();
+    });
     this.flags = this.root.querySelector('.purse-flags')!;
     this.elementArt = this.root.querySelector('.element-art')!;
     this.lockReticle = this.root.querySelector('.lock-reticle')!;

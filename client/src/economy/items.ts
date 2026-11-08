@@ -1,5 +1,10 @@
+import balance from '../../../shared/balance.json';
+
 // Names players read for item ids. Shard colours follow the nations: IGNIS crimson, AQUES azure,
 // TERRA ochre, AURA white.
+
+const armourPieces = (balance as unknown as { economy?: { armour?: { pieces?: Record<string, { name: string }> } } })
+  ?.economy?.armour?.pieces ?? {};
 
 const SHARD_NAMES: Record<string, string> = {
   shard_ignis: 'Crimson shard',
@@ -22,6 +27,7 @@ function capitalise(word: string): string {
 }
 
 export function itemName(itemId: string, count = 1): string {
+  if (armourPieces[itemId]) return armourPieces[itemId].name;
   const base =
     SHARD_NAMES[itemId] ??
     SHELF_NAMES[itemId] ??
@@ -30,6 +36,7 @@ export function itemName(itemId: string, count = 1): string {
 }
 
 export function shelfName(stockKey: string): string {
+  if (armourPieces[stockKey]) return armourPieces[stockKey].name;
   return SHELF_NAMES[stockKey] ?? capitalise(stockKey);
 }
 
@@ -43,11 +50,18 @@ export function describeLoot(chroma: number, items: Record<string, number>): str
 }
 
 // The satchel item ids inside a pile's contents.
-export function lootItems(contents: { shards: Record<string, number>; materials: Record<string, number> }): Record<string, number> {
+export function lootItems(contents: {
+  shards: Record<string, number>;
+  materials: Record<string, number>;
+  gear?: Record<string, number>;
+}): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [colour, n] of Object.entries(contents.shards ?? {})) if (n > 0) out[`shard_${colour.toLowerCase()}`] = n;
   for (const [name, n] of Object.entries(contents.materials ?? {})) {
     if (n > 0) out[name === 'material' || name.startsWith('material_') ? name : `material_${name}`] = n;
+  }
+  for (const [itemId, n] of Object.entries(contents.gear ?? {})) {
+    if (n > 0) out[itemId] = n;
   }
   return out;
 }

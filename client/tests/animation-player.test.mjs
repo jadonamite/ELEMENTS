@@ -132,3 +132,24 @@ test('hero GLB bone poses remain continuous through reversals and third-clip int
   }
   player.dispose();
 });
+
+test('rebind to a new character root preserves active clip name, playback time and mixer update', () => {
+  const f = fixture();
+  f.player.play('walk');
+  f.player.update(0.5);
+  const timeBefore = f.actions.walk.time;
+  assert.ok(timeBefore > 0);
+
+  const newRoot = new Object3D();
+  const newClips = ['idle', 'walk', 'run'].map((name, index) =>
+    new AnimationClip(name, 10, [
+      new NumberKeyframeTrack('.position[x]', [0, 10], [index * 20, index * 20 + 20]),
+    ]),
+  );
+
+  f.player.rebind(newRoot, newClips);
+  assert.equal(f.player.getCurrentClip(), 'walk');
+  f.player.update(0.1);
+  assert.ok(newRoot.position.x > 0);
+  f.player.dispose();
+});

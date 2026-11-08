@@ -32,6 +32,9 @@ import {
   clientKillsAllowed,
   dropFromClientKill,
   createLootPileFromFight,
+  takeOffArmour,
+  wearArmour,
+  wornLook,
 } from './economy/index.js';
 
 function extractToken(req: Request): string | null {
@@ -632,6 +635,34 @@ export function setupApi(app: Application): void {
       res.status(400).json({
         error: err instanceof Error ? err.message : 'Failed to stock shop',
       });
+    }
+  });
+
+  // What the signed-in character wears. Read at boot, before the room holds the account, so the
+  // hero is built in the right outfit; the room takes over once the player is in a zone.
+  app.get('/api/economy/armour', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    res.json(wornLook(accountId));
+  });
+
+  app.post('/api/economy/armour', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (heldByRoom(accountId, res)) return;
+    const raw = (req.body ?? {}) as { item?: unknown };
+    const item = raw.item === null || raw.item === undefined ? null : typeof raw.item === 'string' ? raw.item : undefined;
+    if (item === undefined) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    try {
+      const worn = item === null
+        ? takeOffArmour({ accountId })
+        : wearArmour({ accountId, itemId: item });
+      res.json(worn);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Refused' });
     }
   });
 

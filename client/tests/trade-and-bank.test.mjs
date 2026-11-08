@@ -62,6 +62,33 @@ test('RoomDoor sends deposit, withdraw and notes bank messages and resolves resp
   assert.equal(notes[0].noteId, 'note_1');
 });
 
+test('RoomDoor sends wear message and resolves outfit response', async () => {
+  const room = new FakeRoom();
+  const door = new RoomDoor(room);
+
+  const wearPromise = door.wear('armour_shaper_ignis');
+  assert.equal(room.sent.length, 1);
+  assert.equal(room.sent[0].type, 'wear');
+  assert.deepEqual(room.sent[0].message, { item: 'armour_shaper_ignis' });
+
+  room.emit('outfit', { item: 'armour_shaper_ignis', outfit: 'shaper_ignis', armour: 40 });
+  const result = await wearPromise;
+  assert.equal(result.item, 'armour_shaper_ignis');
+  assert.equal(result.outfit, 'shaper_ignis');
+  assert.equal(result.armour, 40);
+
+  // Take off armour
+  const stripPromise = door.wear(null);
+  assert.equal(room.sent.length, 2);
+  assert.deepEqual(room.sent[1].message, { item: null });
+
+  room.emit('outfit', { item: null, outfit: 'rags', armour: 0 });
+  const stripResult = await stripPromise;
+  assert.equal(stripResult.item, null);
+  assert.equal(stripResult.outfit, 'rags');
+  assert.equal(stripResult.armour, 0);
+});
+
 test('RoomDoor sends trade_offer, trade_accept, trade_cancel and listens to trade state', () => {
   const room = new FakeRoom();
   const door = new RoomDoor(room);
