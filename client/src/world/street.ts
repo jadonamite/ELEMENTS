@@ -381,3 +381,29 @@ export function hangingGoods(b: WorldBuilder, x0: number, x1: number, y: number,
     b.box(k < 0.4 ? 'terracotta' : k < 0.7 ? 'raw_timber' : 'moss', x, y - 0.12 - len / 2, z, 0.07, len, 0.05, { z: (rand() - 0.5) * 0.2 });
   }
 }
+
+/** Canopied traders along both margins, leaving a five-metre centre and gaps to side streets. */
+export function streetMarket(b: WorldBuilder, x0: number, x1: number, y: number,
+  northGaps: Array<[number, number]> = [], southGaps: Array<[number, number]> = [], northBank?: { z: number; y: number }): void {
+  let seed = Math.round(x0 * 71 + 19);
+  const rand = (): number => ((seed = seed * 16807 % 2147483647) / 2147483647);
+  for (const side of [-1, 1]) {
+    const gaps = side < 0 ? northGaps : southGaps;
+    let i = 0;
+    for (let x = x0 + 3; x < x1 - 2; x += 6.2, i++) {
+      if (gaps.some(([a, c]) => x + 2.5 > a && x - 2.5 < c)) continue;
+      const z = side < 0 && northBank ? northBank.z : side * 3.8, yaw = side > 0 ? Math.PI : 0;
+      b.at(x, z, yaw, side < 0 && northBank ? northBank.y : y);
+      goodsTable(b, 2.4, rand);
+      awning(b, 0, 3.25 + (i % 3) * 0.12, -1.6, 4.2, 2.35,
+        i % 3 === 0 ? 'indigo_cloth' : i % 3 === 1 ? 'ash_plaster' : 'red_lacquer');
+      hangingGoods(b, -1.65, -0.6, 2.3, 0.5, rand);
+      paperLantern(b, 1.7, 2.1, 0.6, 0.19);
+      b.prop(i % 2 ? 'crate' : 'barrel', -1.75, -0.15, rand() * 0.3, 0.85);
+      b.solid(-1.75, 0.45, -0.15, 0.8, 0.9, 0.8);
+      sack(b, 1.6, -0.2, 0, rand);
+      basket(b, 1.5, 0.4, 0, rand, 0.28);
+    }
+  }
+  b.at(0, 0, 0);
+}

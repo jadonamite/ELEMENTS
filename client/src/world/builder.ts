@@ -21,7 +21,7 @@ import {
   type Camera,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LOOKS, resolveSurface, worldUv, type Surface } from './materials.js';
+import { LOOKS, resolveSurface, surfaceColor, worldUv, type Surface } from './materials.js';
 import { roof } from './roofs.js';
 
 export type PlantKind = 'ginkgo' | 'maple' | 'weed' | 'fern';
@@ -171,6 +171,7 @@ const SHADOW_CASTERS = new Set<Bucket>([
   'sooted_plaster',
   'roof_tile_charcoal',
   'red_lacquer',
+  'indigo_cloth',
 ]);
 
 export class WorldBuilder {
@@ -205,6 +206,15 @@ export class WorldBuilder {
       ? resolveSurface(bucket as Surface, this.low)
       : bucket;
     let g = geometry.index ? geometry.toNonIndexed() : geometry;
+    // Preserve each surface's grade while sharing a material and draw call with its scan family.
+    if (!GLOWS.includes(bucket as Glow) && !LOOKS[bucket as Surface].overlay) {
+      const tint = surfaceColor(bucket as Surface), base = surfaceColor(b as Surface);
+      const colors = new Float32Array(g.getAttribute('position').count * 3);
+      for (let i = 0; i < colors.length; i += 3) {
+        colors[i] = tint.r / base.r; colors[i + 1] = tint.g / base.g; colors[i + 2] = tint.b / base.b;
+      }
+      g.setAttribute('color', new BufferAttribute(colors, 3));
+    }
     if (localUv) {
       const uv = g.getAttribute('uv');
       for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * localUv.u, uv.getY(i) * localUv.v);

@@ -31,14 +31,14 @@ export interface Light {
   intensity: number;
 }
 
-const SUN_LOW = new Color(1.0, 0.65, 0.36);
+const SUN_LOW = new Color(1.0, 0.58, 0.27);
 const SUN_HIGH = new Color(1.0, 0.94, 0.84);
 const MOONLIGHT = new Color(0.62, 0.72, 1.0);
 const FULL_MOONLIGHT = new Color(0.72, 0.84, 1.15);
 
 /**
- * Game time on a 24-minute loop: day, dusk, night, dawn. The sun rises in the east (+x),
- * crosses the south and sets in the west; at night a cool moon takes over.
+ * Game time on a 24-minute loop: day, dusk, night, dawn. The sun crosses the town diagonally;
+ * at night a cool moon takes over.
  * ?night=0..1 pins the hour (tests rely on it), ?clock=minutes sets the start,
  * ?daySpeed=n runs the clock n times faster.
  * ?moon=full forces a full moon (empowering water benders).
@@ -100,10 +100,13 @@ export class WorldClock {
     const upSpan = DAWN + DAY + DUSK;
     if (risen < upSpan) {
       const a = Math.PI * (risen / upSpan);
-      sun.set(Math.cos(a), Math.sin(a) * Math.sin(MAX_ELEVATION), Math.sin(a) * Math.cos(MAX_ELEVATION));
+      const across = Math.sin(a) * Math.cos(MAX_ELEVATION);
+      sun.set(-Math.cos(a) * 0.65 - across * 0.76, Math.sin(a) * Math.sin(MAX_ELEVATION),
+        Math.cos(a) * 0.76 - across * 0.65).normalize();
     } else {
       const a = Math.PI * ((risen - upSpan) / NIGHT);
-      sun.set(-Math.cos(a), -Math.sin(a) * 0.6, Math.sin(a) * 0.3).normalize();
+      const x = -Math.cos(a), across = Math.sin(a) * 0.3;
+      sun.set(-x * 0.65 - across * 0.76, -Math.sin(a) * 0.6, x * 0.76 - across * 0.65).normalize();
     }
     // The evening glow builds from late afternoon, while the sun is still well up, and the lamps catch with it.
     skyUniforms.uDusk.value = 1 - smooth(0.0, 0.5, Math.abs(sun.y));
@@ -113,7 +116,7 @@ export class WorldClock {
     if (sun.y > 0) {
       l.direction.copy(sun);
       l.color.copy(SUN_LOW).lerp(SUN_HIGH, smooth(0.15, 0.75, sun.y));
-      l.intensity = 2.8 * smooth(-0.01, 0.22, sun.y);
+      l.intensity = 4.0 * smooth(-0.01, 0.22, sun.y);
     } else {
       l.direction.copy(MOON);
       l.color.copy(this.isFullMoon ? FULL_MOONLIGHT : MOONLIGHT);

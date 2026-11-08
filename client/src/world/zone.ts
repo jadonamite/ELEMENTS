@@ -94,8 +94,8 @@ const GRADE_SHADER = {
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-      vec3 shadowTint = vec3(0.9, 0.96, 1.1);
-      vec3 highTint = vec3(1.06, 1.0, 0.92);
+      vec3 shadowTint = vec3(0.98, 0.92, 0.84);
+      vec3 highTint = vec3(1.08, 1.01, 0.88);
       c.rgb *= mix(shadowTint, highTint, smoothstep(0.05, 0.6, l));
       c.rgb = mix(vec3(l), c.rgb, 1.08);
       vec2 d = vUv - 0.5;
@@ -162,9 +162,9 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const hemi = new HemisphereLight(0xffffff, 0xffffff, 1);
   scene.add(hemi);
   const look = {
-    daySky: new Color(0xbed4e4), duskSky: new Color(0xc89a80), nightSky: new Color(0x8496c4),
+    daySky: new Color(0xc4cbd1), duskSky: new Color(0xe4ae78), nightSky: new Color(0x8496c4),
     dayGround: new Color(0x8a7050), nightGround: new Color(0x2e1c12),
-    dayFog: new Color(0xbcc9ce), duskFog: new Color(0xc2a18b), nightFog: new Color(0x161822),
+    dayFog: new Color(0xdac5ad), duskFog: new Color(0xe5ba8f), nightFog: new Color(0x161822),
   };
   const applyHour = (): void => {
     const night = nightness.value, dusk = skyUniforms.uDusk.value * (1 - night);
@@ -173,12 +173,12 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     hemi.color.copy(look.daySky).lerp(look.duskSky, dusk * 0.6).lerp(look.nightSky, night);
     hemi.groundColor.copy(look.dayGround).lerp(look.nightGround, night);
     // Less sky fill as the sun lowers, so its long shadows read; the night's fill comes back with the moon.
-    hemi.intensity = 1.0 - 0.30 * dusk + 0.4 * night;
+    hemi.intensity = 0.52 - 0.20 * dusk + 0.88 * night;
     fog.color.copy(look.dayFog).lerp(look.duskFog, dusk).lerp(look.nightFog, night);
     // Haze down the streets: about a fifth gone at 50 m by day, warmer and a little thicker into the evening smoke.
-    fog.density = 0.005 + 0.001 * dusk + 0.0025 * night;
-    scene.environmentIntensity = 0.9 - 0.12 * dusk - 0.28 * night;
-    renderer.toneMappingExposure = 0.98 + 0.62 * night;
+    fog.density = 0.0055 + 0.0015 * dusk + 0.0015 * night;
+    scene.environmentIntensity = 0.52 - 0.14 * dusk + 0.10 * night;
+    renderer.toneMappingExposure = 1.08 + 0.52 * night;
   };
 
   // Physics: the land and the town's solids over a last floor (town-physics.ts), added once the town is built.
@@ -258,7 +258,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   (plume.material as unknown as { uniforms: Record<string, { value: unknown }> }).uniforms.uColor!.value = new Color(0x1a1614);
   scene.add(plume);
 
-  const pool = new LightPool(scene, builder.emitters, low ? 2 : 6);
+  const pool = new LightPool(scene, builder.emitters, low ? 2 : 3);
 
   // Kit models placed as instances, one draw call per model part.
   // Entry waits for every level and surface before warming the completed scene.
@@ -382,7 +382,7 @@ async function loadProps(renderer: WebGLRenderer, placements: WorldBuilder['prop
       const size = far.radius * Math.max(...list.map((p) => p.scale));
       // A barrel (0.5 m) is gone at about 100 m, a cart at 250 m, a boulder or dead tree carries to 600 m.
       const hideAt = low ? Math.min(180, Math.max(40, size * 50)) : Math.min(600, Math.max(100, size * 130));
-      const near = Math.max(10, size * 8);
+      const near = Math.max(6, size * 5);
       const levels = low ? [{ from: 0, parts: far.parts }] : [{ from: 0, parts: (await partsOf(id, id)).parts }, { from: near, parts: far.parts }];
       for (const lod of cellLods(list, levels, hideAt)) into.add(lod);
     } catch (error) {

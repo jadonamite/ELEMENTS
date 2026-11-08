@@ -1,8 +1,65 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
-import { BoxGeometry, MeshStandardMaterial, PerspectiveCamera } from 'three';
-import { cellLods } from '../src/world/builder.ts';
+import { BoxGeometry, MeshStandardMaterial, PerspectiveCamera, Raycaster, Vector3 } from 'three';
+import { cellLods, seeded, WorldBuilder } from '../src/world/builder.ts';
+import { surfaceColor } from '../src/world/materials.ts';
+import { townHouse } from '../src/world/style-kit.ts';
+import { createWaterMaterial } from '../src/world/effects.ts';
+import { skyUniforms, WorldClock } from '../src/world/clock.ts';
+import balance from '../../shared/balance.json' with { type: 'json' };
+
+test('the rotated sun stays continuous at dusk and dawn', () => {
+  const clock = new WorldClock(new URLSearchParams());
+  const cfg = balance.world.dayNight;
+  for (const boundary of [cfg.dayMinutes + cfg.duskMinutes, cfg.dayMinutes + cfg.duskMinutes + cfg.nightMinutes]) {
+    clock.setMinute(boundary - 0.0001, 0);
+    const before = skyUniforms.uSunDir.value.clone();
+    clock.setMinute(boundary + 0.0001, 0);
+    assert.ok(before.angleTo(skyUniforms.uSunDir.value) < 0.001, `continuous across minute ${boundary}`);
+  }
+});
+
+test('the fresh canal and hot runnel compile separate water programs', () => {
+  const hot = createWaterMaterial('hot'), fresh = createWaterMaterial('fresh');
+  assert.notEqual(hot.customProgramCacheKey(), fresh.customProgramCacheKey());
+  hot.dispose(); fresh.dispose();
+});
+
+test('batched plaster and produce keep their requested colour on both quality levels', () => {
+  for (const low of [false, true]) {
+    const b = new WorldBuilder({ low });
+    for (const [i, surface] of ['ash_plaster', 'terracotta', 'moss', 'gold_trim'].entries()) b.box(surface, i * 2, 0, 0, 1, 1, 1);
+    const scene = b.build(bucket => new MeshStandardMaterial({ color: surfaceColor(bucket), vertexColors: true }));
+    for (const [i, surface] of ['ash_plaster', 'terracotta', 'moss', 'gold_trim'].entries()) {
+      let actual;
+      scene.traverse(mesh => {
+        if (!mesh.isMesh) return;
+        const p = mesh.geometry.attributes.position, c = mesh.geometry.attributes.color;
+        for (let j = 0; j < p.count; j++) if (Math.abs(p.getX(j) - i * 2) <= 0.51) {
+          actual = mesh.material.color.clone();
+          actual.r *= c.getX(j); actual.g *= c.getY(j); actual.b *= c.getZ(j);
+          break;
+        }
+      });
+      assert.ok(actual, `${surface}: surface was drawn`);
+      const expected = surfaceColor(surface);
+      for (const channel of ['r', 'g', 'b']) assert.ok(Math.abs(actual[channel] - expected[channel]) < 0.00001, `${surface}, ${low}: ${channel}`);
+    }
+    scene.traverse(mesh => { mesh.geometry?.dispose(); mesh.material?.dispose(); });
+  }
+});
+
+test('a shop counter opens onto its interior instead of a solid facade', () => {
+  const b = new WorldBuilder();
+  townHouse(b, { x: 0, z: 0, y: 0, yaw: 0, w: 6, d: 6, floors: 2, rank: 'merchant', shop: true, weeds: false }, seeded(7));
+  const scene = b.build(() => new MeshStandardMaterial());
+  scene.updateMatrixWorld(true);
+  const hits = new Raycaster(new Vector3(0, 2.1, 5), new Vector3(0, 0, -1)).intersectObject(scene, true);
+  assert.ok(hits.length > 0);
+  assert.ok(hits[0].distance > 3.3, `first visible surface is inside the shop: ${hits[0].distance}`);
+  scene.traverse(mesh => { mesh.geometry?.dispose(); mesh.material?.dispose(); });
+});
 
 const glb = path => {const b=readFileSync(path);return {json:JSON.parse(b.subarray(20,20+b.readUInt32LE(12))),bin:b.subarray(28+b.readUInt32LE(12))};};
 const triangles = j => j.meshes.reduce((n,m)=>n+m.primitives.reduce((n,p)=>n+j.accessors[p.indices].count/3,0),0);

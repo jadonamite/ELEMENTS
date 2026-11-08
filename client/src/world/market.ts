@@ -3,7 +3,7 @@ import { SINDR_ANCHORS } from '../../../shared/src/world/ignis/sindr.js';
 import type { PostKind, WorldBuilder } from './builder.js';
 import { rectArea, type Area, type Rect } from './levels.js';
 import { stairRun, stairs } from './stairs.js';
-import { awning, basket, sack, goodsTable, lampPost, lanternString, paveStreet, parkedCart } from './street.js';
+import { streetMarket, lampPost, lanternString, paveStreet, parkedCart, goodsTable } from './street.js';
 import { marketStall, noticeBoard, townHouse, type FrontRoom } from './style-kit.js';
 import { dressTerrace, retainingWall, terraceTop } from './walls.js';
 import { archBridge, balustrade, canal } from './water-works.js';
@@ -177,7 +177,8 @@ function shells(b: WorldBuilder, rand: () => number): void {
       // On the street every house without the shell's door keeps a shop; up on the terrace they are homes.
       const shop = span.shop ?? (shell.face === 'north' && !span.room && !hasDoor && rand() < 0.8);
       townHouse(b, {
-        x: cx, z: cz, y: shell.y, yaw, w, d, floors: 2, rank: shell.rank, ...(span.room ? { room: span.room } : {}),
+        x: cx, z: cz, y: shell.y, yaw, w, d, floors: 2,
+        rank: shell.face === 'north' ? 'guild' : shell.rank, ...(span.room ? { room: span.room } : {}),
         shop, wares: shell.face === 'north', ...(doorAt !== undefined ? { door: doorAt } : {}),
         balcony: shell.rank !== 'common' || rand() < 0.4, sign: shop || span.room ? 3 : rand() < 0.5 ? 2 : 0,
         awning: shop, lantern: shell.rank !== 'common' || span.room !== undefined || rand() < 0.4, footing: shell.face === 'south' ? 1.6 : 0.8,
@@ -232,25 +233,7 @@ function stallsAndPosts(b: WorldBuilder, rand: () => number): void {
 
 /** Goods spill into the old lane margins while the central five metres and bridge approach stay open. */
 function laneEdges(b: WorldBuilder): void {
-  // A separate sequence keeps dressing changes from moving the town's doors and posts.
-  const rand = (() => { let n = 19; return () => ((n = n * 16807 % 2147483647) / 2147483647); })();
-  for (const [i, x] of [90, 104, 115, 133, 141].entries()) {
-    b.at(x, 4.25, Math.PI, M.street.y);
-    goodsTable(b, 2.0 + rand() * 0.3, rand);
-    // Canopies project from the stalls, with their poles outside the walking centre.
-    awning(b, 0, 3.85, -4.1, 3.5, 5.0, i % 2 ? 'indigo_cloth' : 'ash_plaster');
-    b.at(0, 0, 0);
-    b.prop('barrel', x + 2.1, 3.25, 0.25, 0.9, M.street.y);
-    b.solid(x + 2.1, M.street.y + 0.5, 3.25, 0.75, 1, 0.75);
-  }
-  for (const x of [94, 110, 136]) {
-    b.at(0, 0, 0);
-    b.prop('crate', x, -3.85, 0.15, 0.9, M.street.y);
-    b.solid(x, M.street.y + 0.45, -3.85, 0.95, 0.9, 0.95);
-    sack(b, x + 0.8, -3.05, M.street.y, rand);
-    b.solid(x + 0.8, M.street.y + 0.3, -3.05, 0.5, 0.6, 0.5);
-    basket(b, x - 0.7, -3.5, M.street.y, rand, 0.3);
-  }
-  parkedCart(b, 113.5, -4.55, M.street.y, Math.PI / 2, rand);
-  b.at(0, 0, 0);
+  const doors = M.posts.filter(p => p.y === M.terrace.y).map((p): [number, number] => [p.x - 2, p.x + 2]);
+  streetMarket(b, M.street.x0, M.street.x1, M.street.y, [[120, 130], ...doors], [[120, 134]],
+    { z: M.upperWalk.z0 + 1, y: M.terrace.y });
 }

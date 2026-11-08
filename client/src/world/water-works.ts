@@ -67,16 +67,16 @@ export function balustrade(b: WorldBuilder, a: { x: number; z: number }, c: { x:
 function lowRun(b: WorldBuilder, s0: number, s1: number, rand: () => number): void {
   const len = s1 - s0, mid = (s0 + s1) / 2;
   b.box('pale_stone', 0, 0.06, mid, 0.4, 0.12, len);
-  b.box('ashlar_stone_blocks', 0, 0.66, mid, 0.26, 0.12, len + 0.08);
-  b.box('pale_stone', 0, 0.735, mid, 0.3, 0.03, len + 0.1);
+  b.box('ashlar_stone_blocks', 0, 0.48, mid, 0.18, 0.08, len + 0.08);
+  b.box('pale_stone', 0, 0.53, mid, 0.22, 0.02, len + 0.1);
   const n = Math.max(1, Math.round(len / 2.2));
   for (let k = 0; k <= n; k++) {
     const z = s0 + (k / n) * len;
-    b.box('ashlar_stone_blocks', 0, 0.4, z, 0.28, 0.8, 0.28);
-    b.box('pale_stone', 0, 0.83, z, 0.36, 0.07, 0.36);
+    b.box('ashlar_stone_blocks', 0, 0.29, z, 0.24, 0.58, 0.24);
+    b.box('pale_stone', 0, 0.615, z, 0.32, 0.07, 0.32);
     if (k < n) {
       const bay = len / n, m = Math.max(2, Math.round(bay / 0.42));
-      for (let j = 1; j < m; j++) b.cylinder('ashlar_stone_blocks', 0, 0.36, z + (j / m) * bay, 0.045, 0.06, 0.48, 6);
+      for (let j = 1; j < m; j++) b.cylinder('ashlar_stone_blocks', 0, 0.3, z + (j / m) * bay, 0.035, 0.05, 0.36, 6);
     }
   }
   if (rand() < 0.6) b.box('moss', 0, 0.125, s0 + rand() * len * 0.6, 0.42, 0.015, 0.5 + rand() * 1.2);

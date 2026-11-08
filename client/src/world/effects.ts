@@ -301,7 +301,7 @@ export function createWaterMaterial(kind: 'hot' | 'fresh' = 'hot'): MeshStandard
   // Hot spring water is near black with a coal glow at night; the fresh canal is a deep clear green-teal.
   const material = kind === 'hot'
     ? new MeshStandardMaterial({ color: 0x0b1112, roughness: 0.06, metalness: 0, envMapIntensity: 1.4, emissive: 0x3a1408 })
-    : new MeshStandardMaterial({ color: 0x367f76, roughness: 0.09, metalness: 0, envMapIntensity: 2.4, emissive: 0x08221e });
+    : new MeshStandardMaterial({ color: 0x0b6974, roughness: 0.15, metalness: 0, envMapIntensity: 0.8, emissive: 0x075c60, emissiveIntensity: 0.8 });
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = worldTime;
     shader.uniforms.uNight = nightness;
@@ -316,14 +316,20 @@ export function createWaterMaterial(kind: 'hot' | 'fresh' = 'hot'): MeshStandard
         float crossRipple = cos(dot(wp, vec2(-5.1, 1.8)) - uTime * 0.7);
         vec2 slope = vec2(2.4, 3.7) * ripple * 0.022 + vec2(-5.1, 1.8) * crossRipple * 0.009;
         normal = normalize(normal + mat3(viewMatrix) * vec3(slope.x, 0.0, slope.y));`)
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 0.15 + 0.85 * uNight;');
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance *= ${kind === 'fresh' ? '0.65 + 0.35 * uNight' : '0.15 + 0.85 * uNight'};`);
+    if (kind === 'fresh') shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+      #if defined(RE_IndirectSpecular)
+        radiance *= vec3(0.16, 0.70, 0.78);
+      #endif`);
   };
+  material.customProgramCacheKey = () => `water-${kind}-2`;
   return material;
 }
 
 /** Red paper lanterns: deep red by day, glowing from the candle inside after dark. */
 export function createPaperMaterial(): MeshStandardMaterial {
-  const material = new MeshStandardMaterial({ color: 0x7a1a10, roughness: 0.8, metalness: 0, emissive: 0xff3a14 });
+  const material = new MeshStandardMaterial({ color: 0x7a1a10, roughness: 0.8, metalness: 0, emissive: 0xff6a28, emissiveIntensity: 0.32 });
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uNight = lamplight;
     shader.fragmentShader = shader.fragmentShader

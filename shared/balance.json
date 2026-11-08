@@ -1052,7 +1052,7 @@
       "duskMinutes": 2,
       "nightMinutes": 8,
       "dawnMinutes": 2,
-      "startMinute": 4,
+      "startMinute": 11,
       "sunMaxElevationDeg": 58
     }
   },

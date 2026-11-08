@@ -119,6 +119,13 @@ test('the 5 m fight centre is clear from end to end', () => {
   }
 });
 
+test('the five-metre walking centre stays clear along all of Cinder Row', () => {
+  const { radius } = balance.controller;
+  for (let z = -2.5 + radius; z <= 2.5 - radius; z += 1) {
+    assert.ok(town.space.clear(new Vector3(52, 1, z), new Vector3(224, 1, z), radius), `Cinder Row stays open at z ${z}`);
+  }
+});
+
 test('services: every stall, the service counter and the forge anvil are reached from every exit', () => {
   const stalls = SINDR_ANCHORS.filter((a) => a.kind === 'stall' && inSlice(a));
   assert.equal(stalls.length, 3, 'the three merchants trade on the market street');
@@ -157,7 +164,7 @@ test('with one exit blocked, the street still empties by the others', async () =
 
 test('the server places nobody in the canal, in a shop or across the water, and the gang hides in the market alley', () => {
   for (const [x, z] of [[125, -12], [100, -25], [91, 10], [110, 20]]) assert.ok(isColliding(x, z), `(${x}, ${z}) is off limits`);
-  for (const [x, z] of [[125, 0], [100, -5.5], [125, 30]]) assert.ok(!isColliding(x, z), `(${x}, ${z}) is open street`);
+  for (const [x, z] of [[125, 0], [100, -4], [125, 30]]) assert.ok(!isColliding(x, z), `(${x}, ${z}) is open street`);
   assert.ok(!isColliding(SINDR_HIDEOUT.x, SINDR_HIDEOUT.z), 'the hideout is open ground');
   const cell = town.map.nearest(new Vector3(SINDR_HIDEOUT.x, 0, SINDR_HIDEOUT.z), 1.6);
   assert.notEqual(cell, null, 'the hideout is on the walk map');
