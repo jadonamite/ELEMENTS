@@ -40,8 +40,8 @@ export const CLOTH: Record<TownsfolkRole, readonly number[]> = {
   child: [0xd0b490, 0xc29a78, 0xb87a5a],
 };
 
-/** Sindr's Hush as drawn on the character sheets. Children and guards have no sheet yet. */
-const SHEET_TOWNSFOLK: readonly OutfitId[] = ['hush_ignis'];
+/** Hush as drawn on the character sheets: Sindr's own and visitors from the other nations. Children and guards have no sheet yet. */
+const SHEET_TOWNSFOLK: readonly OutfitId[] = ['hush_ignis', 'hush_aques', 'hush_aura'];
 
 function sheetPerson(role: TownsfolkRole, sex: 'male' | 'female', r: () => number): OutfitId | undefined {
   if (role === 'child' || role === 'guard') return undefined;
