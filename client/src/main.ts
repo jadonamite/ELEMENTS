@@ -690,7 +690,7 @@ async function main(): Promise<void> {
     lockedEnemy = target === lockedEnemy ? null : target;
     return true;
   };
-  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction });
+  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges });
   /** Whether this element keeps its current weapon in hand while bending. */
   const bendsArmed = (): boolean => {
     const allowed = (balance.combat.bendWithWeapon as Record<string, string | string[]>)[kitElement];
