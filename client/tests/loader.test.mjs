@@ -245,10 +245,13 @@ test('Loader shows hints with action glyphs and adapts to device', async () => {
     });
 
     const root = document.querySelector('#elements-loader');
-    const hintBadge = root.querySelector('.loader-hint-badge');
-    const hintTitle = root.querySelector('.loader-hint-title');
-    const hintText = root.querySelector('.loader-hint-text');
-    const hintGlyph = root.querySelector('.loader-hint-glyph');
+    const [knowPanel, hintPanel] = root.querySelector('.loader-hints').children;
+    assert.equal(knowPanel.dataset.class, 'know');
+    assert.equal(hintPanel.dataset.class, 'hint');
+    const hintBadge = hintPanel.querySelector('.loader-hint-badge');
+    const hintTitle = hintPanel.querySelector('.loader-hint-title');
+    const hintText = hintPanel.querySelector('.loader-hint-text');
+    const hintGlyph = hintPanel.querySelector('.loader-hint-glyph');
 
     // Show a controls hint explicitly (instant for testing)
     loader.showHint({
@@ -283,9 +286,13 @@ test('Loader shows hints with action glyphs and adapts to device', async () => {
       where: ['town', 'arena'],
     }, true);
 
-    assert.equal(hintBadge.dataset.kind, 'lore');
-    assert.equal(hintTitle.textContent, 'The rising');
-    assert.equal(hintGlyph.innerHTML, '', 'No glyph for non-action hint');
+    // Lore goes to "Did you know"; the controls hint stays in its own panel.
+    assert.equal(knowPanel.querySelector('.loader-hint-badge').dataset.kind, 'lore');
+    assert.equal(knowPanel.querySelector('.loader-hint-title').textContent, 'The rising');
+    assert.equal(knowPanel.querySelector('.loader-hint-glyph').innerHTML, '', 'No glyph for non-action hint');
+    assert.equal(hintTitle.textContent, 'Light strike');
+    assert.equal(loader.getHint('know').id, 'lore-rising');
+    assert.equal(loader.getHint('hint').id, 'ctrl-strike');
 
     loader.dispose();
   } finally {

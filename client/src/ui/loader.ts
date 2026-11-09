@@ -22,26 +22,71 @@ export interface LoaderOptions {
 
 const STORAGE_SEEN_KEY = 'elements_loader_seen_hints';
 
+/** The two panels: "Did you know" carries lore and the world, "Hint" carries controls and rules. */
+export type HintClass = 'know' | 'hint';
+export const hintClass = (kind: Hint['kind']): HintClass => (kind === 'lore' || kind === 'world' ? 'know' : 'hint');
+const PANEL_LABEL: Record<HintClass, string> = { know: 'Did you know', hint: 'Hint' };
+
+interface HintPanel {
+  root: HTMLElement;
+  badge: HTMLElement;
+  content: HTMLElement;
+  glyph: HTMLElement;
+  title: HTMLElement;
+  text: HTMLElement;
+}
+
+/** Ink portrait for the fighter being loaded: the Hush of their nation, in their sex. */
+function portraitFor(element: Element | null): string {
+  let sex = 'male';
+  try {
+    const raw = localStorage.getItem('elements_character');
+    if (raw && (JSON.parse(raw) as { sex?: string }).sex === 'female') sex = 'female';
+  } catch {
+    // Storage unavailable
+  }
+  return `/assets/ui/loader/ink-${(element ?? 'IGNIS').toLowerCase()}_${sex}.jpg`;
+}
+
+function createPanel(c: HintClass): HintPanel {
+  const root = document.createElement('article');
+  root.className = 'loader-hint';
+  root.dataset.class = c;
+  root.setAttribute('aria-label', PANEL_LABEL[c]);
+  root.innerHTML = `
+    <span class="loader-hint-badge" data-kind="${c === 'know' ? 'lore' : 'controls'}">${PANEL_LABEL[c]}</span>
+    <div class="loader-hint-content">
+      <div class="loader-hint-glyph" aria-hidden="true"></div>
+      <div class="loader-hint-body">
+        <h2 class="loader-hint-title"></h2>
+        <p class="loader-hint-text"></p>
+      </div>
+    </div>`;
+  return {
+    root,
+    badge: root.querySelector<HTMLElement>('.loader-hint-badge')!,
+    content: root.querySelector<HTMLElement>('.loader-hint-content')!,
+    glyph: root.querySelector<HTMLElement>('.loader-hint-glyph')!,
+    title: root.querySelector<HTMLElement>('.loader-hint-title')!,
+    text: root.querySelector<HTMLElement>('.loader-hint-text')!,
+  };
+}
+
 export class Loader {
   private readonly root: HTMLElement;
   private readonly barFill: HTMLElement;
   private readonly percentageEl: HTMLElement;
   private readonly stageEl: HTMLElement;
   private readonly barTrack: HTMLElement;
-  private readonly hintCard: HTMLElement;
-  private readonly hintBadge: HTMLElement;
-  private readonly hintContent: HTMLElement;
-  private readonly hintGlyph: HTMLElement;
-  private readonly hintTitle: HTMLElement;
-  private readonly hintText: HTMLElement;
+  private readonly panels: Record<HintClass, HintPanel>;
   private readonly enterBtn: HTMLButtonElement;
   private readonly announcement: HTMLElement;
 
   private currentProgress = 0;
   private currentStage = 'Reading the world manifest';
   private hints: Hint[] = [];
-  private activeHint: Hint | null = null;
-  private timer: ReturnType<typeof setTimeout> | null = null;
+  private readonly active: Record<HintClass, Hint | null> = { know: null, hint: null };
+  private readonly timers: Record<HintClass, ReturnType<typeof setTimeout> | null> = { know: null, hint: null };
   private disposed = false;
   private currentDevice: InputDevice = 'desktop';
   private readonly destination: 'town' | 'arena';
@@ -69,7 +114,12 @@ export class Loader {
     const destLabel = options.destination === 'town' ? 'Sindr' : 'The Arena';
 
     this.root.innerHTML = `
+      <div class="loader-page" aria-hidden="true"></div>
+      <div class="loader-paper" aria-hidden="true"></div>
       <div class="loader-inner">
+        <figure class="loader-ink" aria-hidden="true">
+          <img class="loader-ink-figure" alt="" src="${portraitFor(this.playerElement)}">
+        </figure>
         <header class="loader-header">
           <h1 class="loader-title">ELEMENTS</h1>
           <p class="loader-destination">Entering ${destLabel}</p>
@@ -85,18 +135,7 @@ export class Loader {
           </div>
         </section>
 
-        <article class="loader-hint-card" aria-label="Game tip">
-          <div class="loader-hint-top">
-            <span class="loader-hint-badge" data-kind="controls">CONTROLS</span>
-          </div>
-          <div class="loader-hint-content">
-            <div class="loader-hint-glyph" aria-hidden="true"></div>
-            <div class="loader-hint-body">
-              <h2 class="loader-hint-title">Move</h2>
-              <p class="loader-hint-text">Traverse streets, markets, and open ground.</p>
-            </div>
-          </div>
-        </article>
+        <div class="loader-hints"></div>
 
         <div class="loader-action">
           <button type="button" class="loader-enter-btn" disabled>Loading ${destLabel}...</button>
@@ -110,12 +149,10 @@ export class Loader {
     this.percentageEl = this.root.querySelector<HTMLElement>('.loader-percentage')!;
     this.stageEl = this.root.querySelector<HTMLElement>('.loader-stage')!;
     this.barTrack = this.root.querySelector<HTMLElement>('.loader-bar-track')!;
-    this.hintCard = this.root.querySelector<HTMLElement>('.loader-hint-card')!;
-    this.hintBadge = this.root.querySelector<HTMLElement>('.loader-hint-badge')!;
-    this.hintContent = this.root.querySelector<HTMLElement>('.loader-hint-content')!;
-    this.hintGlyph = this.root.querySelector<HTMLElement>('.loader-hint-glyph')!;
-    this.hintTitle = this.root.querySelector<HTMLElement>('.loader-hint-title')!;
-    this.hintText = this.root.querySelector<HTMLElement>('.loader-hint-text')!;
+    this.panels = { know: createPanel('know'), hint: createPanel('hint') };
+    const hintsEl = this.root.querySelector<HTMLElement>('.loader-hints')!;
+    hintsEl.appendChild(this.panels.know.root);
+    hintsEl.appendChild(this.panels.hint.root);
     this.enterBtn = this.root.querySelector<HTMLButtonElement>('.loader-enter-btn')!;
     this.announcement = this.root.querySelector<HTMLElement>('.loader-announcement')!;
 
@@ -134,14 +171,14 @@ export class Loader {
     const dev: InputDevice = event.pointerType === 'touch' ? 'touch' : 'desktop';
     if (dev !== this.currentDevice) {
       this.currentDevice = dev;
-      this.renderHintGlyph();
+      this.renderHintGlyph('hint');
     }
   };
 
   private readonly onKeyDown = (): void => {
     if (this.currentDevice !== 'desktop') {
       this.currentDevice = 'desktop';
-      this.renderHintGlyph();
+      this.renderHintGlyph('hint');
     }
   };
 
@@ -208,9 +245,10 @@ export class Loader {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.timer !== null) {
-      clearTimeout(this.timer);
-      this.timer = null;
+    for (const c of ['know', 'hint'] as const) {
+      const t = this.timers[c];
+      if (t !== null) clearTimeout(t);
+      this.timers[c] = null;
     }
     window.removeEventListener('pointerdown', this.onPointer);
     window.removeEventListener('keydown', this.onKeyDown);
@@ -238,45 +276,38 @@ export class Loader {
 
   private startRotation(): void {
     if (this.hints.length === 0 || this.disposed) return;
-
     const seen = this.getSeenIds();
-    let picked: Hint | null = null;
-
-    if (seen.length === 0) {
-      // First visit: always a controls hint
-      const controlsHints = this.hints.filter(h => h.kind === 'controls');
-      picked = controlsHints[Math.floor(Math.random() * controlsHints.length)] ?? this.hints[0]!;
-    } else {
-      picked = this.pickNextHint(seen);
-    }
-
-    if (picked) {
-      this.showHint(picked);
+    for (const c of ['know', 'hint'] as const) {
+      // A first visit opens on a controls hint.
+      const first = c === 'hint' && seen.length === 0 ? this.hints.filter(h => h.kind === 'controls') : [];
+      const picked = first.length ? first[Math.floor(Math.random() * first.length)]! : this.pickNextHint(c);
+      if (picked) this.showHint(picked, true);
     }
   }
 
-  private pickNextHint(seen: string[]): Hint {
-    const unseen = this.hints.filter(h => !seen.includes(h.id));
-    const pool = unseen.length > 0 ? unseen : this.hints;
-
+  private pickNextHint(c: HintClass): Hint | null {
+    const ofClass = this.hints.filter(h => hintClass(h.kind) === c);
+    if (ofClass.length === 0) return null;
+    const seen = this.getSeenIds();
+    let unseen = ofClass.filter(h => !seen.includes(h.id) && h !== this.active[c]);
     if (unseen.length === 0) {
-      this.saveSeenIds([]);
+      this.saveSeenIds(seen.filter(id => !ofClass.some(h => h.id === id)));
+      unseen = ofClass.filter(h => h !== this.active[c]);
     }
-
-    // Weight player element
+    const pool = unseen.length > 0 ? unseen : ofClass;
     if (this.playerElement) {
-      const elementHints = pool.filter(h => h.element === this.playerElement);
-      if (elementHints.length > 0 && Math.random() < 0.45) {
-        return elementHints[Math.floor(Math.random() * elementHints.length)]!;
-      }
+      const own = pool.filter(h => h.element === this.playerElement);
+      if (own.length > 0 && Math.random() < 0.45) return own[Math.floor(Math.random() * own.length)]!;
     }
-
     return pool[Math.floor(Math.random() * pool.length)]!;
   }
 
+  /** Shows a hint in its panel ("Did you know" for lore and world, "Hint" for controls and rules). */
   showHint(hint: Hint, instant = false): void {
     if (this.disposed) return;
-    this.activeHint = hint;
+    const c = hintClass(hint.kind);
+    const p = this.panels[c];
+    this.active[c] = hint;
 
     const seen = this.getSeenIds();
     if (!seen.includes(hint.id)) {
@@ -285,56 +316,51 @@ export class Loader {
     }
 
     const prefersReducedMotion = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-
     const applyContent = (): void => {
-      this.hintBadge.dataset.kind = hint.kind;
-      this.hintBadge.textContent = hint.kind.toUpperCase();
-      this.hintTitle.textContent = hint.title;
-      this.hintText.textContent = hint.text;
-      this.renderHintGlyph();
-      this.announcement.textContent = `${hint.kind}: ${hint.title}. ${hint.text}`;
+      p.badge.dataset.kind = hint.kind;
+      p.title.textContent = hint.title;
+      p.text.textContent = hint.text;
+      this.renderHintGlyph(c);
+      this.announcement.textContent = `${PANEL_LABEL[c]}: ${hint.title}. ${hint.text}`;
     };
 
     if (instant || prefersReducedMotion) {
       applyContent();
     } else {
-      this.hintContent.classList.add('hint-fading');
+      p.content.classList.add('hint-fading');
       setTimeout(() => {
         if (this.disposed) return;
         applyContent();
-        this.hintContent.classList.remove('hint-fading');
-      }, 150);
+        p.content.classList.remove('hint-fading');
+      }, 250);
     }
 
-    // Schedule next hint rotation
-    if (this.timer !== null) {
-      clearTimeout(this.timer);
-    }
-
+    const prev = this.timers[c];
+    if (prev !== null) clearTimeout(prev);
     const words = hint.text.trim().split(/\s+/).length;
-    const duration = Math.max(4000, 500 + words * 300, (hint.minSeconds ?? 4) * 1000);
-
-    this.timer = globalThis.setTimeout(() => {
-      if (!this.disposed && this.hints.length > 0) {
-        const next = this.pickNextHint(this.getSeenIds());
-        if (next) this.showHint(next);
-      }
+    // Lore reads slower than a control reminder; the two panels also turn at different moments.
+    const duration = Math.max(c === 'know' ? 7000 : 5000, 800 + words * 320, (hint.minSeconds ?? 4) * 1000);
+    this.timers[c] = globalThis.setTimeout(() => {
+      if (this.disposed) return;
+      const next = this.pickNextHint(c);
+      if (next) this.showHint(next);
     }, duration);
   }
 
-  private renderHintGlyph(): void {
-    if (!this.activeHint?.action) {
-      this.hintGlyph.innerHTML = '';
-      this.hintGlyph.style.display = 'none';
+  private renderHintGlyph(c: HintClass): void {
+    const p = this.panels[c];
+    const action = this.active[c]?.action;
+    if (!action) {
+      p.glyph.innerHTML = '';
+      p.glyph.style.display = 'none';
       return;
     }
-
-    this.hintGlyph.style.display = 'flex';
+    p.glyph.style.display = 'flex';
     try {
-      this.hintGlyph.innerHTML = actionGlyph(this.activeHint.action, this.currentDevice);
+      p.glyph.innerHTML = actionGlyph(action, this.currentDevice);
     } catch {
-      this.hintGlyph.innerHTML = '';
-      this.hintGlyph.style.display = 'none';
+      p.glyph.innerHTML = '';
+      p.glyph.style.display = 'none';
     }
   }
 
@@ -358,10 +384,10 @@ export class Loader {
   // Testing helpers
   setDevice(device: InputDevice): void {
     this.currentDevice = device;
-    this.renderHintGlyph();
+    this.renderHintGlyph('hint');
   }
 
-  getHint(): Hint | null {
-    return this.activeHint;
+  getHint(c: HintClass = 'hint'): Hint | null {
+    return this.active[c];
   }
 }
