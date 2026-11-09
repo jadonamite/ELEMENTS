@@ -8,6 +8,7 @@ import {
 } from '../../../shared/src/story/dialogue.js';
 import type { LeadManager, Lead } from '../../../shared/src/story/leads.js';
 import dialogueData from '../../../shared/dialogue.json';
+import { voiceId } from '../../../shared/src/story/voice.js';
 import './npc-dialogue.css';
 
 /** One reply the player can give. */
@@ -91,7 +92,7 @@ export class NpcDialogueUI {
       eventType,
       this.dialogueMemory,
     );
-    this.soundManager.playBark(npc.data.role, npc.data.sex);
+    this.say(npc, result.text);
 
     const roleName = npc.data.role.charAt(0).toUpperCase() + npc.data.role.slice(1);
     this.nameEl.textContent = npc.data.name;
@@ -173,10 +174,18 @@ export class NpcDialogueUI {
 
   showLine(npc: LiveTownsperson, lineText: string): void {
     this.textEl.textContent = lineText;
-    this.soundManager.playBark(npc.data.role, npc.data.sex);
+    this.say(npc, lineText);
+  }
+
+  /** Speaks the line in the person's recorded voice, from where they stand; a bark when it has no recording. */
+  private say(npc: LiveTownsperson, text: string): void {
+    const at = npc.position;
+    void this.soundManager.speak(voiceId(npc.data.dialogueRole, npc.data.sex), text, { x: at.x, y: at.y + 1.6, z: at.z })
+      .then(spoken => { if (!spoken && this.currentNpc === npc && this.open) this.soundManager.playBark(npc.data.role, npc.data.sex); });
   }
 
   close(): void {
+    this.soundManager.stopSpeech();
     this.open = false;
     this.el.hidden = true;
   }
