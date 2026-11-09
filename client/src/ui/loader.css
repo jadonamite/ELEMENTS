@@ -3,7 +3,8 @@
    24/32/48/64px; body 14px/1.55, marginalia 12px/1.5. Display type is scaled
    for the poster. Radius/elevation are zero; interactive targets elsewhere stay
    44px. Progress is a 300ms stroke transition, captions 200ms, exit 300ms.
-   Reduced motion removes all transitions and reveals each active symbol at once. */
+   The activity path turns over 900ms with a 280ms hold. Reduced motion keeps
+   the diagram still and fades the activity path over 1200ms every 3 seconds. */
 #elements-loader {
   --loader-paper: #f2f1ed;
   --loader-ink: #292a28;
@@ -42,12 +43,20 @@
 .loader-title { margin: 0; padding-left: .28em; font: 700 clamp(2.25rem, 6.4vw, 5rem)/1.1 var(--font-family-display); letter-spacing: .28em; }
 .loader-destination { margin: var(--space-2) 0 0; padding-left: .55em; font: var(--font-size-xs)/1.5 var(--font-family-body); letter-spacing: .55em; text-transform: uppercase; color: var(--loader-secondary); }
 .loader-ink { position: relative; width: 100%; height: 100%; min-height: 0; margin: 0; display: flex; justify-content: center; }
-.loader-ink-figure { display: block; width: 100%; height: 100%; object-fit: contain; filter: grayscale(1) brightness(1.08) contrast(1.08); mix-blend-mode: multiply; }
-.loader-marginalia { position: absolute; z-index: 1; max-width: 11rem; font: var(--font-size-xs)/1.5 var(--font-family-body); letter-spacing: .14em; text-transform: uppercase; color: var(--loader-secondary); }
+.loader-ink-figure { display: block; width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; mask-image: radial-gradient(ellipse 48% 57% at center, #000 62%, transparent 94%); }
+.loader-diagram { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; pointer-events: none; fill: none; stroke: var(--loader-ink); stroke-linejoin: round; stroke-linecap: round; }
+.loader-diagram-line { stroke-dasharray: 100; stroke-dashoffset: 100; opacity: .32; vector-effect: non-scaling-stroke; }
+.loader-diagram-branch, .loader-diagram-fragment { opacity: .25; }
+.loader-diagram-dimension { opacity: .42; }
+.loader-diagram-overprint { stroke: var(--loader-paper); opacity: .38; }
+.loader-diagram-disc { fill: #171816; stroke: none; }
+.loader-diagram-labels { stroke: none; fill: var(--loader-secondary); font: var(--font-size-xs) var(--font-family-body); letter-spacing: .12em; }
+.loader-marginalia { position: absolute; z-index: 2; max-width: 11rem; font: var(--font-size-xs)/1.5 var(--font-family-body); letter-spacing: .14em; text-transform: uppercase; color: var(--loader-secondary); }
 .loader-plate-caption { top: var(--space-2); left: var(--space-2); }
 .loader-plate-nation { top: var(--space-2); right: var(--space-2); text-align: right; }
 .loader-plate-number { bottom: var(--space-2); left: var(--space-2); }
 .loader-plate-index { bottom: var(--space-2); right: var(--space-2); }
+.loader-plate-stamp { left: var(--space-2); bottom: var(--space-12); padding: var(--space-2); border: 1px solid var(--loader-guide); line-height: 1.6; }
 .loader-hint { width: 100%; max-width: 46rem; min-height: 4.5rem; text-align: center; }
 .loader-hint-badge { display: block; margin-bottom: var(--space-2); font: var(--font-size-xs)/1.5 var(--font-family-body); letter-spacing: .24em; text-transform: uppercase; color: var(--loader-secondary); }
 .loader-hint-content { display: flex; justify-content: center; align-items: center; gap: var(--space-3); transition: opacity var(--duration-normal) var(--ease-out); }
@@ -59,6 +68,8 @@
 .loader-hint-glyph .input-glyph [fill] { fill: none; stroke: currentColor; stroke-width: .8; }
 .loader-hint-glyph .input-glyph text { fill: currentColor; stroke: none; font-weight: 400; }
 .loader-hint-glyph .glyph-shadow, .loader-hint-glyph rect:nth-of-type(2), .loader-hint-glyph circle:nth-of-type(-n+3) { display: none; }
+.loader-turn { display: block; width: 4rem; height: 4rem; margin: 0 auto var(--space-2); overflow: visible; }
+.loader-turn-path { fill: none; stroke: var(--loader-ink); stroke-width: 1; stroke-linejoin: round; stroke-linecap: butt; }
 .loader-progress-section { width: min(100%, 38rem); padding-bottom: var(--space-2); }
 .loader-elements { position: relative; display: flex; justify-content: space-around; padding-bottom: var(--space-3); }
 .loader-element { position: relative; z-index: 1; width: 3rem; height: 3.375rem; flex: none; }
@@ -80,6 +91,7 @@
   .loader-plate-caption, .loader-plate-nation { top: 0; }
   .loader-plate-caption, .loader-plate-number { left: 0; }
   .loader-plate-nation, .loader-plate-index { right: 0; }
+  .loader-plate-stamp { left: 0; bottom: var(--space-12); }
   .loader-hint { min-height: 6rem; }
   .loader-inner { gap: var(--space-3); }
   .loader-progress-meta { gap: var(--space-2); }

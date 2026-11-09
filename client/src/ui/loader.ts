@@ -3,6 +3,8 @@ import type { ControlAction, InputDevice } from '../controls/actions.js';
 import { actionGlyph } from '../controls/glyphs.js';
 import hintData from '../../public/hints/hints.json';
 import { nextLoaderPicture, loaderPictureDetails } from './loader-pictures.js';
+import { loaderDiagram, diagramStrokeProgress } from './loader-diagram.js';
+import { elementTurnFrame } from './loader-turn.js';
 
 export interface Hint {
   id: string;
@@ -63,7 +65,13 @@ export class Loader {
   private readonly percentage: HTMLElement;
   private readonly stage: HTMLElement;
   private readonly marks: SVGPathElement[];
+  private readonly diagram: SVGSVGElement;
+  private diagramLines: SVGPathElement[] = [];
+  private diagramObserver: ResizeObserver | null = null;
   private readonly ticks: HTMLElement[];
+  private readonly turningPath: SVGPathElement;
+  private turnFrame: number | null = null;
+  private turnStarted: number | null = null;
   private readonly panel: HTMLElement;
   private readonly badge: HTMLElement;
   private readonly content: HTMLElement;
@@ -90,6 +98,7 @@ export class Loader {
     const destination = options.destination === 'town' ? 'Sindr' : 'The arena';
     const picture = nextLoaderPicture();
     const plate = loaderPictureDetails(picture);
+    const diagramSeed = Math.floor(Math.random() * 0xffffffff);
     this.root = document.createElement('div');
     this.root.id = 'elements-loader';
     this.root.setAttribute('role', 'region');
@@ -105,8 +114,10 @@ export class Loader {
           <figcaption class="loader-marginalia loader-plate-caption">${plate.caption}</figcaption>
           <span class="loader-marginalia loader-plate-nation">${plate.nation}</span>
           <img class="loader-ink-figure" alt="${plate.caption}, an ink study" src="${picture}" width="667" height="1000" fetchpriority="high">
+          <svg class="loader-diagram" viewBox="0 0 1000 650" aria-hidden="true">${loaderDiagram(plate, 1000, 650, diagramSeed)}</svg>
           <span class="loader-marginalia loader-plate-number">PLATE ${plate.number}</span>
           <span class="loader-marginalia loader-plate-index">${plate.number} / 030</span>
+          <span class="loader-marginalia loader-plate-stamp" aria-hidden="true">EL / ${plate.number}<br>INK STUDY</span>
         </figure>
         <article class="loader-hint" aria-label="Did you know">
           <span class="loader-hint-badge">Did you know</span>
@@ -118,6 +129,7 @@ export class Loader {
           </div>
         </article>
         <section class="loader-progress-section" aria-label="Loading progress">
+          <svg class="loader-turn" viewBox="0 0 64 64" aria-hidden="true"><path class="loader-turn-path" d=""/></svg>
           <div class="loader-elements" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Load progress">${elementMarks()}<div class="loader-rule" aria-hidden="true">${progressTicks()}</div></div>
           <div class="loader-progress-meta">
             <span class="loader-stage">Reading the world manifest</span>
@@ -130,6 +142,10 @@ export class Loader {
     this.percentage = this.root.querySelector<HTMLElement>('.loader-percentage')!;
     this.stage = this.root.querySelector<HTMLElement>('.loader-stage')!;
     this.marks = Array.from(this.root.querySelectorAll<SVGPathElement>('.loader-element-ink'));
+    this.diagram = this.root.querySelector<SVGSVGElement>('.loader-diagram')!;
+    this.diagramLines = Array.from(this.diagram.querySelectorAll<SVGPathElement>('.loader-diagram-line'));
+    this.turningPath = this.root.querySelector<SVGPathElement>('.loader-turn-path')!;
+    this.renderTurn(0);
     this.ticks = Array.from(this.root.querySelectorAll<HTMLElement>('.loader-tick-ink'));
     this.panel = this.root.querySelector<HTMLElement>('.loader-hint')!;
     this.badge = this.root.querySelector<HTMLElement>('.loader-hint-badge')!;
@@ -139,6 +155,22 @@ export class Loader {
     this.announcement = this.root.querySelector<HTMLElement>('.loader-announcement')!;
     this.setProgress(0);
     document.body.appendChild(this.root);
+    const figure = this.root.querySelector<HTMLElement>('.loader-ink')!;
+    const fitDiagram = (): void => {
+      if (this.disposed) return;
+      const { width = 1000, height = 650 } = figure.getBoundingClientRect?.() ?? {};
+      if (width <= 0 || height <= 0) return;
+      this.diagram.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      this.diagram.innerHTML = loaderDiagram(plate, width, height, diagramSeed);
+      this.diagramLines = Array.from(this.diagram.querySelectorAll<SVGPathElement>('.loader-diagram-line'));
+      this.drawDiagram();
+    };
+    fitDiagram();
+    this.startTurning();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.diagramObserver = new ResizeObserver(fitDiagram);
+      this.diagramObserver.observe(figure);
+    }
     window.addEventListener('pointerdown', this.onPointer);
     window.addEventListener('keydown', this.onKeyDown);
     (window as unknown as { elementsLoader?: Loader }).elementsLoader = this;
@@ -151,10 +183,29 @@ export class Loader {
   private readonly onPointer = (event: PointerEvent): void => this.setDevice(event.pointerType === 'touch' ? 'touch' : 'desktop');
   private readonly onKeyDown = (): void => this.setDevice('desktop');
 
+  private renderTurn(elapsed: number): void {
+    const frame = elementTurnFrame(elapsed, this.reducedMotion());
+    this.turningPath.setAttribute('d', frame.d);
+    this.turningPath.setAttribute('transform', `rotate(${frame.angle} 32 32)`);
+    this.turningPath.style.opacity = String(frame.opacity);
+  }
+
+  private startTurning(): void {
+    if (typeof requestAnimationFrame === 'undefined') return;
+    const update = (now: number): void => {
+      if (this.disposed || this.isReady) return;
+      this.turnStarted ??= now;
+      this.renderTurn(now - this.turnStarted);
+      this.turnFrame = requestAnimationFrame(update);
+    };
+    this.turnFrame = requestAnimationFrame(update);
+  }
+
   /** Only completed loading work advances the ink. */
   setProgress(fraction: number, stageName?: string): void {
     if (this.disposed || !Number.isFinite(fraction) || fraction < this.currentProgress) return;
     this.currentProgress = Math.min(1, Math.max(0, fraction));
+    this.drawDiagram();
     const percent = Math.round(this.currentProgress * 100);
     this.marks.forEach((mark, i) => {
       const share = Math.min(1, Math.max(0, this.currentProgress * 4 - i));
@@ -169,6 +220,18 @@ export class Loader {
     }
   }
 
+  private drawDiagram(): void {
+    const reduced = this.reducedMotion();
+    this.diagramLines.forEach((line, index) => {
+      line.style.strokeDashoffset = String(100 * (1 - diagramStrokeProgress(this.currentProgress, index, reduced)));
+    });
+    // Reduced motion keeps the complete diagram still throughout the load.
+    this.diagram.style.opacity = reduced ? '1' : String(.35 + this.currentProgress * .65);
+    this.diagram.querySelector<SVGElement>('.loader-diagram-disc')!.style.opacity = reduced ? '1' : String(this.currentProgress);
+    this.diagram.querySelector<SVGElement>('.loader-diagram-labels')!.style.opacity = reduced ? '1' : String(this.currentProgress);
+    if (reduced) this.diagramLines.forEach(line => { line.style.strokeDashoffset = '0'; });
+  }
+
   /** Hand over immediately; audio and mouse capture wait for in-game input. */
   ready(): void {
     if (this.disposed || this.isReady) return;
@@ -181,6 +244,8 @@ export class Loader {
   dismiss(): void {
     if (this.disposed || this.dismissTimer !== null) return;
     this.clearHintTimers();
+    if (this.turnFrame !== null) cancelAnimationFrame(this.turnFrame);
+    this.turnFrame = null;
     this.root.classList.add('loader-hidden');
     this.dismissTimer = setTimeout(() => this.dispose(), this.reducedMotion() ? 0 : 300);
   }
@@ -188,6 +253,9 @@ export class Loader {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.diagramObserver?.disconnect();
+    if (this.turnFrame !== null) cancelAnimationFrame(this.turnFrame);
+    this.turnFrame = null;
     this.clearHintTimers();
     if (this.dismissTimer !== null) clearTimeout(this.dismissTimer);
     window.removeEventListener('pointerdown', this.onPointer);

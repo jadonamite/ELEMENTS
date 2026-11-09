@@ -44,14 +44,60 @@ const CAPTIONS: Record<string, string> = {
   'allborn-statue': 'The sealed statue', 'world-boss': 'The nameless one', 'chromara-sentries': 'The Lord’s Sentries', 'border-fort': 'The border fort',
 };
 
-export function loaderPictureDetails(path: string): { caption: string; nation: string; number: string } {
+export interface LoaderPlate {
+  caption: string;
+  nation: string;
+  number: string;
+  element: 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA';
+  head: readonly [number, number];
+  ground: readonly [number, number];
+}
+
+/** Normalized coordinates in each portrait, independent of viewport size. */
+const ANCHORS: Record<typeof LOADER_PICTURES[number], { head: readonly [number, number]; ground: readonly [number, number] }> = {
+  'hush-ignis': { head: [.50, .14], ground: [.51, .92] },
+  'hush-aques': { head: [.50, .15], ground: [.49, .88] },
+  'hush-terra': { head: [.49, .15], ground: [.50, .88] },
+  'hush-aura': { head: [.48, .15], ground: [.51, .88] },
+  'shaper-ignis': { head: [.47, .16], ground: [.50, .87] },
+  'shaper-aques': { head: [.49, .17], ground: [.50, .87] },
+  'shaper-terra': { head: [.51, .17], ground: [.50, .87] },
+  'shaper-aura': { head: [.49, .16], ground: [.50, .87] },
+  'master-ignis': { head: [.48, .15], ground: [.50, .88] },
+  'master-aques': { head: [.49, .16], ground: [.51, .87] },
+  'master-terra': { head: [.42, .17], ground: [.49, .87] },
+  'master-aura': { head: [.49, .16], ground: [.50, .86] },
+  robber: { head: [.49, .18], ground: [.50, .88] },
+  deserter: { head: [.48, .16], ground: [.50, .88] },
+  lord: { head: [.50, .22], ground: [.50, .83] },
+  merchant: { head: [.40, .19], ground: [.48, .88] },
+  'sindr-streets': { head: [.49, .22], ground: [.52, .86] },
+  'sindr-canal': { head: [.50, .30], ground: [.50, .83] },
+  'nation-ignis': { head: [.49, .20], ground: [.50, .87] },
+  'nation-aques': { head: [.51, .23], ground: [.50, .85] },
+  'nation-terra': { head: [.50, .20], ground: [.50, .86] },
+  'nation-aura': { head: [.52, .20], ground: [.50, .86] },
+  'bending-fire': { head: [.48, .21], ground: [.50, .88] },
+  'bending-water': { head: [.45, .25], ground: [.50, .88] },
+  'bending-earth': { head: [.40, .32], ground: [.50, .87] },
+  'bending-air': { head: [.49, .20], ground: [.50, .88] },
+  'allborn-statue': { head: [.50, .18], ground: [.50, .86] },
+  'world-boss': { head: [.52, .22], ground: [.50, .87] },
+  'chromara-sentries': { head: [.50, .23], ground: [.50, .85] },
+  'border-fort': { head: [.50, .23], ground: [.50, .86] },
+};
+
+export function loaderPictureDetails(path: string): LoaderPlate {
   const id = path.split('/').at(-1)?.replace(/\.jpg$/, '') ?? '';
   const index = (LOADER_PICTURES as readonly string[]).indexOf(id);
   const nation = ['ignis', 'aques', 'terra', 'aura'].find(n => id.endsWith(n));
   const bending: Record<string, string> = { fire: 'IGNIS', water: 'AQUES', earth: 'TERRA', air: 'AURA' };
+  const element = nation?.toUpperCase() ?? bending[id.replace('bending-', '')] ?? (id.startsWith('sindr-') ? 'IGNIS' : 'TERRA');
   return {
     caption: CAPTIONS[id] ?? 'Ink study',
     nation: nation?.toUpperCase() ?? (id.startsWith('sindr-') ? 'IGNIS' : bending[id.replace('bending-', '')] ?? (['lord', 'allborn-statue', 'world-boss', 'chromara-sentries'].includes(id) ? 'CHROMARA' : 'FOUR NATIONS')),
     number: String(index + 1).padStart(3, '0'),
+    element: element as LoaderPlate['element'],
+    ...(ANCHORS[id as keyof typeof ANCHORS] ?? { head: [.5, .16], ground: [.5, .87] }),
   };
 }
