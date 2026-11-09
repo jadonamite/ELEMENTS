@@ -1702,5 +1702,8 @@
       "timeLimitSeconds": 300
     },
     "bannedNameWords": []
+  },
+  "speech": {
+    "talk": { "reach": 3.5, "besideReach": 1.2, "minFacingDot": 0.35, "leaveDistance": 5.5, "noTalkNearFoeMetres": 12 }
   }
 }
