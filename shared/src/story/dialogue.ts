@@ -1,4 +1,4 @@
-import { SpeechMemory, SpeechRules, type Criterion, type Facts, type SpeechRule } from './speech.js';
+import { SpeechMemory, SpeechRules, type Criterion, type Facts, type SpeechRule, type SpeechTier } from './speech.js';
 
 export interface PlayerDialogueContext {
   name: string;
@@ -33,20 +33,8 @@ export function createDialogueMemory(): DialogueMemory {
   };
 }
 
-/** Formats template string with player/speaker variables. */
-export function formatDialogueText(
-  template: string,
-  player: PlayerDialogueContext,
-  speaker?: SpeakerDialogueContext,
-): string {
-  let result = template;
-  result = result.replaceAll('{player}', player.name || 'traveler');
-  result = result.replaceAll('{nation}', player.element || 'IGNIS');
-  result = result.replaceAll('{coin}', 'CHROMA');
-  return result;
-}
-
-type DialogueTable = Record<string, Record<string, string[] | string>>;
+/** dialogue.json: speaker group -> situation -> lines. Lines are spoken as written by recorded voices, so they hold no blanks. */
+type DialogueTable = Record<string, Record<string, unknown>>;
 
 /** What the player asked about in a conversation. */
 export type TalkTopic = 'greeting' | 'lead' | 'allborn';
@@ -77,6 +65,18 @@ const TALK_SITUATIONS: Record<string, readonly Criterion[]> = {
   greeting_local: [],
 };
 
+/**
+ * Things a townsperson sees happen, each a concept of its own heard by everyone near it. Guards answer a
+ * fight, a theft or a red flag as alerts (they may cut a reaction); everyone else reacts. A speaker
+ * reacts to the same kind of event at most once per WITNESS_COOLDOWN_SECONDS.
+ */
+const WITNESS: Record<string, SpeechTier> = {
+  fight_started: 'reaction', theft_seen: 'reaction', red_flag_raised: 'reaction', loot_dropped: 'reaction', flee: 'reaction',
+};
+const ALERT_ROLES = new Set(['guard_sindr', 'sentry']);
+const ALERT_SITUATIONS = new Set(['fight_started', 'theft_seen', 'red_flag_raised', 'flee']);
+export const WITNESS_COOLDOWN_SECONDS = 20;
+
 /** Every situation in the dialogue table as a speech rule, conditioned on the speaker group. */
 export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
   const rules: SpeechRule[] = [];
@@ -85,11 +85,24 @@ export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
     for (const [situation, lines] of Object.entries(block)) {
       if (!Array.isArray(lines)) continue;
       const talk = TALK_SITUATIONS[situation];
+      const witness = WITNESS[situation];
+      if (witness) {
+        const said = `said.${situation}`;
+        rules.push({
+          id: `${role}/${situation}`,
+          concept: situation,
+          criteria: [{ fact: 'who', value: role }, { fact: `self.${said}`, op: '!=', value: true }],
+          lines: lines as string[],
+          tier: ALERT_ROLES.has(role) && ALERT_SITUATIONS.has(situation) ? 'alert' : witness,
+          remember: [{ fact: said, seconds: WITNESS_COOLDOWN_SECONDS }],
+        });
+        continue;
+      }
       rules.push({
         id: `${role}/${situation}`,
         concept: talk ? 'talk' : situation,
         criteria: [{ fact: 'who', value: role }, ...(talk ?? [])],
-        lines,
+        lines: lines as string[],
         tier: talk ? 'conversation' : 'ambient',
       });
     }
@@ -132,10 +145,6 @@ export function pickDialogueLine(
   const at = event === 'dusk' || event === 'night' ? { ...speaker, timeOfDay: event } : speaker;
   const facts = { ...talkFacts(at, player, TOPIC[event]), feeling: player.feelingScore ?? memory?.feelingScores.get(speaker.id) ?? 50 };
   const said = rules.speak({ concept: 'talk', speakerId: speaker.id, facts }, memory?.speech);
-  if (!said) {
-    const text = `Greetings, ${player.name || 'traveler'}.`;
-    return { text, category: 'fallback', line: text };
-  }
-  const text = formatDialogueText(said.line, player, speaker);
-  return { text, category: said.rule.id.slice(said.rule.id.indexOf('/') + 1), line: said.line };
+  if (!said) return { text: 'Greetings, traveler.', category: 'fallback', line: 'Greetings, traveler.' };
+  return { text: said.line, category: said.rule.id.slice(said.rule.id.indexOf('/') + 1), line: said.line };
 }
