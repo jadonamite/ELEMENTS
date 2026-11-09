@@ -19,6 +19,7 @@ import {
   PointLight,
   RingGeometry,
   type Scene,
+  SRGBColorSpace,
   Vector2,
   Vector3,
 } from 'three';
@@ -214,6 +215,7 @@ function createWoodTexture(): CanvasTexture | null {
   }
 
   const tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace; // colour data: without this the browns are read as linear and render pale
   tex.wrapS = tex.wrapT = 1000;
   tex.needsUpdate = true;
   return tex;
