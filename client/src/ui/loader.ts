@@ -4,7 +4,7 @@ import { actionGlyph } from '../controls/glyphs.js';
 import hintData from '../../public/hints/hints.json';
 import { nextLoaderPicture, loaderPictureDetails } from './loader-pictures.js';
 import { loaderDiagram, diagramStrokeProgress } from './loader-diagram.js';
-import { elementGlyph, GLYPH_ELEMENTS, elementTurnFrame } from './loader-turn.js';
+import { elementGlyph, GLYPH_ELEMENTS, elementTurnFrame, elementInkFrame } from './loader-turn.js';
 
 export interface Hint {
   id: string;
@@ -41,16 +41,33 @@ export function hintDuration(hint: Pick<Hint, 'title' | 'text' | 'minSeconds'>):
   return Math.max(5000, words * 300, (hint.minSeconds ?? 0) * 1000);
 }
 
+function inkMask(id: string, className: string): string {
+  return `<mask id="${id}" maskUnits="userSpaceOnUse" x="-4" y="-4" width="72" height="72"><path class="${className}" fill="white" filter="url(#loader-ink-soften)" d="${elementInkFrame(0).d}"/></mask>`;
+}
+
 function elementMarks(): string {
   return GLYPH_ELEMENTS.map((element, i) => {
     const glyph = elementGlyph(i);
     const path = `${glyph.d}${glyph.detail}`;
     return `<svg class="loader-element" data-element="${element}" viewBox="0 0 64 84" aria-hidden="true">
-      <path class="loader-element-ghost" d="${path}"/>
-      <path class="loader-element-ink" pathLength="100" d="${path}"/>
+      <defs>${inkMask(`loader-reveal-${i}`, 'loader-element-reveal')}</defs>
+      <path class="loader-element-ghost" fill-rule="evenodd" d="${path}"/>
+      <path class="loader-element-ink" fill-rule="evenodd" d="${path}" mask="url(#loader-reveal-${i})"/>
       <text class="loader-element-label" x="32" y="78" text-anchor="middle">${element}</text>
     </svg>`;
   }).join('');
+}
+
+function turningEmblem(): string {
+  const ring = elementGlyph(0).detail;
+  const shape = (kind: string): string => `<path class="loader-turn-${kind}-shape loader-turn-outline"/><g mask="url(#loader-turn-ink)"><path class="loader-turn-${kind}-shape loader-turn-solid"/></g>`;
+  return `<svg class="loader-turn" viewBox="0 0 64 84" aria-hidden="true">
+    <defs><filter id="loader-ink-soften" x="-4" y="-4" width="72" height="72" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation=".25"/></filter>${inkMask('loader-turn-ink', 'loader-turn-reveal')}</defs>
+    <path class="loader-turn-outline" fill-rule="evenodd" d="${ring}"/>
+    <path class="loader-turn-solid" fill-rule="evenodd" d="${ring}" mask="url(#loader-turn-ink)"/>
+    ${shape('current')}${shape('next')}
+    <text class="loader-turn-label" x="32" y="78" text-anchor="middle"></text>
+  </svg>`;
 }
 
 function progressTicks(): string {
@@ -63,13 +80,13 @@ export class Loader {
   private readonly percentage: HTMLElement;
   private readonly stage: HTMLElement;
   private readonly marks: SVGPathElement[];
+  private readonly turningReveal: SVGPathElement;
+  private displayedProgress = 0;
+  private lastInkTime = 0;
   private readonly diagram: SVGSVGElement;
   private diagramLines: SVGPathElement[] = [];
   private diagramObserver: ResizeObserver | null = null;
   private readonly ticks: HTMLElement[];
-  private readonly turningPath: SVGPathElement;
-  private readonly turningDetail: SVGPathElement;
-  private readonly turningNext: SVGGElement;
   private readonly turningLabel: SVGTextElement;
   private turnFrame: number | null = null;
   private turnStarted: number | null = null;
@@ -130,7 +147,7 @@ export class Loader {
           </div>
         </article>
         <section class="loader-progress-section" aria-label="Loading progress">
-          <svg class="loader-turn" viewBox="0 0 64 84" aria-hidden="true"><g class="loader-turn-current"><path class="loader-turn-path" d=""/><path class="loader-turn-detail" d=""/></g><g class="loader-turn-next"><path class="loader-turn-path"/><path class="loader-turn-detail"/></g><text class="loader-turn-label" x="32" y="78" text-anchor="middle"></text></svg>
+          ${turningEmblem()}
           <div class="loader-elements" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Load progress">${elementMarks()}<div class="loader-rule" aria-hidden="true">${progressTicks()}</div></div>
           <div class="loader-progress-meta">
             <span class="loader-stage">Reading the world manifest</span>
@@ -142,12 +159,10 @@ export class Loader {
     this.progress = this.root.querySelector<HTMLElement>('.loader-elements')!;
     this.percentage = this.root.querySelector<HTMLElement>('.loader-percentage')!;
     this.stage = this.root.querySelector<HTMLElement>('.loader-stage')!;
-    this.marks = Array.from(this.root.querySelectorAll<SVGPathElement>('.loader-element-ink'));
+    this.marks = Array.from(this.root.querySelectorAll<SVGPathElement>('.loader-element-reveal'));
     this.diagram = this.root.querySelector<SVGSVGElement>('.loader-diagram')!;
     this.diagramLines = Array.from(this.diagram.querySelectorAll<SVGPathElement>('.loader-diagram-line'));
-    this.turningPath = this.root.querySelector<SVGPathElement>('.loader-turn-path')!;
-    this.turningDetail = this.root.querySelector<SVGPathElement>('.loader-turn-detail')!;
-    this.turningNext = this.root.querySelector<SVGGElement>('.loader-turn-next')!;
+    this.turningReveal = this.root.querySelector<SVGPathElement>('.loader-turn-reveal')!;
     this.turningLabel = this.root.querySelector<SVGTextElement>('.loader-turn-label')!;
     this.renderTurn(0);
     this.ticks = Array.from(this.root.querySelectorAll<HTMLElement>('.loader-tick-ink'));
@@ -189,18 +204,31 @@ export class Loader {
 
   private renderTurn(elapsed: number): void {
     const frame = elementTurnFrame(elapsed, this.reducedMotion());
-    this.turningPath.setAttribute('d', frame.d);
-    this.turningPath.setAttribute('transform', `rotate(${frame.angle} 32 32)`);
-    this.turningDetail.setAttribute('d', frame.detail);
-    this.turningDetail.setAttribute('transform', `rotate(${frame.angle} 32 32)`);
-    this.turningPath.style.opacity = String(frame.opacity);
-    this.turningDetail.style.opacity = String(frame.opacity * .55);
-    this.turningNext.querySelector('path')!.setAttribute('d', frame.next.d);
-    this.turningNext.querySelector('.loader-turn-detail')!.setAttribute('d', frame.next.detail);
-    this.turningNext.style.opacity = String(frame.next.opacity);
+    this.root.querySelectorAll<SVGPathElement>('.loader-turn-current-shape').forEach(path => {
+      path.setAttribute('d', frame.d);
+      path.setAttribute('transform', `rotate(${frame.angle} 32 32)`);
+      path.style.opacity = String(frame.opacity);
+    });
+    this.root.querySelectorAll<SVGPathElement>('.loader-turn-next-shape').forEach(path => {
+      path.setAttribute('d', frame.next.d);
+      path.style.opacity = String(frame.next.opacity);
+    });
     this.turningLabel.textContent = frame.next.opacity > .5 ? frame.next.element : frame.element;
-    // Keep the label quiet while the geometry travels between its held forms.
-    this.turningLabel.style.opacity = this.reducedMotion() ? '1' : String(Math.pow(Math.abs(Math.cos(frame.angle * Math.PI / 180)), 8));
+    this.turningLabel.style.opacity = this.reducedMotion() ? '1' : String(Math.pow(Math.abs(Math.cos(frame.angle * Math.PI / 360)), 6));
+  }
+
+  private renderInk(elapsed: number, immediate = false): void {
+    const reduced = this.reducedMotion();
+    const delta = Math.max(0, Math.min(100, elapsed - this.lastInkTime));
+    this.lastInkTime = elapsed;
+    this.displayedProgress = immediate || reduced || this.currentProgress === 1
+      ? this.currentProgress
+      : this.displayedProgress + (this.currentProgress - this.displayedProgress) * (1 - Math.exp(-delta / 280));
+    this.turningReveal.setAttribute('d', elementInkFrame(this.displayedProgress, elapsed, reduced).d);
+    this.marks.forEach((mark, i) => {
+      const share = Math.min(1, Math.max(0, this.displayedProgress * 4 - i));
+      mark.setAttribute('d', elementInkFrame(share, elapsed, reduced).d);
+    });
   }
 
   private startTurning(): void {
@@ -209,6 +237,7 @@ export class Loader {
       if (this.disposed || this.isReady) return;
       this.turnStarted ??= now;
       this.renderTurn(now - this.turnStarted);
+      this.renderInk(now - this.turnStarted);
       this.turnFrame = requestAnimationFrame(update);
     };
     this.turnFrame = requestAnimationFrame(update);
@@ -220,10 +249,7 @@ export class Loader {
     this.currentProgress = Math.min(1, Math.max(0, fraction));
     this.drawDiagram();
     const percent = Math.round(this.currentProgress * 100);
-    this.marks.forEach((mark, i) => {
-      const share = Math.min(1, Math.max(0, this.currentProgress * 4 - i));
-      mark.style.strokeDashoffset = String(100 * (1 - (this.reducedMotion() ? Number(share > 0) : share)));
-    });
+    this.renderInk(this.lastInkTime, typeof requestAnimationFrame === 'undefined');
     this.ticks.forEach((tick, i) => tick.style.opacity = this.currentProgress > 0 && i / 50 <= this.currentProgress ? '1' : '0');
     this.percentage.textContent = `${percent}%`;
     this.progress.setAttribute('aria-valuenow', String(percent));

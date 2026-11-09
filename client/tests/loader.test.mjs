@@ -73,14 +73,15 @@ function domFixture() {
       this.parentElement = null;
     }
     get innerHTML() { return this._innerHTML || ''; }
-    set innerHTML(val) { this._innerHTML = val; this.parseChildren(val); }
+    set innerHTML(val) { this._innerHTML = val; this.children = []; this.parseChildren(val); }
     parseChildren(html) {
-      const tagRegex = /<([a-z0-9]+)([^>]*)>/gi;
+      const tagRegex = /<(\/?)([a-z0-9]+)([^>]*)>/gi;
+      const stack = [this];
       let m;
       while ((m = tagRegex.exec(html)) !== null) {
-        if (m[1].startsWith('/')) continue;
-        const tag = m[1];
-        const attrs = m[2];
+        if (m[1] === '/') { if (stack.length > 1) stack.pop(); continue; }
+        const tag = m[2];
+        const attrs = m[3];
         const el = new MockElement(tag);
         const classMatch = attrs.match(/class=["']([^"']+)["']/i);
         if (classMatch) el.className = classMatch[1];
@@ -89,8 +90,9 @@ function domFixture() {
         if (/\bdisabled\b/i.test(attrs)) el.disabled = true;
         const dataMatches = attrs.matchAll(/data-([a-z0-9-]+)=["']([^"']+)["']/gi);
         for (const dm of dataMatches) el.dataset[dm[1]] = dm[2];
-        el.parentElement = this;
-        this.children.push(el);
+        el.parentElement = stack.at(-1);
+        stack.at(-1).children.push(el);
+        if (!attrs.endsWith('/') && !['img', 'br', 'input', 'hr'].includes(tag)) stack.push(el);
       }
     }
     setAttribute(k, v) { this.attributes.set(k, String(v)); }
@@ -199,15 +201,15 @@ test('blocked storage still provides a complete session picture cycle', () => {
   } finally { fx.restore(); }
 });
 
-test('real progress draws four triangles and fills rule ticks monotonically', () => {
+test('real progress fills four emblems and fills rule ticks monotonically', () => {
   const fx = domFixture();
   let loader;
   try {
     loader = new Loader({ destination: 'town', onEnter() {} });
     const root = document.querySelector('#elements-loader');
-    const marks = root.querySelectorAll('.loader-element-ink');
+    const marks = root.querySelectorAll('.loader-element-reveal');
     const ticks = root.querySelectorAll('.loader-tick-ink');
-    const ink = () => marks.map(m => 100 - Number(m.style.strokeDashoffset));
+    const ink = () => marks.map(m => Number((100 * (1 - Number(m.getAttribute('d').match(/^M-4 ([\d.]+)/)[1]) / 64)).toFixed(8)));
     const filled = () => ticks.filter(t => t.style.opacity === '1').length;
     assert.equal(marks.length, 4);
     assert.equal(ticks.length, 51);
@@ -217,7 +219,7 @@ test('real progress draws four triangles and fills rule ticks monotonically', ()
     assert.deepEqual(ink(), [40, 0, 0, 0]);
     assert.equal(filled(), 6);
     loader.setProgress(.4);
-    assert.deepEqual(ink(), [100, 60.00000000000001, 0, 0]);
+    assert.deepEqual(ink(), [100, 60, 0, 0]);
     assert.equal(filled(), 21);
     loader.setProgress(.5, 'Half loaded');
     assert.deepEqual(ink(), [100, 100, 0, 0]);
@@ -322,8 +324,8 @@ test('reduced motion swaps content and completes the handover without a fade', t
     loader.showHint(hint);
     assert.equal(loader.getHint().id, hint.id);
     loader.setProgress(.1);
-    const marks = document.querySelector('#elements-loader').querySelectorAll('.loader-element-ink');
-    assert.deepEqual(marks.map(m => m.style.strokeDashoffset), ['0', '100', '100', '100']);
+    const marks = document.querySelector('#elements-loader').querySelectorAll('.loader-element-reveal');
+    assert.deepEqual(marks.map(m => Number(m.getAttribute('d').match(/^M-4 ([\d.]+)/)[1])), [38.4, 64, 64, 64]);
     loader.ready();
     t.mock.timers.tick(0);
     assert.equal(document.querySelector('#elements-loader'), null);

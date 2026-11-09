@@ -2,12 +2,12 @@
    Both game themes use this explicit paper palette. Shared spacing is 4/8/12/16/
    24/32/48/64px; body 14px/1.55, marginalia 12px/1.5. Display type is scaled
    for the poster. Radius/elevation are zero; interactive targets elsewhere stay
-   44px. Progress is a 300ms stroke transition, captions 200ms, exit 300ms.
-   The activity path turns over 900ms with a 280ms hold. Reduced motion keeps
+   44px. Progress is a 280ms ink settling transition, captions 200ms, exit 300ms.
+   The activity path turns over 900ms with a 220ms hold. Reduced motion keeps
    the diagram still and fades the activity path over 1600ms every 4.2 seconds. */
 #elements-loader {
   --loader-paper: #f2f1ed;
-  --loader-ink: #292a28;
+  --loader-ink: #171816;
   --loader-secondary: #60615d;
   --loader-guide: #b9bab4;
   --loader-ghost: #d1d1ca;
@@ -39,8 +39,8 @@
   justify-items: center;
   gap: var(--space-3);
 }
-.loader-header { text-align: center; padding-top: var(--space-2); }
-.loader-title { margin: 0; padding-left: .28em; font: 700 clamp(2.25rem, 6.4vw, 5rem)/1.1 var(--font-family-display); letter-spacing: .28em; }
+.loader-header { min-width: 0; max-width: 100%; text-align: center; padding-top: var(--space-2); }
+.loader-title { overflow-wrap: anywhere; margin: 0; padding-left: .28em; font: 700 clamp(2.25rem, 6.4vw, 5rem)/1.1 var(--font-family-display); letter-spacing: .28em; }
 .loader-destination { margin: var(--space-2) 0 0; padding-left: .55em; font: var(--font-size-xs)/1.5 var(--font-family-body); letter-spacing: .55em; text-transform: uppercase; color: var(--loader-secondary); }
 .loader-ink { position: relative; width: 100%; height: 100%; min-height: 0; margin: 0; display: flex; justify-content: center; }
 .loader-ink-figure { display: block; width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; mask-image: radial-gradient(ellipse 48% 57% at center, #000 62%, transparent 94%); }
@@ -68,18 +68,18 @@
 .loader-hint-glyph .input-glyph [fill] { fill: none; stroke: currentColor; stroke-width: .8; }
 .loader-hint-glyph .input-glyph text { fill: currentColor; stroke: none; font-weight: 400; }
 .loader-hint-glyph .glyph-shadow, .loader-hint-glyph rect:nth-of-type(2), .loader-hint-glyph circle:nth-of-type(-n+3) { display: none; }
-.loader-turn { display: block; width: 4.5rem; height: 5.9rem; margin: 0 auto var(--space-2); overflow: visible; }
-.loader-turn-path, .loader-turn-detail { fill: none; stroke: var(--loader-ink); stroke-width: 1; stroke-linejoin: round; stroke-linecap: butt; }
-.loader-turn-detail { stroke-width: .65; opacity: .55; }
-.loader-turn-next { opacity: 0; }
-.loader-turn-label, .loader-element-label { fill: var(--loader-secondary); stroke: none; font: 8px var(--font-family-body); letter-spacing: .15em; }
+.loader-turn { display: block; width: 7rem; height: 9.1875rem; margin: 0 auto var(--space-3); overflow: visible; }
+.loader-turn-outline { fill: none; stroke: var(--loader-ink); stroke-width: .65; stroke-linejoin: round; }
+.loader-turn-solid { fill: var(--loader-ink); stroke: none; }
+.loader-turn-next-shape { opacity: 0; }
+.loader-turn-label, .loader-element-label { fill: var(--loader-ink); stroke: none; font: 700 8px var(--font-family-display); letter-spacing: .12em; }
+.loader-element-label { font-size: 16px; }
 .loader-progress-section { width: min(100%, 38rem); padding-bottom: var(--space-2); }
-.loader-elements { position: relative; display: flex; justify-content: space-around; padding-bottom: var(--space-3); }
-.loader-element { position: relative; z-index: 1; width: 3rem; height: 3.9375rem; flex: none; }
-.loader-element-ghost, .loader-element-ink { fill: none; stroke-width: 1; stroke-linejoin: round; stroke-linecap: round; }
-.loader-element-ghost { stroke: var(--loader-ghost); }
-.loader-element-ink { stroke: var(--loader-ink); stroke-dasharray: 100; stroke-dashoffset: 100; transition: stroke-dashoffset var(--duration-moderate) var(--ease-out); }
-.loader-rule { position: absolute; inset-inline: 0; bottom: var(--space-6); height: 1px; background: var(--loader-guide); }
+.loader-elements { position: relative; display: flex; justify-content: space-around; padding-bottom: var(--space-6); }
+.loader-element { position: relative; z-index: 1; width: min(3rem, 23%); height: auto; aspect-ratio: 64 / 84; flex: none; }
+.loader-element-ghost { fill: none; stroke: var(--loader-secondary); stroke-width: .7; stroke-linejoin: round; }
+.loader-element-ink { fill: var(--loader-ink); stroke: none; }
+.loader-rule { position: absolute; inset-inline: 0; bottom: var(--space-3); height: 1px; background: var(--loader-guide); }
 .loader-tick { position: absolute; top: 0; width: 1px; height: var(--space-1); background: var(--loader-ghost); }
 .loader-tick-major { height: var(--space-2); }
 .loader-tick-ink { position: absolute; inset: 0; background: var(--loader-ink); opacity: 0; transition: opacity var(--duration-moderate) var(--ease-out); }
