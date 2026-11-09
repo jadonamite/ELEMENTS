@@ -4,6 +4,7 @@ import type { ContextOffer } from '../ui/context-action.js';
 import {
   claimStartingPurse,
   economyAvailable,
+  EconomyError,
   fetchBalance,
   fetchSatchel,
   fetchOpenBounties,
@@ -96,7 +97,28 @@ export class TownEconomy {
     this.loot = new WorldLoot(scene, world, zone, {
       picked: (text) => events.notice(text),
       satchelChanged: () => void this.refresh(),
-      claim: (pileId, x, z) => this.door.claim(pileId, x, z),
+      claim: async (pileId, x, z) => {
+        try {
+          return await this.door.claim(pileId, x, z);
+        } catch (err) {
+          if (err instanceof EconomyError && (err.status === 403 || /reserved for fight victor/.test(err.message))) {
+            throw err;
+          }
+          const pile = this.loot?.getPile(pileId);
+          if (pile) {
+            this.coin += pile.contents.chroma;
+            for (const [k, v] of Object.entries(pile.contents.shards ?? {})) {
+              this.items[`shard_${k.toLowerCase()}`] = (this.items[`shard_${k.toLowerCase()}`] ?? 0) + v;
+            }
+            for (const [k, v] of Object.entries(pile.contents.materials ?? {})) {
+              this.items[k] = (this.items[k] ?? 0) + v;
+            }
+            this.known = true;
+            return pile.contents;
+          }
+          throw err;
+        }
+      },
     });
     this.shop = new ShopWindow({
       satchel: () => this.items,
@@ -146,6 +168,10 @@ export class TownEconomy {
     if (!this.enabled || !this.known) return null;
     const weight = Object.values(this.items).reduce((sum, n) => sum + n, 0);
     return { chroma: this.coin, weight };
+  }
+
+  get satchelItems(): Record<string, number> {
+    return { ...this.items };
   }
 
   /** Red flags and bounty as the server last told us. */

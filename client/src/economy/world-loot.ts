@@ -5,8 +5,10 @@ import {
   type BufferGeometry,
   CanvasTexture,
   CircleGeometry,
+  Color,
   CylinderGeometry,
   Group,
+  InstancedBufferAttribute,
   InstancedMesh,
   Mesh,
   MeshBasicMaterial,
@@ -17,7 +19,9 @@ import {
   PointLight,
   RingGeometry,
   type Scene,
-  type Vector3,
+  SRGBColorSpace,
+  Vector2,
+  Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EconomyError, listLoot, type LootContents, type LootPile } from './api.js';
@@ -26,7 +30,7 @@ import { describeLoot, lootItems } from './items.js';
 // Loot on the ground: defeated foes drop an elemental chest shimmering in the foe's nation colour
 // (IGNIS crimson, AQUES azure, TERRA ochre, AURA white). Real geometry with curved vaulted lid,
 // iron corner caps and bands, lid seam glow, soft ground light pool that fades smoothly,
-// and rising motes. Walking within reach opens the lid, releases an elemental burst, reveals spoils,
+// and soft round rising motes. Walking within reach opens the lid, releases an elemental burst, reveals spoils,
 // and claims the contents.
 
 const SEE_RADIUS = 40;
@@ -41,6 +45,7 @@ export type NationColour = 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA';
 interface NationTheme {
   lightHex: number;
   poolColor: number;
+  moteColor: Color;
   poolMat: MeshBasicMaterial;
   seamMat: MeshBasicMaterial;
   moteMat: MeshBasicMaterial;
@@ -48,26 +53,24 @@ interface NationTheme {
   shardMat: MeshStandardMaterial;
 }
 
-interface MoteOffset {
+interface MoteDef {
   x: number;
   z: number;
   speed: number;
   phase: number;
+  baseSize: number;
+  driftX: number;
+  driftZ: number;
 }
 
-const MOTE_OFFSETS: MoteOffset[] = [
-  { x: -0.18, z: -0.11, speed: 0.65, phase: 0.05 },
-  { x: 0.17, z: -0.10, speed: 0.78, phase: 0.22 },
-  { x: -0.15, z: 0.12, speed: 0.62, phase: 0.41 },
-  { x: 0.16, z: 0.11, speed: 0.72, phase: 0.63 },
-  { x: 0.0, z: -0.14, speed: 0.85, phase: 0.15 },
-  { x: -0.09, z: 0.02, speed: 0.58, phase: 0.35 },
-  { x: 0.10, z: 0.03, speed: 0.75, phase: 0.55 },
-  { x: 0.0, z: 0.13, speed: 0.68, phase: 0.80 },
-  { x: -0.21, z: 0.0, speed: 0.70, phase: 0.12 },
-  { x: 0.21, z: 0.0, speed: 0.74, phase: 0.48 },
-  { x: -0.08, z: -0.09, speed: 0.82, phase: 0.70 },
-  { x: 0.08, z: 0.09, speed: 0.64, phase: 0.92 },
+// A few soft rising motes per box with varied sizes, slow drift and gentle rise
+const MOTE_DEFS: MoteDef[] = [
+  { x: -0.16, z: -0.09, speed: 0.30, phase: 0.08, baseSize: 0.070, driftX: 0.035, driftZ: 0.025 },
+  { x:  0.15, z: -0.08, speed: 0.36, phase: 0.25, baseSize: 0.095, driftX: -0.040, driftZ: 0.035 },
+  { x: -0.12, z:  0.10, speed: 0.27, phase: 0.45, baseSize: 0.055, driftX: 0.030, driftZ: -0.030 },
+  { x:  0.14, z:  0.09, speed: 0.33, phase: 0.62, baseSize: 0.085, driftX: -0.035, driftZ: -0.025 },
+  { x:  0.00, z: -0.12, speed: 0.40, phase: 0.78, baseSize: 0.065, driftX: 0.040, driftZ: 0.020 },
+  { x: -0.02, z:  0.11, speed: 0.31, phase: 0.93, baseSize: 0.080, driftX: -0.030, driftZ: 0.040 },
 ];
 
 interface ShownPile {
@@ -78,7 +81,7 @@ interface ShownPile {
   seam: Mesh<BoxGeometry, MeshBasicMaterial>;
   crest: Mesh<OctahedronGeometry, MeshBasicMaterial>;
   burst: Mesh<RingGeometry, MeshBasicMaterial>;
-  motes: InstancedMesh<OctahedronGeometry, MeshBasicMaterial>;
+  motes: InstancedMesh<PlaneGeometry, MeshBasicMaterial>;
   coinsMesh: Mesh<BufferGeometry, MeshStandardMaterial>;
   shardsMesh: Mesh<BufferGeometry, MeshStandardMaterial>;
   retryAt: number;
@@ -115,6 +118,195 @@ function createSoftLightTexture(): CanvasTexture | null {
   return tex;
 }
 
+/** Procedural soft round radial falloff sprite texture for rising elemental motes. */
+function createMoteTexture(): CanvasTexture | null {
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const center = size / 2;
+  const grad = ctx.createRadialGradient(center, center, 0, center, center, center);
+  grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+  grad.addColorStop(0.18, 'rgba(255, 255, 255, 0.95)');
+  grad.addColorStop(0.40, 'rgba(255, 255, 255, 0.55)');
+  grad.addColorStop(0.68, 'rgba(255, 255, 255, 0.18)');
+  grad.addColorStop(0.88, 'rgba(255, 255, 255, 0.04)');
+  grad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Procedural brown oak wood plank diffuse texture with prominent timber grain and no red tint. */
+function createWoodTexture(): CanvasTexture | null {
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  // Base earthy brown oak (neutral warm umber/ochre, strictly no red tint)
+  ctx.fillStyle = '#685038';
+  ctx.fillRect(0, 0, size, size);
+
+  // 4 horizontal oak planks with subtle individual board shade differences
+  const plankH = 128;
+  const plankShades = ['#6b523a', '#624a34', '#6d543c', '#5f4731'];
+  for (let p = 0; p < 4; p++) {
+    ctx.fillStyle = plankShades[p]!;
+    ctx.fillRect(0, p * plankH, size, plankH);
+  }
+
+  // Draw natural oak grain striations (wavy fiber lines with rays and pores)
+  for (let y = 0; y < size; y += 2) {
+    const isSeam = (y % plankH) < 4 || (y % plankH) > (plankH - 2);
+    if (isSeam) continue;
+
+    // Organic wavy grain path across the board
+    const grainWave = Math.sin(y * 0.12) * 12 + Math.sin(y * 0.035) * 24;
+    const waveFreq = 0.035 + 0.015 * Math.sin(y * 0.05);
+
+    // Dark oak grain line
+    const darkAlpha = 0.06 + 0.10 * Math.sin(y * 0.75 + Math.sin(y * 0.15) * 2.5);
+    if (darkAlpha > 0.04) {
+      ctx.fillStyle = `rgba(38, 27, 17, ${darkAlpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= size; x += 16) {
+        const gy = y + Math.sin((x + grainWave) * waveFreq) * 2.2;
+        ctx.lineTo(x, gy);
+      }
+      ctx.lineTo(size, y + 1.5);
+      ctx.lineTo(0, y + 1.5);
+      ctx.fill();
+    }
+
+    // Light ray fleck / golden pore accents
+    const lightAlpha = 0.04 + 0.06 * Math.cos(y * 0.55);
+    if (lightAlpha > 0.03) {
+      ctx.fillStyle = `rgba(138, 110, 80, ${lightAlpha.toFixed(3)})`;
+      ctx.fillRect(0, y, size, 1);
+    }
+  }
+
+  // Fine longitudinal pores / fiber noise scattered across timber
+  for (let i = 0; i < 400; i++) {
+    const px = Math.floor((Math.sin(i * 17.3) * 0.5 + 0.5) * (size - 18));
+    const py = Math.floor((Math.sin(i * 41.7) * 0.5 + 0.5) * (size - 2));
+    const poreLen = 6 + (i % 12);
+    ctx.fillStyle = 'rgba(32, 22, 14, 0.22)';
+    ctx.fillRect(px, py, poreLen, 1);
+  }
+
+  // Dark plank v-groove joints between horizontal boards with top bevel highlight
+  for (let p = 0; p < 4; p++) {
+    const sy = p * plankH;
+    ctx.fillStyle = 'rgba(22, 15, 10, 0.95)';
+    ctx.fillRect(0, sy - 2, size, 3);
+    ctx.fillStyle = 'rgba(28, 20, 14, 0.65)';
+    ctx.fillRect(0, sy + 1, size, 1);
+    ctx.fillStyle = 'rgba(148, 120, 90, 0.35)';
+    ctx.fillRect(0, sy + 2, size, 1);
+  }
+
+  const tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace; // colour data: without this the browns are read as linear and render pale
+  tex.wrapS = tex.wrapT = 1000;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Procedural wood normal map providing plank grooves and fine timber grain. */
+function createWoodNormalMap(): CanvasTexture | null {
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.fillStyle = 'rgb(128, 128, 255)';
+  ctx.fillRect(0, 0, size, size);
+
+  const plankH = 128;
+  for (let p = 0; p < 4; p++) {
+    const sy = p * plankH;
+    ctx.fillStyle = 'rgb(128, 70, 245)';
+    ctx.fillRect(0, sy - 2, size, 2);
+    ctx.fillStyle = 'rgb(128, 185, 245)';
+    ctx.fillRect(0, sy + 1, size, 2);
+  }
+
+  for (let y = 0; y < size; y += 4) {
+    const wave = Math.sin(y * 0.85);
+    const g = Math.floor(128 + 18 * wave);
+    ctx.fillStyle = `rgb(128, ${g}, 250)`;
+    ctx.fillRect(0, y, size, 2);
+  }
+
+  const tex = new CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = 1000;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Procedural hammered metal normal map for forged iron fittings and straps. */
+function createIronNormalMap(): CanvasTexture | null {
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.fillStyle = 'rgb(128, 128, 255)';
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 140; i++) {
+    const x = (i * 47) % size;
+    const y = (i * 73) % size;
+    const r = 4 + (i % 4);
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, 'rgb(138, 138, 255)');
+    grad.addColorStop(0.65, 'rgb(118, 118, 240)');
+    grad.addColorStop(1, 'rgb(128, 128, 255)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const tex = new CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = 1000;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Attach camera-facing view-space billboard shader to instanced sprite quads. */
+function attachBillboardShader(material: MeshBasicMaterial): void {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <project_vertex>',
+      `
+      #ifdef USE_INSTANCING
+        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4( 0.0, 0.0, 0.0, 1.0 );
+        vec2 scale = vec2( length( instanceMatrix[0].xyz ), length( instanceMatrix[1].xyz ) );
+        mvPosition.xy += transformed.xy * scale;
+        gl_Position = projectionMatrix * mvPosition;
+      #else
+        vec4 mvPosition = modelViewMatrix * vec4( transformed, 1.0 );
+        gl_Position = projectionMatrix * mvPosition;
+      #endif
+      `
+    );
+  };
+}
+
 export class WorldLoot {
   private readonly root = new Group();
   private readonly shown = new Map<string, ShownPile>();
@@ -123,11 +315,13 @@ export class WorldLoot {
   private pollIn = 0;
   private polling = false;
   private time = 0;
+  private fxVisible = true;
   /** Off once the room pushes piles. */
   pollServer = true;
 
-  // Single scratch object for zero-allocation matrix updates
+  // Single scratch objects for zero-allocation matrix and color updates
   private readonly dummy = new Object3D();
+  private readonly scratchColor = new Color();
 
   // Shared combined geometries: reduced draw calls for flat performance
   private readonly boxBodyGeo: BufferGeometry;
@@ -142,11 +336,18 @@ export class WorldLoot {
   private readonly crestGeo = new OctahedronGeometry(0.035);
   private readonly poolGeo = new PlaneGeometry(2.4, 2.4);
   private readonly burstGeo = new RingGeometry(0.1, 0.4, 24);
-  private readonly moteGeo = new OctahedronGeometry(0.045);
+  private readonly moteGeo = new PlaneGeometry(1, 1);
 
-  // Base chest materials
-  private readonly woodMat = new MeshStandardMaterial({ color: 0x3d2314, roughness: 0.85, metalness: 0.04 });
-  private readonly ironMat = new MeshStandardMaterial({ color: 0x1e2124, roughness: 0.40, metalness: 0.88 });
+  // Textures
+  private readonly woodTex = createWoodTexture();
+  private readonly woodNorm = createWoodNormalMap();
+  private readonly ironNorm = createIronNormalMap();
+  private readonly lightTex = createSoftLightTexture();
+  private readonly moteTex = createMoteTexture();
+
+  // Base chest materials: warm oak wood with planks & grain, forged dark steel-grey iron
+  private readonly woodMat: MeshStandardMaterial;
+  private readonly ironMat: MeshStandardMaterial;
   private readonly coinMat = new MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.32, metalness: 0.92 });
 
   // Four nation themes (IGNIS crimson, AQUES azure, TERRA ochre, AURA white)
@@ -161,12 +362,43 @@ export class WorldLoot {
     this.root.name = 'world-loot';
     scene.add(this.root);
 
-    const lightTex = createSoftLightTexture();
+    this.woodMat = new MeshStandardMaterial({
+      color: 0xffffff,
+      map: this.woodTex,
+      normalMap: this.woodNorm,
+      normalScale: new Vector2(1.2, 1.2),
+      roughness: 0.92,
+      metalness: 0.0,
+    });
+
+    this.ironMat = new MeshStandardMaterial({
+      color: 0x303337,
+      normalMap: this.ironNorm,
+      normalScale: new Vector2(1.0, 1.0),
+      roughness: 0.70,
+      metalness: 0.78,
+    });
+
+    const createMoteMat = (col: Color): MeshBasicMaterial => {
+      const mat = new MeshBasicMaterial({
+        map: this.moteTex,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.95,
+        blending: AdditiveBlending,
+        depthWrite: false,
+      });
+      attachBillboardShader(mat);
+      return mat;
+    };
+
+    const lightTex = this.lightTex;
 
     this.themes = {
       IGNIS: {
         lightHex: 0xff2233,
         poolColor: 0xdc2626,
+        moteColor: new Color(0xff4433),
         poolMat: new MeshBasicMaterial({
           map: lightTex,
           color: 0xef4444,
@@ -178,13 +410,14 @@ export class WorldLoot {
           polygonOffsetUnits: -1,
         }),
         seamMat: new MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.9, depthWrite: false, blending: AdditiveBlending }),
-        moteMat: new MeshBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.95, depthWrite: false }),
+        moteMat: createMoteMat(new Color(0xff4433)),
         burstMat: new MeshBasicMaterial({ color: 0xff2233, transparent: true, opacity: 0.9, depthWrite: false, blending: AdditiveBlending }),
         shardMat: new MeshStandardMaterial({ color: 0xdc2626, emissive: 0xb91c1c, emissiveIntensity: 2.2, roughness: 0.2 }),
       },
       AQUES: {
         lightHex: 0x38bdf8,
         poolColor: 0x0284c7,
+        moteColor: new Color(0x38bdf8),
         poolMat: new MeshBasicMaterial({
           map: lightTex,
           color: 0x0ea5e9,
@@ -196,13 +429,14 @@ export class WorldLoot {
           polygonOffsetUnits: -1,
         }),
         seamMat: new MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.9, depthWrite: false, blending: AdditiveBlending }),
-        moteMat: new MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.95, depthWrite: false }),
+        moteMat: createMoteMat(new Color(0x38bdf8)),
         burstMat: new MeshBasicMaterial({ color: 0x0284c7, transparent: true, opacity: 0.9, depthWrite: false, blending: AdditiveBlending }),
         shardMat: new MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, emissiveIntensity: 2.2, roughness: 0.2 }),
       },
       TERRA: {
         lightHex: 0xfbbf24,
         poolColor: 0xd97706,
+        moteColor: new Color(0xfbbf24),
         poolMat: new MeshBasicMaterial({
           map: lightTex,
           color: 0xf59e0b,
@@ -214,13 +448,14 @@ export class WorldLoot {
           polygonOffsetUnits: -1,
         }),
         seamMat: new MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.9, depthWrite: false, blending: AdditiveBlending }),
-        moteMat: new MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.95, depthWrite: false }),
+        moteMat: createMoteMat(new Color(0xfbbf24)),
         burstMat: new MeshBasicMaterial({ color: 0xd97706, transparent: true, opacity: 0.9, depthWrite: false, blending: AdditiveBlending }),
         shardMat: new MeshStandardMaterial({ color: 0xd97706, emissive: 0xb45309, emissiveIntensity: 2.2, roughness: 0.2 }),
       },
       AURA: {
         lightHex: 0xf1f5f9,
         poolColor: 0xe2e8f0,
+        moteColor: new Color(0xf8fafc),
         poolMat: new MeshBasicMaterial({
           map: lightTex,
           color: 0xffffff,
@@ -232,7 +467,7 @@ export class WorldLoot {
           polygonOffsetUnits: -1,
         }),
         seamMat: new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, blending: AdditiveBlending }),
-        moteMat: new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false }),
+        moteMat: createMoteMat(new Color(0xf8fafc)),
         burstMat: new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, blending: AdditiveBlending }),
         shardMat: new MeshStandardMaterial({ color: 0xf8fafc, emissive: 0x94a3b8, emissiveIntensity: 2.2, roughness: 0.2 }),
       },
@@ -381,6 +616,37 @@ export class WorldLoot {
     if (!this.shown.has(pile.id)) this.show(pile);
   }
 
+  getPile(id: string): LootPile | undefined {
+    return this.shown.get(id)?.pile;
+  }
+
+  getPileState(id: string): { inScene: boolean; lidAngleRad: number; lidAngleDeg: number; opening: boolean; claimDone: boolean } | null {
+    const s = this.shown.get(id);
+    if (!s) return null;
+    const lidAngleRad = s.lid.rotation.x;
+    const lidAngleDeg = +(lidAngleRad * (180 / Math.PI)).toFixed(1);
+    return {
+      inScene: s.mesh.visible,
+      lidAngleRad,
+      lidAngleDeg,
+      opening: s.opening,
+      claimDone: s.claimDone,
+    };
+  }
+
+  setFXVisible(enabled: boolean): void {
+    this.fxVisible = enabled;
+    for (const s of this.shown.values()) {
+      s.glow.visible = enabled;
+      s.seam.visible = enabled;
+      s.crest.visible = enabled;
+      s.motes.visible = enabled;
+    }
+    for (const light of this.lights) {
+      if (!enabled) light.intensity = 0;
+    }
+  }
+
   // A pile someone took or that expired.
   remove(id: string): void {
     const s = this.shown.get(id);
@@ -424,21 +690,41 @@ export class WorldLoot {
         s.burst.visible = false;
       }
 
-      // Rising motes instanced matrix updates (12 glowing octahedrons)
-      for (let i = 0; i < MOTE_OFFSETS.length; i++) {
-        const off = MOTE_OFFSETS[i]!;
-        const cycle = (this.time * off.speed + off.phase) % 1.0;
-        const my = 0.16 + cycle * 0.95;
-        const mx = off.x + Math.sin(this.time * 2.0 + off.phase * 6.28) * 0.06;
-        const mz = off.z + Math.cos(this.time * 2.0 + off.phase * 6.28) * 0.06;
-        const scale = Math.max(0.02, Math.sin(cycle * Math.PI) * 1.1);
+      if (!this.fxVisible) {
+        s.glow.visible = false;
+        s.seam.visible = false;
+        s.crest.visible = false;
+        s.motes.visible = false;
+      } else {
+        s.glow.visible = true;
+        s.seam.visible = true;
+        s.crest.visible = true;
+        s.motes.visible = true;
+      }
+
+      const nation = this.resolveNation(s.pile.nation);
+      const theme = this.themes[nation];
+
+      // Soft rising motes: small, varied size, slow rise with drift and fade
+      for (let i = 0; i < MOTE_DEFS.length; i++) {
+        const def = MOTE_DEFS[i]!;
+        const cycle = (this.time * def.speed + def.phase) % 1.0;
+        const my = 0.22 + cycle * 0.85;
+        const mx = def.x + Math.sin(this.time * 1.8 + def.phase * 6.28) * def.driftX;
+        const mz = def.z + Math.cos(this.time * 1.5 + def.phase * 6.28) * def.driftZ;
+        const fade = Math.sin(cycle * Math.PI);
+        const size = def.baseSize * (0.6 + 0.4 * fade);
         this.dummy.position.set(mx, my, mz);
-        this.dummy.scale.setScalar(scale);
-        this.dummy.rotation.set(this.time + i, this.time * 1.5, i * 0.5);
+        this.dummy.scale.set(size, size, 1);
+        this.dummy.rotation.set(0, 0, 0);
         this.dummy.updateMatrix();
         s.motes.setMatrixAt(i, this.dummy.matrix);
+
+        this.scratchColor.copy(theme.moteColor).multiplyScalar(fade);
+        s.motes.setColorAt(i, this.scratchColor);
       }
       s.motes.instanceMatrix.needsUpdate = true;
+      if (s.motes.instanceColor) s.motes.instanceColor.needsUpdate = true;
     }
 
     const nearest = [...this.shown.values()].sort(
@@ -446,13 +732,14 @@ export class WorldLoot {
     );
     this.lights.forEach((light, i) => {
       const s = nearest[i];
-      if (s) {
+      if (s && this.fxVisible) {
         const nation = this.resolveNation(s.pile.nation);
         const theme = this.themes[nation];
         light.color.setHex(theme.lightHex);
+        light.distance = 2.5;
         light.intensity = s.opening ? 2.4 * Math.max(0, 1 - s.openProgress * 0.5) : 1.2;
         light.position.copy(s.mesh.position);
-        light.position.y += 0.38;
+        light.position.y += 0.04;
       } else {
         light.intensity = 0;
       }
@@ -490,6 +777,11 @@ export class WorldLoot {
     ]) {
       g.dispose();
     }
+    this.woodTex?.dispose();
+    this.woodNorm?.dispose();
+    this.ironNorm?.dispose();
+    this.lightTex?.dispose();
+    this.moteTex?.dispose();
     for (const m of [this.woodMat, this.ironMat, this.coinMat]) m.dispose();
     for (const theme of Object.values(this.themes)) {
       theme.poolMat.dispose();
@@ -606,16 +898,19 @@ export class WorldLoot {
 
     g.add(lidGroup);
 
-    // 4. Instanced rising motes cluster (1 draw call for all 12 motes)
-    const motes = new InstancedMesh(this.moteGeo, this.themes.IGNIS.moteMat, MOTE_OFFSETS.length);
+    // 4. Instanced soft round rising motes (1 draw call for all motes)
+    const motes = new InstancedMesh(this.moteGeo, this.themes.IGNIS.moteMat, MOTE_DEFS.length);
+    motes.instanceColor = new InstancedBufferAttribute(new Float32Array(MOTE_DEFS.length * 3), 3);
     motes.name = 'motes';
-    for (let i = 0; i < MOTE_OFFSETS.length; i++) {
-      this.dummy.position.set(MOTE_OFFSETS[i]!.x, 0.2, MOTE_OFFSETS[i]!.z);
-      this.dummy.scale.setScalar(0.01);
+    for (let i = 0; i < MOTE_DEFS.length; i++) {
+      this.dummy.position.set(MOTE_DEFS[i]!.x, 0.22, MOTE_DEFS[i]!.z);
+      this.dummy.scale.set(0.01, 0.01, 1);
       this.dummy.updateMatrix();
       motes.setMatrixAt(i, this.dummy.matrix);
+      motes.setColorAt(i, this.themes.IGNIS.moteColor);
     }
     motes.instanceMatrix.needsUpdate = true;
+    motes.instanceColor.needsUpdate = true;
     g.add(motes);
 
     // 5. Merged batch coins and shards inside chest (1 draw call each)
@@ -653,12 +948,15 @@ export class WorldLoot {
     const glow = g.getObjectByName('ground-glow') as Mesh<PlaneGeometry, MeshBasicMaterial>;
     glow.material = theme.poolMat;
     glow.scale.set(1, 1, 1);
+    glow.visible = this.fxVisible;
 
     const seam = g.getObjectByName('seam-glow') as Mesh<BoxGeometry, MeshBasicMaterial>;
     seam.material = theme.seamMat;
+    seam.visible = this.fxVisible;
 
     const crest = g.getObjectByName('chest-crest') as Mesh<OctahedronGeometry, MeshBasicMaterial>;
     crest.material = theme.seamMat;
+    crest.visible = this.fxVisible;
 
     const burst = g.getObjectByName('chest-burst') as Mesh<RingGeometry, MeshBasicMaterial>;
     burst.material = theme.burstMat;
@@ -667,8 +965,13 @@ export class WorldLoot {
     const lid = g.getObjectByName('chest-lid') as Group;
     lid.rotation.set(0, 0, 0);
 
-    const motes = g.getObjectByName('motes') as InstancedMesh<OctahedronGeometry, MeshBasicMaterial>;
+    const motes = g.getObjectByName('motes') as InstancedMesh<PlaneGeometry, MeshBasicMaterial>;
     motes.material = theme.moteMat;
+    motes.visible = this.fxVisible;
+    for (let i = 0; i < MOTE_DEFS.length; i++) {
+      motes.setColorAt(i, theme.moteColor);
+    }
+    if (motes.instanceColor) motes.instanceColor.needsUpdate = true;
 
     const coins = Math.min(6, Math.ceil(pile.contents.chroma / 10));
     const coinsMesh = g.getObjectByName('coins-mesh') as Mesh<BufferGeometry, MeshStandardMaterial>;
