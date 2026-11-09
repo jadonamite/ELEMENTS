@@ -40,6 +40,7 @@ export class NpcDialogueUI {
     private dialogueMemory: DialogueMemory,
     private soundManager: SoundManager,
     private leadManager: LeadManager,
+    private timeOfDay: () => 'day' | 'dusk' | 'night' | 'dawn',
     private onLeadPurchased?: (lead: Lead) => void,
   ) {
     this.el = document.createElement('section');
@@ -87,6 +88,7 @@ export class NpcDialogueUI {
         role: npc.data.dialogueRole,
         nation: npc.data.element,
         mood: npc.feelingScore > 65 ? 'friendly' : npc.feelingScore < 35 ? 'wary' : 'neutral',
+        timeOfDay: this.timeOfDay(),
       },
       player,
       eventType,

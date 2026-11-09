@@ -89,6 +89,7 @@ export class SindrLifeSystem {
       this.dialogueMemory,
       this.sound,
       this.leadManager,
+      () => this.clock.phase,
       (lead: Lead) => {
         this.waypointMarker.setLead(lead);
         this.onNotice(`New Lead: ${lead.title} marked on compass`);

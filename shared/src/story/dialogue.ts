@@ -1,3 +1,5 @@
+import { SpeechMemory, SpeechRules, type Criterion, type Facts, type SpeechRule } from './speech.js';
+
 export interface PlayerDialogueContext {
   name: string;
   isLit: boolean;
@@ -20,14 +22,14 @@ export interface SpeakerDialogueContext {
 export type DialogueEventType = 'greeting' | 'talk' | 'lead_inquiry' | 'rumour_allborn' | 'heavy_pack' | 'dusk' | 'night';
 
 export interface DialogueMemory {
-  lastSpokenByNpc: Map<string, string>; // npcId -> lastLineText
   feelingScores: Map<string, number>; // npcId -> score (0..100)
+  speech: SpeechMemory;
 }
 
 export function createDialogueMemory(): DialogueMemory {
   return {
-    lastSpokenByNpc: new Map(),
     feelingScores: new Map(),
+    speech: new SpeechMemory(),
   };
 }
 
@@ -44,118 +46,96 @@ export function formatDialogueText(
   return result;
 }
 
+type DialogueTable = Record<string, Record<string, string[] | string>>;
+
+/** What the player asked about in a conversation. */
+export type TalkTopic = 'greeting' | 'lead' | 'allborn';
+
+const TOPIC: Record<DialogueEventType, TalkTopic> = {
+  greeting: 'greeting', talk: 'greeting', heavy_pack: 'greeting', dusk: 'greeting', night: 'greeting',
+  lead_inquiry: 'lead', rumour_allborn: 'allborn',
+};
+
 /**
- * Line picker reading dialogue.json that picks by who speaks, who you are,
- * what you visibly carry, red flags, bounty, and time of day.
- * Guaranteed never to return the same line twice in a row for the speaker.
+ * Situations in dialogue.json read as conditions of the "talk" concept. Weights set which situation wins
+ * when several hold: a bounty over a red flag over the topic asked over the hour over a heavy pack over
+ * who the player is. Situations not listed are concepts of their own (sale_made, fee_rising, ...).
+ */
+const TALK_SITUATIONS: Record<string, readonly Criterion[]> = {
+  bounty: [{ fact: 'player.bounty', value: true, weight: 12 }],
+  red_flag: [{ fact: 'player.redFlags', op: '>=', value: 1, weight: 10 }],
+  sell_lead: [{ fact: 'topic', value: 'lead', weight: 8 }],
+  rumour_allborn: [{ fact: 'topic', value: 'allborn', weight: 8 }],
+  allborn_hint: [{ fact: 'topic', value: 'allborn', weight: 8 }],
+  night: [{ fact: 'time', value: 'night', weight: 6 }],
+  dusk: [{ fact: 'time', value: 'dusk', weight: 6 }],
+  heavy_pack: [{ fact: 'player.carried', op: '>=', value: 4, weight: 4 }],
+  greeting_lit_ignis: [{ fact: 'player.lit', value: true }, { fact: 'player.element', value: 'IGNIS' }],
+  greeting_outsider_lit: [{ fact: 'player.lit', value: true }, { fact: 'player.element', op: '!=', value: 'IGNIS' }],
+  greeting_outsider: [{ fact: 'player.lit', value: true }, { fact: 'player.element', op: '!=', value: 'IGNIS' }],
+  greeting_dim: [{ fact: 'player.lit', value: false, weight: 2 }],
+  greeting_local: [],
+};
+
+/** Every situation in the dialogue table as a speech rule, conditioned on the speaker group. */
+export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
+  const rules: SpeechRule[] = [];
+  for (const [role, block] of Object.entries(table)) {
+    if (!block || typeof block !== 'object' || Array.isArray(block)) continue;
+    for (const [situation, lines] of Object.entries(block)) {
+      if (!Array.isArray(lines)) continue;
+      const talk = TALK_SITUATIONS[situation];
+      rules.push({
+        id: `${role}/${situation}`,
+        concept: talk ? 'talk' : situation,
+        criteria: [{ fact: 'who', value: role }, ...(talk ?? [])],
+        lines,
+        tier: talk ? 'conversation' : 'ambient',
+      });
+    }
+  }
+  return rules;
+}
+
+/** Facts for a conversation with one speaker. */
+export function talkFacts(speaker: SpeakerDialogueContext, player: PlayerDialogueContext, topic: TalkTopic = 'greeting'): Facts {
+  const redFlags = player.redFlags ?? 0;
+  return {
+    who: speaker.role,
+    topic,
+    time: speaker.timeOfDay ?? 'day',
+    feeling: player.feelingScore ?? 50,
+    'player.lit': player.isLit && player.role === 'Shaper',
+    'player.role': player.role,
+    'player.element': player.element,
+    'player.redFlags': redFlags,
+    'player.bounty': Boolean(player.hasBounty) || redFlags >= 3,
+    'player.carried': player.carriedItemsCount ?? 0,
+  };
+}
+
+const rulesByTable = new WeakMap<object, SpeechRules>();
+
+/**
+ * The line a speaker says when the player talks to them, from the speech rules built over dialogue.json.
+ * Never the same line twice in a row for one speaker when memory is given.
  */
 export function pickDialogueLine(
-  dialogueTable: Record<string, Record<string, string[] | string>>,
+  dialogueTable: DialogueTable,
   speaker: SpeakerDialogueContext,
   player: PlayerDialogueContext,
   event: DialogueEventType = 'greeting',
   memory?: DialogueMemory,
-): { text: string; category: string } {
-  const block = dialogueTable[speaker.role];
-  if (!block) {
-    return { text: `Greetings, ${player.name || 'traveler'}.`, category: 'fallback' };
+): { text: string; category: string; line: string } {
+  let rules = rulesByTable.get(dialogueTable);
+  if (!rules) rulesByTable.set(dialogueTable, (rules = new SpeechRules(rulesFromDialogue(dialogueTable))));
+  const at = event === 'dusk' || event === 'night' ? { ...speaker, timeOfDay: event } : speaker;
+  const facts = { ...talkFacts(at, player, TOPIC[event]), feeling: player.feelingScore ?? memory?.feelingScores.get(speaker.id) ?? 50 };
+  const said = rules.speak({ concept: 'talk', speakerId: speaker.id, facts }, memory?.speech);
+  if (!said) {
+    const text = `Greetings, ${player.name || 'traveler'}.`;
+    return { text, category: 'fallback', line: text };
   }
-
-  // Determine category priority based on player state and context:
-  let targetCategory = 'greeting_lit_ignis';
-  const redFlags = player.redFlags ?? 0;
-  const hasBounty = player.hasBounty || redFlags >= 3;
-  const carriedCount = player.carriedItemsCount ?? 0;
-  const time = speaker.timeOfDay ?? 'day';
-
-  // 1. Bounty: highest priority alert
-  if (hasBounty && block.bounty && Array.isArray(block.bounty)) {
-    targetCategory = 'bounty';
-  }
-  // 2. Red flag: active warning
-  else if (redFlags > 0 && block.red_flag && Array.isArray(block.red_flag)) {
-    targetCategory = 'red_flag';
-  }
-  // 3. Event specific requests (lead sale, rumour)
-  else if (event === 'lead_inquiry' && block.sell_lead && Array.isArray(block.sell_lead)) {
-    targetCategory = 'sell_lead';
-  } else if (event === 'rumour_allborn' && (block.rumour_allborn || block.allborn_hint)) {
-    targetCategory = block.rumour_allborn ? 'rumour_allborn' : 'allborn_hint';
-  }
-  // 4. Night / Dusk time-of-day reaction if nighttime or dusk event
-  else if (event === 'night' || time === 'night') {
-    if (block.night && Array.isArray(block.night)) {
-      targetCategory = 'night';
-    } else if ((player.role === 'Dim' || player.role === 'Hush' || !player.isLit) && block.greeting_dim) {
-      targetCategory = 'greeting_dim';
-    }
-  } else if (event === 'dusk' || time === 'dusk') {
-    if (block.dusk && Array.isArray(block.dusk)) {
-      targetCategory = 'dusk';
-    } else if ((player.role === 'Dim' || player.role === 'Hush' || !player.isLit) && block.greeting_dim) {
-      targetCategory = 'greeting_dim';
-    }
-  }
-  // 5. Heavy satchel warning
-  else if (carriedCount >= 4 && block.heavy_pack && Array.isArray(block.heavy_pack)) {
-    targetCategory = 'heavy_pack';
-  }
-  // 6. Identity greeting: Dim/Hush vs Lit (Shaper)
-  else if (player.role === 'Dim' || player.role === 'Hush' || !player.isLit) {
-    if (block.greeting_dim && Array.isArray(block.greeting_dim)) {
-      targetCategory = 'greeting_dim';
-    } else if (block.greeting_local && Array.isArray(block.greeting_local)) {
-      targetCategory = 'greeting_local';
-    }
-  }
-  // 7. Identity greeting: Lit IGNIS (local) vs Lit outsider
-  else if (player.element === 'IGNIS') {
-    if (block.greeting_lit_ignis && Array.isArray(block.greeting_lit_ignis)) {
-      targetCategory = 'greeting_lit_ignis';
-    } else if (block.greeting_local && Array.isArray(block.greeting_local)) {
-      targetCategory = 'greeting_local';
-    }
-  } else {
-    // Lit outsider
-    if (block.greeting_outsider_lit && Array.isArray(block.greeting_outsider_lit)) {
-      targetCategory = 'greeting_outsider_lit';
-    } else if (block.greeting_outsider && Array.isArray(block.greeting_outsider)) {
-      targetCategory = 'greeting_outsider';
-    }
-  }
-
-  const lines = block[targetCategory];
-  if (!lines || !Array.isArray(lines) || lines.length === 0) {
-    // Fallback to any available list
-    const fallbackKey = Object.keys(block).find(k => Array.isArray(block[k]) && (block[k] as string[]).length > 0);
-    if (!fallbackKey) {
-      return { text: `Greetings, ${player.name || 'traveler'}.`, category: 'fallback' };
-    }
-    const candidates = block[fallbackKey] as string[];
-    const chosen = candidates[0] ?? 'Greetings.';
-    return { text: formatDialogueText(chosen, player, speaker), category: fallbackKey };
-  }
-
-  const lastLine = memory?.lastSpokenByNpc.get(speaker.id);
-  const availableCandidates = lines.filter(l => formatDialogueText(l, player, speaker) !== lastLine);
-  const pool = availableCandidates.length > 0 ? availableCandidates : lines;
-
-  // Feeling score influence on candidate selection:
-  // If feeling score is very high (> 75), prefer latter indices if available, otherwise pick evenly
-  const feelingScore = player.feelingScore ?? memory?.feelingScores.get(speaker.id) ?? 50;
-  let index = Math.floor(Math.random() * pool.length);
-  if (feelingScore >= 75 && pool.length > 1) {
-    index = pool.length - 1; // Friendly selection
-  } else if (feelingScore <= 25 && pool.length > 1) {
-    index = 0; // Wary selection
-  }
-
-  const rawChosen = pool[index] ?? pool[0]!;
-  const formatted = formatDialogueText(rawChosen, player, speaker);
-
-  if (memory) {
-    memory.lastSpokenByNpc.set(speaker.id, formatted);
-  }
-
-  return { text: formatted, category: targetCategory };
+  const text = formatDialogueText(said.line, player, speaker);
+  return { text, category: said.rule.id.slice(said.rule.id.indexOf('/') + 1), line: said.line };
 }

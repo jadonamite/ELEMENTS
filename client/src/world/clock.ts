@@ -79,6 +79,12 @@ export class WorldClock {
     this.update(0);
   }
 
+  /** The part of the day the minute falls in. */
+  get phase(): 'day' | 'dusk' | 'night' | 'dawn' {
+    const m = this.minute;
+    return m < DAY ? 'day' : m < DAY + DUSK ? 'dusk' : m < DAY + DUSK + NIGHT ? 'night' : 'dawn';
+  }
+
   /** Whether the full moon currently exerts its peak lunar power. */
   get isFullMoon(): boolean {
     return this.moonPhase === 'full' && nightness.value > 0.45;
