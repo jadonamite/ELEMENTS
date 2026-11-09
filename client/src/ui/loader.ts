@@ -4,7 +4,7 @@ import { actionGlyph } from '../controls/glyphs.js';
 import hintData from '../../public/hints/hints.json';
 import { nextLoaderPicture, loaderPictureDetails } from './loader-pictures.js';
 import { loaderDiagram, diagramStrokeProgress } from './loader-diagram.js';
-import { elementTurnFrame } from './loader-turn.js';
+import { elementGlyph, GLYPH_ELEMENTS, elementTurnFrame } from './loader-turn.js';
 
 export interface Hint {
   id: string;
@@ -41,18 +41,16 @@ export function hintDuration(hint: Pick<Hint, 'title' | 'text' | 'minSeconds'>):
   return Math.max(5000, words * 300, (hint.minSeconds ?? 0) * 1000);
 }
 
-const MARKS = [
-  'M12 52L32 16L52 52Z',
-  'M12 16L52 16L32 52Z',
-  'M12 52L32 16L52 52ZM21 36H43',
-  'M12 16L52 16L32 52ZM21 32H43',
-];
-
 function elementMarks(): string {
-  return MARKS.map((path, i) => `<svg class="loader-element" data-element="${['IGNIS', 'AQUES', 'AURA', 'TERRA'][i]}" viewBox="0 0 64 72" aria-hidden="true">
-    <path class="loader-element-ghost" d="${path}"/>
-    <path class="loader-element-ink" pathLength="100" d="${path}"/>
-  </svg>`).join('');
+  return GLYPH_ELEMENTS.map((element, i) => {
+    const glyph = elementGlyph(i);
+    const path = `${glyph.d}${glyph.detail}`;
+    return `<svg class="loader-element" data-element="${element}" viewBox="0 0 64 84" aria-hidden="true">
+      <path class="loader-element-ghost" d="${path}"/>
+      <path class="loader-element-ink" pathLength="100" d="${path}"/>
+      <text class="loader-element-label" x="32" y="78" text-anchor="middle">${element}</text>
+    </svg>`;
+  }).join('');
 }
 
 function progressTicks(): string {
@@ -70,6 +68,9 @@ export class Loader {
   private diagramObserver: ResizeObserver | null = null;
   private readonly ticks: HTMLElement[];
   private readonly turningPath: SVGPathElement;
+  private readonly turningDetail: SVGPathElement;
+  private readonly turningNext: SVGGElement;
+  private readonly turningLabel: SVGTextElement;
   private turnFrame: number | null = null;
   private turnStarted: number | null = null;
   private readonly panel: HTMLElement;
@@ -129,7 +130,7 @@ export class Loader {
           </div>
         </article>
         <section class="loader-progress-section" aria-label="Loading progress">
-          <svg class="loader-turn" viewBox="0 0 64 64" aria-hidden="true"><path class="loader-turn-path" d=""/></svg>
+          <svg class="loader-turn" viewBox="0 0 64 84" aria-hidden="true"><g class="loader-turn-current"><path class="loader-turn-path" d=""/><path class="loader-turn-detail" d=""/></g><g class="loader-turn-next"><path class="loader-turn-path"/><path class="loader-turn-detail"/></g><text class="loader-turn-label" x="32" y="78" text-anchor="middle"></text></svg>
           <div class="loader-elements" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Load progress">${elementMarks()}<div class="loader-rule" aria-hidden="true">${progressTicks()}</div></div>
           <div class="loader-progress-meta">
             <span class="loader-stage">Reading the world manifest</span>
@@ -145,6 +146,9 @@ export class Loader {
     this.diagram = this.root.querySelector<SVGSVGElement>('.loader-diagram')!;
     this.diagramLines = Array.from(this.diagram.querySelectorAll<SVGPathElement>('.loader-diagram-line'));
     this.turningPath = this.root.querySelector<SVGPathElement>('.loader-turn-path')!;
+    this.turningDetail = this.root.querySelector<SVGPathElement>('.loader-turn-detail')!;
+    this.turningNext = this.root.querySelector<SVGGElement>('.loader-turn-next')!;
+    this.turningLabel = this.root.querySelector<SVGTextElement>('.loader-turn-label')!;
     this.renderTurn(0);
     this.ticks = Array.from(this.root.querySelectorAll<HTMLElement>('.loader-tick-ink'));
     this.panel = this.root.querySelector<HTMLElement>('.loader-hint')!;
@@ -187,7 +191,16 @@ export class Loader {
     const frame = elementTurnFrame(elapsed, this.reducedMotion());
     this.turningPath.setAttribute('d', frame.d);
     this.turningPath.setAttribute('transform', `rotate(${frame.angle} 32 32)`);
+    this.turningDetail.setAttribute('d', frame.detail);
+    this.turningDetail.setAttribute('transform', `rotate(${frame.angle} 32 32)`);
     this.turningPath.style.opacity = String(frame.opacity);
+    this.turningDetail.style.opacity = String(frame.opacity * .55);
+    this.turningNext.querySelector('path')!.setAttribute('d', frame.next.d);
+    this.turningNext.querySelector('.loader-turn-detail')!.setAttribute('d', frame.next.detail);
+    this.turningNext.style.opacity = String(frame.next.opacity);
+    this.turningLabel.textContent = frame.next.opacity > .5 ? frame.next.element : frame.element;
+    // Keep the label quiet while the geometry travels between its held forms.
+    this.turningLabel.style.opacity = this.reducedMotion() ? '1' : String(Math.pow(Math.abs(Math.cos(frame.angle * Math.PI / 180)), 8));
   }
 
   private startTurning(): void {

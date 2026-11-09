@@ -4,7 +4,7 @@
    for the poster. Radius/elevation are zero; interactive targets elsewhere stay
    44px. Progress is a 300ms stroke transition, captions 200ms, exit 300ms.
    The activity path turns over 900ms with a 280ms hold. Reduced motion keeps
-   the diagram still and fades the activity path over 1200ms every 3 seconds. */
+   the diagram still and fades the activity path over 1600ms every 4.2 seconds. */
 #elements-loader {
   --loader-paper: #f2f1ed;
   --loader-ink: #292a28;
@@ -68,11 +68,14 @@
 .loader-hint-glyph .input-glyph [fill] { fill: none; stroke: currentColor; stroke-width: .8; }
 .loader-hint-glyph .input-glyph text { fill: currentColor; stroke: none; font-weight: 400; }
 .loader-hint-glyph .glyph-shadow, .loader-hint-glyph rect:nth-of-type(2), .loader-hint-glyph circle:nth-of-type(-n+3) { display: none; }
-.loader-turn { display: block; width: 4rem; height: 4rem; margin: 0 auto var(--space-2); overflow: visible; }
-.loader-turn-path { fill: none; stroke: var(--loader-ink); stroke-width: 1; stroke-linejoin: round; stroke-linecap: butt; }
+.loader-turn { display: block; width: 4.5rem; height: 5.9rem; margin: 0 auto var(--space-2); overflow: visible; }
+.loader-turn-path, .loader-turn-detail { fill: none; stroke: var(--loader-ink); stroke-width: 1; stroke-linejoin: round; stroke-linecap: butt; }
+.loader-turn-detail { stroke-width: .65; opacity: .55; }
+.loader-turn-next { opacity: 0; }
+.loader-turn-label, .loader-element-label { fill: var(--loader-secondary); stroke: none; font: 8px var(--font-family-body); letter-spacing: .15em; }
 .loader-progress-section { width: min(100%, 38rem); padding-bottom: var(--space-2); }
 .loader-elements { position: relative; display: flex; justify-content: space-around; padding-bottom: var(--space-3); }
-.loader-element { position: relative; z-index: 1; width: 3rem; height: 3.375rem; flex: none; }
+.loader-element { position: relative; z-index: 1; width: 3rem; height: 3.9375rem; flex: none; }
 .loader-element-ghost, .loader-element-ink { fill: none; stroke-width: 1; stroke-linejoin: round; stroke-linecap: round; }
 .loader-element-ghost { stroke: var(--loader-ghost); }
 .loader-element-ink { stroke: var(--loader-ink); stroke-dasharray: 100; stroke-dashoffset: 100; transition: stroke-dashoffset var(--duration-moderate) var(--ease-out); }
