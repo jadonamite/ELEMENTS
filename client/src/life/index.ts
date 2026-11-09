@@ -13,13 +13,22 @@ import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
 import { LeadManager, type Lead } from '../../../shared/src/story/leads.js';
 import { createDialogueMemory, type DialogueMemory, type PlayerDialogueContext } from '../../../shared/src/story/dialogue.js';
 import type { ContextOffer } from '../ui/context-action.js';
+import balance from '../../../shared/balance.json';
 
-/** How near a townsperson stands to be talked to, metres. */
-const TALK_REACH = 3.5;
+const TALK = balance.speech.talk;
 /** People wandering the streets beside the named townsfolk and the keepers of posts, and how many looks they share. */
 const CROWD_PEOPLE = 110;
 const CROWD_LOOKS = 30;
 
+
+/** An open conversation as the input sees it. */
+export interface Conversation {
+  active(): boolean;
+  /** Runs reply `index` (0-based); false when there is none. */
+  choose(index: number): boolean;
+  step(direction: number): void;
+  confirm(): boolean;
+}
 
 export interface SindrLifeOptions {
   scene: Scene;
@@ -51,6 +60,7 @@ export class SindrLifeSystem {
 
   private scene: Scene;
   private readonly offerAt = new Vector3();
+  private readonly facing = new Vector3();
   private camera: Camera;
   private controller: HeroController;
   private clock: WorldClock;
@@ -79,6 +89,7 @@ export class SindrLifeSystem {
       this.dialogueMemory,
       this.sound,
       this.leadManager,
+      () => this.clock.phase,
       (lead: Lead) => {
         this.waypointMarker.setLead(lead);
         this.onNotice(`New Lead: ${lead.title} marked on compass`);
@@ -114,41 +125,48 @@ export class SindrLifeSystem {
       this.onNotice(`Lead Completed: ${completedLead.title} (+${completedLead.rewardChroma} CHROMA)`);
     }
 
+    // Walking away, or a fight coming close, ends the conversation.
+    const partner = this.dialogueUI.partner;
+    if (partner && (this.fightNear() ||
+      Math.hypot(partner.position.x - heroPos.x, partner.position.z - heroPos.z) > TALK.leaveDistance)) {
+      this.dialogueUI.close();
+    }
   }
 
-  /** Talking to the nearest townsperson is what the context key does, while no talk is open. */
+  /** The townsperson the player faces within reach, offered on the context key; none during a fight. */
   contextOffer(): ContextOffer | null {
-    if (this.dialogueUI.isOpen()) return null;
-    const npc = this.townManager.getNearestTownsperson(this.controller.position, TALK_REACH);
+    if (this.dialogueUI.isOpen() || this.fightNear()) return null;
+    const npc = this.talkTarget();
     if (!npc) return null;
     const p = npc.position;
-    return { verb: `Talk to ${npc.data.name}`, at: this.offerAt.set(p.x, p.y + 2.1, p.z), act: () => this.handleInteract() };
+    return { verb: `Talk to ${npc.data.name}`, at: this.offerAt.set(p.x, p.y + 2.1, p.z), act: () => this.talkTo(npc) };
   }
 
-  /** Closes an open talk; false when none is open. */
-  closeTalk(): boolean {
-    if (!this.dialogueUI.isOpen()) return false;
-    this.dialogueUI.close();
-    return true;
+  /** While a conversation is open, the context key, number keys, wheel and left button answer it. */
+  get conversation(): Conversation {
+    const ui = this.dialogueUI;
+    return {
+      active: () => ui.isOpen(),
+      choose: index => ui.choose(index),
+      step: direction => ui.step(direction),
+      confirm: () => ui.confirm(),
+    };
   }
 
-  handleInteract(): boolean {
-    const heroPos = this.controller.position;
+  private talkTarget() {
+    this.camera.getWorldDirection(this.facing);
+    return this.townManager.getTalkTarget(this.controller.position, this.facing.x, this.facing.z,
+      TALK.reach, TALK.minFacingDot, TALK.besideReach);
+  }
 
-    // Check if near NPC
-    const nearestNpc = this.townManager.getNearestTownsperson(heroPos, TALK_REACH);
-    if (nearestNpc) {
-      const playerCtx = this.getPlayerContext();
-      this.dialogueUI.interact(playerCtx, nearestNpc);
-      return true;
-    }
+  private fightNear(): boolean {
+    const hero = this.controller.position;
+    const limit = TALK.noTalkNearFoeMetres;
+    return this.getThreats().some(at => at !== hero && Math.hypot(at.x - hero.x, at.z - hero.z) < limit);
+  }
 
-    if (this.dialogueUI.isOpen()) {
-      this.dialogueUI.close();
-      return true;
-    }
-
-    return false;
+  private talkTo(npc: NonNullable<ReturnType<TownManager['getTalkTarget']>>): void {
+    this.dialogueUI.interact(this.getPlayerContext(), npc);
   }
 
   dispose(): void {

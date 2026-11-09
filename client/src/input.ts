@@ -11,6 +11,11 @@ const COMBAT: Partial<Record<ControlAction, CombatAction>> = {
   ultimate: 'ultimate', spark: 'spark', dodge: 'dodge',
 };
 
+/** Number keys that pick a reply while a conversation is open, 0-based. */
+const REPLY_KEYS: Readonly<Record<string, number>> = {
+  Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Numpad1: 0, Numpad2: 1, Numpad3: 2, Numpad4: 3,
+};
+
 /** Device bindings feed semantic actions; gameplay reads only the resulting action state. */
 export class GameInput {
   private readonly keys = new Set<string>();
@@ -30,6 +35,8 @@ export class GameInput {
   onBendingToggle?: () => void;
   onStyleSelect?: (style: FightingStyle) => void;
   onInteract?: () => boolean | void;
+  /** An open conversation; while active it takes the number keys, wheel, left button and context key. */
+  conversation?: { active(): boolean; choose(index: number): boolean; step(direction: number): void; confirm(): boolean };
   onDuelToggle?: () => void;
   onSatchelToggle?: () => void;
   onTechnique?: () => void;
@@ -62,6 +69,12 @@ export class GameInput {
     window.addEventListener('keydown', event => {
       if (isEditable(event.target)) return;
       this.useDevice('desktop');
+      const reply = REPLY_KEYS[event.code];
+      if (reply !== undefined && this.talking && document.activeElement === canvas) {
+        event.preventDefault();
+        if (!event.repeat) this.conversation!.choose(reply);
+        return;
+      }
       const action = KEY_BINDINGS[event.code];
       if (!action || (action !== 'menu' && document.activeElement !== canvas)) return;
       event.preventDefault();
@@ -96,8 +109,13 @@ export class GameInput {
     document.addEventListener('mousedown', event => {
       if (document.pointerLockElement !== canvas) return;
       this.useDevice('desktop');
+      if (this.talking) { if (event.button === 0) this.conversation!.confirm(); return; }
       if (event.button === 0) this.press('strike');
       if (event.button === 2) this.press('heavy');
+    }, options);
+    document.addEventListener('wheel', event => {
+      if (document.pointerLockElement !== canvas || !this.talking || event.deltaY === 0) return;
+      this.conversation!.step(event.deltaY);
     }, options);
     canvas.addEventListener('contextmenu', event => event.preventDefault(), options);
     document.addEventListener('mousemove', event => {
@@ -107,6 +125,7 @@ export class GameInput {
     }, options);
   }
   get device(): InputDevice { return this.currentDevice; }
+  private get talking(): boolean { return !this.paused && this.conversation?.active() === true; }
   useDevice(device: InputDevice): void {
     if (this.currentDevice === device) return;
     this.clear(); this.currentDevice = device;
@@ -122,6 +141,7 @@ export class GameInput {
     if (this.disposed || (action !== 'menu' && this.paused) || !this.allowed(action)) return false;
     if (action === 'menu' && document.getElementById?.('opening-overlay')) return false;
     if (action === 'interact') {
+      if (this.talking) { this.conversation!.confirm(); this.onAction?.('interact'); return true; }
       if (this.onInteract?.() === true) { this.onAction?.('interact'); return true; }
       return this.press('ground');
     }

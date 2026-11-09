@@ -1,3 +1,5 @@
+import { lineKey } from '../../shared/src/story/voice.js';
+
 /**
  * Sample-based sound manager using Web Audio API.
  * Uses recorded CC0 game audio clips, randomized pitch and volume variations,
@@ -53,6 +55,10 @@ interface VillainAudioState {
   lastStepRight: boolean;
 }
 
+/** Loudness of spoken lines, and how far music and ambience drop under them. */
+const VOICE_VOLUME = 1.0;
+const VOICE_DUCK = 0.35;
+
 export class SoundManager {
   private ctx: AudioContext | null = null;
   private sfxGain: GainNode | null = null;
@@ -60,6 +66,9 @@ export class SoundManager {
   private ambientGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
   private masterGain: GainNode | null = null;
+  private voiceSource: AudioBufferSourceNode | null = null;
+  private voiceManifest: Promise<Record<string, Record<string, number>> | null> | null = null;
+  private voiceOpus: boolean | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private analyser: AnalyserNode | null = null;
 
@@ -669,6 +678,68 @@ export class SoundManager {
   playFootstep(isRun = false, pitchMult = 1.0, surface: 'stone' | 'dirt' | 'wood' = 'stone'): void {
     const category = `footstep_${surface}_${isRun ? 'run' : 'walk'}`;
     this.playSample(category, isRun ? 1.0 : 0.85, pitchMult, this.footstepGain);
+  }
+
+  /**
+   * Speaks a recorded line in `voice`, from `position` when given, with music and ambience lowered under it.
+   * Resolves false when the line has no recording, so callers can fall back to a bark.
+   */
+  async speak(voice: string, text: string, position?: SoundPosition): Promise<boolean> {
+    if (!this.ctx || !this.sfxGain || this.muted) return false;
+    const manifest = await this.voiceIndex();
+    const key = lineKey(text);
+    if (!manifest?.[voice]?.[key]) return false;
+    const buffer = await this.voiceBuffer(`/assets/voice/${voice}/${key}`);
+    if (!buffer || !this.ctx || !this.sfxGain) return false;
+    this.stopSpeech();
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = this.ctx.createGain();
+    gain.gain.value = VOICE_VOLUME;
+    source.connect(gain);
+    const panner = position ? this.createPanner(position) : null;
+    if (panner) { gain.connect(panner); panner.connect(this.sfxGain); } else gain.connect(this.sfxGain);
+    this.voiceSource = source;
+    this.duck(true);
+    source.onended = () => { if (this.voiceSource === source) { this.voiceSource = null; this.duck(false); } };
+    source.start();
+    return true;
+  }
+
+  /** Cuts off the line being spoken, if any. */
+  stopSpeech(): void {
+    const source = this.voiceSource;
+    this.voiceSource = null;
+    if (!source) return;
+    try { source.stop(); } catch { /* already ended */ }
+    this.duck(false);
+  }
+
+  private duck(down: boolean): void {
+    if (!this.ctx) return;
+    const level = down ? VOICE_DUCK : 1;
+    for (const g of [this.ambientGain, this.musicGain]) g?.gain.setTargetAtTime(level, this.ctx.currentTime, 0.12);
+  }
+
+  private voiceIndex(): Promise<Record<string, Record<string, number>> | null> {
+    this.voiceManifest ??= fetch('/assets/voice/manifest.json').then(r => (r.ok ? r.json() : null)).catch(() => null);
+    return this.voiceManifest;
+  }
+
+  /** Opus first; a browser that cannot decode it gets the AAC copy from then on. */
+  private async voiceBuffer(base: string): Promise<AudioBuffer | null> {
+    for (const ext of this.voiceOpus === false ? ['.m4a'] : ['.ogg', '.m4a']) {
+      try {
+        const response = await fetch(base + ext);
+        if (!response.ok || !this.ctx) continue;
+        const buffer = await this.ctx.decodeAudioData(await response.arrayBuffer());
+        if (ext === '.ogg') this.voiceOpus = true;
+        return buffer;
+      } catch {
+        if (ext === '.ogg') this.voiceOpus = false;
+      }
+    }
+    return null;
   }
 
   /** Short spoken bark for NPC interactions. */

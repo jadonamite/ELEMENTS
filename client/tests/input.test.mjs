@@ -234,3 +234,32 @@ test('capturing from the first movement key preserves that held movement', () =>
     assert.deepEqual(f.input.read(), { forward: 0, right: 0, running: false });
   } finally { f.restore(); }
 });
+
+test('an open conversation takes number keys, wheel, left button and the context key while the mouse is captured', () => {
+  const f = fixture();
+  try {
+    const log = [];
+    let open = true;
+    f.input.conversation = {
+      active: () => open,
+      choose: i => { log.push(['choose', i]); return true; },
+      step: d => log.push(['step', Math.sign(d)]),
+      confirm: () => { log.push(['confirm']); return true; },
+    };
+    document.pointerLockElement = f.canvas;
+    dispatch(document, 'pointerlockchange');
+    key('Digit2', f.canvas);
+    dispatch(document, 'wheel', { deltaY: 120 });
+    dispatch(document, 'mousedown', { button: 0 });
+    f.input.press('interact');
+    assert.deepEqual(log, [['choose', 1], ['step', 1], ['confirm'], ['confirm']]);
+    assert.deepEqual(f.input.takeActions(), [], 'no strike while talking');
+    open = false;
+    dispatch(document, 'mousedown', { button: 0 });
+    key('Digit2', f.canvas);
+    assert.deepEqual(f.input.takeActions(), ['light']);
+    assert.equal(log.length, 4, 'closed conversation takes nothing');
+  } finally {
+    f.restore();
+  }
+});

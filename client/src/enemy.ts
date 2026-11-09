@@ -60,7 +60,7 @@ const SHEET_VILLAINS: ReadonlyArray<[OutfitId, 'male' | 'female', readonly Villa
 const CHALLENGE_STAND = 2.8;
 export interface EnemyTemplate {
   /** Bodies; one with `kinds` is worn only by those kinds, and those kinds wear only such bodies. */
-  variants: Array<{ model: Group; clips: AnimationClip[]; kinds?: readonly VillainKind[] }>;
+  variants: Array<{ model: Group; clips: AnimationClip[]; sex: 'male' | 'female'; kinds?: readonly VillainKind[] }>;
   weapons: Record<string, Object3D>;
 }
 
@@ -143,6 +143,7 @@ export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<Enem
     variants.push({
       model: await kit.build(sanitizeCharacterConfig(config), 'villain'),
       clips: await kit.fitClips(config.sex, clips, 'villain'),
+      sex: config.sex,
     });
   }
   // People from the character sheets, each worn by the kinds it was drawn for.
@@ -152,6 +153,7 @@ export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<Enem
     variants.push({
       model: await kit.build(sanitizeCharacterConfig(config), 'villain', undefined, outfit),
       clips: await kit.fitClips(sex, clips, 'villain', outfit),
+      sex,
       kinds,
     });
   }
@@ -169,6 +171,8 @@ export class Enemy {
   readonly anim: AnimationPlayer;
   readonly controller: HeroController;
   readonly kind: VillainKind;
+  /** The body's sex, which picks the voice the villain speaks in. */
+  readonly sex: 'male' | 'female';
   /** Primary element of this enemy for combat and counters. */
   get element(): string { return this.fit.element ?? 'IGNIS'; }
   health: Health;
@@ -207,6 +211,7 @@ export class Enemy {
     const pool = own.length ? own : template.variants.filter(v => !v.kinds);
     const variant = pool[Math.floor(Math.random() * pool.length)]!;
     this.kind = kind;
+    this.sex = variant.sex;
     this.fit = KINDS[kind];
     this.model = dressVillain(variant.model, this.materials);
     this.anim = new AnimationPlayer(this.model, variant.clips, { defaultFadeDuration: 0.2 });
