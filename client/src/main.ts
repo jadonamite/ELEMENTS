@@ -4,6 +4,9 @@ import './style.css';
 import './opening.css';
 import './threat-arrows.css';
 import balance from '../../shared/balance.json';
+import dialogueData from '../../shared/dialogue.json';
+import { dialogueRules } from '../../shared/src/story/dialogue.js';
+import { SpeechMemory } from '../../shared/src/story/speech.js';
 import { createArena, disposeObject, loadProps } from './scene.js';
 import { createZone, SPAWN } from './world/zone.js';
 import { initPhysics } from './physics.js';
@@ -494,6 +497,7 @@ async function main(): Promise<void> {
       townEconomy?.brawlSeen();
     },
     notice: (msg) => notice(msg),
+    say: (speaker, concept) => villainSay(speaker, concept),
   }) : null;
   let deserterBand: ClientDeserterBand | null = null;
   if (zone && !playingOnline) {
@@ -596,10 +600,25 @@ async function main(): Promise<void> {
 
   /** Weapon, hands or legs; bending is a separate switch that works with any of them. */
   let armedWith: 'weapon' | 'hands' | 'legs' = 'weapon';
+  let hudClear: ReturnType<typeof setTimeout> | undefined;
+  /** One line in the fight HUD for `ms`; a newer line replaces it and its timer. */
+  const hudLine = (text: string, ms: number): void => {
+    fightHud.say(text);
+    clearTimeout(hudClear);
+    hudClear = setTimeout(() => { if (fight.heroAlive && !fight.isVictory) fightHud.say(''); }, ms);
+  };
   const notice = (text: string): void => {
     status(text);
-    fightHud.say(text);
-    setTimeout(() => { if (fight.heroAlive && !fight.isVictory) fightHud.say(''); }, 1600);
+    hudLine(text, 1600);
+  };
+  // Street villains speak through the same speech rules as the townsfolk, in their body's voice.
+  const streetSpeech = new SpeechMemory();
+  const villainSay = (speaker: Enemy, concept: string): void => {
+    const said = dialogueRules(dialogueData).speak({ concept, speakerId: 'street_gang', facts: { who: 'street_gang' } }, streetSpeech);
+    if (!said) return;
+    const p = speaker.controller.position;
+    void sound.speak(`street_gang_${speaker.sex}`, said.line, { x: p.x, y: p.y + 1.6, z: p.z });
+    hudLine(`Cutthroat: "${said.line}"`, 1500 + said.line.length * 60);
   };
   // Loot, the market stalls and death drops, held by the server. Sindr is an IGNIS town.
   townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', {

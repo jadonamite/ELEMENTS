@@ -77,6 +77,9 @@ const ALERT_ROLES = new Set(['guard_sindr', 'sentry']);
 const ALERT_SITUATIONS = new Set(['fight_started', 'theft_seen', 'red_flag_raised', 'flee']);
 export const WITNESS_COOLDOWN_SECONDS = 20;
 
+/** Lines a villain says to the hero's face: calling them out, the answer, the gang running in. Never cut by chatter. */
+const CALLOUTS = new Set(['challenge_issued', 'challenge_accepted', 'challenge_refused', 'gang_arrives']);
+
 /** Every situation in the dialogue table as a speech rule, conditioned on the speaker group. */
 export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
   const rules: SpeechRule[] = [];
@@ -103,7 +106,7 @@ export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
         concept: talk ? 'talk' : situation,
         criteria: [{ fact: 'who', value: role }, ...(talk ?? [])],
         lines: lines as string[],
-        tier: talk ? 'conversation' : 'ambient',
+        tier: talk ? 'conversation' : CALLOUTS.has(situation) ? 'alert' : 'ambient',
       });
     }
   }
@@ -129,6 +132,13 @@ export function talkFacts(speaker: SpeakerDialogueContext, player: PlayerDialogu
 
 const rulesByTable = new WeakMap<object, SpeechRules>();
 
+/** The speech rules built over a dialogue table, built once per table. */
+export function dialogueRules(table: DialogueTable): SpeechRules {
+  let rules = rulesByTable.get(table);
+  if (!rules) rulesByTable.set(table, (rules = new SpeechRules(rulesFromDialogue(table))));
+  return rules;
+}
+
 /**
  * The line a speaker says when the player talks to them, from the speech rules built over dialogue.json.
  * Never the same line twice in a row for one speaker when memory is given.
@@ -140,8 +150,7 @@ export function pickDialogueLine(
   event: DialogueEventType = 'greeting',
   memory?: DialogueMemory,
 ): { text: string; category: string; line: string } {
-  let rules = rulesByTable.get(dialogueTable);
-  if (!rules) rulesByTable.set(dialogueTable, (rules = new SpeechRules(rulesFromDialogue(dialogueTable))));
+  const rules = dialogueRules(dialogueTable);
   const at = event === 'dusk' || event === 'night' ? { ...speaker, timeOfDay: event } : speaker;
   const facts = { ...talkFacts(at, player, TOPIC[event]), feeling: player.feelingScore ?? memory?.feelingScores.get(speaker.id) ?? 50 };
   const said = rules.speak({ concept: 'talk', speakerId: speaker.id, facts }, memory?.speech);

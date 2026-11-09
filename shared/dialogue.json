@@ -857,5 +857,34 @@
     "_delivery": {
       "loot_dropped": "Excited and eager."
     }
+  },
+  "street_gang": {
+    "_note": "Cutthroats of the Sindr Alley gang who call the hero out in the street. Swaggering, mocking, looking for a name.",
+    "challenge_issued": [
+      "You. Yes, you. Think you're hard? Prove it, here in the street.",
+      "Nice boots. Shame about the rest of you. Fight me for them.",
+      "The Alley says you walk too proud. Put your hands up.",
+      "I've been watching you strut about. Let's see what you're worth."
+    ],
+    "challenge_accepted": [
+      "Good. I was hoping you'd say yes.",
+      "Now we're talking. Don't cry when it's over.",
+      "Finally. Come on, then!"
+    ],
+    "challenge_refused": [
+      "Walk away, then. Everyone saw you run.",
+      "Thought so. All show.",
+      "Go on, scurry off. The Alley remembers faces."
+    ],
+    "gang_arrives": [
+      "Lads! Over here, we've got a live one!",
+      "Didn't think I came alone, did you?"
+    ],
+    "_delivery": {
+      "challenge_issued": "Swaggering and taunting, calling across the street.",
+      "challenge_accepted": "Eager and menacing.",
+      "challenge_refused": "Mocking, with a sneering laugh.",
+      "gang_arrives": "Shouting to friends, loud and gleeful."
+    }
   }
 }

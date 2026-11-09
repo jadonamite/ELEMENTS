@@ -151,3 +151,12 @@ test('witnesses: every Sindr townsperson reacts to fights, thefts, red flags, lo
   const child = rules.answer('fight_started', [{ speakerId: 'c1', facts: { who: 'child_sindr' } }], memory, 0);
   assert.equal(child?.tier, 'reaction');
 });
+
+test('a street challenger has a line for calling out, the answer, walking away and the gang arriving, all as alerts', () => {
+  const rules = new SpeechRules(rulesFromDialogue(table), () => 0);
+  for (const concept of ['challenge_issued', 'challenge_accepted', 'challenge_refused', 'gang_arrives']) {
+    const said = rules.speak({ concept, speakerId: 'cutthroat', facts: { who: 'street_gang' } });
+    assert.ok(said, concept);
+    assert.equal(said.tier, 'alert');
+  }
+});
