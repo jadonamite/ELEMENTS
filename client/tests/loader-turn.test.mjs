@@ -22,7 +22,8 @@ test('all four transitions preserve a continuous contour across the hold and cyc
     assert.equal(mid.next.opacity, 0);
     const end = points(elementTurnFrame(start + ELEMENT_TURN_MS - .01));
     const next = points(elementTurnFrame(start + ELEMENT_TURN_MS));
-    assert.equal(end.length, 192);
+    assert.equal(end.length, 384);
+    assert.equal((held.d.match(/M/g) ?? []).length, 2);
     end.forEach((p,j)=>assert.ok(Math.hypot(p[0]-next[j][0], p[1]-next[j][1]) < .01));
   }
 });

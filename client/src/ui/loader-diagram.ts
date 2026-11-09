@@ -10,20 +10,22 @@ function randomSequence(seed: number): () => number {
 }
 
 export function diagramStrokeProgress(progress: number, index: number, reduced: boolean): number {
-  if (reduced) return progress >= 1 ? 1 : 0;
+  if (reduced) return 1;
   const start = (index % 7) * .035;
   return Math.min(1, Math.max(0, (progress - start) / (1 - start)));
 }
 
-/** One cheap SVG, with the same contain transform as the portrait underneath. */
-export function loaderDiagram(plate: LoaderPlate, width: number, height: number, seed: number): string {
+export interface PlateBounds { x: number; y: number; width: number; height: number }
+
+/** One page-sized SVG, anchored to the contained portrait after layout. */
+export function loaderDiagram(plate: LoaderPlate, width: number, height: number, seed: number, bounds: PlateBounds = { x: 0, y: 0, width, height }): string {
   const random = randomSequence(seed + Number(plate.number) * 7919);
-  const scale = Math.min(width / 667, height / 1000);
+  const scale = Math.min(bounds.width / 667, bounds.height / 1000);
   const imageWidth = 667 * scale, imageHeight = 1000 * scale;
-  const left = (width - imageWidth) / 2, top = (height - imageHeight) / 2;
+  const left = bounds.x + (bounds.width - imageWidth) / 2, top = bounds.y + (bounds.height - imageHeight) / 2;
   const hx = left + plate.head[0] * imageWidth, hy = top + plate.head[1] * imageHeight;
   const gx = left + plate.ground[0] * imageWidth, gy = top + plate.ground[1] * imageHeight;
-  const unit = Math.min(height, width * 1.25);
+  const unit = Math.min(bounds.height * 1.1, width * 1.25);
   const cx = gx + (random() - .5) * unit * .1, cy = (hy + gy) * .5;
   const out: string[] = [];
   const n = (value: number): string => value.toFixed(2);
@@ -91,7 +93,7 @@ export function loaderDiagram(plate: LoaderPlate, width: number, height: number,
 
   // Pale registration strokes remain visible where they cross the dark subject.
   path(`M${point(hx, hy + unit * .12)}V${n(gy)}M${point(cx - unit * .2, cy + unit * .14)}L${point(cx + unit * .21, cy + unit * .14)}L${point(hx, cy - unit * .13)}Z`, 'overprint', .8);
-  const discRadius = Math.max(8, unit * .038);
+  const discRadius = Math.max(8, unit * .045);
   out.push(`<circle class="loader-diagram-disc" cx="${n(hx + unit * .105)}" cy="${n(Math.max(discRadius, hy - unit * .04))}" r="${n(discRadius)}"/>`);
   out.push(`<g class="loader-diagram-labels"><text x="${n(cx - unit * .43)}" y="${n(cy - unit * .23)}">${plate.element} / ${plate.number}</text><text x="${n(cx + unit * .29)}" y="${n(gy - unit * .12)}">${plate.head.map(v => v.toFixed(2)).join(' : ')}</text><text x="${n(cx + unit * .28)}" y="${n(gy + unit * .06)}">Ø ${String(Math.round(unit)).padStart(3, '0')}</text></g>`);
   return out.join('');

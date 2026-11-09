@@ -5,12 +5,12 @@ const TURN_MS = 900;
 const smooth = (t: number): number => t * t * (3 - 2 * t);
 type Point = readonly [number, number];
 
-/** Original silhouettes: split flame, breaking wave, single wind ribbon, cleft stone. */
+/** Original silhouettes: split flame, breaking wave, gale, mountain ridge. */
 export const EMBLEM_PATHS = [
   'M35 11C26 15 21 23 23 31C19 29 17 25 17 22C10 34 15 47 26 51C22 44 25 39 30 34C29 41 37 42 35 51C47 48 52 37 46 27C45 32 42 34 40 35C43 25 31 24 35 11Z',
   'M44 16C32 10 19 17 15 29C12 37 16 46 24 49C33 53 43 48 50 43C42 45 36 43 32 39C25 33 23 29 26 25C29 20 36 22 35 26C34 29 30 28 29 27C31 35 42 32 44 26C46 22 44 19 40 18C42 18 43 17 44 16Z',
-  'M17 21C24 13 39 12 46 20C52 27 47 36 39 38C33 40 28 37 25 34C29 35 35 35 38 32C44 27 40 21 34 21C28 20 24 23 21 26C18 29 17 33 20 37C26 45 40 40 48 42C40 48 21 52 15 41C10 33 12 26 17 21Z',
-  'M31 13C35 13 39 17 42 21L50 38C52 42 50 47 46 49L35 50L37 40L32 34L33 23L27 36L31 42L27 50L18 49C14 48 12 44 14 39L22 20C24 16 27 13 31 13Z',
+  'M13 28C23 21 31 30 39 28C44 27 44 20 39 20C35 20 33 22 33 24C29 18 35 13 41 14C53 16 54 32 42 36C31 40 23 30 13 34ZM14 40C25 35 35 46 49 38C46 50 26 50 14 46Z',
+  'M30 13L38 27L42 23L51 46C52 49 50 51 47 51L15 51C12 51 12 48 14 45L21 29L24 31ZM30 24L23 38L29 34L35 38Z',
 ] as const;
 
 /** A single shared ring; the counter is cut out with evenodd fill. */
@@ -22,7 +22,7 @@ export function elementGlyph(index: number) {
 }
 
 /** Sample cubic contours once, then redistribute points at equal arc lengths. */
-function resample(path: string): Point[] {
+function resampleContour(path: string): Point[] {
   const tokens = path.match(/[MLCZ]|-?\d+(?:\.\d+)?/g)!;
   const dense: Point[] = [];
   let cursor = 0;
@@ -54,7 +54,12 @@ function resample(path: string): Point[] {
     return [a[0] + (b[0] - a[0]) * mix, a[1] + (b[1] - a[1]) * mix];
   });
 }
-const contours = EMBLEM_PATHS.map(resample);
+// Keep separate islands and counters throughout a morph. A missing contour
+// starts as a point inside the body and grows continuously into its next shape.
+const contours = EMBLEM_PATHS.map(path => {
+  const parts = path.match(/M[^M]+/g)!.map(resampleContour);
+  return [parts[0]!, parts[1] ?? Array.from({ length: 192 }, (): Point => [32, 38])];
+});
 const pathFrom = (points: Point[]): string => `M${points.map(p => `${p[0].toFixed(3)} ${p[1].toFixed(3)}`).join('L')}Z`;
 
 /** A continuous contour morph and full turn, followed by a brief upright hold. */
@@ -70,8 +75,9 @@ export function elementTurnFrame(elapsed: number, reduced = false) {
   const step = Math.floor(time / ELEMENT_TURN_MS), index = step % 4;
   const turn = smooth(Math.max(0, (time % ELEMENT_TURN_MS - ELEMENT_HOLD_MS) / TURN_MS));
   const from = contours[index]!, to = contours[(index + 1) % 4]!;
-  const points = from.map(([x, y], i): Point => [x + (to[i]![0] - x) * turn, y + (to[i]![1] - y) * turn]);
-  return { d: pathFrom(points), detail: EMBLEM_RING, angle: turn * 360, opacity: 1,
+  const d = from.map((contour, part) => pathFrom(contour.map(([x, y], i): Point =>
+    [x + (to[part]![i]![0] - x) * turn, y + (to[part]![i]![1] - y) * turn]))).join('');
+  return { d, detail: EMBLEM_RING, angle: turn * 360, opacity: 1,
     element: GLYPH_ELEMENTS[index]!, next: { ...elementGlyph(index + 1), opacity: 0 } };
 }
 

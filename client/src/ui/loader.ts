@@ -60,7 +60,7 @@ function elementMarks(): string {
 
 function turningEmblem(): string {
   const ring = elementGlyph(0).detail;
-  const shape = (kind: string): string => `<path class="loader-turn-${kind}-shape loader-turn-outline"/><g mask="url(#loader-turn-ink)"><path class="loader-turn-${kind}-shape loader-turn-solid"/></g>`;
+  const shape = (kind: string): string => `<path class="loader-turn-${kind}-shape loader-turn-outline" fill-rule="evenodd"/><g mask="url(#loader-turn-ink)"><path class="loader-turn-${kind}-shape loader-turn-solid" fill-rule="evenodd"/></g>`;
   return `<svg class="loader-turn" viewBox="0 0 64 84" aria-hidden="true">
     <defs><filter id="loader-ink-soften" x="-4" y="-4" width="72" height="72" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation=".25"/></filter>${inkMask('loader-turn-ink', 'loader-turn-reveal')}</defs>
     <path class="loader-turn-outline" fill-rule="evenodd" d="${ring}"/>
@@ -124,6 +124,7 @@ export class Loader {
     this.root.innerHTML = `
       <div class="loader-frame" aria-hidden="true"></div>
       <div class="loader-inner">
+        <svg class="loader-diagram" viewBox="0 0 1000 1000" aria-hidden="true">${loaderDiagram(plate, 1000, 1000, diagramSeed)}</svg>
         <header class="loader-header">
           <h1 class="loader-title">ELEMENTS</h1>
           <p class="loader-destination">${destination}</p>
@@ -132,10 +133,10 @@ export class Loader {
           <figcaption class="loader-marginalia loader-plate-caption">${plate.caption}</figcaption>
           <span class="loader-marginalia loader-plate-nation">${plate.nation}</span>
           <img class="loader-ink-figure" alt="${plate.caption}, an ink study" src="${picture}" width="667" height="1000" fetchpriority="high">
-          <svg class="loader-diagram" viewBox="0 0 1000 650" aria-hidden="true">${loaderDiagram(plate, 1000, 650, diagramSeed)}</svg>
           <span class="loader-marginalia loader-plate-number">PLATE ${plate.number}</span>
+          ${turningEmblem()}
           <span class="loader-marginalia loader-plate-index">${plate.number} / 030</span>
-          <span class="loader-marginalia loader-plate-stamp" aria-hidden="true">EL / ${plate.number}<br>INK STUDY</span>
+          <span class="loader-marginalia loader-plate-stamp" aria-hidden="true">EL.${plate.element.slice(0, 2)}.${plate.number}<br>INK STUDY<br><span class="loader-plate-coordinates">${plate.head.map(v => v.toFixed(2)).join(" / ")}</span></span>
         </figure>
         <article class="loader-hint" aria-label="Did you know">
           <span class="loader-hint-badge">Did you know</span>
@@ -147,7 +148,6 @@ export class Loader {
           </div>
         </article>
         <section class="loader-progress-section" aria-label="Loading progress">
-          ${turningEmblem()}
           <div class="loader-elements" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Load progress">${elementMarks()}<div class="loader-rule" aria-hidden="true">${progressTicks()}</div></div>
           <div class="loader-progress-meta">
             <span class="loader-stage">Reading the world manifest</span>
@@ -175,12 +175,16 @@ export class Loader {
     this.setProgress(0);
     document.body.appendChild(this.root);
     const figure = this.root.querySelector<HTMLElement>('.loader-ink')!;
+    const sheet = this.root.querySelector<HTMLElement>('.loader-inner')!;
     const fitDiagram = (): void => {
       if (this.disposed) return;
-      const { width = 1000, height = 650 } = figure.getBoundingClientRect?.() ?? {};
+      const { width = 1000, height = 1000, left = 0, top = 0 } = sheet.getBoundingClientRect?.() ?? {};
+      const portrait = figure.getBoundingClientRect?.();
       if (width <= 0 || height <= 0) return;
       this.diagram.setAttribute('viewBox', `0 0 ${width} ${height}`);
-      this.diagram.innerHTML = loaderDiagram(plate, width, height, diagramSeed);
+      this.diagram.innerHTML = loaderDiagram(plate, width, height, diagramSeed, portrait ? {
+        x: portrait.left - left, y: portrait.top - top, width: portrait.width, height: portrait.height,
+      } : undefined);
       this.diagramLines = Array.from(this.diagram.querySelectorAll<SVGPathElement>('.loader-diagram-line'));
       this.drawDiagram();
     };
@@ -188,6 +192,7 @@ export class Loader {
     this.startTurning();
     if (typeof ResizeObserver !== 'undefined') {
       this.diagramObserver = new ResizeObserver(fitDiagram);
+      this.diagramObserver.observe(sheet);
       this.diagramObserver.observe(figure);
     }
     window.addEventListener('pointerdown', this.onPointer);
@@ -268,7 +273,6 @@ export class Loader {
     this.diagram.style.opacity = reduced ? '1' : String(.35 + this.currentProgress * .65);
     this.diagram.querySelector<SVGElement>('.loader-diagram-disc')!.style.opacity = reduced ? '1' : String(this.currentProgress);
     this.diagram.querySelector<SVGElement>('.loader-diagram-labels')!.style.opacity = reduced ? '1' : String(this.currentProgress);
-    if (reduced) this.diagramLines.forEach(line => { line.style.strokeDashoffset = '0'; });
   }
 
   /** Hand over immediately; audio and mouse capture wait for in-game input. */
