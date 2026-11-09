@@ -94,14 +94,10 @@ async function main(): Promise<void> {
   let picker: FighterSelect | null = null;
   const loader = new Loader({
     destination: inTown ? 'town' : 'arena',
-    element: initialChoice,
     onEnter: () => {
       picker?.close();
-      button.click();
+      if (!document.getElementById('opening-overlay')) canvas.focus({ preventScroll: true });
     },
-    onChangeFighter: !forcedElement && !forcedHush ? () => {
-      picker?.open(true);
-    } : undefined,
   });
   cleanup.push(() => loader.dispose());
   loader.setProgress(0.05, 'Reading the world manifest');
@@ -186,6 +182,7 @@ async function main(): Promise<void> {
   if (!new URLSearchParams(window.location.search).has('skipIntro')) {
     const opening = new OpeningFlow((res) => {
       applyDrawing(forcedElement || forcedHush ? res : lastFighter() ?? res);
+      if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });
     });
     cleanup.push(() => opening.dispose());
   }
@@ -629,7 +626,6 @@ async function main(): Promise<void> {
   if (!forcedElement && !forcedHush) {
     picker = new FighterSelect(isDim ? { role: 'Hush' } : { role: 'Shaper', element: kitElement }, applyDrawing, () => button.click());
     cleanup.push(() => picker?.dispose());
-    picker.open();
     changeFighter.hidden = false;
     changeFighter.addEventListener('click', () => picker?.open(true));
   }
@@ -1066,7 +1062,7 @@ async function main(): Promise<void> {
   button.textContent = zone ? 'Enter Sindr' : 'Enter the arena';
   status('');
   panel.hidden = true;
-  loader.ready(zone ? 'Enter Sindr' : 'Enter the arena');
+  loader.ready();
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();
