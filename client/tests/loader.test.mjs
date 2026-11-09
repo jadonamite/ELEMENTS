@@ -32,8 +32,8 @@ test('control glyphs use current actions on desktop and touch', () => {
   }
 });
 
-test('the picture collection has at least 24 distinct compact JPGs', () => {
-  assert.ok(LOADER_PICTURES.length >= 24);
+test('the picture collection has at least 30 distinct compact JPGs', () => {
+  assert.ok(LOADER_PICTURES.length >= 30);
   assert.equal(new Set(LOADER_PICTURES).size, LOADER_PICTURES.length);
   for (const id of LOADER_PICTURES) {
     const file = new URL(`../public/assets/ui/loader/pictures/${id}.jpg`, import.meta.url);
@@ -199,29 +199,42 @@ test('blocked storage still provides a complete session picture cycle', () => {
   } finally { fx.restore(); }
 });
 
-test('real progress reveals four elements monotonically and ignores invalid updates', () => {
+test('real progress draws four triangles and fills rule ticks monotonically', () => {
   const fx = domFixture();
+  let loader;
   try {
-    const loader = new Loader({ destination: 'town', onEnter() {} });
+    loader = new Loader({ destination: 'town', onEnter() {} });
     const root = document.querySelector('#elements-loader');
-    const marks = root.querySelectorAll('.loader-element-reveal');
-    const widths = () => marks.map(m => Number((m.style.transform ?? 'scaleX(0)').slice(7, -1)) * 64);
+    const marks = root.querySelectorAll('.loader-element-ink');
+    const ticks = root.querySelectorAll('.loader-tick-ink');
+    const ink = () => marks.map(m => 100 - Number(m.style.strokeDashoffset));
+    const filled = () => ticks.filter(t => t.style.opacity === '1').length;
     assert.equal(marks.length, 4);
-    assert.deepEqual(widths(), [0, 0, 0, 0]);
+    assert.equal(ticks.length, 51);
+    assert.deepEqual(ink(), [0, 0, 0, 0]);
+    assert.equal(filled(), 0);
+    loader.setProgress(.1);
+    assert.deepEqual(ink(), [40, 0, 0, 0]);
+    assert.equal(filled(), 6);
+    loader.setProgress(.4);
+    assert.deepEqual(ink(), [100, 60.00000000000001, 0, 0]);
+    assert.equal(filled(), 21);
     loader.setProgress(.5, 'Half loaded');
-    assert.deepEqual(widths(), [64, 64, 0, 0]);
+    assert.deepEqual(ink(), [100, 100, 0, 0]);
     loader.setProgress(.1, 'Old stage');
     loader.setProgress(NaN, 'Invalid');
     loader.setProgress(Infinity, 'Invalid');
     assert.equal(root.querySelector('.loader-percentage').textContent, '50%');
     assert.equal(root.querySelector('.loader-stage').textContent, 'Half loaded');
+    assert.deepEqual(ink(), [100, 100, 0, 0]);
     loader.setProgress(.9);
-    assert.ok(Math.abs(widths()[3] - 38.4) < 1e-8);
+    assert.ok(Math.abs(ink()[3] - 60) < 1e-8);
+    assert.equal(filled(), 46);
     loader.setProgress(5);
-    assert.deepEqual(widths(), [64, 64, 64, 64]);
+    assert.deepEqual(ink(), [100, 100, 100, 100]);
+    assert.equal(filled(), 51);
     assert.equal(root.querySelector('.loader-elements').getAttribute('aria-valuenow'), '100');
-    loader.dispose();
-  } finally { fx.restore(); }
+  } finally { loader?.dispose(); fx.restore(); }
 });
 
 test('a single panel alternates only after the full reading time, then fades', t => {
@@ -308,6 +321,9 @@ test('reduced motion swaps content and completes the handover without a fade', t
     const hint = data.hints.find(h => h.action === 'jump');
     loader.showHint(hint);
     assert.equal(loader.getHint().id, hint.id);
+    loader.setProgress(.1);
+    const marks = document.querySelector('#elements-loader').querySelectorAll('.loader-element-ink');
+    assert.deepEqual(marks.map(m => m.style.strokeDashoffset), ['0', '100', '100', '100']);
     loader.ready();
     t.mock.timers.tick(0);
     assert.equal(document.querySelector('#elements-loader'), null);

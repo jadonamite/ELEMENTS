@@ -73,12 +73,10 @@ async function main(): Promise<void> {
   panel.setAttribute('aria-label', inTown ? 'Town controls' : 'Arena controls');
   panel.hidden = true;
   panel.innerHTML = '<button type="button" disabled>Loading</button>' +
-    '<p id="control-status" class="hud-status" role="status"></p>' +
-    '<button type="button" class="hud-secondary" hidden>Change fighter</button>';
+    '<p id="control-status" class="hud-status" role="status"></p>';
   document.body.appendChild(panel);
   cleanup.push(() => panel.remove());
   const button = panel.querySelector('button')!;
-  const changeFighter = panel.querySelector<HTMLButtonElement>('.hud-secondary')!;
   const status = (message: string): void => {
     panel.querySelector('#control-status')!.textContent = message;
     if (message) panel.hidden = false;
@@ -102,7 +100,7 @@ async function main(): Promise<void> {
   cleanup.push(() => loader.dispose());
   loader.setProgress(0.05, 'Reading the world manifest');
 
-  loader.setProgress(0.12, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
+  loader.setProgress(0.10, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
   const zoneStart = performance.now();
   const zone = inTown ? await createZone(canvas) : null;
   if (zone) (window as unknown as { zoneLoadMs?: number }).zoneLoadMs = performance.now() - zoneStart;
@@ -113,7 +111,7 @@ async function main(): Promise<void> {
   const { scene, camera, renderer } = arena;
   if (!zone) loadProps(scene, undefined, initialChoice).catch((error: unknown) => console.error('Arena props failed to load:', error));
   cleanup.push(() => { renderer.setAnimationLoop(null); arena.dispose(); });
-  loader.setProgress(0.35, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
+  loader.setProgress(0.40, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
   const controller = new HeroController(physics.world, zone ? SPAWN : undefined, undefined, !zone);
   cleanup.push(() => controller.dispose());
   zone?.follow(controller.position);
@@ -179,7 +177,7 @@ async function main(): Promise<void> {
   applyDrawing(forcedElement || forcedHush ? getStoredDrawing() : lastFighter() ?? getStoredDrawing());
 
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
-  if (!new URLSearchParams(window.location.search).has('skipIntro')) {
+  if (params.has('intro') && !params.has('skipIntro')) {
     const opening = new OpeningFlow((res) => {
       applyDrawing(forcedElement || forcedHush ? res : lastFighter() ?? res);
       if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });
@@ -626,8 +624,6 @@ async function main(): Promise<void> {
   if (!forcedElement && !forcedHush) {
     picker = new FighterSelect(isDim ? { role: 'Hush' } : { role: 'Shaper', element: kitElement }, applyDrawing, () => button.click());
     cleanup.push(() => picker?.dispose());
-    changeFighter.hidden = false;
-    changeFighter.addEventListener('click', () => picker?.open(true));
   }
 
   const homeMenu = new HomeMenu({
@@ -1038,7 +1034,7 @@ async function main(): Promise<void> {
     loader.setProgress(0.80, 'Lighting the braziers');
     await Promise.all([zone.ready, bending.ready, lifeSystem?.ready]);
     if (disposed) return;
-    loader.setProgress(0.88, 'Attuning the elements');
+    loader.setProgress(0.90, 'Attuning the elements');
     const looks = new Group();
     looks.add(...villainLooks(await villains));
     scene.add(looks);

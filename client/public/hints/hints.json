@@ -11,7 +11,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §1"
     },
     {
       "id": "lore-002",
@@ -23,19 +23,19 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §2"
     },
     {
       "id": "lore-003",
       "kind": "lore",
       "title": "The Hush",
-      "text": "The Hush are also called the Dim. It is an insult.",
+      "text": "The Hush are also called the Dim, an insult.",
       "element": null,
       "where": [
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §2"
     },
     {
       "id": "lore-004",
@@ -47,19 +47,19 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §1"
     },
     {
       "id": "lore-005",
       "kind": "lore",
       "title": "The search",
-      "text": "You are trapped inside ELEMENTS. The search for the Allborn begins with a rumour.",
+      "text": "Trapped inside ELEMENTS, you begin the search for the Allborn with a rumour.",
       "element": null,
       "where": [
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §1"
     },
     {
       "id": "lore-006",
@@ -71,7 +71,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §2"
     },
     {
       "id": "lore-007",
@@ -83,7 +83,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §1"
     },
     {
       "id": "lore-008",
@@ -95,7 +95,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §1"
     },
     {
       "id": "lore-009",
@@ -107,7 +107,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §2"
     },
     {
       "id": "lore-010",
@@ -119,7 +119,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §2"
     },
     {
       "id": "lore-011",
@@ -131,7 +131,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §1–2"
+      "source": "docs/LORE.md §2"
     },
     {
       "id": "lore-012",
@@ -323,7 +323,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §4"
     },
     {
       "id": "lore-028",
@@ -335,7 +335,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §4"
     },
     {
       "id": "lore-029",
@@ -347,7 +347,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §4"
     },
     {
       "id": "lore-030",
@@ -359,7 +359,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §4"
     },
     {
       "id": "lore-031",
@@ -371,7 +371,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §4"
     },
     {
       "id": "lore-032",
@@ -383,7 +383,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §4"
     },
     {
       "id": "lore-033",
@@ -395,7 +395,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §4"
     },
     {
       "id": "lore-034",
@@ -407,7 +407,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §4"
     },
     {
       "id": "lore-035",
@@ -419,7 +419,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §5"
     },
     {
       "id": "lore-036",
@@ -431,7 +431,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §5"
     },
     {
       "id": "lore-037",
@@ -443,7 +443,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §5"
     },
     {
       "id": "lore-038",
@@ -455,19 +455,19 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §8"
     },
     {
       "id": "lore-039",
       "kind": "lore",
       "title": "The unseen Lord",
-      "text": "The Lord is unseen. People feel his rule through the Sentries and the Edict.",
+      "text": "The unseen Lord rules through the Sentries and the Edict.",
       "element": null,
       "where": [
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §4–5"
+      "source": "docs/LORE.md §5"
     },
     {
       "id": "lore-040",
@@ -479,7 +479,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §9"
     },
     {
       "id": "lore-041",
@@ -491,7 +491,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §9"
     },
     {
       "id": "lore-042",
@@ -503,7 +503,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §9"
     },
     {
       "id": "lore-043",
@@ -515,7 +515,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §9"
     },
     {
       "id": "lore-044",
@@ -527,7 +527,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §9"
     },
     {
       "id": "lore-045",
@@ -539,19 +539,19 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §10"
     },
     {
       "id": "lore-046",
       "kind": "lore",
       "title": "Earned in play",
-      "text": "CHROMA is earned by playing. It cannot be bought with money or cashed out.",
+      "text": "CHROMA is earned by playing and cannot be bought with money or cashed out.",
       "element": null,
       "where": [
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §10"
     },
     {
       "id": "lore-047",
@@ -563,7 +563,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §10"
     },
     {
       "id": "lore-048",
@@ -575,7 +575,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §10"
     },
     {
       "id": "lore-049",
@@ -587,7 +587,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §10"
     },
     {
       "id": "lore-050",
@@ -599,7 +599,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §9–10"
+      "source": "docs/LORE.md §10"
     },
     {
       "id": "lore-051",
@@ -611,7 +611,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §14"
     },
     {
       "id": "lore-052",
@@ -623,7 +623,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §15"
     },
     {
       "id": "lore-053",
@@ -635,7 +635,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §15"
     },
     {
       "id": "lore-054",
@@ -647,7 +647,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §15"
     },
     {
       "id": "lore-055",
@@ -659,7 +659,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §15"
     },
     {
       "id": "lore-056",
@@ -671,7 +671,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §16"
     },
     {
       "id": "lore-057",
@@ -683,7 +683,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §16"
     },
     {
       "id": "lore-058",
@@ -695,7 +695,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §17"
     },
     {
       "id": "lore-059",
@@ -707,7 +707,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §15"
     },
     {
       "id": "lore-060",
@@ -719,7 +719,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §13"
     },
     {
       "id": "lore-061",
@@ -731,7 +731,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §17"
     },
     {
       "id": "lore-062",
@@ -743,7 +743,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §14"
     },
     {
       "id": "lore-063",
@@ -755,7 +755,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §15"
     },
     {
       "id": "lore-064",
@@ -767,7 +767,7 @@
         "town",
         "arena"
       ],
-      "source": "docs/LORE.md §13–17"
+      "source": "docs/LORE.md §15"
     },
     {
       "id": "controls-065",
@@ -955,7 +955,7 @@
       "id": "controls-079",
       "kind": "controls",
       "title": "Bending",
-      "text": "Switch bending on or off. Shapers can choose to fight without it.",
+      "text": "Switch bending on or off to choose whether to fight with it.",
       "element": null,
       "where": [
         "town",
@@ -1218,7 +1218,7 @@
       "id": "tip-100",
       "kind": "tip",
       "title": "The keeper’s purse",
-      "text": "Each merchant has a purse of their own. Selling to them uses their coin.",
+      "text": "Each merchant pays for what you sell from their own purse.",
       "element": null,
       "where": [
         "town",
@@ -1278,7 +1278,7 @@
       "id": "tip-105",
       "kind": "tip",
       "title": "An empty purse",
-      "text": "A merchant who goes broke can close. Their shop can then be bought.",
+      "text": "You can buy the shop of a merchant who has gone broke.",
       "element": null,
       "where": [
         "town",
@@ -1494,7 +1494,7 @@
       "id": "tip-123",
       "kind": "tip",
       "title": "Permanent tiers",
-      "text": "Your tier is permanent. Losing a fight does not lower it.",
+      "text": "Losing a fight does not lower your permanent tier.",
       "element": null,
       "where": [
         "town",
