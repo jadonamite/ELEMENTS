@@ -79,7 +79,7 @@ const OUTFITS: Record<OutfitId, Outfit> = {
     skin: name => name === 'MI_Shaper_Skin',
   },
   hush_ignis: { path: { male: '/assets/characters/people/hush_ignis_male.glb', female: '/assets/characters/people/hush_ignis_female.glb' }, ...person() },
-  hush_aques: { path: { female: '/assets/characters/people/hush_aques_female.glb' }, ...person() },
+  hush_aques: { path: { male: '/assets/characters/people/hush_aques_male.glb', female: '/assets/characters/people/hush_aques_female.glb' }, ...person() },
   hush_aura: { path: { female: '/assets/characters/people/hush_aura_female.glb' }, ...person() },
   hush_terra: { path: { female: '/assets/characters/people/hush_terra_female.glb' }, ...person() },
   robber: { path: { female: '/assets/characters/people/robber_female.glb' }, ...person() },
