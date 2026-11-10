@@ -135,10 +135,12 @@ async function main(): Promise<void> {
     }
   } catch (error) {
     if (!disposed) {
+      loader.dispose();
       button.textContent = 'Reload to retry';
       button.disabled = false;
       button.addEventListener('click', () => window.location.reload(), { once: true });
       status('The hero could not load. Reload the page to try again.');
+      button.focus({ preventScroll: true });
     }
     throw error;
   }

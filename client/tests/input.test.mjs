@@ -203,15 +203,20 @@ test('first game key requests capture; loading input cannot capture or queue act
   try {
     let captures = 0;
     f.canvas.requestPointerLock = () => { captures++; return Promise.resolve(); };
+    let menus = 0;
+    f.input.onMenu = () => { menus++; };
     let loading = true;
     document.getElementById = id => id === 'elements-loader' && loading ? {} : null;
     key('KeyQ', f.canvas);
+    key('Escape', f.canvas);
     dispatch(f.canvas, 'click');
+    assert.equal(menus, 0, 'The loading screen blocks the menu as well as game actions');
     assert.equal(captures, 0);
     assert.deepEqual(f.input.takeActions(), []);
     loading = false;
     key('Escape', f.canvas);
     assert.equal(captures, 0, 'Opening the menu does not capture the mouse');
+    assert.equal(menus, 1, 'The menu becomes available after loading');
     key('KeyQ', f.canvas);
     assert.equal(captures, 1);
     assert.deepEqual(f.input.takeActions(), ['uppercut']);

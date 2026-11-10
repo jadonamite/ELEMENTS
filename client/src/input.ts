@@ -139,7 +139,7 @@ export class GameInput {
   /** Public action entry point for touch and future controllers. */
   press(action: ControlAction, at?: { x: number; y: number }): boolean {
     if (this.disposed || (action !== 'menu' && this.paused) || !this.allowed(action)) return false;
-    if (action === 'menu' && document.getElementById?.('opening-overlay')) return false;
+    if (action === 'menu' && (document.getElementById?.('opening-overlay') || document.getElementById?.('elements-loader'))) return false;
     if (action === 'interact') {
       if (this.talking) { this.conversation!.confirm(); this.onAction?.('interact'); return true; }
       if (this.onInteract?.() === true) { this.onAction?.('interact'); return true; }
