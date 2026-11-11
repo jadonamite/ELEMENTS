@@ -239,7 +239,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   };
   const town = builder.build((bucket: Bucket) => glows[bucket] ?? lib.get(bucket as Surface));
   scene.add(town);
-  addTownPhysics(world, near, builder.colliders);
+  addTownPhysics(world, near, builder.colliders, builder.shells);
   if (params.has('debug') && params.has('showColliders')) scene.add(colliderLines(builder.colliders));
   world.step();
 
