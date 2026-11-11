@@ -67,9 +67,10 @@ export class HeroController {
 
   /**
    * Moves the body for one physics tick; a lunge (m/s) carries it along its facing instead of the input.
+   * `faceTo` keeps the body turned on a target (lock-on strafing) whatever way the input carries it.
    * The world itself is stepped once per tick by whoever runs the tick, after every body has moved.
    */
-  step(input: MoveInput, yaw: number, lunge = 0, speedMultiplier = 1.0, impulse?: Vector3): void {
+  step(input: MoveInput, yaw: number, lunge = 0, speedMultiplier = 1.0, impulse?: Vector3, faceTo?: number): void {
     const dt = tuning.fixedStep;
     const effectiveSpeeds = speedMultiplier === 1.0
       ? this.speeds
@@ -80,7 +81,9 @@ export class HeroController {
     if (impulse) {
       velocity.add(new Vector3(impulse.x, 0, impulse.z));
     }
-    if (lunge === 0 && velocity.lengthSq() > 0 && !impulse) {
+    if (faceTo !== undefined) {
+      this.facing = turnToward(this.facing, faceTo, dt);
+    } else if (lunge === 0 && velocity.lengthSq() > 0 && !impulse) {
       this.facing = turnToward(this.facing, Math.atan2(velocity.x, velocity.z), dt);
     }
     velocity.multiplyScalar(dt);

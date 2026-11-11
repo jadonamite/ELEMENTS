@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Group, Scene, Vector3 } from 'three';
-import { drawnCrowd, makeCrowd, staffPosts } from '../src/life/crowd.ts';
+import { drawnCrowd, makeCrowd, playerPerson, rollLook, seeded, staffPosts } from '../src/life/crowd.ts';
+import { ownLooks } from '../src/life/townsfolk-bodies.ts';
 import { TownManager } from '../src/life/town-manager.ts';
 import { CombatSpace } from '../src/attacks/space.ts';
 
@@ -87,4 +88,22 @@ test('a person on a schedule walks round a house to reach the far side, never th
   }
   assert.equal(inside, 0, 'never inside the house');
   assert.ok(p.position.x < -9 && p.position.y > 1.5, `climbed the steps to the yard: ${p.position.toArray().map(v => v.toFixed(2))}`);
+});
+
+test('nobody in town is the player\'s double; with one person left for a sex, they are still drawn', () => {
+  for (const sex of ['male', 'female']) {
+    const player = playerPerson({ sex, person: 'hush_ignis' });
+    assert.deepEqual(player, { outfit: 'hush_ignis', sex });
+    const { looks } = makeCrowd(150, 30, 7, player);
+    const same = looks.filter(l => l.config.sex === sex);
+    assert.ok(same.some(l => l.outfit), 'the player\'s sex is still drawn in town');
+    assert.ok(!same.some(l => l.outfit === 'hush_ignis'), `no ${sex} double in the crowd`);
+    assert.ok(looks.some(l => l.config.sex !== sex && l.outfit === 'hush_ignis'), 'the other sex may wear that sheet');
+    const named = Array.from({ length: 40 }, (_, i) => ({ id: `named_${i}`, role: 'trader', sex }));
+    assert.ok(!ownLooks(named, player).some(l => l.outfit === 'hush_ignis'), 'no named double either');
+  }
+  assert.equal(playerPerson({ sex: 'male' }), undefined, 'a player with no sheet person excludes nobody');
+  // One sheet person for a sex: she is worn anyway, set apart by the trade's dye.
+  const only = rollLook('x', 'trader', 'female', seeded(3), { outfit: 'hush_ignis', sex: 'female' });
+  assert.ok(only.outfit);
 });

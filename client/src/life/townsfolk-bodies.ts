@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { BodyKit } from '../body.js';
 import { mergeFarBody } from './far-body.js';
 import { sanitizeCharacterConfig } from '../creator/creator-types.js';
-import { rollLook, seeded, type Look } from './crowd.js';
+import { rollLook, seeded, type Look, type PlayerPerson } from './crowd.js';
 import type { Townsperson, TownsfolkRole } from './townsfolk.js';
 
 export interface TownsfolkBody {
@@ -33,11 +33,11 @@ export function walkFor(npc: Townsperson, i: number): string {
 const CHILD_SCALE = 0.72;
 
 /** Named townsfolk each get a look of their own, rolled from their id so it stays the same. */
-export function ownLooks(people: readonly Townsperson[]): Look[] {
+export function ownLooks(people: readonly Townsperson[], player?: PlayerPerson): Look[] {
   return people.filter(p => !p.look).map((p) => {
     let seed = 0;
     for (const c of p.id) seed = (seed * 31 + c.charCodeAt(0)) >>> 0;
-    const look = rollLook(p.id, p.role, p.sex, seeded(seed));
+    const look = rollLook(p.id, p.role, p.sex, seeded(seed), player);
     if (look.config.hairStyleId === 'beard' && p.sex === 'female') look.config.hairStyleId = 'none';
     return look;
   });

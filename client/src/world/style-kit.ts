@@ -207,22 +207,23 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
   b.ao([-w / 2 - 0.12, 0.02, front + 0.13], [w / 2 + 0.12, 0.02, front + 0.13], [0, 0, 1.1], 0.8);
   if (h.shop && !room) {
     // A shop is open behind its counter: solid behind the dark back wall, above the shop, under its floor and at
-    // the counter, so the keeper stands in real space between counter and wall.
-    const inner = front - 1.6, ow = w - 1.2, H = top + 1.5;
+    // the counter, so the keeper stands in real space between counter and wall. Solids end at the wall head;
+    // the roof above is its own solid.
+    const inner = front - 1.6, ow = w - 1.2, H = top;
     b.solid(0, (H - foot) / 2, (-d / 2 + 0.1 + inner) / 2, w, H + foot, inner + d / 2 - 0.1);
     b.solid(0, (P + G + H) / 2, (inner + front) / 2, w, H - P - G, front - inner);
     b.solid(0, (P - foot) / 2, (inner + front) / 2, w, P + foot, front - inner);
     b.solid(0, P + 0.45, front - 0.45, ow, 0.9, 0.7);
     for (const sx of [-1, 1]) b.solid(sx * (w / 2 - (w - ow) / 4), P + G / 2, (inner + front) / 2, (w - ow) / 2, G, front - inner);
   } else if (!room) {
-    b.solid(0, (top + 1.5 - foot) / 2, -0.1, w, top + 1.5 + foot, d - 0.2);
+    b.solid(0, (top - foot) / 2, -0.1, w, top + foot, d - 0.2);
   } else {
     // Solid all round the room, open in front of it: the sides, the back, and the floors above.
     const rx0 = room.x - room.w / 2, rx1 = room.x + room.w / 2, back = front - room.d;
-    if (rx0 > -w / 2 + 0.05) b.solid((-w / 2 + rx0) / 2, (top + 1.5 - foot) / 2, -0.1, rx0 + w / 2, top + 1.5 + foot, d - 0.2);
-    if (rx1 < w / 2 - 0.05) b.solid((rx1 + w / 2) / 2, (top + 1.5 - foot) / 2, -0.1, w / 2 - rx1, top + 1.5 + foot, d - 0.2);
-    b.solid(room.x, (top + 1.5 - foot) / 2, (-d / 2 + 0.1 + back) / 2, room.w, top + 1.5 + foot, back + d / 2 - 0.1);
-    b.solid(room.x, (P + G + top + 1.5) / 2, back + room.d / 2, room.w, top + 1.5 - P - G, room.d);
+    if (rx0 > -w / 2 + 0.05) b.solid((-w / 2 + rx0) / 2, (top - foot) / 2, -0.1, rx0 + w / 2, top + foot, d - 0.2);
+    if (rx1 < w / 2 - 0.05) b.solid((rx1 + w / 2) / 2, (top - foot) / 2, -0.1, w / 2 - rx1, top + foot, d - 0.2);
+    b.solid(room.x, (top - foot) / 2, (-d / 2 + 0.1 + back) / 2, room.w, top + foot, back + d / 2 - 0.1);
+    b.solid(room.x, (P + G + top) / 2, back + room.d / 2, room.w, top - P - G, room.d);
   }
   b.at(0, 0, 0);
 }
