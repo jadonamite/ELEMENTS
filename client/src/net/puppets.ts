@@ -124,7 +124,7 @@ export class NetEnemy {
     });
     holder.add(body);
     this.model = holder;
-    this.anim = new AnimationPlayer(body, template.clips, { defaultFadeDuration: 0.2 });
+    this.anim = new AnimationPlayer(body, template.clips, { defaultFadeDuration: 0.2, plantFeet: true });
     this.groundY = startY;
     scene.add(holder);
     this.bar = document.createElement('div');

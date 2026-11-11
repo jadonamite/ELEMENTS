@@ -82,6 +82,10 @@ export interface Zone {
   posts: readonly Post[];
   /** Where passers-by stop to look at goods: stalls, tables, counters. */
   browse: readonly Browse[];
+  /** Where trade is heard (stalls, counters, goods tables) and where hammers ring (anvils), as built. */
+  sounds: { market: readonly Vector3[]; forge: readonly Vector3[] };
+  /** What the ground is made of under feet at a spot; open land outside the town is ash and cinder. */
+  surfaceAt(x: number, y: number, z: number): Surface;
   /** The point the shadows and the nearest lights follow, usually the hero. */
   follow(point: Vector3): void;
   groundStep(controller: { position: Vector3; place(x: number, y: number, z: number): void }): boolean;
@@ -269,7 +273,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   };
   const town = builder.build((bucket: Bucket) => glows[bucket] ?? lib.get(bucket as Surface));
   scene.add(town);
-  addTownPhysics(world, null, builder.colliders);
+  addTownPhysics(world, null, builder.colliders, builder.shells);
   if (params.has('debug') && params.has('showColliders')) scene.add(colliderLines(builder.colliders));
   world.step();
 
@@ -343,6 +347,11 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   return {
     scene, camera, renderer, clock, ready, posts: builder.posts, browse: builder.browse,
+    surfaceAt: (x, y, z) => builder.treads.at(x, y, z) ?? 'ash_cinder_ground',
+    sounds: {
+      market: [...builder.browse, ...builder.posts.filter(post => post.kind === 'keeper')].map(spot => new Vector3(spot.x, spot.y, spot.z)),
+      forge: builder.posts.filter(post => post.kind === 'smith').map(post => new Vector3(post.x, post.y, post.z)),
+    },
     physics: { world, step: () => world.step(), dispose: () => world.free() },
     follow(point) { followed = point; },
     groundStep(controller) { const ready = stream.guard(controller); forest.update(controller.position); return ready; },

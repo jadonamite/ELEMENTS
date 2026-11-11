@@ -173,7 +173,7 @@ export class TownManager {
       const meshes: Mesh[] = [];
       object.traverse((n) => { if ((n as Mesh).isMesh) meshes.push(n as Mesh); });
       const face = meshes.filter(m => /^eye/i.test(m.name));
-      const anim = body.clips.length ? new AnimationPlayer(object, body.clips, { defaultFadeDuration: 0.25 }) : null;
+      const anim = body.clips.length ? new AnimationPlayer(object, body.clips, { defaultFadeDuration: 0.25, plantFeet: true }) : null;
       const idle = IDLE[npc.role];
       anim?.play(idle);
       // Each person starts at their own point in the clip, so a crowd never moves in step.

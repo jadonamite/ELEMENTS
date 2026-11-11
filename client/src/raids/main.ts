@@ -658,7 +658,7 @@ async function main(): Promise<void> {
     shoulder.update(drawn, delta, reduced.matches);
     threatArrows.update(controller.position, fight.enemies, camera);
     stage.focus.copy(drawn);
-    sound.update(delta, camera, controller, fight.enemies, sword);
+    sound.update(delta, camera, controller, fight.enemies, sword, { heroSteps: hero.anim.takeLanded() });
     fps?.tick();
     stage.render();
   });

@@ -327,6 +327,8 @@ function buildSlopeMesh(
   geom.computeVertexNormals();
 
   b.add(bucket, geom, new Matrix4(), { u: 1, v: 1 });
+  // Feet stand on the drawn tiles: the top layer is the solid.
+  b.solidSurface(positions.slice(0, (stepsV + 1) * (stepsU + 1) * 3), indices.slice(0, stepsV * stepsU * 6));
 }
 
 /**
@@ -397,6 +399,7 @@ function buildHippedEndMesh(
   geom.computeVertexNormals();
 
   b.add(bucket, geom, new Matrix4(), { u: 1, v: 1 });
+  b.solidSurface(positions, indices);
 }
 
 /**

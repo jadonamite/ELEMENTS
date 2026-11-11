@@ -57,8 +57,8 @@ export interface FightEvents {
   projectileLaunched?(p: Projectile): void;
   /** A projectile ended against the world, a body, or ran out of range. */
   projectileEnded?(p: Projectile): void;
-  /** A hero swing connected; `killed` on the final blow. */
-  enemyHit(enemy: Enemy, killed: boolean, damage?: number, hitPos?: Vector3, isCrit?: boolean): void;
+  /** A hero attack connected; `killed` on the final blow, `elemental` when bending did it and not steel or a bare limb. */
+  enemyHit(enemy: Enemy, killed: boolean, damage?: number, hitPos?: Vector3, isCrit?: boolean, elemental?: boolean): void;
   /** The hero blocked just as a hit landed: the attacker staggers. */
   heroParried?(enemy: Enemy): void;
   /** Triggered when a new round begins. */
@@ -636,7 +636,8 @@ export class Fight {
     });
     if (!result.accepted) return;
     this.heroState = result.state;
-    const effect = (isBendMove(move) || (isLit && (move.startsWith('leg_') || move.startsWith('bare_'))))
+    const elemental = isBendMove(move) || (isLit && (move.startsWith('leg_') || move.startsWith('bare_')));
+    const effect = elemental
       ? afflictionFor(this.kit.element, move, from, enemy.controller.position, Math.min(1, bendScale))
       : null;
     if (effect && result.target.health.current > 0) enemy.afflict(effect);
@@ -646,10 +647,10 @@ export class Fight {
     const isCrit = isLit || move.startsWith('heavy') || move === 'uppercut' || move === 'ground_pound' || move === 'ultimate';
     if (killed) {
       this.handleEnemyDefeated(enemy);
-      this.events.enemyHit(enemy, true, damageDealt, hitPos ?? enemy.controller.position, isCrit);
+      this.events.enemyHit(enemy, true, damageDealt, hitPos ?? enemy.controller.position, isCrit, elemental);
     } else {
       if (enemy === this.attacker) this.release();
-      this.events.enemyHit(enemy, false, damageDealt, hitPos ?? enemy.controller.position, isCrit);
+      this.events.enemyHit(enemy, false, damageDealt, hitPos ?? enemy.controller.position, isCrit, elemental);
     }
   }
 
@@ -673,7 +674,7 @@ export class Fight {
       const killed = enemy.hurt({ current: Math.max(0, enemy.health.current - damage), maximum: enemy.health.maximum }, 'lightning', origin, true);
       enemy.afflict({ stunSeconds });
       if (killed) this.handleEnemyDefeated(enemy);
-      this.events.enemyHit(enemy, killed, damage, at, true);
+      this.events.enemyHit(enemy, killed, damage, at, true, true);
     }
     return end;
   }

@@ -214,7 +214,7 @@ export class Enemy {
     this.sex = variant.sex;
     this.fit = KINDS[kind];
     this.model = dressVillain(variant.model, this.materials);
-    this.anim = new AnimationPlayer(this.model, variant.clips, { defaultFadeDuration: 0.2 });
+    this.anim = new AnimationPlayer(this.model, variant.clips, { defaultFadeDuration: 0.2, plantFeet: true });
     this.controller = new HeroController(world, spawn, { ...tuning, walkSpeed: this.fit.walkSpeed, runSpeed: this.fit.runSpeed }, bounded);
     this.health = { current: maxHealth, maximum: maxHealth };
     this.controller.facing = Math.atan2(-spawn.x, -spawn.z);
@@ -299,6 +299,8 @@ export class Enemy {
   /** Spawning villains (husks still climbing out) can't be hit yet. */
   get hittable(): boolean { return this.state !== 'dead' && this.state !== 'spawn'; }
   get attacking(): boolean { return this.state === 'attack' || this.state === 'cast'; }
+  /** Feet that landed since last asked, for step sounds. */
+  get steps(): number | undefined { return this.anim.takeLanded(); }
   /** Seconds since death, for sinking and removal. */
   get deadFor(): number { return this.state === 'dead' ? this.timer : 0; }
 
