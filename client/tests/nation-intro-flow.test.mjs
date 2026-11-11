@@ -245,6 +245,8 @@ test('NationIntroFlow: modular across AURA and HUSH role', () => {
     intro.update(0.016); // to step_weapon
     assert.equal(starterWeaponEquipped, 'staff', 'AURA equips staff');
 
+    mockCombat.fightingStyle = 'weapon';
+    intro.update(0.016); // to step_attacks
     mockCombat.current = 'light_1';
     intro.update(0.016);
     mockCombat.current = 'heavy_1';

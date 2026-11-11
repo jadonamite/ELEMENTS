@@ -1,8 +1,9 @@
-import { AnimationAction, AnimationMixer, Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { BodyKit, type OutfitId } from '../body.js';
 import { sanitizeCharacterConfig } from '../creator/creator-types.js';
 import { disposeObject } from '../scene.js';
+import { AnimationPlayer } from '../anim/player.js';
 import type { HeroController } from '../controller.js';
 import type { ShoulderCamera } from '../camera.js';
 import type { GameInput } from '../input.js';
@@ -61,9 +62,9 @@ export class NationIntroFlow {
   private activeMissionLead: Lead | null = null;
   private masterPosition = new Vector3();
   private masterModel: Group | null = null;
-  private masterMixer: AnimationMixer | null = null;
-  private masterActions = new Map<string, AnimationAction>();
-  private masterPose = 'walk';
+  private masterAnim: AnimationPlayer | null = null;
+  private masterClipNames: string[] = [];
+  private masterPose = '';
   private masterApproaching = false;
   private masterDispatched = false;
   private disposed = false;
@@ -194,8 +195,9 @@ export class NationIntroFlow {
       });
       this.masterModel = model;
       this.opts.scene.add(model);
-      this.masterMixer = new AnimationMixer(model);
-      for (const clip of clips) this.masterActions.set(clip.name.toLowerCase(), this.masterMixer.clipAction(clip));
+      this.masterClipNames = clips.map(c => c.name);
+      this.masterAnim = new AnimationPlayer(model, clips, { defaultFadeDuration: 0.25 });
+      this.masterPose = '';
       this.playMasterPose('walk_sage', 'walk');
       model = null;
     } finally {
@@ -213,14 +215,17 @@ export class NationIntroFlow {
     this.pendingTimers.push(timer);
   }
 
-  private playMasterPose(...names: string[]): void {
-    if (!this.masterMixer) return;
-    const entry = [...this.masterActions.entries()].find(([name]) => names.some(wanted => name.includes(wanted)));
-    if (!entry || entry[0] === this.masterPose) return;
-    const next = entry[1];
-    this.masterActions.get(this.masterPose)?.fadeOut(0.2);
-    next.reset().fadeIn(0.2).play();
-    this.masterPose = entry[0];
+  private playMasterPose(...preferred: string[]): void {
+    if (!this.masterAnim) return;
+    for (const want of preferred) {
+      const match = this.masterClipNames.find(name => name.toLowerCase().includes(want.toLowerCase()));
+      if (match) {
+        if (this.masterPose === match) return;
+        this.masterAnim.play(match, 0.25);
+        this.masterPose = match;
+        return;
+      }
+    }
   }
 
   private setStep(step: IntroStep): void {
@@ -327,11 +332,11 @@ export class NationIntroFlow {
     if (this.currentStep === 'idle' || this.currentStep === 'completed') return;
 
     const heroPos = this.opts.controller.position;
-    this.masterMixer?.update(delta);
+    this.masterAnim?.update(delta);
     if (this.masterModel) {
       if (this.masterApproaching) {
         const distance = this.masterModel.position.distanceTo(this.masterPosition);
-        if (distance > 0.12) {
+        if (distance > 0.15) {
           const step = Math.min(distance, delta * 1.35);
           this.masterModel.position.lerp(this.masterPosition, step / distance);
           this.masterModel.rotation.y = Math.atan2(this.masterPosition.x - this.masterModel.position.x, this.masterPosition.z - this.masterModel.position.z);
@@ -378,7 +383,7 @@ export class NationIntroFlow {
       }
 
       case 'step_weapon': {
-        if (this.opts.combat.fightingStyle === 'weapon' || this.opts.fight.heroAlive) {
+        if (this.opts.combat.fightingStyle === 'weapon') {
           this.hasEquippedWeapon = true;
           this.setStep('step_attacks');
           this.showDialogue(this.config.dialogue.stepAttacks, this.config.master.voice);
@@ -392,7 +397,7 @@ export class NationIntroFlow {
 
       case 'step_attacks': {
         const cur = this.opts.combat.current;
-        if (cur && (cur.includes('light') || cur.includes('strike'))) this.hasLightAttacked = true;
+        if (cur && (cur.includes('light') || cur.includes('strike') || cur.includes('slash'))) this.hasLightAttacked = true;
         if (cur && cur.includes('heavy')) this.hasHeavyAttacked = true;
 
         if (this.hasLightAttacked && this.hasHeavyAttacked) {
@@ -401,6 +406,16 @@ export class NationIntroFlow {
           this.showStepPrompt(
             'Defense',
             '<span class="nation-intro-key">Hold R</span> Guard · <span class="nation-intro-key">Left Alt</span> Dodge',
+          );
+        } else if (this.hasLightAttacked && !this.hasHeavyAttacked) {
+          this.showStepPrompt(
+            'Striking',
+            'Light attack completed · <span class="nation-intro-key">Right Click</span> Heavy Attack',
+          );
+        } else if (!this.hasLightAttacked && this.hasHeavyAttacked) {
+          this.showStepPrompt(
+            'Striking',
+            'Heavy attack completed · <span class="nation-intro-key">Left Click</span> Light Attack',
           );
         }
         break;
@@ -423,6 +438,16 @@ export class NationIntroFlow {
               this.dispatchFirstMission();
             }, 1000);
           }, 4500);
+        } else if (this.hasGuarded && !this.hasDodged) {
+          this.showStepPrompt(
+            'Defense',
+            'Guard completed · <span class="nation-intro-key">Left Alt</span> Dodge',
+          );
+        } else if (!this.hasGuarded && this.hasDodged) {
+          this.showStepPrompt(
+            'Defense',
+            'Dodge completed · <span class="nation-intro-key">Hold R</span> Guard',
+          );
         }
         break;
       }
@@ -524,10 +549,10 @@ export class NationIntroFlow {
     this.pendingTimers = [];
     for (const fn of this.cleanupFns) fn();
     this.cleanupFns = [];
-    this.masterMixer?.stopAllAction();
-    if (this.masterModel) this.masterMixer?.uncacheRoot(this.masterModel);
-    this.masterMixer = null;
-    this.masterActions.clear();
+    this.masterAnim?.dispose();
+    this.masterAnim = null;
+    this.masterClipNames = [];
+    this.masterPose = '';
     if (this.masterModel) {
       this.opts.scene.remove(this.masterModel);
       disposeObject(this.masterModel);

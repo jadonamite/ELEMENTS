@@ -681,6 +681,7 @@ async function main(): Promise<void> {
       applyTier,
       onEquipStarterWeapon: () => {
         applyKit();
+        setFightingStyle('weapon');
         sword.draw(true);
       },
       onMissionComplete: (lead) => {
