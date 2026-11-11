@@ -1,4 +1,8 @@
-import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import { AnimationAction, AnimationMixer, Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { BodyKit, type OutfitId } from '../body.js';
+import { sanitizeCharacterConfig } from '../creator/creator-types.js';
+import { disposeObject } from '../scene.js';
 import type { HeroController } from '../controller.js';
 import type { ShoulderCamera } from '../camera.js';
 import type { GameInput } from '../input.js';
@@ -26,6 +30,7 @@ export type IntroStep =
   | 'completed';
 
 export interface NationIntroOptions {
+  scene: import('three').Scene;
   nation: string;
   isDim: boolean;
   controller: HeroController;
@@ -55,6 +60,13 @@ export class NationIntroFlow {
   private hasDodged = false;
   private activeMissionLead: Lead | null = null;
   private masterPosition = new Vector3();
+  private masterModel: Group | null = null;
+  private masterMixer: AnimationMixer | null = null;
+  private masterActions = new Map<string, AnimationAction>();
+  private masterPose = 'walk';
+  private masterApproaching = false;
+  private masterDispatched = false;
+  private disposed = false;
   private pendingTimers: any[] = [];
 
   // Camera staging and smooth-blend
@@ -126,7 +138,14 @@ export class NationIntroFlow {
 
   start(): void {
     this.startPosition.copy(this.opts.controller.position);
-    this.masterPosition.copy(this.startPosition).add(new Vector3(2.5, 0, 0));
+    const forward = new Vector3(Math.sin(this.opts.controller.facing), 0, Math.cos(this.opts.controller.facing));
+    this.masterPosition.copy(this.startPosition).addScaledVector(forward, 2.3);
+    this.masterApproaching = true;
+    if (this.opts.scene) {
+      void this.loadMaster(forward).catch(error => {
+        if (!this.disposed) console.error('Nation Master failed to load:', error);
+      });
+    }
 
     // Begin approach
     this.setStep('approach');
@@ -134,7 +153,7 @@ export class NationIntroFlow {
       this.config.dialogue.greeting,
       this.config.master.voice,
       () => {
-        setTimeout(() => {
+        this.schedule(() => {
           this.setStep('greeting');
           this.showDialogue(
             this.config.dialogue.loreTeaser,
@@ -150,6 +169,60 @@ export class NationIntroFlow {
     );
   }
 
+  private async loadMaster(forward: Vector3): Promise<void> {
+    const loader = new GLTFLoader();
+    const townSets = await Promise.all(
+      ['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(name => loader.loadAsync(`/assets/characters/${name}.glb`)),
+    );
+    let model: Group | null = null;
+    try {
+      if (this.disposed) return;
+      const config = sanitizeCharacterConfig({
+        sex: 'male', skinToneId: 'bronze', hairStyleId: 'beard', hairColorId: 'silver', bodyPreset: 'broad',
+      });
+      const outfit: OutfitId = this.config.nation === 'IGNIS' ? 'shaper_ignis' : 'rags';
+      const kit = new BodyKit(loader);
+      model = await kit.build(config, 'hero', this.config.nation === 'AQUES' ? 0x667f86 : this.config.nation === 'TERRA' ? 0x77705e : this.config.nation === 'AURA' ? 0x9a8d9e : undefined, outfit);
+      if (this.disposed) return;
+      const clips = await kit.fitClips(config.sex, townSets.flatMap(set => set.animations), 'townsfolk', outfit);
+      if (this.disposed) return;
+      model.name = `NationMaster-${this.config.nation}`;
+      model.position.copy(this.masterPosition).addScaledVector(forward, 5.5);
+      model.rotation.y = Math.atan2(this.masterPosition.x - model.position.x, this.masterPosition.z - model.position.z);
+      model.traverse(node => {
+        if ('isMesh' in node && node.isMesh) { node.castShadow = true; node.receiveShadow = true; }
+      });
+      this.masterModel = model;
+      this.opts.scene.add(model);
+      this.masterMixer = new AnimationMixer(model);
+      for (const clip of clips) this.masterActions.set(clip.name.toLowerCase(), this.masterMixer.clipAction(clip));
+      this.playMasterPose('walk_sage', 'walk');
+      model = null;
+    } finally {
+      for (const set of townSets) disposeObject(set.scene);
+      if (model) disposeObject(model);
+    }
+  }
+
+  private schedule(callback: () => void, delayMs: number): void {
+    let timer: ReturnType<typeof setTimeout>;
+    timer = setTimeout(() => {
+      this.pendingTimers = this.pendingTimers.filter(pending => pending !== timer);
+      if (!this.disposed) callback();
+    }, delayMs);
+    this.pendingTimers.push(timer);
+  }
+
+  private playMasterPose(...names: string[]): void {
+    if (!this.masterMixer) return;
+    const entry = [...this.masterActions.entries()].find(([name]) => names.some(wanted => name.includes(wanted)));
+    if (!entry || entry[0] === this.masterPose) return;
+    const next = entry[1];
+    this.masterActions.get(this.masterPose)?.fadeOut(0.2);
+    next.reset().fadeIn(0.2).play();
+    this.masterPose = entry[0];
+  }
+
   private setStep(step: IntroStep): void {
     this.currentStep = step;
   }
@@ -157,6 +230,7 @@ export class NationIntroFlow {
   private showDialogue(text: string, voice?: string, onDone?: () => void, timeoutMs = 4000): void {
     this.dialogueBox.style.display = 'block';
     this.dialogueLine.textContent = text;
+    if (!this.masterApproaching && !this.masterDispatched) this.playMasterPose('talk', 'gesture', 'idle');
 
     if (voice) {
       void this.opts.sound.speak(voice, text, {
@@ -167,10 +241,7 @@ export class NationIntroFlow {
     }
 
     if (onDone) {
-      const timer = setTimeout(() => {
-        onDone();
-      }, timeoutMs);
-      this.pendingTimers.push(timer);
+      this.schedule(onDone, timeoutMs);
     }
   }
 
@@ -232,6 +303,7 @@ export class NationIntroFlow {
   }
 
   private startTraining(): void {
+    this.playMasterPose('fold_arms', 'idle');
     this.beginCameraBlend();
     this.setStep('step_move');
     this.showDialogue(this.config.dialogue.stepFooting, this.config.master.voice);
@@ -255,6 +327,26 @@ export class NationIntroFlow {
     if (this.currentStep === 'idle' || this.currentStep === 'completed') return;
 
     const heroPos = this.opts.controller.position;
+    this.masterMixer?.update(delta);
+    if (this.masterModel) {
+      if (this.masterApproaching) {
+        const distance = this.masterModel.position.distanceTo(this.masterPosition);
+        if (distance > 0.12) {
+          const step = Math.min(distance, delta * 1.35);
+          this.masterModel.position.lerp(this.masterPosition, step / distance);
+          this.masterModel.rotation.y = Math.atan2(this.masterPosition.x - this.masterModel.position.x, this.masterPosition.z - this.masterModel.position.z);
+          this.playMasterPose('walk_sage', 'walk');
+        } else {
+          this.masterApproaching = false;
+          this.playMasterPose('talk', 'idle');
+        }
+      } else {
+        this.masterModel.rotation.y = Math.atan2(heroPos.x - this.masterModel.position.x, heroPos.z - this.masterModel.position.z);
+        if (this.masterDispatched) this.playMasterPose('point', 'gesture', 'talk', 'idle');
+        else if (this.dialogueBox.style.display !== 'none' && this.currentStep !== 'step_move' && this.currentStep !== 'step_sprint_jump' && this.currentStep !== 'step_weapon' && this.currentStep !== 'step_attacks' && this.currentStep !== 'step_defense') this.playMasterPose('talk', 'gesture', 'idle');
+        else if (this.currentStep.startsWith('step_')) this.playMasterPose('fold_arms', 'idle');
+      }
+    }
 
     // Interactive step validations
     switch (this.currentStep) {
@@ -327,7 +419,7 @@ export class NationIntroFlow {
             : this.config.dialogue.shaperRole;
 
           this.showDialogue(roleLine, this.config.master.voice, () => {
-            setTimeout(() => {
+            this.schedule(() => {
               this.dispatchFirstMission();
             }, 1000);
           }, 4500);
@@ -349,6 +441,8 @@ export class NationIntroFlow {
   }
 
   private dispatchFirstMission(): void {
+    this.masterDispatched = true;
+    this.playMasterPose('point', 'gesture', 'talk', 'idle');
     this.setStep('active_mission');
     const mission = this.config.firstMission;
 
@@ -356,7 +450,7 @@ export class NationIntroFlow {
       this.config.dialogue.missionBrief,
       this.config.master.voice,
       () => {
-        setTimeout(() => {
+        this.schedule(() => {
           this.dialogueBox.style.display = 'none';
         }, 3000);
       },
@@ -403,10 +497,9 @@ export class NationIntroFlow {
       this.opts.onMissionComplete(lead);
     }
 
-    const timer = setTimeout(() => {
+    this.schedule(() => {
       this.dispose();
     }, 5000);
-    this.pendingTimers.push(timer);
   }
 
   private showMissionBanner(kicker: string, title: string, desc: string): void {
@@ -419,17 +512,27 @@ export class NationIntroFlow {
       <p class="nation-mission-desc">${desc}</p>
     `;
     document.body.appendChild(banner);
-    const timer = setTimeout(() => {
+    this.schedule(() => {
       banner.remove();
     }, 4500);
-    this.pendingTimers.push(timer);
+    this.cleanupFns.push(() => banner.remove());
   }
 
   dispose(): void {
+    this.disposed = true;
     for (const t of this.pendingTimers) clearTimeout(t);
     this.pendingTimers = [];
     for (const fn of this.cleanupFns) fn();
     this.cleanupFns = [];
+    this.masterMixer?.stopAllAction();
+    if (this.masterModel) this.masterMixer?.uncacheRoot(this.masterModel);
+    this.masterMixer = null;
+    this.masterActions.clear();
+    if (this.masterModel) {
+      this.opts.scene.remove(this.masterModel);
+      disposeObject(this.masterModel);
+      this.masterModel = null;
+    }
     if (this.overlay.parentNode) {
       this.overlay.remove();
     }

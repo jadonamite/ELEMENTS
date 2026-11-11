@@ -667,6 +667,7 @@ async function main(): Promise<void> {
 
   if (shouldRunIntro && zone && lifeSystem) {
     nationIntro = new NationIntroFlow({
+      scene,
       nation: kitElement,
       isDim,
       controller,
