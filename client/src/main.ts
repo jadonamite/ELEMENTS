@@ -2,6 +2,7 @@ import './ui/tokens.css';
 import './ui/loader.css';
 import './style.css';
 import './opening.css';
+import './story/nation-intro.css';
 import './threat-arrows.css';
 import balance from '../../shared/balance.json';
 import dialogueData from '../../shared/dialogue.json';
@@ -40,6 +41,7 @@ import { StreetChallenges } from './life/street-challenges.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
+import { NationIntroFlow } from './story/nation-intro-flow.js';
 import { Group, Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { ClientRobberGang } from './agents/outlaws/robberGang.js';
@@ -650,14 +652,44 @@ async function main(): Promise<void> {
 
   const homeMenu = new HomeMenu({
     inTown,
-    currentElement: kitElement,
-    isDim,
+    getCharacterState: () => ({ element: kitElement, isDim, tier: fight.tier }),
     onOpenPicker: () => picker?.open(true),
     onOpenCreator: () => picker?.open(true),
   });
   cleanup.push(() => homeMenu.dispose());
   input.onMenu = () => homeMenu.toggle();
   homeMenu.mountControls(controls!);
+
+  let nationIntro: NationIntroFlow | null = null;
+  const introStorageKey = 'elements_intro_v1_completed';
+  const isNewArrival = !localStorage.getItem(introStorageKey);
+  const shouldRunIntro = (params.has('intro') || isNewArrival) && !params.has('skipIntro');
+
+  if (shouldRunIntro && zone && lifeSystem) {
+    nationIntro = new NationIntroFlow({
+      nation: kitElement,
+      isDim,
+      controller,
+      shoulderCamera,
+      input,
+      combat,
+      fight,
+      sound,
+      leadManager: lifeSystem.leadManager,
+      waypointMarker: lifeSystem.waypointMarker,
+      applyTier,
+      onEquipStarterWeapon: () => {
+        applyKit();
+        sword.draw(true);
+      },
+      onMissionComplete: (lead) => {
+        localStorage.setItem(introStorageKey, 'done');
+        if (townEconomy?.carried) townEconomy.carried.chroma += lead.rewardChroma;
+      },
+    });
+    cleanup.push(() => nationIntro?.dispose());
+    nationIntro.start();
+  }
   input.onTargetTap = (x, y) => {
     const point = new Vector3(); let target: Enemy | null = null, nearest = 48;
     for (const foe of fight.enemies) {
@@ -691,6 +723,7 @@ async function main(): Promise<void> {
     return allowed === 'any' || (Array.isArray(allowed) && allowed.includes(fight.kit.weapon));
   };
   const setBending = (on: boolean): void => {
+    if (fight.tier < 1) return;
     if (on && isDim) { notice('The Hush cannot bend'); return; }
     isLit = on;
     if (on) sound.playFireBurst(0.35);
@@ -700,7 +733,11 @@ async function main(): Promise<void> {
     notice(sheathed ? `Bending on, weapon away: ${kitElement} bends bare-handed` : on ? 'Bending on' : 'Bending off');
   };
   const setFightingStyle = (style: FightingStyle): void => {
-    if (style === 'bending') { setBending(!isLit); return; }
+    if (style === 'bending') {
+      if (fight.tier < 1) return;
+      setBending(!isLit);
+      return;
+    }
     armedWith = style === 'weapon' ? 'weapon' : style === 'legs' ? 'legs' : 'hands';
     const unlit = armedWith === 'weapon' && isLit && !bendsArmed();
     if (unlit) isLit = false;
@@ -724,7 +761,10 @@ async function main(): Promise<void> {
 
   input.onStanceToggle = () => setFightingStyle(armedWith === 'weapon' ? 'bare_hands' : 'weapon');
 
-  input.onBendingToggle = () => setBending(!isLit);
+  input.onBendingToggle = () => {
+    if (fight.tier < 1) return;
+    setBending(!isLit);
+  };
 
   let techniqueClipUntil = 0;
   let lightningBareUntil = 0;
@@ -1104,6 +1144,7 @@ async function main(): Promise<void> {
     shoulderCamera.lockTarget = remoteLock?.model.position ?? lockedEnemy?.controller.position ?? null;
 
     const alive = fight.heroAlive;
+    nationIntro?.update(rawDelta);
     townEconomy?.update(rawDelta, controller.position);
     for (const action of alive ? input.takeActions() : []) {
       if (action !== 'dodge') {

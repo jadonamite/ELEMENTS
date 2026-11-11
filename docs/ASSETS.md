@@ -166,3 +166,7 @@ Production asset set for the nation of IGNIS (Sindr, Gorge Road, Slag Barrens, E
 | Skins, eyes, eyebrows, eyelashes, teeth, hair | MakeHuman system assets pack (`makehuman_system_assets_cc0.zip`, files2.makehumancommunity.org), 1 Nov 2026 | CC0 | Skin, eyes, brows, lashes, teeth, hair |
 | Wool texture Fabric031, linen Fabric061, woven Fabric019, Leather037 | ambientCG (ambientcg.com), 1K JPG, 1 Nov 2026 | CC0 | The commoner's rags (tunic, trousers, wraps, belt), tinted |
 | Commoner's rags meshes | Made for ELEMENTS from the base mesh's helper shapes (`workbench/scripts/people/make_rags.py`) | Ours | Tunic, trousers, belt, foot wraps |
+
+## Generated concept art
+
+`client/public/assets/ui/elements-world-atlas.png` was generated for the in-game world map on 11 November 2026. It uses no third-party source image. Its region layout is schematic; it does not establish canonical geography.
