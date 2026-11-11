@@ -843,8 +843,7 @@
     "calmAfterSeconds": 6,
     "drawSeconds": 0.55,
     "fastDrawSeconds": 0.32,
-    "sheatheSeconds": 0.6,
-    "swapAt": 0.5
+    "sheatheSeconds": 0.6
   },
   "enemy": {
     "placeholder": true,
@@ -982,7 +981,7 @@
         },
         "weapons": [
           "club",
-          "sword"
+          "knife"
         ]
       },
       "deserter": {
@@ -1003,7 +1002,7 @@
           "run": 5.36
         },
         "weapons": [
-          "sword"
+          "deserter_sword"
         ]
       }
     },

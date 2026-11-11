@@ -16,7 +16,6 @@ export class SwordStance {
   phase: SwordPhase = 'sheathed';
   private elapsed = 0;
   private length = 0;
-  private swapped = false;
   private get upper(): Bone { return (this.hero.model.getObjectByName('upperarm_r') as Bone) ?? this.hero.handBone; }
   private get lower(): Bone { return (this.hero.model.getObjectByName('lowerarm_r') as Bone) ?? this.hero.handBone; }
   private get hand(): Bone { return this.hero.handBone; }
@@ -51,7 +50,6 @@ export class SwordStance {
     this.phase = 'armed';
     this.elapsed = 0;
     this.length = 0;
-    this.swapped = true;
     this.hero.arm(true);
   }
 
@@ -60,24 +58,26 @@ export class SwordStance {
     this.phase = 'sheathed';
     this.elapsed = 0;
     this.length = 0;
-    this.swapped = true;
     this.hero.arm(false);
   }
 
   /** Call after the animation mixer has posed the skeleton for this frame. */
   update(delta: number): void {
+    if (this.phase === 'armed' || this.phase === 'sheathed') this.hero.arm(this.phase === 'armed');
     if (this.phase === 'drawing' || this.phase === 'sheathing') {
       this.elapsed += delta;
       const t = Math.min(1, this.elapsed / this.length);
-      if (!this.swapped && t >= tuning.swapAt) {
-        this.swapped = true;
-        this.hero.arm(this.phase === 'drawing');
-      }
-      // The reach rises to the hilt at the swap and eases back out after it.
-      const weight = t < tuning.swapAt ? smooth(t / tuning.swapAt) : smooth((1 - t) / (1 - tuning.swapAt));
+      const fraction = this.phase === 'drawing' ? smooth(t) : 1 - smooth(t);
+      this.hero.poseDraw(fraction);
+      const weight = Math.sin(Math.PI * t);
       this.hero.model.updateMatrixWorld(true);
-      reach(this.upper, this.lower, this.hand, this.hero.backSocket.getWorldPosition(new Vector3()), weight);
-      if (t >= 1) this.phase = this.phase === 'drawing' ? 'armed' : 'sheathed';
+      const target = this.hero.sword.getObjectByName('Grip')?.getWorldPosition(new Vector3())
+        ?? this.hero.backSocket.getWorldPosition(new Vector3());
+      reach(this.upper, this.lower, this.hand, target, weight);
+      if (t >= 1) {
+        this.hero.arm(this.phase === 'drawing');
+        this.phase = this.phase === 'drawing' ? 'armed' : 'sheathed';
+      }
     }
 
     // Two-handed grip when armed with staff
@@ -114,7 +114,6 @@ export class SwordStance {
     this.phase = phase;
     this.elapsed = 0;
     this.length = seconds;
-    this.swapped = false;
   }
 }
 

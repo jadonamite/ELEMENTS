@@ -7,15 +7,12 @@
 import {
   type AnimationClip,
   AnimationUtils,
-  Box3,
-  BoxGeometry,
-  CylinderGeometry,
   Group,
   Matrix4,
+  Quaternion,
   Mesh,
   MeshStandardMaterial,
   Object3D,
-  Quaternion,
   Vector3,
   type Bone,
 } from 'three';
@@ -27,6 +24,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { AnimationPlayer } from './anim/index.js';
 import { StrikeLimbs, type StrikeLimb } from './anim/strike-limb.js';
 import { STAFF_WEAPON, SWORD_WEAPON, heroWeaponFor, type WeaponSlotData } from './weapon.js';
+import { carrySockets, gripAligned, hitSegment, palmSocket, snapToSocket } from './weapon-mount.js';
 import { fetchWornArmour } from './economy/api.js';
 import { getStoredAuthToken, hasGameServer } from './auth/server-api.js';
 
@@ -56,6 +54,8 @@ export interface HeroInstance {
   backSocket: Object3D;
   /** Weapon in hand (true) or carried on the back (false). */
   arm(armed: boolean): void;
+  /** Move along the scabbard axis, then return to the palm, without moving the shell. */
+  poseDraw(fraction: number): void;
   /** Equips a weapon via data-driven slot parameters. */
   equipWeapon(slot: WeaponSlotData): Promise<void>;
   /** Gets world position of specified limb bone for contact checks. */
@@ -83,107 +83,6 @@ function calmRunBounce(clips: AnimationClip[]): void {
 }
 
 /**
- * Creates a procedural fallback sword mesh in case the GLB asset is unavailable.
- */
-function createProceduralSword(): Group {
-  const sword = new Group();
-  sword.name = 'ProceduralSword';
-
-  // Blade (silver metallic)
-  const bladeGeo = new BoxGeometry(0.04, 0.75, 0.012);
-  const bladeMat = new MeshStandardMaterial({
-    color: 0xcccccc,
-    metalness: 0.85,
-    roughness: 0.25,
-  });
-  const blade = new Mesh(bladeGeo, bladeMat);
-  blade.position.set(0, 0.42, 0);
-  blade.castShadow = true;
-  blade.receiveShadow = true;
-  sword.add(blade);
-
-  // Crossguard (dark gold)
-  const guardGeo = new BoxGeometry(0.2, 0.024, 0.035);
-  const guardMat = new MeshStandardMaterial({
-    color: 0xcaa048,
-    metalness: 0.75,
-    roughness: 0.35,
-  });
-  const guard = new Mesh(guardGeo, guardMat);
-  guard.position.set(0, 0.04, 0);
-  guard.castShadow = true;
-  guard.receiveShadow = true;
-  sword.add(guard);
-
-  // Grip (dark leather)
-  const gripGeo = new CylinderGeometry(0.015, 0.015, 0.14, 8);
-  const gripMat = new MeshStandardMaterial({
-    color: 0x2e1a0e,
-    roughness: 0.8,
-    metalness: 0.1,
-  });
-  const grip = new Mesh(gripGeo, gripMat);
-  grip.position.set(0, -0.04, 0);
-  grip.castShadow = true;
-  sword.add(grip);
-
-  // Pommel
-  const pommelGeo = new CylinderGeometry(0.022, 0.022, 0.02, 8);
-  const pommel = new Mesh(pommelGeo, guardMat);
-  pommel.position.set(0, -0.12, 0);
-  pommel.castShadow = true;
-  sword.add(pommel);
-
-  return sword;
-}
-
-/**
- * Creates a procedural fallback staff mesh in case the GLB asset is unavailable.
- */
-function createProceduralStaff(): Group {
-  const staff = new Group();
-  staff.name = 'Staff';
-
-  const shaftGeo = new CylinderGeometry(0.015, 0.015, 1.44, 16);
-  const woodMat = new MeshStandardMaterial({
-    color: 0xded8ce,
-    roughness: 0.65,
-    metalness: 0.05,
-  });
-  const shaft = new Mesh(shaftGeo, woodMat);
-  shaft.castShadow = true;
-  staff.add(shaft);
-
-  const gripGeo = new CylinderGeometry(0.0165, 0.0165, 0.54, 16);
-  const leatherMat = new MeshStandardMaterial({
-    color: 0x3d352e,
-    roughness: 0.75,
-    metalness: 0.1,
-  });
-  const grip = new Mesh(gripGeo, leatherMat);
-  grip.castShadow = true;
-  staff.add(grip);
-
-  const capGeo = new CylinderGeometry(0.0165, 0.0165, 0.13, 16);
-  const steelMat = new MeshStandardMaterial({
-    color: 0xd8dde3,
-    roughness: 0.35,
-    metalness: 0.95,
-  });
-  const topCap = new Mesh(capGeo, steelMat);
-  topCap.position.set(0, 0.785, 0);
-  topCap.castShadow = true;
-  staff.add(topCap);
-
-  const bottomCap = new Mesh(capGeo, steelMat);
-  bottomCap.position.set(0, -0.785, 0);
-  bottomCap.castShadow = true;
-  staff.add(bottomCap);
-
-  return staff;
-}
-
-/**
  * Loads the hero character, dresses it, attaches the sword to the right hand
  * and sets up the animation player.
  */
@@ -207,8 +106,8 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   const heroModel = await kit.build(config, 'hero', undefined, currentOutfit);
 
   let weaponSlot: WeaponSlotData = SWORD_WEAPON;
-  const initialHand = heroModel.getObjectByName(weaponSlot.handBone) as Bone | undefined;
-  if (!initialHand) throw new Error(`Hand bone ${weaponSlot.handBone} not found in hero rig.`);
+  const initialHand = heroModel.getObjectByName('hand_r') as Bone | undefined;
+  if (!initialHand) throw new Error('Hand bone hand_r not found in hero rig.');
   let handBone: Bone = initialHand;
   let handL = heroModel.getObjectByName('hand_l') as Bone | undefined;
   if (!handL) throw new Error('Left hand bone (hand_l) not found in hero rig.');
@@ -220,14 +119,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   if (!kneeR) throw new Error('Right calf bone (calf_r) not found in hero rig.');
   let kneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
   if (!kneeL) throw new Error('Left calf bone (calf_l) not found in hero rig.');
-  let swordMesh: Object3D;
-  try {
-    const swordGltf = await loader.loadAsync(weaponSlot.assetPath);
-    swordMesh = swordGltf.scene.getObjectByName(weaponSlot.meshName ?? 'Sword')?.clone() ??
-      (weaponSlot.type === 'staff' ? createProceduralStaff() : createProceduralSword());
-  } catch {
-    swordMesh = weaponSlot.type === 'staff' ? createProceduralStaff() : createProceduralSword();
-  }
+  let swordMesh: Object3D = (await loader.loadAsync(weaponSlot.assetPath)).scene.clone(true);
   const swordMaterials: MeshStandardMaterial[] = [];
   const collectMaterials = (mesh: Object3D): void => {
     swordMaterials.length = 0;
@@ -257,8 +149,10 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   };
 
   let elemental = false;
+  let elementalNation = 'IGNIS';
   const setElemental = (lit: boolean, element: string = 'IGNIS'): void => {
     elemental = lit;
+    elementalNation = element;
     const spec = ELEMENT_EMISSIVE[element] ?? ELEMENT_EMISSIVE.IGNIS!;
     for (const mat of swordMaterials) {
       // Only the metallic blade carries the elemental glow; hilt, guard and leather stay grounded.
@@ -274,108 +168,78 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     }
   };
 
-  const holder = new Group();
-  holder.name = 'WeaponHolder';
-  holder.add(swordMesh);
-
+  const holder = gripAligned(swordMesh);
   const bladeBase = new Vector3();
   const bladeTip = new Vector3();
+  hitSegment(holder, bladeBase, bladeTip);
+  let palm = palmSocket(heroModel);
+  let mounts = carrySockets(heroModel);
+  let activeCarry = mounts.back;
+  let scabbard: Object3D | null = null;
 
-  /**
-   * The hit segment, in the holder's own frame (the frame it is read back in), wherever the holder
-   * is at the time: it runs along the weapon's longest side through the middle of its bounds.
-   */
-  const updateHitShape = (mesh: Object3D, shape: WeaponSlotData['hitShape']): void => {
-    holder.updateMatrixWorld(true);
-    const toHolder = new Matrix4().copy(holder.matrixWorld).invert();
-    const bounds = new Box3();
-    const part = new Box3();
-    mesh.traverse(o => {
-      const geometry = (o as Mesh).geometry;
-      if (!(o as Mesh).isMesh || !geometry) return;
-      if (!geometry.boundingBox) geometry.computeBoundingBox();
-      bounds.union(part.copy(geometry.boundingBox!).applyMatrix4(new Matrix4().multiplyMatrices(toHolder, o.matrixWorld)));
-    });
-    const size = bounds.getSize(new Vector3());
-    const axis = size.x >= size.y && size.x >= size.z ? 'x' : size.y >= size.z ? 'y' : 'z';
-    bounds.getCenter(bladeBase);
-    bladeTip.copy(bladeBase);
-    bladeBase[axis] = bounds.min[axis] + size[axis] * shape.baseFraction;
-    bladeTip[axis] = bounds.min[axis] + size[axis] * shape.tipFraction;
+  const loadCarry = async (slot: WeaponSlotData): Promise<void> => {
+    scabbard?.removeFromParent();
+    scabbard = null;
+    activeCarry = slot.carry?.mount === 'hip' ? mounts.hip : mounts.back;
+    if (slot.carry) {
+      scabbard = gripAligned((await loader.loadAsync(slot.carry.assetPath)).scene.clone(true));
+      scabbard.traverse(node => { if ((node as Mesh).isMesh) { (node as Mesh).castShadow = true; (node as Mesh).receiveShadow = true; } });
+      snapToSocket(scabbard, activeCarry);
+    }
   };
-  updateHitShape(swordMesh, weaponSlot.hitShape);
-
-  holder.position.set(...weaponSlot.handOffset);
-  holder.rotation.set(...weaponSlot.handRotation);
-  holder.scale.setScalar(weaponSlot.handScale);
-  handBone.add(holder);
-
-  // Back carry setup
-  const initialSpine = heroModel.getObjectByName(weaponSlot.sheatheBone);
-  if (!initialSpine) throw new Error(`Sheathe bone ${weaponSlot.sheatheBone} not found in hero rig.`);
-  let spine: Object3D = initialSpine;
-  const backSocket = new Object3D();
-  backSocket.name = 'WeaponBackSocket';
-  spine.add(backSocket);
-
-  const updateBackSocketTransform = (slot: WeaponSlotData): void => {
-    heroModel.updateMatrixWorld(true);
-    const toModel = new Matrix4().copy(heroModel.matrixWorld).invert().multiply(spine.matrixWorld);
-    const sheatheDir = new Vector3(...slot.sheatheBladeDirection).normalize();
-    const out = new Vector3(0, 0, -1);
-    const side = new Vector3().crossVectors(sheatheDir, out).normalize();
-    const sheathePos = new Vector3(...slot.sheathePosition);
-    const backInModel = new Matrix4().compose(
-      sheathePos,
-      new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(side, sheatheDir, out)),
-      new Vector3().setScalar(slot.sheatheScale),
-    );
-    toModel.invert().multiply(backInModel).decompose(backSocket.position, backSocket.quaternion, backSocket.scale);
-  };
-  updateBackSocketTransform(weaponSlot);
+  await loadCarry(weaponSlot);
 
   let isArmedState = false;
   const arm = (armed: boolean): void => {
     isArmedState = armed;
-    if (armed) {
-      handBone.add(holder);
-      holder.position.set(...weaponSlot.handOffset);
-      holder.rotation.set(...weaponSlot.handRotation);
-      holder.scale.setScalar(weaponSlot.handScale);
-    } else {
-      backSocket.add(holder);
-      holder.position.set(0, 0, 0);
-      holder.quaternion.identity();
-      holder.scale.setScalar(1);
-    }
+    if (scabbard) snapToSocket(scabbard, activeCarry);
+    snapToSocket(holder, armed ? palm : activeCarry);
   };
 
+  const poseDraw = (fraction: number): void => {
+    const t = Math.max(0, Math.min(1, fraction));
+    if (t === 0 || t === 1) { arm(t === 1); return; }
+    if (scabbard) snapToSocket(scabbard, activeCarry);
+    heroModel.updateMatrixWorld(true);
+    const from = new Matrix4().compose(activeCarry.getWorldPosition(new Vector3()), activeCarry.getWorldQuaternion(new Quaternion()).normalize(), new Vector3(1, 1, 1));
+    const travel = bladeTip.distanceTo(bladeBase);
+    const extract = Math.min(1, t / 0.7);
+    from.multiply(new Matrix4().makeTranslation(0, -travel * extract, 0));
+    const position = new Vector3(), rotation = new Quaternion(), scale = new Vector3();
+    from.decompose(position, rotation, scale);
+    const blend = Math.max(0, (t - 0.7) / 0.3);
+    position.lerp(palm.getWorldPosition(new Vector3()), blend);
+    rotation.slerp(palm.getWorldQuaternion(new Quaternion()).normalize(), blend);
+    heroModel.add(holder);
+    holder.matrix.copy(heroModel.matrixWorld).invert().multiply(new Matrix4().compose(position, rotation, new Vector3(1, 1, 1)));
+    holder.matrix.decompose(holder.position, holder.quaternion, holder.scale);
+    holder.matrixAutoUpdate = false;
+    holder.updateMatrixWorld(true);
+  };
+
+  let equipRequest = 0;
   const equipWeapon = async (slot: WeaponSlotData): Promise<void> => {
-    weaponSlot = slot;
-    const newHandBone = heroModel.getObjectByName(slot.handBone) as Bone | undefined;
-    if (!newHandBone) throw new Error(`Hand bone ${slot.handBone} not found in hero rig.`);
-    handBone = newHandBone;
-
-    const newSpine = heroModel.getObjectByName(slot.sheatheBone);
-    if (!newSpine) throw new Error(`Sheathe bone ${slot.sheatheBone} not found in hero rig.`);
-    if (newSpine !== spine) {
-      spine.remove(backSocket);
-      spine = newSpine;
-      spine.add(backSocket);
-    }
-
-    while (holder.children.length > 0) holder.remove(holder.children[0]!);
-    try {
-      const gltf = await loader.loadAsync(slot.assetPath);
-      swordMesh = gltf.scene.getObjectByName(slot.meshName ?? 'Sword')?.clone() ??
-        (slot.type === 'staff' ? createProceduralStaff() : createProceduralSword());
-    } catch {
-      swordMesh = slot.type === 'staff' ? createProceduralStaff() : createProceduralSword();
-    }
+    const request = ++equipRequest;
+    const [weapon, carry] = await Promise.all([
+      loader.loadAsync(slot.assetPath),
+      slot.carry ? loader.loadAsync(slot.carry.assetPath) : Promise.resolve(null),
+    ]);
+    if (request !== equipRequest) return;
+    const aligned = gripAligned(weapon.scene.clone(true));
+    holder.clear();
+    swordMesh = aligned.children[0]!;
     holder.add(swordMesh);
+    scabbard?.removeFromParent();
+    weaponSlot = slot;
+    activeCarry = slot.carry?.mount === 'hip' ? mounts.hip : mounts.back;
+    scabbard = carry ? gripAligned(carry.scene.clone(true)) : null;
+    if (scabbard) {
+      scabbard.traverse(node => { if ((node as Mesh).isMesh) { (node as Mesh).castShadow = true; (node as Mesh).receiveShadow = true; } });
+      snapToSocket(scabbard, activeCarry);
+    }
     collectMaterials(swordMesh);
-    updateHitShape(swordMesh, slot.hitShape);
-    updateBackSocketTransform(slot);
+    hitSegment(holder, bladeBase, bladeTip);
+    setElemental(elemental, elementalNation);
     arm(isArmedState);
   };
 
@@ -443,7 +307,8 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     currentOutfit = newOutfitId;
 
     if (holder.parent) holder.parent.remove(holder);
-    if (backSocket.parent) backSocket.parent.remove(backSocket);
+    mounts.back.removeFromParent();
+    mounts.hip.removeFromParent();
 
     const nextBody = await kit.build(config, 'hero', undefined, newOutfitId);
 
@@ -455,7 +320,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     }
     heroModel.scale.copy(nextBody.scale);
 
-    const nextHand = heroModel.getObjectByName(weaponSlot.handBone) as Bone | undefined;
+    const nextHand = heroModel.getObjectByName('hand_r') as Bone | undefined;
     if (nextHand) handBone = nextHand;
     const nextHandL = heroModel.getObjectByName('hand_l') as Bone | undefined;
     if (nextHandL) handL = nextHandL;
@@ -467,11 +332,10 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     if (nextKneeR) kneeR = nextKneeR;
     const nextKneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
     if (nextKneeL) kneeL = nextKneeL;
-    const nextSpine = heroModel.getObjectByName(weaponSlot.sheatheBone);
-    if (nextSpine) spine = nextSpine;
-
-    spine.add(backSocket);
-    updateBackSocketTransform(weaponSlot);
+    palm = palmSocket(heroModel);
+    mounts = carrySockets(heroModel);
+    activeCarry = weaponSlot.carry?.mount === 'hip' ? mounts.hip : mounts.back;
+    if (scabbard) snapToSocket(scabbard, activeCarry);
     arm(isArmedState);
 
     const newFittedClips = await kit.fitClips(config.sex, rawAnimationClips, 'hero', newOutfitId, config.person);
@@ -492,8 +356,9 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     get kneeL(): Bone { return kneeL!; },
     bladeBase,
     bladeTip,
-    backSocket,
+    get backSocket(): Object3D { return activeCarry; },
     arm,
+    poseDraw,
     equipWeapon,
     getLimbWorldPosition,
     strikeLimbOf: (clip: string) => strikeLimbs.of(clip),

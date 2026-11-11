@@ -1,7 +1,6 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import {
   type AnimationClip,
-  CylinderGeometry,
   Group,
   Mesh,
   MeshStandardMaterial,
@@ -17,7 +16,9 @@ import type { Health } from '../../shared/src/index.js';
 import { AnimationPlayer } from './anim/index.js';
 import { HeroController } from './controller.js';
 import { inFront } from './hits.js';
-import { SWORD_WEAPON } from './weapon.js';
+import { CLUB_WEAPON, DESERTER_WEAPON, KNIFE_WEAPON, SWORD_WEAPON } from './weapon.js';
+import { gripAligned, palmSocket, snapToSocket } from './weapon-mount.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 const tuning = balance.enemy;
 /** Gravity multiplier while launched, so bodies arc up and drop instead of drifting. */
@@ -101,30 +102,18 @@ function huskClips(clips: AnimationClip[]): AnimationClip[] {
   });
 }
 
-/** A short wooden club with an iron band, in metres, for villains without a blade. */
-function createClub(): Object3D {
-  const group = new Group();
-  const wood = new MeshStandardMaterial({ color: 0x3b2a1d, roughness: 0.9 });
-  const iron = new MeshStandardMaterial({ color: 0x4a4744, roughness: 0.55, metalness: 0.7 });
-  const shaft = new Mesh(new CylinderGeometry(0.045, 0.022, 0.72, 8), wood);
-  shaft.position.y = 0.36;
-  const band = new Mesh(new CylinderGeometry(0.05, 0.05, 0.06, 8), iron);
-  band.position.y = 0.58;
-  for (const mesh of [shaft, band]) { mesh.castShadow = true; group.add(mesh); }
-  return group;
-}
-
 /** Villains are built from the creator's male and female bodies, each a rolled look in worn rags. */
 export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<EnemyTemplate> {
-  const [body, huskSet, mixamo, combat, unarmedA, unarmedB, sword, street] = await Promise.all([
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  const [body, huskSet, mixamo, combat, unarmedA, unarmedB, street, ...weaponAssets] = await Promise.all([
     loader.loadAsync('/assets/characters/hero.glb'),
     loader.loadAsync('/assets/characters/enemy.glb'),
     loader.loadAsync('/assets/characters/mixamo.glb').catch(() => null),
     loader.loadAsync('/assets/characters/combat.glb'),
     loader.loadAsync('/assets/characters/unarmed_a.glb'),
     loader.loadAsync('/assets/characters/unarmed_b.glb'),
-    loader.loadAsync(SWORD_WEAPON.assetPath).catch(() => null),
     loader.loadAsync('/assets/characters/townsfolk_mixamo.glb').catch(() => null),
+    ...[SWORD_WEAPON, KNIFE_WEAPON, DESERTER_WEAPON, CLUB_WEAPON].map(slot => loader.loadAsync(slot.assetPath)),
   ]);
   // Walking, hits and death come from the hero's own clips; mixamo adds flying death and standing recovery.
   const own = body.animations.filter(c => ['idle', 'walk', 'run', 'hit', 'death', 'cast'].includes(c.name));
@@ -155,9 +144,10 @@ export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<Enem
       kinds,
     });
   }
-  const swordMesh = sword?.scene.getObjectByName(SWORD_WEAPON.meshName ?? 'Sword') ?? null;
-  const weapons: Record<string, Object3D> = { club: createClub() };
-  if (swordMesh) weapons.sword = swordMesh;
+  const weapons: Record<string, Object3D> = {};
+  ['sword', 'knife', 'deserter_sword', 'club'].forEach((id, i) => {
+    weapons[id] = weaponAssets[i]!.scene;
+  });
   return { variants, weapons };
 }
 
@@ -179,6 +169,8 @@ export class Enemy {
   lastSwing = -1;
   /** Seconds left on the white hit flash. */
   flash = 0;
+  private heldWeapon: Object3D | null = null;
+  private weaponPalm: Object3D | null = null;
   private timer = 0;
   private length = 0;
   private struck = false;
@@ -219,21 +211,16 @@ export class Enemy {
     else { this.once('idle', 1); this.length = 0.5; }
   }
 
-  /** Puts the villain's weapon in its right hand, using the hero's sword grip. */
+  /** Equipment choices come from the kind's balance entry; the rig owns its palm. */
   private arm(template: EnemyTemplate): void {
     const choices = (this.fit.weapons ?? []).filter(w => template.weapons[w]);
     if (!choices.length) return;
     const pick = choices[Math.floor(Math.random() * choices.length)]!;
-    const hand = this.model.getObjectByName(SWORD_WEAPON.handBone);
-    if (!hand) return;
-    const holder = new Group();
-    holder.position.set(...SWORD_WEAPON.handOffset);
-    holder.rotation.set(...SWORD_WEAPON.handRotation);
-    const weapon = template.weapons[pick]!.clone();
-    if (pick === 'sword') holder.scale.setScalar(SWORD_WEAPON.handScale);
-    weapon.traverse(n => { if ((n as Mesh).isMesh) (n as Mesh).castShadow = true; });
-    holder.add(weapon);
-    hand.add(holder);
+    const holder = gripAligned(template.weapons[pick]!.clone(true));
+    holder.traverse(n => { if ((n as Mesh).isMesh) (n as Mesh).castShadow = true; });
+    this.heldWeapon = holder;
+    this.weaponPalm = palmSocket(this.model);
+    snapToSocket(holder, this.weaponPalm);
   }
 
   /**
@@ -597,6 +584,7 @@ export class Enemy {
       }
     }
     this.anim.update(delta);
+    if (this.heldWeapon && this.weaponPalm) snapToSocket(this.heldWeapon, this.weaponPalm);
   }
 
   get gone(): boolean { return this.state === 'dead' && this.timer > tuning.corpseSeconds + tuning.sinkSeconds; }
