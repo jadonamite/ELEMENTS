@@ -43,13 +43,13 @@ export function mineRoadMesh(material: Material): Mesh {
   const mesh = new Mesh(g, material); mesh.name = 'cinderpit-road'; mesh.receiveShadow = true; return mesh;
 }
 /**
- * Far-pass materials write no depth: the town pass runs first and fills its depth buffer.
- * The far pass then draws only where the town left no fragment (sky pixels), so near/mid
- * terrain tiles and town geometry always win over far tiles at the same world position.
- * No depth remapping is needed: far materials simply set depthWrite=false and depthTest=true.
+ * Far-pass materials write real depth, in their own camera's space. The far pass runs first and
+ * owns the whole frame, including the sky (it is the only sky in either scene), so far tiles must
+ * occlude each other and must occlude the sky behind them. Nothing is compared against the town's
+ * depth buffer: the town pass clears depth after this pass, so the two cameras' scales never meet.
  */
 function farDepth(material: Material): void {
-  material.depthWrite = false;
+  material.depthWrite = true;
   material.depthTest = true;
 }
 export interface NationalView { scene: Scene; sky: Mesh; ready: Promise<void>; tiles: number; visible: number; update(camera: Camera, resident?: readonly ReadonlyMap<string, { ix: number; iz: number }>[]): void; dispose(): void }

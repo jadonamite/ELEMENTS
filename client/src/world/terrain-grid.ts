@@ -1,7 +1,11 @@
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { Field } from './landscape.js';
 
-/** Grid samples are shared with Rapier. Skirts close transitions between different sampling intervals. */
+/**
+ * Grid samples are shared with Rapier. A skirt hangs from the tile edge to close the crack where a finer mesh
+ * sits on a coarser one. It is a repair, not a surface, so it is sized to the crack, and an edge normal is
+ * sampled over the tile's own interval so the boundary row shades like the row beside it.
+ */
 export function tileGeometry(field: Field, skirt = 16, height?: (x: number, z: number) => number): BufferGeometry {
   const { nx, nz, width, depth, heights } = field, row = nz + 1;
   const base = (nx + 1) * row, edgeCount = 2 * (nx + nz + 2);
@@ -14,9 +18,11 @@ export function tileGeometry(field: Field, skirt = 16, height?: (x: number, z: n
     let dx = (heights[Math.min(nx, ix + 1) * row + iz]! - heights[Math.max(0, ix - 1) * row + iz]!) / ((ix === 0 || ix === nx ? 1 : 2) * width / nx);
     let dz = (heights[ix * row + Math.min(nz, iz + 1)]! - heights[ix * row + Math.max(0, iz - 1)]!) / ((iz === 0 || iz === nz ? 1 : 2) * depth / nz);
     if (height && (ix === 0 || ix === nx || iz === 0 || iz === nz)) {
-      const wx = x + field.cx, wz = z + field.cz;
-      dx = (height(wx + 2, wz) - height(wx - 2, wz)) / 4;
-      dz = (height(wx, wz + 2) - height(wx, wz - 2)) / 4;
+      // Sample the edge normal over the tile's own interval, not a fixed 2 m: a stencil that disagrees with the grid
+      // gives the boundary row a different slope from the row beside it, which shades as a comb along every tile edge.
+      const wx = x + field.cx, wz = z + field.cz, hx = width / nx, hz = depth / nz;
+      dx = (height(wx + hx, wz) - height(wx - hx, wz)) / (2 * hx);
+      dz = (height(wx, wz + hz) - height(wx, wz - hz)) / (2 * hz);
     }
     const length = Math.hypot(dx, 1, dz);
     normals.set([-dx / length, 1 / length, -dz / length], i * 3);

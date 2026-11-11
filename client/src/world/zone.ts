@@ -256,7 +256,8 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     },
     volcano: { x: VOLCANO.x - ORIGIN.x, y: VOLCANO.height - ORIGIN.y, z: VOLCANO.z - ORIGIN.z },
   };
-  if (debug) Object.assign(win.elements!, { map });
+  // Debug only: the frame is built from these three layers, so a review can show and hide each one.
+  if (debug) Object.assign(win.elements!, { map, layers: { town: scene, far: national.scene, near: stream.near.batch, mid: stream.mid.batch } });
 
   // The town.
   const builder = new WorldBuilder({ low });
@@ -293,15 +294,21 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     .then(() => { scene.add(props); map.ready = true; });
 
   // Post: sanitize first (stops NaN black frames), bloom for fire and slag, grade, then anti-aliasing.
-  // Pass order: town first (clears and fills depth), national far second (depthWrite=false so it only
-  // draws sky pixels the town didn't reach — no seams where near/mid tiles meet far tiles).
+  // Pass order: the national far pass first, then the town pass with the depth buffer cleared.
+  // The far pass owns the frame including the sky (it is the only sky in either scene) and writes
+  // depth with its own 26 km camera; the town pass then clears that depth and draws the town and
+  // the near/mid cells over it with its own 2.6 km camera. The two depth scales are never compared,
+  // so a far tile can no longer win a depth test against a 500-2,600 m town object, and the far
+  // sky can no longer paint over far tiles. Resident-cell exclusion still keeps far tiles out from
+  // under the cells that are already resident.
   const composer = new EffectComposer(renderer);
   composer.renderTarget1.texture.type = HalfFloatType;
   composer.renderTarget2.texture.type = HalfFloatType;
-  const townPass = new RenderPass(scene, camera);
-  composer.addPass(townPass);
   const farPass = new RenderPass(national.scene, farCamera);
-  farPass.clear = false; farPass.clearDepth = false;
+  composer.addPass(farPass);
+  const townPass = new RenderPass(scene, camera);
+  townPass.clear = false; townPass.clearDepth = true;
+  composer.addPass(townPass);
   const renderFar = farPass.render.bind(farPass);
   farPass.render = (...args) => {
     // Record call count before far pass so we can compute far-only delta.
@@ -310,7 +317,6 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     farStats.calls = renderer.info.render.calls - callsBefore;
     farStats.triangles = renderer.info.render.triangles - trisBefore;
   };
-  composer.addPass(farPass);
   /** Readies an object to draw the way the scene pass draws it, before it first shows. */
   // Lazy model detail warms against matching lights without redrawing the live town for each arriving model.
   const warmUp = (object: Object3D, onProgress?: (fraction: number) => void): Promise<void> => {
