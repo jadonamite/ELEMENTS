@@ -40,6 +40,7 @@ import { StreetChallenges } from './life/street-challenges.js';
 import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
+import { playerPerson } from './life/crowd.js';
 import { Group, Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { ClientRobberGang } from './agents/outlaws/robberGang.js';
@@ -408,6 +409,7 @@ async function main(): Promise<void> {
       controller,
       clock: zone.clock,
       sound,
+      playerPerson: playerPerson(hero.character),
       getPlayerContext: () => ({
         name: 'Traveler',
         isLit: !isDim,

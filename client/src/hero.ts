@@ -21,7 +21,7 @@ import {
 } from 'three';
 import balance from '../../shared/balance.json';
 import { BodyKit, parseOutfit, type OutfitId } from './body.js';
-import { getDefaultCharacterConfig, getStoredCharacter } from './creator/creator-types.js';
+import { getDefaultCharacterConfig, getStoredCharacter, type CharacterConfig } from './creator/creator-types.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { AnimationPlayer } from './anim/index.js';
@@ -35,6 +35,8 @@ export type Limb = 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'knee_r' | 'knee_
 export interface HeroInstance {
   /** Root 3D container added to the scene. */
   model: Group;
+  /** Who the player is: sex, body and sheet person. */
+  character: CharacterConfig;
   /** Animation player controlling locomotion and combat clips. */
   anim: AnimationPlayer;
   /** Weapon mesh/group attached to the right hand or back. */
@@ -487,6 +489,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
 
   return {
     model: heroModel,
+    character: config,
     anim,
     sword: holder,
     get weaponSlot(): WeaponSlotData { return weaponSlot; },
