@@ -300,14 +300,24 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   farPass.clear = false; farPass.clearDepth = false;
   const renderFar = farPass.render.bind(farPass);
   farPass.render = (...args) => {
+    // Record call count before far pass so we can compute far-only delta.
+    const callsBefore = renderer.info.render.calls, trisBefore = renderer.info.render.triangles;
     renderFar(...args);
-    farStats.calls = renderer.info.render.calls; farStats.triangles = renderer.info.render.triangles;
+    farStats.calls = renderer.info.render.calls - callsBefore;
+    farStats.triangles = renderer.info.render.triangles - trisBefore;
   };
   composer.addPass(farPass);
   /** Readies an object to draw the way the scene pass draws it, before it first shows. */
   // Lazy model detail warms against matching lights without redrawing the live town for each arriving model.
   const warmUp = (object: Object3D, onProgress?: (fraction: number) => void): Promise<void> => {
-    if (object === scene) return warm(renderer, scene, camera, object, composer.renderTarget1, onProgress);
+    if (object === scene) {
+      // Also compile far-pass materials (farMaterial, waterMat in national.scene).
+      // They are in national.scene which the town warm never visits, causing a first-frame stall.
+      return Promise.all([
+        warm(renderer, scene, camera, scene, composer.renderTarget1, onProgress ? p => onProgress(p * 0.9) : undefined),
+        renderer.compileAsync(national.scene, farCamera, national.scene),
+      ]).then(() => {});
+    }
     const modelWarmScene = new Scene(); modelWarmScene.fog = fog;
     modelWarmScene.environment = scene.environment; modelWarmScene.environmentIntensity = scene.environmentIntensity;
     for (const child of scene.children) if ('isLight' in child) modelWarmScene.add(child.clone());
