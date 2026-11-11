@@ -390,6 +390,11 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   // Build animation clips, including bare hands combos & bending moves
   const combatClips = (await loader.loadAsync('/assets/characters/combat.glb')).animations;
   calmRunBounce(heroGltf.animations);
+  // Locomotion is the retargeted Mixamo pack: idle, walk, strafe and turn in place, jump.
+  const locomotionClips = (await loader.loadAsync('/assets/characters/locomotion.glb')).animations;
+  // The mannequin's own relaxed idle, walk and jump are replaced by the pack; its start/land jump clips are unused.
+  const REPLACED = new Set(['idle_relaxed', 'walk', 'jump', 'jump_start', 'jump_land']);
+  const bodyClips = heroGltf.animations.filter(clip => !REPLACED.has(clip.name));
 
   // Unarmed fighting uses real punch and knee clips; the bare moves map onto them by name.
   const unarmed = [
@@ -424,7 +429,8 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   }
 
   const rawAnimationClips: readonly AnimationClip[] = [
-    ...heroGltf.animations,
+    ...bodyClips,
+    ...locomotionClips,
     ...combatClips,
     ...subclips,
   ];
