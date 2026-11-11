@@ -22,6 +22,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LOOKS, resolveSurface, surfaceColor, worldUv, type Surface } from './materials.js';
+import { Treads } from './treads.js';
 import { roof } from './roofs.js';
 
 export type PlantKind = 'ginkgo' | 'maple' | 'weed' | 'fern';
@@ -178,6 +179,8 @@ export class WorldBuilder {
   /** Pieces by material and ground cell. */
   private readonly buckets = new Map<string, { bucket: Bucket; list: BufferGeometry[] }>();
   readonly colliders: Collider[] = [];
+  /** What each piece of ground is made of, for anything that asks what feet stand on. */
+  readonly treads = new Treads<Surface>();
   readonly emitters: Emitter[] = [];
   /** Where people belong: behind every counter, at every anvil and door. */
   readonly posts: Post[] = [];
@@ -224,6 +227,7 @@ export class WorldBuilder {
     if (!localUv && !GLOWS.includes(b as Glow)) g = worldUv(g, LOOKS[b as Surface].tile);
     if (!g.getAttribute('uv1')) g.setAttribute('uv1', g.getAttribute('uv'));
     g.computeBoundingBox();
+    if (!GLOWS.includes(bucket as Glow)) this.treads.add(bucket as Surface, g.boundingBox!);
     const c = g.boundingBox!.getCenter(new Vector3());
     const cellSize = this.low ? 350 : BUILD_CELL;
     const key = `${b}|${cellKey(c.x, c.z, cellSize)}`;

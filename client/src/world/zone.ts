@@ -76,6 +76,8 @@ export interface Zone {
   posts: readonly Post[];
   /** Where passers-by stop to look at goods: stalls, tables, counters. */
   browse: readonly Browse[];
+  /** What the ground is made of under feet at a spot; open land outside the town is ash and cinder. */
+  surfaceAt(x: number, y: number, z: number): Surface;
   /** The point the shadows and the nearest lights follow, usually the hero. */
   follow(point: Vector3): void;
   setSize(width: number, height: number): void;
@@ -288,6 +290,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   return {
     scene, camera, renderer, clock, ready, posts: builder.posts, browse: builder.browse,
+    surfaceAt: (x, y, z) => builder.treads.at(x, y, z) ?? 'ash_cinder_ground',
     physics: { world, step: () => world.step(), dispose: () => world.free() },
     follow(point) { followed = point; },
     warm: warmUp,

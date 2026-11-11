@@ -34,6 +34,7 @@ export class AnimationPlayer {
   private readonly defaultFadeDuration: number;
   private isDisposed = false;
   private plant: FootPlant | null = null;
+  private landedSince = 0;
   private readonly plantFeet: boolean;
 
   constructor(
@@ -100,6 +101,17 @@ export class AnimationPlayer {
     return this.play(name, fadeDuration, false);
   }
 
+  /**
+   * Feet that have come down since this was last asked (LEFT_FOOT, RIGHT_FOOT bits), so each landing is
+   * reported once; undefined for a body whose feet are not tracked.
+   */
+  takeLanded(): number | undefined {
+    if (!this.plant) return undefined;
+    const landed = this.landedSince;
+    this.landedSince = 0;
+    return landed;
+  }
+
   /** Playback speed of a clip, where 1 is its authored speed. */
   setSpeed(name: string, scale: number): void {
     this.actions.get(name)?.setEffectiveTimeScale(scale);
@@ -117,7 +129,10 @@ export class AnimationPlayer {
     if (this.isDisposed) return;
     this.updateWeights(deltaSeconds * this.mixer.timeScale);
     this.mixer.update(deltaSeconds);
-    this.plant?.apply();
+    if (this.plant) {
+      this.plant.apply();
+      this.landedSince |= this.plant.landed;
+    }
   }
 
   private updateWeights(deltaSeconds: number): void {

@@ -21,10 +21,40 @@ export interface SoundCameraLike {
 export interface SoundControllerLike {
   position: SoundPosition;
   speed: number;
+  /** False in a jump or a fall; taken as true when absent. */
+  grounded?: boolean;
+}
+
+/** How a kind of ground sounds underfoot. */
+export type StepFamily = 'stone' | 'slab' | 'dirt' | 'gravel' | 'grass' | 'wood' | 'tile' | 'cloth';
+
+/** The sound family of a built surface, by the name the world gives it. */
+export function stepFamily(surface: string | null | undefined): StepFamily {
+  switch (surface) {
+    case 'worn_flagstones': case 'ashlar_stone_blocks': case 'pale_stone': case 'lime_plaster':
+    case 'sooted_plaster': case 'ash_plaster': case 'red_lacquer': case 'gold_trim':
+      return 'slab';
+    case 'packed_dirt_road': case 'dirt_verge':
+      return 'dirt';
+    case 'ash_cinder_ground':
+      return 'gravel';
+    case 'moss':
+      return 'grass';
+    case 'charred_timber_beams': case 'raw_timber':
+      return 'wood';
+    case 'roof_slates': case 'roof_tile_charcoal': case 'roof_tile_red': case 'terracotta':
+      return 'tile';
+    case 'indigo_cloth':
+      return 'cloth';
+    default:
+      return 'stone';
+  }
 }
 
 export interface SoundEnemyLike {
   readonly controller: SoundControllerLike;
+  /** Feet that landed this frame (bit 1 left, bit 2 right); absent for bodies whose feet are not tracked. */
+  readonly steps?: number | undefined;
   readonly alive: boolean;
   readonly state?: string;
   readonly attacking?: boolean;
@@ -39,7 +69,10 @@ export interface SoundSwordLike {
 export interface SoundWorldContext {
   minute?: number;
   playerPos?: SoundPosition;
-  surface?: 'stone' | 'dirt' | 'wood';
+  /** Feet of the hero that landed this frame (bit 1 left, bit 2 right); absent when feet are not tracked. */
+  heroSteps?: number | undefined;
+  /** The built surface under a pair of feet, as the world names it. */
+  surfaceAt?: (position: SoundPosition) => string | null;
 }
 
 export interface SoundManagerOptions {
@@ -48,7 +81,15 @@ export interface SoundManagerOptions {
   fxQuality?: 'high' | 'low';
 }
 
-interface VillainAudioState {
+/** Speed, in m/s, from which a step is a running step. */
+const RUN_SPEED = 3.8;
+
+interface Stride {
+  strideDistance: number;
+  lastStepRight: boolean;
+}
+
+interface VillainAudioState extends Stride {
   strideDistance: number;
   wasAttacking: boolean;
   deathPlayed: boolean;
@@ -85,8 +126,7 @@ export class SoundManager {
   ambientActive = false;
 
   // Hero locomotion and stride
-  private heroStrideDistance = 0;
-  private heroLastStepRight = false;
+  private readonly heroStride: Stride = { strideDistance: 0, lastStepRight: false };
 
   // Sword state tracking for draw/sheathe foley
   private lastSwordArmed = false;
@@ -285,6 +325,41 @@ export class SoundManager {
       ambient_forge_hammer: ['/assets/audio/ambient_forge_hammer.ogg'],
       ambient_market: ['/assets/audio/ambient_market.ogg'],
       ambient_night_insects: ['/assets/audio/ambient_night_insects.ogg'],
+      footstep_slab: [
+        '/assets/audio/footstep_slab_01.mp3',
+        '/assets/audio/footstep_slab_02.mp3',
+        '/assets/audio/footstep_slab_03.mp3',
+        '/assets/audio/footstep_slab_04.mp3',
+        '/assets/audio/footstep_slab_05.mp3',
+      ],
+      footstep_gravel: [
+        '/assets/audio/footstep_gravel_01.mp3',
+        '/assets/audio/footstep_gravel_02.mp3',
+        '/assets/audio/footstep_gravel_03.mp3',
+        '/assets/audio/footstep_gravel_04.mp3',
+        '/assets/audio/footstep_gravel_05.mp3',
+      ],
+      footstep_grass: [
+        '/assets/audio/footstep_grass_01.mp3',
+        '/assets/audio/footstep_grass_02.mp3',
+        '/assets/audio/footstep_grass_03.mp3',
+        '/assets/audio/footstep_grass_04.mp3',
+        '/assets/audio/footstep_grass_05.mp3',
+      ],
+      footstep_tile: [
+        '/assets/audio/footstep_tile_01.mp3',
+        '/assets/audio/footstep_tile_02.mp3',
+        '/assets/audio/footstep_tile_03.mp3',
+        '/assets/audio/footstep_tile_04.mp3',
+        '/assets/audio/footstep_tile_05.mp3',
+      ],
+      footstep_cloth: [
+        '/assets/audio/footstep_cloth_01.mp3',
+        '/assets/audio/footstep_cloth_02.mp3',
+        '/assets/audio/footstep_cloth_03.mp3',
+        '/assets/audio/footstep_cloth_04.mp3',
+        '/assets/audio/footstep_cloth_05.mp3',
+      ],
       footstep_dirt_walk: [
         '/assets/audio/footstep_dirt_walk_01.ogg',
         '/assets/audio/footstep_dirt_walk_02.ogg',
@@ -444,8 +519,8 @@ export class SoundManager {
    * Main per-frame sound updater. Handles:
    * - Listener positioning
    * - Ambient loop volume drift across places (forge, market, terraces) and time (day, dusk, night)
-   * - Hero footstep locomotion tracking with surface detection (stone, dirt, wood)
-   * - Villain spatialized footsteps and swings
+   * - Hero and villain footsteps as each foot lands, on the ground the world reports under it
+   * - Villain spatialized swings
    * - Sword draw/sheathe state foley
    */
   update(
@@ -509,26 +584,12 @@ export class SoundManager {
       this.ambientLayerGains[5]?.gain.setTargetAtTime(Math.max(0.0001, insectsTarget), this.ctx.currentTime, 0.1);
     }
 
-    // Hero footsteps tracking locked to animation footfall distance with surface detection
+    // A step sounds when a foot lands, on whatever the world says is under it.
+    const family = (position: SoundPosition): StepFamily => stepFamily(worldContext?.surfaceAt?.(position));
     if (controller) {
-      const speed = controller.speed;
-      const isAirborne = controller.position.y > 0.06;
-      const isIdle = speed < 0.2;
-
-      if (isAirborne || isIdle) {
-        this.heroStrideDistance = 0;
-      } else {
-        const isRun = speed >= 3.8;
-        // Half-stride distance matching authored walk (0.485m) and run (1.48m)
-        const stepDistance = isRun ? 1.48 : 0.485;
-        this.heroStrideDistance += speed * delta;
-        if (this.heroStrideDistance >= stepDistance) {
-          this.heroStrideDistance -= stepDistance;
-          this.heroLastStepRight = !this.heroLastStepRight;
-          const footPitch = this.heroLastStepRight ? 1.04 : 0.96;
-          const surface = worldContext?.surface ?? this.detectSurface(controller.position);
-          this.playFootstep(isRun, footPitch, surface);
-        }
+      const landed = this.footfalls(this.heroStride, controller, delta, worldContext?.heroSteps);
+      for (const right of landed) {
+        this.playFootstep(controller.speed >= RUN_SPEED, right ? 1.04 : 0.96, family(controller.position));
       }
     }
 
@@ -552,20 +613,11 @@ export class SoundManager {
         }
         state.wasAttacking = isAttacking;
 
-        const vSpeed = enemy.controller.speed;
-        const vAirborne = enemy.controller.position.y > 0.08;
-        if (!vAirborne && vSpeed >= 0.25 && !isAttacking) {
-          const isRun = vSpeed >= 3.8;
-          const stepDistance = isRun ? 1.48 : 0.485;
-          state.strideDistance += vSpeed * delta;
-          if (state.strideDistance >= stepDistance) {
-            state.strideDistance -= stepDistance;
-            state.lastStepRight = !state.lastStepRight;
-            const footPitch = state.lastStepRight ? 1.03 : 0.95;
-            this.playVillainFootstep(enemy.controller.position, isRun, footPitch);
-          }
-        } else {
-          state.strideDistance = 0;
+        const steps = enemy.steps;
+        const landed = this.footfalls(state, enemy.controller, delta, isAttacking && steps !== undefined ? 0 : steps);
+        for (const right of landed) {
+          this.playVillainFootstep(enemy.controller.position, enemy.controller.speed >= RUN_SPEED, right ? 1.03 : 0.95,
+            family(enemy.controller.position));
         }
       }
     }
@@ -663,21 +715,34 @@ export class SoundManager {
     }
   }
 
-  /** Detects terrain surface from world position. */
-  detectSurface(pos: SoundPosition): 'stone' | 'dirt' | 'wood' {
-    // Packed dirt road between shrine and town
-    if (pos.x >= 10 && pos.x <= 60 && Math.abs(pos.z) <= 8.5) return 'dirt';
-    // Slag barrens / plot edge dirt
-    if (pos.x >= 168 && pos.x <= 214 && pos.z >= 16 && pos.z <= 50) return 'dirt';
-    // Market wooden stalls & wooden veranda
-    if (pos.y > 1.8 && pos.x > 105 && pos.x < 145 && (pos.z < -6 || pos.z > 6)) return 'wood';
-    return 'stone';
+  /**
+   * The feet that land this frame, as left (false) or right (true). A body whose feet are tracked reports its
+   * own landings; one without (a beast on four legs) steps by the ground it covers.
+   */
+  private footfalls(stride: Stride, body: SoundControllerLike, delta: number, steps: number | undefined): boolean[] {
+    if (body.grounded === false || body.speed < 0.2) {
+      stride.strideDistance = 0;
+      return [];
+    }
+    if (steps !== undefined) return [...(steps & 1 ? [false] : []), ...(steps & 2 ? [true] : [])];
+    const stepDistance = body.speed >= RUN_SPEED ? 1.48 : 0.485;
+    stride.strideDistance += body.speed * delta;
+    if (stride.strideDistance < stepDistance) return [];
+    stride.strideDistance -= stepDistance;
+    stride.lastStepRight = !stride.lastStepRight;
+    return [stride.lastStepRight];
   }
 
-  /** Hero footstep on surface (stone, dirt, wood), walk or run. */
-  playFootstep(isRun = false, pitchMult = 1.0, surface: 'stone' | 'dirt' | 'wood' = 'stone'): void {
-    const category = `footstep_${surface}_${isRun ? 'run' : 'walk'}`;
-    this.playSample(category, isRun ? 1.0 : 0.85, pitchMult, this.footstepGain);
+  /** Hero footstep on a kind of ground, walk or run. */
+  playFootstep(isRun = false, pitchMult = 1.0, family: StepFamily = 'stone'): void {
+    this.playSample(this.stepCategory(family, isRun), isRun ? 1.0 : 0.85, pitchMult, this.footstepGain);
+  }
+
+  /** Stone, dirt and wood have walk and run recordings; the other grounds have one set, pushed harder for a run. */
+  private stepCategory(family: StepFamily, isRun: boolean): string {
+    return family === 'stone' || family === 'dirt' || family === 'wood'
+      ? `footstep_${family}_${isRun ? 'run' : 'walk'}`
+      : `footstep_${family}`;
   }
 
   /**
@@ -751,10 +816,9 @@ export class SoundManager {
     this.playSample(category, 0.95, 1.0, this.sfxGain);
   }
 
-  /** Spatialized villain footstep on stone, quieter. */
-  playVillainFootstep(position: SoundPosition, isRun = false, pitchMult = 1.0): void {
-    const category = isRun ? 'footstep_stone_run' : 'footstep_stone_walk';
-    this.playSample(category, isRun ? 0.45 : 0.35, 0.95 * pitchMult, this.footstepGain, position);
+  /** Spatialized villain footstep, quieter. */
+  playVillainFootstep(position: SoundPosition, isRun = false, pitchMult = 1.0, family: StepFamily = 'stone'): void {
+    this.playSample(this.stepCategory(family, isRun), isRun ? 0.45 : 0.35, 0.95 * pitchMult, this.footstepGain, position);
   }
 
   /** Spatialized villain attack swing whoosh. */

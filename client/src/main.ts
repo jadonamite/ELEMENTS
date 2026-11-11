@@ -198,7 +198,7 @@ async function main(): Promise<void> {
   let lifeSystem: SindrLifeSystem | null = null;
   let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; }, locomotion: { get turnInPlace() { return turnInPlace; }, set turnInPlace(v: boolean) { turnInPlace = v; } } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, surfaceAt: zone?.surfaceAt, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; }, locomotion: { get turnInPlace() { return turnInPlace; }, set turnInPlace(v: boolean) { turnInPlace = v; } } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -1458,10 +1458,14 @@ async function main(): Promise<void> {
       bending: isLit, ultimateReady: bend.meter >= bend.max && fight.ready('ultimate', isLit),
       interact: contextAction.hasOffer,
     });
-    sound.update(delta, camera, controller, fight.enemies, sword, zone ? {
-      minute: zone.clock.minute,
-      playerPos: controller.position,
-    } : undefined);
+    sound.update(delta, camera, controller, fight.enemies, sword, {
+      heroSteps: hero.anim.takeLanded(),
+      ...(zone ? {
+        minute: zone.clock.minute,
+        playerPos: controller.position,
+        surfaceAt: (p: { x: number; y: number; z: number }) => zone.surfaceAt(p.x, p.y, p.z),
+      } : {}),
+    });
     fps?.tick();
     arena.render();
   });

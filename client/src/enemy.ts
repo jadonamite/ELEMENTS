@@ -299,6 +299,8 @@ export class Enemy {
   /** Spawning villains (husks still climbing out) can't be hit yet. */
   get hittable(): boolean { return this.state !== 'dead' && this.state !== 'spawn'; }
   get attacking(): boolean { return this.state === 'attack' || this.state === 'cast'; }
+  /** Feet that landed since last asked, for step sounds. */
+  get steps(): number | undefined { return this.anim.takeLanded(); }
   /** Seconds since death, for sinking and removal. */
   get deadFor(): number { return this.state === 'dead' ? this.timer : 0; }
 
