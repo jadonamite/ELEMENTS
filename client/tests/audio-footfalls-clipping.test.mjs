@@ -90,3 +90,58 @@ test('master compression and ceiling prevent clipping (peak < 0 dBFS)', () => {
   assert.ok(peak <= 0.0, `Peak level must never exceed 0 dBFS (was ${peak})`);
   assert.equal(manager.isClipping(), false, 'Master output must not clip');
 });
+
+test('audio waits through loading and onboarding, then unlocks on the first game input', async () => {
+  const originals = { window: globalThis.window, document: globalThis.document };
+  let loading = true, opening = false, resumes = 0, starts = 0;
+  const param = () => ({ setValueAtTime() {} });
+  const node = () => ({ gain: param(), connect() {} });
+  class AudioContextStub {
+    state = 'suspended';
+    currentTime = 0;
+    destination = {};
+    createGain() { return node(); }
+    createDynamicsCompressor() {
+      return { ...node(), threshold: param(), knee: param(), ratio: param(), attack: param(), release: param() };
+    }
+    createAnalyser() { return { ...node(), fftSize: 256 }; }
+    resume() { resumes++; this.state = 'running'; return Promise.resolve(); }
+    close() { return Promise.resolve(); }
+  }
+  class QuietSound extends SoundManager {
+    loadAllSamples() {}
+    startAmbientBed() { starts++; }
+  }
+  const browser = new EventTarget();
+  browser.location = { search: '' };
+  browser.AudioContext = AudioContextStub;
+  const doc = new EventTarget();
+  doc.getElementById = id => (id === 'elements-loader' && loading) || (id === 'opening-overlay' && opening) ? {} : null;
+  Object.assign(globalThis, { window: browser, document: doc });
+  let sound;
+  try {
+    sound = new QuietSound();
+    browser.dispatchEvent(new Event('pointerdown'));
+    assert.equal(resumes, 0);
+    loading = false; opening = true;
+    browser.dispatchEvent(new Event('keydown'));
+    assert.equal(resumes, 0);
+    opening = false;
+    browser.dispatchEvent(new Event('pointerdown'));
+    await Promise.resolve();
+    assert.equal(resumes, 1);
+    assert.equal(starts, 1);
+    browser.dispatchEvent(new Event('keydown'));
+    assert.equal(resumes, 1);
+    sound.dispose();
+    sound = new QuietSound();
+    sound.dispose();
+    browser.dispatchEvent(new Event('keydown'));
+    assert.equal(resumes, 1, 'Disposed managers cannot resume');
+  } finally {
+    sound?.dispose();
+    for (const [key, value] of Object.entries(originals)) {
+      if (value === undefined) delete globalThis[key]; else globalThis[key] = value;
+    }
+  }
+});

@@ -4,6 +4,9 @@ import './style.css';
 import './opening.css';
 import './threat-arrows.css';
 import balance from '../../shared/balance.json';
+import dialogueData from '../../shared/dialogue.json';
+import { dialogueRules } from '../../shared/src/story/dialogue.js';
+import { SpeechMemory } from '../../shared/src/story/speech.js';
 import { createArena, disposeObject, loadProps } from './scene.js';
 import { createZone, SPAWN } from './world/zone.js';
 import { initPhysics } from './physics.js';
@@ -76,12 +79,10 @@ async function main(): Promise<void> {
   panel.setAttribute('aria-label', inTown ? 'Town controls' : 'Arena controls');
   panel.hidden = true;
   panel.innerHTML = '<button type="button" disabled>Loading</button>' +
-    '<p id="control-status" class="hud-status" role="status"></p>' +
-    '<button type="button" class="hud-secondary" hidden>Change fighter</button>';
+    '<p id="control-status" class="hud-status" role="status"></p>';
   document.body.appendChild(panel);
   cleanup.push(() => panel.remove());
   const button = panel.querySelector('button')!;
-  const changeFighter = panel.querySelector<HTMLButtonElement>('.hud-secondary')!;
   const status = (message: string): void => {
     panel.querySelector('#control-status')!.textContent = message;
     if (message) panel.hidden = false;
@@ -97,19 +98,15 @@ async function main(): Promise<void> {
   let picker: FighterSelect | null = null;
   const loader = new Loader({
     destination: inTown ? 'town' : 'arena',
-    element: initialChoice,
     onEnter: () => {
       picker?.close();
-      button.click();
+      if (!document.getElementById('opening-overlay')) canvas.focus({ preventScroll: true });
     },
-    onChangeFighter: !forcedElement && !forcedHush ? () => {
-      picker?.open(true);
-    } : undefined,
   });
   cleanup.push(() => loader.dispose());
   loader.setProgress(0.05, 'Reading the world manifest');
 
-  loader.setProgress(0.12, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
+  loader.setProgress(0.10, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
   const zoneStart = performance.now();
   const zone = inTown ? await createZone(canvas) : null;
   if (zone) (window as unknown as { zoneLoadMs?: number }).zoneLoadMs = performance.now() - zoneStart;
@@ -120,7 +117,7 @@ async function main(): Promise<void> {
   const { scene, camera, renderer } = arena;
   if (!zone) loadProps(scene, undefined, initialChoice).catch((error: unknown) => console.error('Arena props failed to load:', error));
   cleanup.push(() => { renderer.setAnimationLoop(null); arena.dispose(); });
-  loader.setProgress(0.35, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
+  loader.setProgress(0.40, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
   const controller = new HeroController(physics.world, zone ? SPAWN : undefined, undefined, !zone);
   cleanup.push(() => controller.dispose());
   zone?.follow(controller.position);
@@ -141,10 +138,12 @@ async function main(): Promise<void> {
     }
   } catch (error) {
     if (!disposed) {
+      loader.dispose();
       button.textContent = 'Reload to retry';
       button.disabled = false;
       button.addEventListener('click', () => window.location.reload(), { once: true });
       status('The hero could not load. Reload the page to try again.');
+      button.focus({ preventScroll: true });
     }
     throw error;
   }
@@ -186,9 +185,10 @@ async function main(): Promise<void> {
   applyDrawing(forcedElement || forcedHush ? getStoredDrawing() : lastFighter() ?? getStoredDrawing());
 
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
-  if (!new URLSearchParams(window.location.search).has('skipIntro')) {
+  if (params.has('intro') && !params.has('skipIntro')) {
     const opening = new OpeningFlow((res) => {
       applyDrawing(forcedElement || forcedHush ? res : lastFighter() ?? res);
+      if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });
     });
     cleanup.push(() => opening.dispose());
   }
@@ -504,6 +504,7 @@ async function main(): Promise<void> {
       townEconomy?.brawlSeen();
     },
     notice: (msg) => notice(msg),
+    say: (speaker, concept) => villainSay(speaker, concept),
   }) : null;
   let deserterBand: ClientDeserterBand | null = null;
   if (zone && !playingOnline) {
@@ -606,10 +607,25 @@ async function main(): Promise<void> {
 
   /** Weapon, hands or legs; bending is a separate switch that works with any of them. */
   let armedWith: 'weapon' | 'hands' | 'legs' = 'weapon';
+  let hudClear: ReturnType<typeof setTimeout> | undefined;
+  /** One line in the fight HUD for `ms`; a newer line replaces it and its timer. */
+  const hudLine = (text: string, ms: number): void => {
+    fightHud.say(text);
+    clearTimeout(hudClear);
+    hudClear = setTimeout(() => { if (fight.heroAlive && !fight.isVictory) fightHud.say(''); }, ms);
+  };
   const notice = (text: string): void => {
     status(text);
-    fightHud.say(text);
-    setTimeout(() => { if (fight.heroAlive && !fight.isVictory) fightHud.say(''); }, 1600);
+    hudLine(text, 1600);
+  };
+  // Street villains speak through the same speech rules as the townsfolk, in their body's voice.
+  const streetSpeech = new SpeechMemory();
+  const villainSay = (speaker: Enemy, concept: string): void => {
+    const said = dialogueRules(dialogueData).speak({ concept, speakerId: 'street_gang', facts: { who: 'street_gang' } }, streetSpeech);
+    if (!said) return;
+    const p = speaker.controller.position;
+    void sound.speak(`street_gang_${speaker.sex}`, said.line, { x: p.x, y: p.y + 1.6, z: p.z });
+    hudLine(`Cutthroat: "${said.line}"`, 1500 + said.line.length * 60);
   };
   // Loot, the market stalls and death drops, held by the server. Sindr is an IGNIS town.
   townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', {
@@ -640,9 +656,6 @@ async function main(): Promise<void> {
   if (!forcedElement && !forcedHush) {
     picker = new FighterSelect(isDim ? { role: 'Hush' } : { role: 'Shaper', element: kitElement }, applyDrawing, () => button.click());
     cleanup.push(() => picker?.dispose());
-    picker.open();
-    changeFighter.hidden = false;
-    changeFighter.addEventListener('click', () => picker?.open(true));
   }
 
   const homeMenu = new HomeMenu({
@@ -681,7 +694,7 @@ async function main(): Promise<void> {
     lockedEnemy = target === lockedEnemy ? null : target;
     return true;
   };
-  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction });
+  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges });
   /** Whether this element keeps its current weapon in hand while bending. */
   const bendsArmed = (): boolean => {
     const allowed = (balance.combat.bendWithWeapon as Record<string, string | string[]>)[kitElement];
@@ -1053,7 +1066,7 @@ async function main(): Promise<void> {
     loader.setProgress(0.80, 'Lighting the braziers');
     await Promise.all([zone.ready, bending.ready, lifeSystem?.ready]);
     if (disposed) return;
-    loader.setProgress(0.88, 'Attuning the elements');
+    loader.setProgress(0.90, 'Attuning the elements');
     const looks = new Group();
     looks.add(...villainLooks(await villains));
     scene.add(looks);
@@ -1077,7 +1090,7 @@ async function main(): Promise<void> {
   button.textContent = zone ? 'Enter Sindr' : 'Enter the arena';
   status('');
   panel.hidden = true;
-  loader.ready(zone ? 'Enter Sindr' : 'Enter the arena');
+  loader.ready();
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();

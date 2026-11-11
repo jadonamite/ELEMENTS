@@ -198,6 +198,48 @@ test('touch releases a captured mouse without opening the menu or accepting stal
   } finally { f.restore(); }
 });
 
+test('first game key requests capture; loading input cannot capture or queue actions', () => {
+  const f = fixture();
+  try {
+    let captures = 0;
+    f.canvas.requestPointerLock = () => { captures++; return Promise.resolve(); };
+    let menus = 0;
+    f.input.onMenu = () => { menus++; };
+    let loading = true;
+    document.getElementById = id => id === 'elements-loader' && loading ? {} : null;
+    key('KeyQ', f.canvas);
+    key('Escape', f.canvas);
+    dispatch(f.canvas, 'click');
+    assert.equal(menus, 0, 'The loading screen blocks the menu as well as game actions');
+    assert.equal(captures, 0);
+    assert.deepEqual(f.input.takeActions(), []);
+    loading = false;
+    key('Escape', f.canvas);
+    assert.equal(captures, 0, 'Opening the menu does not capture the mouse');
+    assert.equal(menus, 1, 'The menu becomes available after loading');
+    key('KeyQ', f.canvas);
+    assert.equal(captures, 1);
+    assert.deepEqual(f.input.takeActions(), ['uppercut']);
+  } finally { f.restore(); }
+});
+
+
+test('capturing from the first movement key preserves that held movement', () => {
+  const f = fixture();
+  try {
+    let captures = 0;
+    f.canvas.requestPointerLock = () => { captures++; return new Promise(() => {}); };
+    key('KeyW', f.canvas);
+    key('ShiftLeft', f.canvas);
+    assert.equal(captures, 1, 'Only one capture request can be pending');
+    document.pointerLockElement = f.canvas;
+    dispatch(document, 'pointerlockchange');
+    assert.deepEqual(f.input.read(), { forward: 1, right: 0, running: true });
+    document.exitPointerLock();
+    assert.deepEqual(f.input.read(), { forward: 0, right: 0, running: false });
+  } finally { f.restore(); }
+});
+
 test('an open conversation takes number keys, wheel, left button and the context key while the mouse is captured', () => {
   const f = fixture();
   try {
