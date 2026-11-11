@@ -714,6 +714,27 @@ export class BendingEffects {
   }
 
   /**
+   * A blow that is not bending: steel throws a few short pale sparks, a fist or boot throws nothing but grit.
+   */
+  spawnImpact(origin: Vector3, steel: boolean): void {
+    const y = origin.y + 0.9;
+    for (let i = 0; i < (steel ? 6 : 3); i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 1.2 + Math.random() * 2.2;
+      tmpVec.set(origin.x, y + (Math.random() - 0.5) * 0.3, origin.z);
+      const velocity = new Vector3(Math.cos(a) * s, 0.8 + Math.random() * 1.6, Math.sin(a) * s);
+      if (steel) {
+        this.debris.spawn('spark', {
+          position: tmpVec, velocity, duration: 0.16 + Math.random() * 0.1, startSize: 0.035, endSize: 0.01,
+          gravity: -6, drag: 0.96, core: pieceColor.set(0xfff4dc), mid: pieceMid.set(0xc9b48f), opacity: 0.9,
+        });
+      } else {
+        this.spawnParticle('chip', tmpVec, velocity, 0.3, 0.025, 0.025, 'TERRA', 1.0);
+      }
+    }
+  }
+
+  /**
    * Spawns an impact burst of sparks and a flare of the element on hit.
    */
   spawnHitBurst(origin: Vector3, element: BendingType = 'IGNIS'): void {

@@ -358,7 +358,7 @@ async function main(): Promise<void> {
       hitStop = Math.max(hitStop, 0.12);
       notice('Parry');
     },
-    enemyHit(_enemy, killed, damage = 35, hitPos, isCrit = false) {
+    enemyHit(_enemy, killed, damage = 35, hitPos, isCrit = false, elemental = false) {
       bend.gain('hit');
       const isHeavy = isCrit || combat.current?.startsWith('heavy') || combat.current === 'uppercut' || combat.current === 'ground_pound';
       hitStop = killed ? 0.12 : isHeavy ? 0.09 : 0.06;
@@ -366,7 +366,9 @@ async function main(): Promise<void> {
       sound.playImpact(killed, false);
       killed ? sound.playVillainDeath(_enemy.controller.position) : sound.playVillainHurt(_enemy.controller.position);
       const pos = hitPos ?? _enemy.controller.position;
-      bending.spawnHitBurst(pos, heroElement);
+      // The effect follows the attack: the element only when bending landed the blow.
+      if (elemental) bending.spawnHitBurst(pos, heroElement);
+      else bending.spawnImpact(pos, sword.armed);
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
       if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone(), _enemy.element);
       if (killed) markKill(fight.allDead);
@@ -1018,7 +1020,8 @@ async function main(): Promise<void> {
         if (killed) markKill(false);
         shoulderCamera.shake(killed ? 0.35 : 0.14);
         sound.playImpact(killed, false);
-        bending.spawnHitBurst(at, heroElement);
+        if (combat.current && isBendMove(combat.current)) bending.spawnHitBurst(at, heroElement);
+        else bending.spawnImpact(at, sword.armed);
         fightHud.showDamage(at, damage, killed);
       },
       onHurt(hp, max) {
