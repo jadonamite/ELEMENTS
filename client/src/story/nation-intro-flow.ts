@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import type { HeroController } from '../controller.js';
 import type { ShoulderCamera } from '../camera.js';
 import type { GameInput } from '../input.js';
@@ -56,6 +56,17 @@ export class NationIntroFlow {
   private activeMissionLead: Lead | null = null;
   private masterPosition = new Vector3();
   private pendingTimers: any[] = [];
+
+  // Camera staging and smooth-blend
+  private cameraMode: 'cinematic' | 'blending' | 'released' = 'cinematic';
+  private blendProgress = 0;
+  private readonly blendDuration = 1.2; // 1.2 seconds smooth blend
+  private readonly cinematicPos = new Vector3();
+  private readonly cinematicLookAt = new Vector3();
+  private readonly blendStartPos = new Vector3();
+  private readonly blendStartQuat = new Quaternion();
+  private readonly tempTargetPos = new Vector3();
+  private readonly tempTargetQuat = new Quaternion();
 
   // Overlay elements
   private overlay: HTMLElement;
@@ -163,7 +174,65 @@ export class NationIntroFlow {
     }
   }
 
+  /**
+   * Directs the cinematic camera and smoothly blends into shoulderCamera when training begins.
+   * Returns true while overriding camera position/orientation.
+   */
+  applyCamera(camera: PerspectiveCamera, delta: number, reducedMotion = false): boolean {
+    if (this.cameraMode === 'released' || this.currentStep === 'idle' || this.currentStep === 'completed') {
+      return false;
+    }
+
+    const heroPos = this.opts.controller.position;
+
+    if (this.cameraMode === 'cinematic') {
+      const midX = (heroPos.x + this.masterPosition.x) / 2;
+      const midY = (heroPos.y + this.masterPosition.y) / 2 + 1.25;
+      const midZ = (heroPos.z + this.masterPosition.z) / 2;
+      this.cinematicLookAt.set(midX, midY, midZ);
+
+      // Low three-quarter cinematic two-shot angle
+      this.cinematicPos.set(heroPos.x - 2.8, heroPos.y + 1.25, heroPos.z - 2.0);
+      camera.position.copy(this.cinematicPos);
+      camera.lookAt(this.cinematicLookAt);
+
+      this.blendStartPos.copy(camera.position);
+      this.blendStartQuat.copy(camera.quaternion);
+      return true;
+    }
+
+    if (this.cameraMode === 'blending') {
+      this.tempTargetPos.copy(camera.position);
+      this.tempTargetQuat.copy(camera.quaternion);
+
+      const speed = reducedMotion ? 16.0 : (1.0 / this.blendDuration);
+      this.blendProgress += delta * speed;
+      const t = Math.min(1.0, this.blendProgress);
+      // Smoothstep easing (Hermite interpolation)
+      const eased = t * t * (3 - 2 * t);
+
+      camera.position.lerpVectors(this.blendStartPos, this.tempTargetPos, eased);
+      camera.quaternion.copy(this.blendStartQuat).slerp(this.tempTargetQuat, eased);
+
+      if (t >= 1.0) {
+        this.cameraMode = 'released';
+        return false;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  beginCameraBlend(): void {
+    if (this.cameraMode === 'cinematic') {
+      this.cameraMode = 'blending';
+      this.blendProgress = 0;
+    }
+  }
+
   private startTraining(): void {
+    this.beginCameraBlend();
     this.setStep('step_move');
     this.showDialogue(this.config.dialogue.stepFooting, this.config.master.voice);
     this.showStepPrompt(

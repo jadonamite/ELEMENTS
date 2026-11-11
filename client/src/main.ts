@@ -1419,6 +1419,7 @@ async function main(): Promise<void> {
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, baseSupply);
     fightHud.setPurse(zone ? (forcedCarry ?? townEconomy?.carried?.chroma ?? null) : null);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
+    nationIntro?.applyCamera(camera, delta, reducedMotion.matches);
     threatArrows.update(controller.position, fight.enemies, camera);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     lifeSystem?.update(delta);
