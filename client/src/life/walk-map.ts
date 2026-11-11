@@ -1,10 +1,11 @@
 import { Vector3 } from 'three';
+import { nationalWater } from '../world/landscape.js';
 import type { CombatSpace } from '../attacks/space.js';
 
 /** Cell size of the walk map, metres. */
 const CELL = 1.5;
 /** Highest step up and longest drop between two neighbouring cells (stairs, kerbs), metres. */
-const STEP_UP = 1.0;
+const STEP_UP = Math.tan(40 * Math.PI / 180) * CELL;
 const DROP = 1.2;
 /** The body a person is tested as: a ball this wide held this high above the floor. */
 const BODY_RADIUS = 0.35;
@@ -97,7 +98,7 @@ export class WalkMap {
   /** A cell at (cx, cz) standing on `floor`, if a body fits there. */
   private add(cx: number, cz: number, floor: number): number | null {
     const wx = cx * CELL, wz = cz * CELL;
-    const surface = this.water?.(wx, wz) ?? null;
+    const surface = this.water?.(wx, wz) ?? nationalWater(wx, wz);
     if (surface !== null && floor < surface - WADE) return null;
     a.set(wx, floor + BODY_HEIGHT, wz);
     if (!this.space.clear(a, b.set(wx + 0.01, floor + BODY_HEIGHT, wz), BODY_RADIUS + 0.05)) return null;

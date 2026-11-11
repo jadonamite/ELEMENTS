@@ -12,71 +12,31 @@ import { skyUniforms } from './clock.js';
 import { nightness, worldTime } from './effects.js';
 import { LOOKS } from './materials.js';
 
-const fract = (v: number): number => v - Math.floor(v);
-const hash = (x: number, z: number): number => fract(Math.sin(x * 127.1 + z * 311.7) * 43758.5453);
-function noise(x: number, z: number): number {
-  const ix = Math.floor(x), iz = Math.floor(z);
-  const fx = x - ix, fz = z - iz;
-  const ux = fx * fx * (3 - 2 * fx), uz = fz * fz * (3 - 2 * fz);
-  const a = hash(ix, iz), b = hash(ix + 1, iz), c = hash(ix, iz + 1), d = hash(ix + 1, iz + 1);
-  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
-}
-function fbm(x: number, z: number, octaves = 5): number {
-  let v = 0, a = 0.5;
-  for (let i = 0; i < octaves; i++) { v += a * noise(x, z); x = x * 2.03 + 17.1; z = z * 2.03 - 9.3; a *= 0.5; }
-  return v;
-}
-/** Sharp crests like eroded basalt ridges. */
-function ridged(x: number, z: number, octaves = 5): number {
-  let v = 0, a = 0.55, w = 1;
-  for (let i = 0; i < octaves; i++) {
-    let n = 1 - Math.abs(noise(x, z) * 2 - 1);
-    n *= n * w;
-    w = Math.min(1, n * 1.6);
-    v += n * a;
-    x = x * 2.1 + 5.3; z = z * 2.1 - 3.7; a *= 0.5;
-  }
-  return v;
-}
+import { groundHeight, waterHeight, smooth } from '../../../shared/src/world/ignis/ground.js';
+import { LEGACY_SINDR_ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
 
 export interface Walkable {
-  /** Metres from the nearest walkable ground; 0 or less is inside. */
   distance(x: number, z: number): number;
-  /** Height of the walking surface; missing means 0. */
   floorAt?(x: number, z: number): number;
-  /** Terrain height under built ground, which may sit below the floor; missing means the floor. */
   groundAt?(x: number, z: number): number;
 }
-
 export interface Peak { x: number; z: number; radius: number; height: number }
 
-/** Ground height: flat where people walk, a steep basalt bank at the edge, then broken hills. */
-export function heightAt(x: number, z: number, walk: Walkable, peaks: Peak[]): number {
-  const d = walk.distance(x, z);
-  const base = d > 0 ? (walk.floorAt?.(x, z) ?? 0) : (walk.groundAt?.(x, z) ?? walk.floorAt?.(x, z) ?? 0);
-  let h = 0;
-  if (d > 0) {
-    // Warp the edge so banks wander instead of following the town's straight lines.
-    const warp = (fbm(x * 0.03, z * 0.03, 3) - 0.5) * 10;
-    const e = Math.max(0, d + warp);
-    const bank = 5.5 * smoothstep(0, 5, e);
-    const hills = smoothstep(4, 60, e) * (ridged(x * 0.012, z * 0.012) * 42 + fbm(x * 0.05, z * 0.05) * 6);
-    h = bank + hills + (fbm(x * 0.4, z * 0.4, 2) - 0.5) * 0.8 * smoothstep(0, 4, e);
-  }
-  h += base;
-  const outside = smoothstep(0, 8, d);
-  for (const p of peaks) {
-    const r = Math.hypot(x - p.x, z - p.z) / p.radius;
-    if (r < 1.4 && outside > 0) h = Math.max(h, outside * p.height * Math.pow(Math.max(0, 1 - r / 1.4), 1.6) * (0.75 + 0.5 * ridged(x * 0.03, z * 0.03, 3)));
-  }
-  return h;
+/** The only conversion from national ASL ground into the unchanged town's render frame. */
+export function nationalSurface(x: number, z: number): number {
+  return groundHeight(x + LEGACY_SINDR_ORIGIN.x, z + LEGACY_SINDR_ORIGIN.z) - LEGACY_SINDR_ORIGIN.y;
 }
-
-function smoothstep(a: number, b: number, v: number): number {
-  const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
-  return t * t * (3 - 2 * t);
+export function nationalWater(x: number, z: number): number | null {
+  const water = waterHeight(x + LEGACY_SINDR_ORIGIN.x, z + LEGACY_SINDR_ORIGIN.z);
+  return water === null ? null : water - LEGACY_SINDR_ORIGIN.y;
 }
-
+/** Built ground retains canal beds and terrace foundations; its seam ends six metres outside the envelope. */
+export function surfaceAt(x: number, z: number, built: Walkable): number {
+  const h = nationalSurface(x, z), d = built.distance(x, z);
+  if (d >= 6) return h;
+  const floor = built.groundAt?.(x, z) ?? built.floorAt?.(x, z) ?? h;
+  return floor + (h - floor) * smooth(0, 6, d);
+}
 export interface Field { width: number; depth: number; cx: number; cz: number; nx: number; nz: number; heights: Float32Array }
 
 /** Samples the height function on a grid; the same samples feed the mesh and the physics heightfield. */
@@ -128,7 +88,13 @@ export function slopeBlend(ground: MeshStandardMaterial, rock: MeshStandardMater
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vTerrPos;\nvarying vec3 vTerrNormal;')
-      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvTerrPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvTerrNormal = normalize(mat3(modelMatrix) * objectNormal);');
+      .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+        vec4 terrainPoint = vec4(transformed, 1.0);
+        #ifdef USE_BATCHING
+          terrainPoint = batchingMatrix * terrainPoint;
+        #endif
+        vTerrPos = (modelMatrix * terrainPoint).xyz;
+        vTerrNormal = normalize(mat3(modelMatrix) * objectNormal);`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform sampler2D tRock;\nuniform vec3 uRockTint;\nuniform float uRockTile;\nvarying vec3 vTerrPos;\nvarying vec3 vTerrNormal;')
       .replace('#include <map_fragment>', `

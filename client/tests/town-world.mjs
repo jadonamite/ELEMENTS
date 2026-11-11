@@ -4,8 +4,8 @@ import { CombatSpace } from '../src/attacks/space.ts';
 import { SINDR_WALK } from '../src/life/town-manager.ts';
 import { WalkMap } from '../src/life/walk-map.ts';
 import { WorldBuilder } from '../src/world/builder.ts';
-import { heightAt, sampleField } from '../src/world/landscape.ts';
-import { WALKABLE, PEAKS, buildSindr } from '../src/world/sindr.ts';
+import { surfaceAt, sampleField } from '../src/world/landscape.ts';
+import { WALKABLE, buildSindr } from '../src/world/sindr.ts';
 import { addTownPhysics } from '../src/world/town-physics.ts';
 
 /** The built town, its physics world and walk map. `extra` colliders (boxes) are added to block routes. */
@@ -15,7 +15,7 @@ export async function townWorld(extra = []) {
   const builder = new WorldBuilder();
   const areas = buildSindr(builder);
   const walkable = WALKABLE.with(areas);
-  const near = sampleField(340, -10, 1020, 500, 3, (x, z) => heightAt(x, z, walkable, PEAKS));
+  const near = sampleField(340, -10, 1020, 500, 3, (x, z) => surfaceAt(x, z, walkable));
   addTownPhysics(world, near, [...builder.colliders, ...extra]);
   world.step();
   const space = new CombatSpace(world);

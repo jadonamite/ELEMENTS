@@ -197,7 +197,7 @@ async function main(): Promise<void> {
   let lifeSystem: SindrLifeSystem | null = null;
   let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { ...(window as unknown as { elements?: object }).elements, hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -512,6 +512,7 @@ async function main(): Promise<void> {
       });
       robberGang.bindWorld(scene, physics.world, template);
 
+      if (params.has('legacyEast')) {
       deserterBand = new ClientDeserterBand({
         onAlert: (msg) => notice(msg),
         onSpawnEnemy: (enemy) => fight.add(enemy),
@@ -521,6 +522,7 @@ async function main(): Promise<void> {
         },
       });
       deserterBand.bindWorld(scene, physics.world, template);
+      }
     }).catch(console.error);
   }
   /** Auto-realigns hero facing toward target and glides closer to prevent whiffs on combos and openers. */
@@ -1256,12 +1258,13 @@ async function main(): Promise<void> {
     heroView.facing = controller.facing;
     const rooted = combat.current !== null || combat.blocking;
     const speedMultiplier = (isLit ? 1.25 : 1.0) * (bend.windskiffActive ? 1.85 : 1.0);
+    const groundReady = zone?.groundStep(controller) ?? true;
     const alpha = stepper.advance(delta, () => {
       // Fists close in further than a blade before the step stops.
       const stopAt = fightingStyle === 'weapon' ? balance.combat.lungeStopDistance : balance.combat.bareLungeStopDistance;
       const stop = combat.current !== 'dodge' && fight.nearestDistance(controller.position) < stopAt;
       const lunge = stop ? 0 : combat.lunge;
-      controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge, speedMultiplier);
+      if (groundReady) controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge, speedMultiplier);
       if (!picking) fight.step(heroView, combat, isLit);
       // Every body has moved for this tick; the world steps once.
       physics.step();
