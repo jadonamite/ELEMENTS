@@ -440,6 +440,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   const allClips = await kit.fitClips(config.sex, rawAnimationClips, 'hero', currentOutfit, config.person);
   const anim = new AnimationPlayer(heroModel, allClips, {
     defaultFadeDuration: 0.25,
+    plantFeet: true,
   });
   let strikeLimbs = new StrikeLimbs(heroModel, allClips, balance.combat.activeWindow as [number, number],
     balance.controller.modelForwardYaw);

@@ -11,10 +11,13 @@ import {
   type AnimationAction,
   type Object3D,
 } from 'three';
+import { FootPlant } from './foot-plant.js';
 
 export interface AnimationPlayerOptions {
   /** Default cross-fade transition time in seconds. Defaults to 0.25s. */
   defaultFadeDuration?: number;
+  /** Keep the feet above the floor after every update (humanoid rigs only). */
+  plantFeet?: boolean;
 }
 
 export class AnimationPlayer {
@@ -30,6 +33,8 @@ export class AnimationPlayer {
   private currentClipName: string | null = null;
   private readonly defaultFadeDuration: number;
   private isDisposed = false;
+  private plant: FootPlant | null = null;
+  private readonly plantFeet: boolean;
 
   constructor(
     root: Object3D,
@@ -37,6 +42,8 @@ export class AnimationPlayer {
     options: AnimationPlayerOptions = {},
   ) {
     this.mixer = new AnimationMixer(root);
+    this.plantFeet = options.plantFeet ?? false;
+    this.plant = this.plantFeet ? FootPlant.for(root) : null;
     this.defaultFadeDuration = options.defaultFadeDuration ?? 0.25;
 
     for (const clip of clips) {
@@ -110,6 +117,7 @@ export class AnimationPlayer {
     if (this.isDisposed) return;
     this.updateWeights(deltaSeconds * this.mixer.timeScale);
     this.mixer.update(deltaSeconds);
+    this.plant?.apply();
   }
 
   private updateWeights(deltaSeconds: number): void {
@@ -174,6 +182,7 @@ export class AnimationPlayer {
     this.currentClipName = null;
 
     (this as { mixer: AnimationMixer }).mixer = new AnimationMixer(root);
+    this.plant = this.plantFeet ? FootPlant.for(root) : null;
     for (const clip of clips) {
       const action = this.mixer.clipAction(clip);
       this.actions.set(clip.name, action);
