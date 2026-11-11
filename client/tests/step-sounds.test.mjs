@@ -59,3 +59,13 @@ test('the piece whose top is nearest under the feet names the ground', () => {
   assert.equal(treads.at(20, 7.2, 6), 'roof_tile_red');
   assert.equal(treads.at(200, 0, 5), null);
 });
+
+test('a place is heard by how many of its sources are in earshot', async () => {
+  const { nearness } = await import('../src/audio.ts');
+  const stalls = [{ x: 0, y: 0, z: 0 }, { x: 4, y: 0, z: 0 }, { x: 0, y: 0, z: 5 }, { x: 300, y: 0, z: 0 }];
+  assert.equal(nearness({ x: 1, y: 0, z: 1 }, stalls, 8, 45, 3), 1);
+  assert.equal(nearness({ x: 150, y: 0, z: 0 }, stalls, 8, 45, 3), 0);
+  const edge = nearness({ x: 30, y: 0, z: 0 }, stalls, 8, 45, 3);
+  assert.ok(edge > 0.2 && edge < 0.6);
+  assert.equal(nearness({ x: 0, y: 0, z: 0 }, undefined, 8, 45, 3), 0);
+});

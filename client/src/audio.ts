@@ -71,6 +71,11 @@ export interface SoundWorldContext {
   playerPos?: SoundPosition;
   /** Feet of the hero that landed this frame (bit 1 left, bit 2 right); absent when feet are not tracked. */
   heroSteps?: number | undefined;
+  /** Where the town was built to be busy: stalls and counters, and anvils. */
+  market?: readonly SoundPosition[];
+  forge?: readonly SoundPosition[];
+  /** The people of the town, wherever they are now. */
+  people?: readonly { readonly position: SoundPosition }[] | undefined;
   /** The built surface under a pair of feet, as the world names it. */
   surfaceAt?: (position: SoundPosition) => string | null;
 }
@@ -79,6 +84,31 @@ export interface SoundManagerOptions {
   sfxVolume?: number;
   musicVolume?: number;
   fxQuality?: 'high' | 'low';
+}
+
+/** The ambient bus, 12 dB under hits. */
+const AMBIENT_LEVEL = 0.25;
+
+/** How strongly a listener hears one source: full inside `near` metres, nothing beyond `far`. */
+function falloff(p: SoundPosition, at: SoundPosition, near: number, far: number): number {
+  const d = Math.hypot(p.x - at.x, p.y - at.y, p.z - at.z);
+  return d <= near ? 1 : d >= far ? 0 : 1 - (d - near) / (far - near);
+}
+
+/** How present a kind of place is, 0..1: the sources in earshot, where `full` of them close by is as loud as it gets. */
+export function nearness(p: SoundPosition, sources: readonly SoundPosition[] | undefined, near: number, far: number, full: number): number {
+  if (!sources) return 0;
+  let sum = 0;
+  for (const at of sources) sum += falloff(p, at, near, far);
+  return Math.min(1, sum / full);
+}
+
+function nearnessOfPeople(p: SoundPosition, people: readonly { readonly position: SoundPosition }[] | undefined,
+  near: number, far: number, full: number): number {
+  if (!people) return 0;
+  let sum = 0;
+  for (const person of people) sum += falloff(p, person.position, near, far);
+  return Math.min(1, sum / full);
 }
 
 /** Speed, in m/s, from which a step is a running step. */
@@ -182,7 +212,7 @@ export class SoundManager {
       // Mix balance:
       // Hits are the loudest thing (0 dB reference ~ 1.0)
       // Footsteps sit ~12 dB under hits (-12 dB = 0.251)
-      // Ambient sits ~18 dB under hits (-18 dB = 0.126)
+      // Ambient sits ~12 dB under hits (AMBIENT_LEVEL), so a street is heard between blows
       this.sfxGain.gain.setValueAtTime(options.sfxVolume ?? 1.0, this.ctx.currentTime);
       this.footstepGain.gain.setValueAtTime(0.251, this.ctx.currentTime);
       this.ambientGain.gain.setValueAtTime(0.0001, this.ctx.currentTime); // Fades in on unlock
@@ -455,7 +485,7 @@ export class SoundManager {
     // Fade in ambient bed over 2.0 s
     this.ambientGain.gain.cancelScheduledValues(now);
     this.ambientGain.gain.setValueAtTime(0.0001, now);
-    this.ambientGain.gain.exponentialRampToValueAtTime(0.126, now + 2.0);
+    this.ambientGain.gain.exponentialRampToValueAtTime(AMBIENT_LEVEL, now + 2.0);
 
     const baseLevels = [0.75, 0.60, 0.45, 0.70, 0.75, 0.60];
 
@@ -563,20 +593,18 @@ export class SoundManager {
       const bellTarget = (1.0 - 0.5 * duskProgress) * (0.45 + 0.15 * Math.sin(t * 0.057 + 2.7));
       this.ambientLayerGains[2]?.gain.setTargetAtTime(Math.max(0.05, bellTarget), this.ctx.currentTime, 0.1);
 
-      // Layer 3: ambient_forge_hammer (spatial near Great Forge x: 82, z: 36, quieter at dusk/night)
-      let forgeDist = 50;
-      if (p) forgeDist = Math.hypot(p.x - 82, p.z - 36);
-      const forgeProx = Math.max(0, Math.min(1, 1 - (forgeDist - 12) / 48));
+      // Layer 3: ambient_forge_hammer, heard from the nearest anvil the town was built with, quieter at dusk and night
+      const forgeProx = p ? nearness(p, worldContext?.forge, 12, 60, 1) : 0;
       const forgeTime = isNight ? 0.2 : isDusk ? 0.5 : 1.0;
       const forgeHammerTarget = forgeProx * forgeTime * (0.8 + 0.2 * Math.sin(t * 0.3));
       this.ambientLayerGains[3]?.gain.setTargetAtTime(Math.max(0.001, forgeHammerTarget), this.ctx.currentTime, 0.1);
 
-      // Layer 4: ambient_market (spatial near Square x: 125, z: 0, fades at dusk/night)
-      let marketDist = 50;
-      if (p) marketDist = Math.hypot(p.x - 125, p.z);
-      const marketProx = Math.max(0, Math.min(1, 1 - (marketDist - 16) / 45));
+      // Layer 4: ambient_market, the murmur of trade: it rises with the stalls and the people near the listener,
+      // so a market street is loud and an empty lane is not. Fades at dusk and night as the stalls shut.
+      const stalls = p ? nearness(p, worldContext?.market, 4, 30, 16) : 0;
+      const crowd = p ? nearnessOfPeople(p, worldContext?.people, 4, 22, 24) : 0;
       const marketTime = Math.max(0.02, 1.0 - duskProgress);
-      const marketTarget = marketProx * marketTime * (0.85 + 0.15 * Math.sin(t * 0.2));
+      const marketTarget = Math.max(stalls * marketTime, crowd * Math.max(0.35, marketTime)) * (0.85 + 0.15 * Math.sin(t * 0.2));
       this.ambientLayerGains[4]?.gain.setTargetAtTime(Math.max(0.001, marketTarget), this.ctx.currentTime, 0.1);
 
       // Layer 5: ambient_night_insects (fades in at dusk, active at night)
