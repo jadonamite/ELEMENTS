@@ -42,23 +42,19 @@ export function mineRoadMesh(material: Material): Mesh {
   g.setAttribute('uv1', g.getAttribute('uv')); g.setIndex(indices); g.computeVertexNormals(); g.computeBoundingSphere();
   const mesh = new Mesh(g, material); mesh.name = 'cinderpit-road'; mesh.receiveShadow = true; return mesh;
 }
-/** Remaps far-pass depth into the unchanged town camera's depth range. */
-function sharedDepth(material: Material, near: number, far: number): void {
-  const previous = material.onBeforeCompile;
-  material.onBeforeCompile = (shader, renderer) => {
-    previous.call(material, shader, renderer);
-    const i = shader.fragmentShader.lastIndexOf('}');
-    shader.fragmentShader = shader.fragmentShader.slice(0, i) + `
-      float viewDepth = (${near.toFixed(6)} * 26000.0) / (26000.0 - gl_FragCoord.z * (26000.0 - ${near.toFixed(6)}));
-      gl_FragDepth = ${far.toFixed(6)} / (${far.toFixed(6)} - ${near.toFixed(6)}) - (${far.toFixed(6)} * ${near.toFixed(6)}) / ((${far.toFixed(6)} - ${near.toFixed(6)}) * viewDepth);
-    ` + shader.fragmentShader.slice(i);
-  };
-  const key = material.customProgramCacheKey.bind(material);
-  material.customProgramCacheKey = () => `${key()}-shared-depth-${near.toFixed(6)}-${far.toFixed(6)}`;
+/**
+ * Far-pass materials write no depth: the town pass runs first and fills its depth buffer.
+ * The far pass then draws only where the town left no fragment (sky pixels), so near/mid
+ * terrain tiles and town geometry always win over far tiles at the same world position.
+ * No depth remapping is needed: far materials simply set depthWrite=false and depthTest=true.
+ */
+function farDepth(material: Material): void {
+  material.depthWrite = false;
+  material.depthTest = true;
 }
 export interface NationalView { scene: Scene; sky: Mesh; ready: Promise<void>; tiles: number; visible: number; update(camera: Camera, resident?: readonly ReadonlyMap<string, { ix: number; iz: number }>[]): void; dispose(): void }
 /** The national silhouette is actual field geometry, using the same global samples as near collision. */
-export function nationalView(height: (x: number, z: number) => number, material: Material, low: boolean, near = 0.1, far = 2600): NationalView {
+export function nationalView(height: (x: number, z: number) => number, material: Material, low: boolean): NationalView {
   const farMaterial = material.clone() as MeshStandardMaterial, reserved = Array.from({ length: 33 }, () => new Vector4());
   // Cloning a Material does not retain its shader callbacks.
   farMaterial.onBeforeCompile = material.onBeforeCompile;
@@ -88,14 +84,14 @@ export function nationalView(height: (x: number, z: number) => number, material:
   };
   let residentCount = 0;
   let residentUniform: { value: number } | null = null;
-  sharedDepth(farMaterial, near, far);
+  farDepth(farMaterial);
   const scene = new Scene(); scene.fog = new FogExp2(0xdac5ad, 0.00010);
   const sky = createSky(); sky.scale.setScalar(18000); scene.add(sky);
   const n = low ? 49 : 97, vertices = n * n + 4 * n, indices = (n - 1) ** 2 * 6 + (n - 1) * 24;
   const batch = new BatchedMesh(42, vertices * 42, indices * 42, farMaterial);
   batch.name = 'national-far'; batch.frustumCulled = false; batch.sortObjects = false; scene.add(batch);
   const waterMat = new MeshBasicMaterial({ color: 0x416775, fog: true });
-  sharedDepth(waterMat, near, far);
+  farDepth(waterMat);
   const sea = new Mesh(new PlaneGeometry(42000, 42000).rotateX(-Math.PI / 2), waterMat);
   sea.position.set(8000 - O.x, -O.y - 0.02, 9000 - O.z); sea.name = 'sea'; scene.add(sea);
   const lake = new Mesh(new CircleGeometry(1, 64).rotateX(-Math.PI / 2), waterMat);

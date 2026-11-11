@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { AmbientLight, Color, DirectionalLight, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, NoToneMapping, OrthographicCamera, FogExp2, PlaneGeometry, Scene, Vector3, WebGLRenderTarget, type Material, type WebGLRenderer } from 'three';
+import { AmbientLight, Color, DirectionalLight, DoubleSide, Group, Mesh, MeshStandardMaterial, NoToneMapping, OrthographicCamera, FogExp2, PlaneGeometry, Scene, Vector3, WebGLRenderTarget, type Material, type WebGLRenderer } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { groundHeight, mineAt, minePointAt, RIVER, SETTLEMENTS, waterHeight } from '../../../shared/src/world/ignis/ground.js';
 import { LEGACY_SINDR_ORIGIN as O } from '../../../shared/src/world/ignis/coordinates.js';
@@ -48,14 +48,15 @@ export function routeForest(renderer: WebGLRenderer, bark: Material, world: RAPI
     renderer.setRenderTarget(target); renderer.setClearColor(0, 0); renderer.clear(); renderer.render(imageScene, camera);
     renderer.setRenderTarget(previous); renderer.setClearColor(color, alpha); renderer.toneMapping = tone; captured = true;
   };
-  const farMaterial = terrainAir(new MeshStandardMaterial({ map: target.texture, alphaTest: 0.35, side: DoubleSide, roughness: 1 }), fog);
-  const leaves = terrainAir(kit.leaves as MeshStandardMaterial, fog), routeBark = terrainAir(bark as MeshStandardMaterial, fog);
+  // Near LOD uses the standard materials (town fog handles short-range haze).
+  // The impostor at 600–2400 m uses terrainAir for the broader aerial haze.
+  const impostorMat = terrainAir(new MeshStandardMaterial({ map: target.texture, alphaTest: 0.35, side: DoubleSide, roughness: 1 }), fog);
   const card = new PlaneGeometry(16, 16).translate(0, 4, 0), cross = card.clone().rotateY(Math.PI / 2);
   const impostor = mergeGeometries([card, cross], false)!; card.dispose(); cross.dispose();
-  const near = [{ geometry: kit.crown, material: leaves, castShadow: false, name: 'route-ginkgo-leaves' },
-    ...(kit.wood ? [{ geometry: kit.wood, material: routeBark, castShadow: false, name: 'route-ginkgo-wood' }] : [])];
+  const near = [{ geometry: kit.crown, material: kit.leaves, castShadow: false, name: 'route-ginkgo-leaves' },
+    ...(kit.wood ? [{ geometry: kit.wood, material: bark, castShadow: false, name: 'route-ginkgo-wood' }] : [])];
   const group = new Group(); group.name = 'route-forest';
-  for (const lod of cellLods(spots, [{ from: 0, parts: near }, { from: 600, parts: [{ geometry: impostor, material: farMaterial, castShadow: false, name: 'route-ginkgo-impostor' }] }], 2400, 65536)) group.add(lod);
+  for (const lod of cellLods(spots, [{ from: 0, parts: near }, { from: 600, parts: [{ geometry: impostor, material: impostorMat, castShadow: false, name: 'route-ginkgo-impostor' }] }], 2400, 65536)) group.add(lod);
   const colliders = new Map<number, RAPIER.Collider>(); let cx = NaN, cz = NaN;
   return { group, spots, countNear(x, z, radius) { return spots.filter(p => p.z <= z && Math.hypot(x - p.x, z - p.z) <= radius).length; },
     update(point) {
@@ -70,7 +71,7 @@ export function routeForest(renderer: WebGLRenderer, bark: Material, world: RAPI
       });
     }, dispose() {
       for (const c of colliders.values()) world.removeCollider(c, false);
-      group.removeFromParent(); kit.crown.dispose(); kit.wood?.dispose(); kit.leaves.dispose(); leaves.dispose(); routeBark.dispose(); impostor.dispose(); farMaterial.dispose(); target.dispose();
+      group.removeFromParent(); kit.crown.dispose(); kit.wood?.dispose(); kit.leaves.dispose(); impostor.dispose(); impostorMat.dispose(); target.dispose();
     },
   };
 }

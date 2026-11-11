@@ -210,7 +210,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     x0: Math.min(...built.areas.map(a => a.bounds.x0)), x1: Math.max(...built.areas.map(a => a.bounds.x1)),
     z0: Math.min(...built.areas.map(a => a.bounds.z0)), z1: Math.max(...built.areas.map(a => a.bounds.z1)),
   });
-  const national = nationalView(ground, terrainMat, low, camera.near, camera.far);
+  const national = nationalView(ground, terrainMat, low);
   const residentCells = [stream.near.cells, stream.mid.cells];
   const farCamera = new PerspectiveCamera(balance.camera.fov, 1, balance.camera.near, 26000);
   const farSun = new DirectionalLight(0xffffff, 1), farHemi = new HemisphereLight(0xc4cbd1, 0x8a7050, 1);
@@ -289,19 +289,21 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     .then(() => { scene.add(props); map.ready = true; });
 
   // Post: sanitize first (stops NaN black frames), bloom for fire and slag, grade, then anti-aliasing.
+  // Pass order: town first (clears and fills depth), national far second (depthWrite=false so it only
+  // draws sky pixels the town didn't reach — no seams where near/mid tiles meet far tiles).
   const composer = new EffectComposer(renderer);
   composer.renderTarget1.texture.type = HalfFloatType;
   composer.renderTarget2.texture.type = HalfFloatType;
+  const townPass = new RenderPass(scene, camera);
+  composer.addPass(townPass);
   const farPass = new RenderPass(national.scene, farCamera);
+  farPass.clear = false; farPass.clearDepth = false;
   const renderFar = farPass.render.bind(farPass);
   farPass.render = (...args) => {
     renderFar(...args);
     farStats.calls = renderer.info.render.calls; farStats.triangles = renderer.info.render.triangles;
   };
   composer.addPass(farPass);
-  const townPass = new RenderPass(scene, camera);
-  townPass.clear = false; townPass.clearDepth = false;
-  composer.addPass(townPass);
   /** Readies an object to draw the way the scene pass draws it, before it first shows. */
   // Lazy model detail warms against matching lights without redrawing the live town for each arriving model.
   const warmUp = (object: Object3D, onProgress?: (fraction: number) => void): Promise<void> => {
