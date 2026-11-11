@@ -96,6 +96,7 @@ export class SoundManager {
   private readonly villainStates = new Map<SoundEnemyLike, VillainAudioState>();
 
   // Peak analysis buffer for clipping checks
+  private readonly events = new AbortController();
   private peakBuffer: Float32Array<ArrayBuffer> | null = null;
 
   constructor(options: SoundManagerOptions = {}) {
@@ -153,9 +154,11 @@ export class SoundManager {
       this.musicGain.connect(this.masterGain);
 
       const unlock = (): void => {
-        if (!this.ctx || this.unlocked) return;
+        if (!this.ctx || this.unlocked || document.getElementById('elements-loader') || document.getElementById('opening-overlay')) return;
         const start = (): void => {
           this.unlocked = true;
+          window.removeEventListener('pointerdown', unlock);
+          window.removeEventListener('keydown', unlock);
           this.startAmbientBed();
         };
 
@@ -166,12 +169,12 @@ export class SoundManager {
         }
       };
 
-      window.addEventListener('click', unlock, { once: true });
-      window.addEventListener('keydown', unlock, { once: true });
+      window.addEventListener('pointerdown', unlock, { signal: this.events.signal });
+      window.addEventListener('keydown', unlock, { signal: this.events.signal });
 
       document.addEventListener('visibilitychange', () => {
         this.setMuted(document.hidden);
-      });
+      }, { signal: this.events.signal });
 
       this.loadAllSamples();
     } catch {
@@ -843,6 +846,7 @@ export class SoundManager {
   }
 
   dispose(): void {
+    this.events.abort();
     for (const s of this.ambientSources) {
       try { s.stop(); s.disconnect(); } catch { /* ignore */ }
     }

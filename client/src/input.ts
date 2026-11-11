@@ -45,15 +45,20 @@ export class GameInput {
   constructor(private readonly canvas: HTMLCanvasElement, button: HTMLButtonElement,
     private readonly orbit: (dx: number, dy: number) => void, status: (text: string) => void, entryLabel = 'Enter the arena') {
     const options = { signal: this.events.signal };
+    let capturePending = false;
     const capture = (): void => {
-      canvas.focus();
+      if (this.paused || capturePending || document.pointerLockElement === canvas) return;
+      if (document.activeElement !== canvas) canvas.focus();
       if (this.device === 'touch') return;
       if (!canvas.requestPointerLock) { status('Mouse capture is unavailable. WASD and Shift still work.'); return; }
       try {
-        canvas.requestPointerLock()?.catch(() => {
-          if (!this.disposed) status(`The mouse could not be captured. Select ${entryLabel} to try again.`);
-        });
-      } catch { status(`The mouse could not be captured. Select ${entryLabel} to try again.`); }
+        capturePending = true;
+        const request = canvas.requestPointerLock();
+        if (request) void request.catch(() => {
+          capturePending = false;
+          if (!this.disposed) status('The mouse could not be captured. Click the game to try again.');
+        }).finally(() => { capturePending = false; });
+      } catch { capturePending = false; status('The mouse could not be captured. Click the game to try again.'); }
     };
     canvas.addEventListener('click', capture, options);
     button.addEventListener('click', capture, options);
@@ -74,6 +79,7 @@ export class GameInput {
       if (!action || (action !== 'menu' && document.activeElement !== canvas)) return;
       event.preventDefault();
       if (event.repeat) return;
+      if (action !== 'menu' && !this.paused && document.pointerLockElement !== canvas) capture();
       this.keys.add(event.code);
       if (action === 'block' || action === 'run') this.hold(action, event.code, true);
       else if (action !== 'move') this.press(action);
@@ -88,15 +94,17 @@ export class GameInput {
     document.addEventListener('visibilitychange', () => this.clear(), options);
     let wasLocked = false;
     document.addEventListener('pointerlockchange', () => {
-      this.clear();
+      capturePending = false;
       button.textContent = entryLabel;
       const locked = document.pointerLockElement === canvas;
+      if (!locked) this.clear();
       if (wasLocked && !locked && this.device === 'desktop' && !this.paused && document.hasFocus?.()) this.onMenu?.();
       wasLocked = locked;
       status('');
     }, options);
     document.addEventListener('pointerlockerror', () => {
-      this.clear(); status(`The mouse could not be captured. Select ${entryLabel} to try again.`);
+      capturePending = false;
+      this.clear(); status('The mouse could not be captured. Click the game to try again.');
     }, options);
     document.addEventListener('mousedown', event => {
       if (document.pointerLockElement !== canvas) return;
@@ -126,12 +134,12 @@ export class GameInput {
   }
   get paused(): boolean {
     return !!document.body?.matches('.home-open, .selecting, .shop-open') ||
-      !!document.getElementById?.('opening-overlay') || document.hidden === true;
+      !!document.getElementById?.('opening-overlay') || !!document.getElementById?.('elements-loader') || document.hidden === true;
   }
   /** Public action entry point for touch and future controllers. */
   press(action: ControlAction, at?: { x: number; y: number }): boolean {
     if (this.disposed || (action !== 'menu' && this.paused) || !this.allowed(action)) return false;
-    if (action === 'menu' && document.getElementById?.('opening-overlay')) return false;
+    if (action === 'menu' && (document.getElementById?.('opening-overlay') || document.getElementById?.('elements-loader'))) return false;
     if (action === 'interact') {
       if (this.talking) { this.conversation!.confirm(); this.onAction?.('interact'); return true; }
       if (this.onInteract?.() === true) { this.onAction?.('interact'); return true; }
