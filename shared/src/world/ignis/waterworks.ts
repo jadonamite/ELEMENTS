@@ -71,25 +71,31 @@ export function nationalWaterAt(x: number, z: number): PublicWaterSample | null 
   return best;
 }
 
-/** Apply after relief/road shaping. Crossings cap terrain below their decks, never fill the river. */
-export function nationalWaterworksGround(x: number, z: number, height: number): number {
-  const water = nationalWaterAt(x, z);
+/**
+ * Apply after relief/road shaping. Crossings cap terrain below their decks, never fill the river.
+ * Where the national river owns the ground (`riverOwns`), the local race neither cuts a bed nor trims a bank.
+ * `waterWeight` (0..1) is how much of the channel cut, bank trim and bridge cap a road corridor leaves to the water:
+ * a road keeps its own surface, including where a deck lands on it or a race passes under it.
+ */
+export function nationalWaterworksGround(x: number, z: number, height: number, riverOwns = false, waterWeight = 1): number {
+  const water = riverOwns ? null : nationalWaterAt(x, z);
   let result = water ? water.bed - 0.25 : height;
   let nearest = Infinity, bankTarget = height, bankBlend = 0;
-  if (!water) for (const channel of PUBLIC_WATERWAYS) for (let i = 1; i < channel.points.length; i++) {
+  if (!water && !riverOwns) for (const channel of PUBLIC_WATERWAYS) for (let i = 1; i < channel.points.length; i++) {
     const a = channel.points[i - 1]!, b = channel.points[i]!, p = segmentSample(x, z, a, b), half = channel.width / 2;
     const edge = p.distance - half;
     if (edge > 6 || edge >= nearest) continue;
     nearest = edge;
-    bankTarget = a.bank + (b.bank - a.bank) * p.t - 0.35;
+    bankTarget = a.bank + (b.bank - a.bank) * p.t;
     bankBlend = Math.max(0, Math.min(1, (6 - edge) / 2));
   }
   if (!water) result += (bankTarget - result) * bankBlend;
+  result = height + (result - height) * waterWeight;
   for (const crossing of PUBLIC_CROSSINGS) {
     const p = segmentSample(x, z, crossing.from, crossing.to);
     if (p.along < 0 || p.along > p.length || p.distance > crossing.clear / 2 + 0.8) continue;
     const deck = crossing.from.y + (crossing.to.y - crossing.from.y) * p.t;
-    result = Math.min(result, deck - 0.65);
+    result += (Math.min(result, deck - 0.65) - result) * waterWeight;
   }
   return result;
 }

@@ -2,7 +2,7 @@ import { IGNIS } from './coordinates.js';
 import { SETTLEMENTS, settlementGround } from './settlements.js';
 export { SETTLEMENTS } from './settlements.js';
 import { mineAt, mineValleyAt, VALLEY_REACH } from './mine-road.js';
-import { nationalRoadGround } from './routes.js';
+import { nationalRoadAt, nationalRoadGround } from './routes.js';
 import { nationalWaterAt, nationalWaterworksGround } from './waterworks.js';
 export { MINE_ROAD, MINE_LENGTH, MINE_MAX_GRADE, mineAt, minePointAt } from './mine-road.js';
 
@@ -59,10 +59,10 @@ export function riverAt(x: number, z: number): { distance: number; water: number
   return { distance: Math.sqrt(d2), water };
 }
 export function waterHeight(x: number, z: number): number | null {
-  const publicWater = nationalWaterAt(x, z);
+  const river = riverAt(x, z);
+  const publicWater = river.distance > 9 ? nationalWaterAt(x, z) : null;
   if (publicWater) return publicWater.surface;
   if (((x - LAKE.x) / LAKE.rx) ** 2 + ((z - LAKE.z) / LAKE.rz) ** 2 <= 1) return LAKE.height;
-  const river = riverAt(x, z);
   if (river.distance <= 9) return river.water;
   return landDistance(x, z) <= 0 && oceanBoundary(x, z) ? 0 : null;
 }
@@ -116,8 +116,11 @@ export function groundHeight(x: number, z: number): number {
   h = nationalRoadGround(x, z, h, waterHeight(x, z));
   // Cart corridors take priority on dry land. They do not cross this river.
   const road = mineAt(x, z);
-  if (road.distance < 14) h = mix(road.height, h, smooth(6, 14, road.distance));
-  h = nationalWaterworksGround(x, z, h);
+  const mineWeight = smooth(6, 14, road.distance);
+  if (road.distance < 14) h = mix(road.height, h, mineWeight);
+  const cart = nationalRoadAt(x, z);
+  const roadWeight = cart ? smooth(cart.route.width / 2, cart.route.width / 2 + cart.route.shoulder, cart.distance) : 1;
+  h = nationalWaterworksGround(x, z, h, river.distance <= 9, mineWeight * roadWeight);
   return h;
 }
 export type Biome = 'ash' | 'grass' | 'pine' | 'rock' | 'snow';
