@@ -1,5 +1,9 @@
 import { IGNIS } from './coordinates.js';
+import { SETTLEMENTS, settlementGround } from './settlements.js';
+export { SETTLEMENTS } from './settlements.js';
 import { mineAt, mineValleyAt, VALLEY_REACH } from './mine-road.js';
+import { nationalRoadGround } from './routes.js';
+import { nationalWaterAt, nationalWaterworksGround } from './waterworks.js';
 export { MINE_ROAD, MINE_LENGTH, MINE_MAX_GRADE, mineAt, minePointAt } from './mine-road.js';
 
 export const LAND_POLYGON: readonly (readonly [number, number])[] = [
@@ -10,17 +14,6 @@ export const RIVER = [[8000, 2000, 1100], [8100, 3000, 920], [8000, 3500, 820], 
   [7700, 5000, 710], [7400, 6000, 600], [7200, 7500, 470], [7000, 9000, 378],
   [8100, 10200, 330], [9000, 11000, 240], [10600, 12000, 170], [12000, 13000, 95],
   [13400, 14000, 35], [14350, 15000, 0]] as const;
-export const SETTLEMENTS = [
-  // Sindr's pad covers the built town; the rest of its 900 x 700 m city map keeps the shelves of the relief.
-  { name: 'Sindr', x: 7000, z: 9000, height: 380, radius: 220 },
-  { name: 'East Border Fort', x: 2000, z: 9000, height: 250, radius: 110 },
-  { name: 'Pinewatch', x: 4500, z: 5500, height: 680, radius: 100 },
-  { name: 'Crown Lake', x: 8000, z: 4000, height: 820, radius: 100 },
-  { name: 'Cinderpit', x: 10500, z: 7000, height: 740, radius: 180 },
-  { name: 'Terrace village', x: 9000, z: 11000, height: 260, radius: 120 },
-  { name: 'Salt Quay', x: 14350, z: 15000, height: 8, radius: 80 },
-  { name: 'March station', x: 8400, z: 14500, height: 210, radius: 100 },
-] as const;
 export const VOLCANO = { x: 12000, z: 4000, height: 1850 } as const;
 export const LAKE = { x: 8000, z: 4000, rx: 420, rz: 500, height: 820 } as const;
 export const smooth = (a: number, b: number, x: number): number => {
@@ -66,6 +59,8 @@ export function riverAt(x: number, z: number): { distance: number; water: number
   return { distance: Math.sqrt(d2), water };
 }
 export function waterHeight(x: number, z: number): number | null {
+  const publicWater = nationalWaterAt(x, z);
+  if (publicWater) return publicWater.surface;
   if (((x - LAKE.x) / LAKE.rx) ** 2 + ((z - LAKE.z) / LAKE.rz) ** 2 <= 1) return LAKE.height;
   const river = riverAt(x, z);
   if (river.distance <= 9) return river.water;
@@ -97,8 +92,8 @@ export function groundHeight(x: number, z: number): number {
   let h = relief(x, z);
   // Ocean-facing edges taper to a beach; the other boundaries are mountain ridges.
   if (x > 11000 && z > 1800) h *= smooth(0, 1500, land);
-  // Pads are laid on the relief first, flat inside and easing out over a shoulder. Everything after this (valley,
-  // river, road) carves pads and open ground alike, so no later step can leave a ledge at a pad's rim.
+  // Broad settlement pads ease into relief before drainage and road shaping.
+  // Authored dry working precincts restore their surveyed floors after the valley cut.
   for (const pad of SETTLEMENTS) {
     const d = Math.hypot(x - pad.x, z - pad.z);
     const shoulder = pad.name === 'Sindr' ? 1200 : 220;
@@ -115,9 +110,14 @@ export function groundHeight(x: number, z: number): number {
     const bed = river.distance < 9 ? river.water - 1.5 : river.water + 0.5;
     h = mix(bed, h, smooth(9, 90, river.distance));
   }
+  // Working floors stay dry without filling the lake, river bed or their immediate banks.
+  const dry = smooth(1, 1.05, lakeR) * smooth(9, 30, river.distance);
+  h = mix(h, settlementGround(x, z, h), dry);
+  h = nationalRoadGround(x, z, h, waterHeight(x, z));
   // Cart corridors take priority on dry land. They do not cross this river.
   const road = mineAt(x, z);
   if (road.distance < 14) h = mix(road.height, h, smooth(6, 14, road.distance));
+  h = nationalWaterworksGround(x, z, h);
   return h;
 }
 export type Biome = 'ash' | 'grass' | 'pine' | 'rock' | 'snow';

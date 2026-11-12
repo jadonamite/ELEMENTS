@@ -51,7 +51,12 @@ import { skyUniforms, WorldClock } from './clock.js';
 import { createEmbers, createFires, createForgeMaterial, createLavaMaterial, createPaperMaterial, createSmoke, createWaterMaterial, createWetMaterial, createWindowMaterial, LightPool, nightness, STEAM, worldTime } from './effects.js';
 import { createSky, surfaceAt, slopeBlend } from './landscape.js';
 import { routeForest } from './route-forest.js';
+import { createNationalForest } from './national-forest.js';
 import { TerrainStream } from './terrain-stream.js';
+import { SettlementStream } from './settlements.js';
+import { NationalQuarryStream } from './national-quarry.js';
+import { NationalWaterworksStream } from './national-waterworks.js';
+import { nationalRoadChunks, nationalRoadMesh } from './national-roads.js';
 import { mineRoadMesh, nationalView, terrainAir } from './national-view.js';
 import { MINE_LENGTH, MINE_MAX_GRADE, minePointAt, VOLCANO, waterHeight } from '../../../shared/src/world/ignis/ground.js';
 import { LEGACY_SINDR_ORIGIN as ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
@@ -225,9 +230,34 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const residentCells = [stream.near.cells, stream.mid.cells];
   const roadMaterial = terrainAir(lib.get('packed_dirt_road'), fog);
   scene.add(mineRoadMesh(roadMaterial));
+  const nationalRoadGroup = new Group(); nationalRoadGroup.name = 'ignis-national-roads'; scene.add(nationalRoadGroup);
+  const routeChunks = nationalRoadChunks();
+  const chunksByCell = new Map<string, typeof routeChunks[number][]>();
+  for (const chunk of routeChunks) for (const key of chunk.cells) {
+    const list = chunksByCell.get(key);
+    if (list) list.push(chunk); else chunksByCell.set(key, [chunk]);
+  }
+  const residentRoads = new Map<string, Mesh>();
+  const updateNationalRoads = (cells: ReadonlyMap<string, unknown>): void => {
+    const wanted = new Set<string>();
+    for (const key of cells.keys()) for (const chunk of chunksByCell.get(key) ?? []) wanted.add(chunk.id);
+    for (const id of wanted) if (!residentRoads.has(id)) {
+      const chunk = routeChunks.find(candidate => candidate.id === id);
+      if (!chunk) continue;
+      const mesh = nationalRoadMesh(chunk, roadMaterial, ORIGIN);
+      nationalRoadGroup.add(mesh); residentRoads.set(id, mesh);
+    }
+    for (const [id, mesh] of residentRoads) if (!wanted.has(id)) {
+      nationalRoadGroup.remove(mesh); mesh.geometry.dispose(); residentRoads.delete(id);
+    }
+  };
+  updateNationalRoads(stream.near.cells);
   const turning = new Mesh(new CircleGeometry(22, 40).rotateX(-Math.PI / 2), roadMaterial);
   turning.position.set(10500 - ORIGIN.x, 740 - ORIGIN.y + 0.08, 7000 - ORIGIN.z); turning.name = 'cinderpit-turning-area'; scene.add(turning);
   const forest = routeForest(renderer, lib.get('charred_timber_beams'), world, low, fog); scene.add(forest.group);
+  const nationalForest = await createNationalForest({ renderer, bark: lib.get('charred_timber_beams'), low, fog, world, origin: ORIGIN });
+  scene.add(nationalForest.group);
+  nationalForest.update(stream.near.cells, stream.mid.cells, SPAWN);
   const map = {
     ready: false, groundAt: ground,
     road: { lengthKm: MINE_LENGTH / 1000, pointAt(s: number) {
@@ -262,6 +292,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   };
   // Debug only: the frame is built from these three layers, so a review can show and hide each one.
   if (debug) Object.assign(win.elements!, { map, layers: { town: scene, far: national.group, near: stream.near.batch, mid: stream.mid.batch } });
+  if (debug) Object.assign(map, { nationalForest });
 
   // The town.
   const builder = new WorldBuilder({ low });
@@ -276,6 +307,18 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     window: createWindowMaterial(), forge: createForgeMaterial(), lava: createLavaMaterial(), ao: createAoMaterial(),
     wet: createWetMaterial(), water: createWaterMaterial(), fresh_water: createWaterMaterial('fresh'), paper: createPaperMaterial(),
   };
+  const settlements = new SettlementStream(world, bucket => glows[bucket] ?? lib.get(bucket as Surface), low);
+  scene.add(settlements.group);
+  settlements.update(stream.near.cells);
+  if (debug) Object.assign(map, { settlements });
+  const quarry = new NationalQuarryStream({ world, material: bucket => glows[bucket] ?? lib.get(bucket as Surface), low, origin: ORIGIN, height: ground });
+  scene.add(quarry.group);
+  quarry.update(stream.near.cells);
+  if (debug) Object.assign(map, { quarry });
+  const waterworks = new NationalWaterworksStream(world, bucket => glows[bucket] ?? lib.get(bucket as Surface), low);
+  scene.add(waterworks.group);
+  waterworks.update(stream.near.cells);
+  if (debug) Object.assign(map, { waterworks });
   const town = builder.build((bucket: Bucket) => glows[bucket] ?? lib.get(bucket as Surface));
   scene.add(town);
   addTownPhysics(world, null, builder.colliders, builder.shells);
@@ -331,14 +374,23 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   return {
     scene, camera, renderer, clock, ready, posts: builder.posts, browse: builder.browse,
-    surfaceAt: (x, y, z) => builder.treads.at(x, y, z) ?? 'ash_cinder_ground',
+    surfaceAt: (x, y, z) => waterworks.surfaceAt(x, y, z) ?? quarry.surfaceAt(x, y, z) ?? settlements.surfaceAt(x, y, z) ?? builder.treads.at(x, y, z) ?? 'ash_cinder_ground',
     sounds: {
       market: [...builder.browse, ...builder.posts.filter(post => post.kind === 'keeper')].map(spot => new Vector3(spot.x, spot.y, spot.z)),
       forge: builder.posts.filter(post => post.kind === 'smith').map(post => new Vector3(post.x, post.y, post.z)),
     },
     physics: { world, step: () => world.step(), dispose: () => world.free() },
     follow(point) { followed = point; },
-    groundStep(controller) { const ready = stream.guard(controller); forest.update(controller.position); return ready; },
+    groundStep(controller) {
+      const ready = stream.guard(controller);
+      forest.update(controller.position);
+      settlements.update(stream.near.cells);
+      quarry.update(stream.near.cells);
+      waterworks.update(stream.near.cells);
+      updateNationalRoads(stream.near.cells);
+      nationalForest.update(stream.near.cells, stream.mid.cells, controller.position);
+      return ready;
+    },
     warm: warmUp,
     setSize(w, h) {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
@@ -370,7 +422,12 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       composer.render();
     },
     dispose() {
-      stream.dispose(); forest.dispose(); national.dispose(); roadMaterial.dispose(); terrainMat.dispose();
+      settlements.dispose();
+      quarry.dispose();
+      waterworks.dispose();
+      for (const mesh of residentRoads.values()) mesh.geometry.dispose();
+      residentRoads.clear(); nationalRoadGroup.removeFromParent();
+      nationalForest.dispose(); stream.dispose(); forest.dispose(); national.dispose(); roadMaterial.dispose(); terrainMat.dispose();
       pool.dispose();
       composer.dispose();
       lib.dispose();

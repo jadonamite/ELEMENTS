@@ -22,6 +22,7 @@ import {
 import { onKill, type KillReport } from './kill-hook.js';
 import { dropForDeath, dropForKill, isGuest, isOutsider, lockedPurse, tradeableChroma } from './money.js';
 import type { ServerPlayer, ZoneWorld } from './world.js';
+import { networkPosition, persistentPosition } from './coordinates.js';
 
 /** A message for one player (`to`) or for everyone in the room. */
 export type EconEvent =
@@ -77,6 +78,11 @@ export class ZoneEconomy {
     this.stopKills = onKill((k) => { if (k.worldId === world.id) this.pending.push(...this.kill(k)); });
   }
 
+  private pileView = (pile: LootPile): Record<string, unknown> => {
+    const local = networkPosition(this.world.zone, { x: pile.x, y: 0, z: pile.z });
+    return { ...pileView(pile), x: local.x, z: local.z };
+  };
+
   dispose(): void {
     this.stopKills();
   }
@@ -90,7 +96,7 @@ export class ZoneEconomy {
 
   /** What a joining player is told: the piles lying in the zone and their own purse. */
   join(id: string): EconEvent[] {
-    return [{ to: id, type: 'loot', body: { piles: [...this.piles.values()].map(pileView) } }, ...this.purse(id)];
+    return [{ to: id, type: 'loot', body: { piles: [...this.piles.values()].map(this.pileView) } }, ...this.purse(id)];
   }
 
   leave(id: string): EconEvent[] {
@@ -124,7 +130,7 @@ export class ZoneEconomy {
     const pile = dropForKill(k, this.rng, this.db);
     if (!pile) return [];
     this.piles.set(pile.id, pile);
-    return [{ type: 'loot_new', body: { pile: pileView(pile) } }];
+    return [{ type: 'loot_new', body: { pile: this.pileView(pile) } }];
   }
 
   /** The room saw this player fall: their carried goods drop where the room has them. */
@@ -134,7 +140,7 @@ export class ZoneEconomy {
     const pile = dropForDeath(p.accountId, this.world.zone, p.x, p.z, this.db);
     if (!pile) return [];
     this.piles.set(pile.id, pile);
-    return [{ type: 'loot_new', body: { pile: pileView(pile) } }, ...this.purse(id)];
+    return [{ type: 'loot_new', body: { pile: this.pileView(pile) } }, ...this.purse(id)];
   }
 
   /** "Pick up pile N": checked against where the room has the player. */
@@ -148,7 +154,8 @@ export class ZoneEconomy {
     if (!p.alive) return fail('You have fallen');
     if (!this.piles.has(pileId)) return fail('Loot pile not found');
     try {
-      const { contents } = claimLootPile({ pileId, accountId: p.accountId, x: p.x, z: p.z, now: this.clock() }, this.db);
+      const position = persistentPosition(this.world.zone, p);
+      const { contents } = claimLootPile({ pileId, accountId: p.accountId, x: position.x, z: position.z, now: this.clock() }, this.db);
       this.piles.delete(pileId);
       return [
         { to: id, type: 'loot_result', body: { pile: pileId, ok: true, contents } },
@@ -396,7 +403,7 @@ export class ZoneEconomy {
     for (const [id, pile] of live) {
       if (!this.piles.has(id)) {
         this.piles.set(id, pile);
-        events.push({ type: 'loot_new', body: { pile: pileView(pile) } });
+        events.push({ type: 'loot_new', body: { pile: this.pileView(pile) } });
       }
     }
     return events;
