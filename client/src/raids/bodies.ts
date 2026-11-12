@@ -141,7 +141,7 @@ export class Figure {
     this.model.position.set(x, 0, z);
     this.model.rotation.y = facing;
     this.model.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).castShadow = true; });
-    this.anim = new AnimationPlayer(this.model, v.clips, { defaultFadeDuration: 0.3 });
+    this.anim = new AnimationPlayer(this.model, v.clips, { defaultFadeDuration: 0.3, plantFeet: true });
     this.anim.play('idle');
     this.anim.update(Math.random() * 2);
     scene.add(this.model);

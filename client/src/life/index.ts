@@ -5,7 +5,7 @@ import type { SoundManager } from '../audio.js';
 import type { WorldClock } from '../world/clock.js';
 import { SINDR_STREETS, SINDR_WALK, TownManager, type LiveTownsperson } from './town-manager.js';
 import { loadLookBodies, ownLooks } from './townsfolk-bodies.js';
-import { drawnCrowd, drawnInTown, makeCrowd, staffPosts } from './crowd.js';
+import { drawnCrowd, drawnInTown, makeCrowd, staffPosts, type PlayerPerson } from './crowd.js';
 import type { Browse, Post } from '../world/builder.js';
 import { SINDR_TOWNSFOLK } from './townsfolk.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
@@ -41,6 +41,8 @@ export interface SindrLifeOptions {
   sound: SoundManager;
   getPlayerContext: () => PlayerDialogueContext;
   onNotice: (message: string) => void;
+  /** The sheet person the player is; the town draws nobody as their double. */
+  playerPerson?: PlayerPerson | undefined;
   /** Where fighting is happening now; townsfolk run from it. */
   getThreats: () => readonly Vector3[];
   /** The world's solid shapes, so people running from a fight don't run through walls. */
@@ -118,8 +120,8 @@ export class SindrLifeSystem {
 
     // The named townsfolk, then a crowd wearing its own looks, copied round the streets.
     // Only sheet people are drawn (drawnInTown); the rest wait for their sheets.
-    const crowd = drawnCrowd(makeCrowd(CROWD_PEOPLE, CROWD_LOOKS));
-    const named = ownLooks(SINDR_TOWNSFOLK).filter(drawnInTown);
+    const crowd = drawnCrowd(makeCrowd(CROWD_PEOPLE, CROWD_LOOKS, undefined, options.playerPerson));
+    const named = ownLooks(SINDR_TOWNSFOLK, options.playerPerson).filter(drawnInTown);
     const cast = SINDR_TOWNSFOLK.filter(p => p.look || named.some(l => l.id === p.id));
     const keepers = staffPosts(options.posts ?? [], crowd, cast);
     const people = [...cast, ...keepers, ...crowd.people];

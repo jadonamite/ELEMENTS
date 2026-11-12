@@ -42,6 +42,7 @@ import { nightness } from './world/effects.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
 import { NationIntroFlow } from './story/nation-intro-flow.js';
+import { playerPerson } from './life/crowd.js';
 import { Group, Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { ClientRobberGang } from './agents/outlaws/robberGang.js';
@@ -55,6 +56,9 @@ import type { NetEnemy } from './net/puppets.js';
 import { isTownMode } from './world-mode.js';
 import './controls/controls.css';
 import { Loader } from './ui/loader.js';
+
+/** Shortest signed turn from one yaw to another, radians in (-PI, PI]. */
+const angleDelta = (from: number, to: number): number => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
 let disposed = false;
 const cleanup: Array<() => void> = [];
@@ -196,7 +200,7 @@ async function main(): Promise<void> {
   let lifeSystem: SindrLifeSystem | null = null;
   let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; } } });
+  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, surfaceAt: zone?.surfaceAt, sounds: zone?.sounds, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; }, locomotion: { get turnInPlace() { return turnInPlace; }, set turnInPlace(v: boolean) { turnInPlace = v; } } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -290,6 +294,13 @@ async function main(): Promise<void> {
   let lockedEnemy: Enemy | null = null;
   let onlineSession: OnlineSession | null = null;
   let remoteLock: NetEnemy | null = null;
+  /** A 90° step in place: standing, the camera swings past this and the body turns to follow it. */
+  let turnStep: { clip: 'turn_l' | 'turn_r'; from: number; to: number; startedAt: number; span: number } | null = null;
+  let turnReadyAt = 0;
+  /** Debug builds can hold the in-place turn still for staged stills. */
+  let turnInPlace = true;
+  const TURN_IN_PLACE_ANGLE = Math.PI / 3;
+  const TURN_IN_PLACE_SECONDS = 0.6;
 
   const fight = new Fight(await villains, physics.world, scene, {
     heroHit(blocked) {
@@ -349,7 +360,7 @@ async function main(): Promise<void> {
       hitStop = Math.max(hitStop, 0.12);
       notice('Parry');
     },
-    enemyHit(_enemy, killed, damage = 35, hitPos, isCrit = false) {
+    enemyHit(_enemy, killed, damage = 35, hitPos, isCrit = false, elemental = false) {
       bend.gain('hit');
       const isHeavy = isCrit || combat.current?.startsWith('heavy') || combat.current === 'uppercut' || combat.current === 'ground_pound';
       hitStop = killed ? 0.12 : isHeavy ? 0.09 : 0.06;
@@ -357,7 +368,9 @@ async function main(): Promise<void> {
       sound.playImpact(killed, false);
       killed ? sound.playVillainDeath(_enemy.controller.position) : sound.playVillainHurt(_enemy.controller.position);
       const pos = hitPos ?? _enemy.controller.position;
-      bending.spawnHitBurst(pos, heroElement);
+      // The effect follows the attack: the element only when bending landed the blow.
+      if (elemental) bending.spawnHitBurst(pos, heroElement);
+      else bending.spawnImpact(pos, sword.armed);
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
       if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone(), _enemy.element);
       if (killed) markKill(fight.allDead);
@@ -400,6 +413,7 @@ async function main(): Promise<void> {
       controller,
       clock: zone.clock,
       sound,
+      playerPerson: playerPerson(hero.character),
       getPlayerContext: () => ({
         name: 'Traveler',
         isLit: !isDim,
@@ -1056,7 +1070,8 @@ async function main(): Promise<void> {
         if (killed) markKill(false);
         shoulderCamera.shake(killed ? 0.35 : 0.14);
         sound.playImpact(killed, false);
-        bending.spawnHitBurst(at, heroElement);
+        if (combat.current && isBendMove(combat.current)) bending.spawnHitBurst(at, heroElement);
+        else bending.spawnImpact(at, sword.armed);
         fightHud.showDamage(at, damage, killed);
       },
       onHurt(hp, max) {
@@ -1301,12 +1316,18 @@ async function main(): Promise<void> {
     heroView.facing = controller.facing;
     const rooted = combat.current !== null || combat.blocking;
     const speedMultiplier = (isLit ? 1.25 : 1.0) * (bend.windskiffActive ? 1.85 : 1.0);
+    // Locked on, the body keeps its chest to the target while the feet carry it any way.
+    const lockAt = shoulderCamera.lockTarget;
+    const facingLock = lockAt
+      ? Math.atan2(lockAt.x - controller.position.x, lockAt.z - controller.position.z)
+      : undefined;
     const alpha = stepper.advance(delta, () => {
       // Fists close in further than a blade before the step stops.
       const stopAt = fightingStyle === 'weapon' ? balance.combat.lungeStopDistance : balance.combat.bareLungeStopDistance;
       const stop = combat.current !== 'dodge' && fight.nearestDistance(controller.position) < stopAt;
       const lunge = stop ? 0 : combat.lunge;
-      controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge, speedMultiplier);
+      controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge, speedMultiplier,
+        undefined, rooted ? undefined : facingLock);
       if (!picking) fight.step(heroView, combat, isLit);
       // Every body has moved for this tick; the world steps once.
       physics.step();
@@ -1340,13 +1361,63 @@ async function main(): Promise<void> {
       if (combat.blocking) {
         hero.anim.play('block', balance.combat.fade);
       } else if (!combat.current && !controller.grounded) {
+        turnStep = null;
         hero.anim.play('jump', 0.12);
         hero.anim.setSpeed('jump', 1.0);
       } else if (!combat.current && performance.now() > techniqueClipUntil) {
+        const now = performance.now() / 1000;
         const pace = locomotionForSpeed(controller.speed);
-        const clip = pace === 'idle' && !sword.engaged ? 'idle_relaxed' : pace;
-        hero.anim.play(clip, balance.controller.animationFade);
-        if (pace !== 'idle') hero.anim.setSpeed(pace, Math.max(0.5, controller.speed / clipSpeeds[pace]));
+        const locked = lockAt !== null;
+        if (turnInPlace && pace === 'idle' && !locked && controller.grounded && !turnStep && now >= turnReadyAt) {
+          // Standing, a camera swung well off the body starts a 90° step in place.
+          const wanted = shoulderCamera.yaw + Math.PI;
+          const off = angleDelta(controller.facing, wanted);
+          if (Math.abs(off) > TURN_IN_PLACE_ANGLE) {
+            turnStep = {
+              clip: off > 0 ? 'turn_l' : 'turn_r', from: controller.facing,
+              to: controller.facing + Math.sign(off) * Math.PI / 2, startedAt: now, span: TURN_IN_PLACE_SECONDS,
+            };
+          }
+        }
+        if (turnStep && pace !== 'idle') {
+          // Walking off mid-step: finish the heading at once and let the legs catch up.
+          controller.facing = turnStep.to;
+          turnStep = null;
+          turnReadyAt = now + 0.2;
+        }
+        if (turnStep) {
+          const span = hero.anim.duration(turnStep.clip);
+          controller.facing = turnStep.from + (turnStep.to - turnStep.from)
+            * Math.min(1, (now - turnStep.startedAt) / turnStep.span);
+          hero.anim.play(turnStep.clip, 0.12);
+          if (span > 0) hero.anim.setSpeed(turnStep.clip, span / turnStep.span);
+          if (now - turnStep.startedAt >= turnStep.span) {
+            controller.facing = turnStep.to;
+            turnStep = null;
+            turnReadyAt = now + 0.25;
+          }
+        } else {
+          let clip = pace === 'idle' && !sword.engaged ? 'idle_relaxed' : pace;
+          let clipSpeed = controller.speed;
+          if (locked && pace === 'walk') {
+            // Track relative to the chest: a sidestep gets the strafe walk, a backpedal runs the walk backwards.
+            const move = movementVelocity(input.read(), shoulderCamera.yaw);
+            const right = -move.x * Math.cos(controller.facing) + move.z * Math.sin(controller.facing);
+            const forward = move.x * Math.sin(controller.facing) + move.z * Math.cos(controller.facing);
+            if (Math.abs(right) > Math.abs(forward) + 0.15) {
+              clip = right > 0 ? 'strafe_r' : 'strafe_l';
+              clipSpeed = Math.abs(right);
+            } else if (forward < -0.2) {
+              clipSpeed = -Math.abs(clipSpeed);
+            }
+          }
+          hero.anim.play(clip, balance.controller.animationFade);
+          if (clip !== 'idle' && clip !== 'idle_relaxed') {
+            const authored = (clipSpeeds as Record<string, number>)[clip] ?? 1;
+            const scale = clipSpeed / authored;
+            hero.anim.setSpeed(clip, Math.abs(scale) < 0.5 ? Math.sign(scale || 1) * 0.5 : scale);
+          }
+        }
       }
     }
     hero.anim.update(animDelta);
@@ -1442,10 +1513,17 @@ async function main(): Promise<void> {
       bending: isLit, ultimateReady: bend.meter >= bend.max && fight.ready('ultimate', isLit),
       interact: contextAction.hasOffer,
     });
-    sound.update(delta, camera, controller, fight.enemies, sword, zone ? {
-      minute: zone.clock.minute,
-      playerPos: controller.position,
-    } : undefined);
+    sound.update(delta, camera, controller, fight.enemies, sword, {
+      heroSteps: hero.anim.takeLanded(),
+      ...(zone ? {
+        minute: zone.clock.minute,
+        playerPos: controller.position,
+        surfaceAt: (p: { x: number; y: number; z: number }) => zone.surfaceAt(p.x, p.y, p.z),
+        market: zone.sounds.market,
+        forge: zone.sounds.forge,
+        people: lifeSystem?.townManager.townsfolk,
+      } : {}),
+    });
     fps?.tick();
     arena.render();
   });
