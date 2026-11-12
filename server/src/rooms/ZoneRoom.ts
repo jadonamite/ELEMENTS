@@ -9,7 +9,7 @@ import { SNAPSHOT_RATE } from '../net/constants.js';
 import { isGuest } from '../net/money.js';
 import { ServerRobberGang } from '../net/outlaws.js';
 import { closeZone, enterRoom, leaveRoom, openZone } from '../net/presence.js';
-import { OPEN_TIER, ZoneWorld, type Identity, type WorldEvent, type ServerPlayer } from '../net/world.js';
+import { OPEN_TIER, ServerPlayer, ZoneWorld, type Identity, type WorldEvent } from '../net/world.js';
 import { ZoneEconomy, type EconEvent } from '../net/zone-economy.js';
 import { adjacentRegions, HANDOFF_SECONDS, nationalRegion, networkPosition, persistentPosition, REGION_OVERLAP, regionContains, RegionHandoffs, SPAWN_REGION, lastNationalPosition, rememberNationalPosition } from '../net/coordinates.js';
 

@@ -304,7 +304,7 @@ export class OnlineSession {
     pending.until = m.expiresAt;
     this.usedTokens.add(m.token);
     const source = this.link;
-    let candidate: RoomLink | null = null;
+    let candidate = null as RoomLink | null;
     let finished = false;
     try {
       const welcome = await new Promise<{ link: RoomLink; message: unknown }>((resolve, reject) => {

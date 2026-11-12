@@ -418,7 +418,7 @@ async function main(): Promise<void> {
   if (startRound > 1) fight.setRound(startRound);
   if (zone) { fight.stopWaves(); fightHud.say(''); }
   const nationalEncounters = zone && !playingOnline && !params.has('legacyEast')
-    ? new NationalEncounterManager(fight, physics.world, renderer, true, params.get('ambush'), notice)
+    ? new NationalEncounterManager(fight, physics.world, renderer, true, params.get('ambush'), (msg) => notice(msg))
     : null;
   cleanup.push(() => nationalEncounters?.dispose());
   let yardSpawned = false;
