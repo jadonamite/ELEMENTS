@@ -58,6 +58,7 @@ import { NationalQuarryStream } from './national-quarry.js';
 import { NationalWaterworksStream } from './national-waterworks.js';
 import { nationalRoadChunks, nationalRoadMesh } from './national-roads.js';
 import { mineRoadMesh, nationalView, terrainAir } from './national-view.js';
+import { createLandMap } from './land-map.js';
 import { MINE_LENGTH, MINE_MAX_GRADE, minePointAt, VOLCANO, waterHeight } from '../../../shared/src/world/ignis/ground.js';
 import { LEGACY_SINDR_ORIGIN as ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
 import { waterAt } from '../../../shared/src/world/ignis/market-slice.js';
@@ -218,7 +219,8 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const legacyEast = params.has('legacyEast');
   const built = sindrGround([...townAreas, ...(terraceTest ? terraceTestAreas() : []), ...styleAreas], legacyEast);
   const ground = (x: number, z: number): number => surfaceAt(x, z, built);
-  const terrainMat = terrainAir(slopeBlend(lib.get('ash_cinder_ground'), lib.get('basalt_rock_face')), fog);
+  const landMap = createLandMap();
+  const terrainMat = terrainAir(slopeBlend(lib.get('ash_cinder_ground'), lib.get('basalt_rock_face'), landMap), fog);
   const stream = new TerrainStream(world, ground, scene, terrainMat, low);
   stream.initialize(SPAWN.x, SPAWN.z);
   stream.startWorker({
@@ -337,7 +339,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   // Kit models placed as instances, one draw call per model part.
   // Entry waits for every level and surface before warming the completed scene.
   const props = new Group();
-  const ready = Promise.all([loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron')), lib.ready(), national.ready])
+  const ready = Promise.all([loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron')), lib.ready(), national.ready, landMap.ready])
     .then(() => { scene.add(props); map.ready = true; });
 
   // Post: sanitize first (stops NaN black frames), bloom for fire and slag, grade, then anti-aliasing.
@@ -427,7 +429,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       waterworks.dispose();
       for (const mesh of residentRoads.values()) mesh.geometry.dispose();
       residentRoads.clear(); nationalRoadGroup.removeFromParent();
-      nationalForest.dispose(); stream.dispose(); forest.dispose(); national.dispose(); roadMaterial.dispose(); terrainMat.dispose();
+      landMap.dispose(); nationalForest.dispose(); stream.dispose(); forest.dispose(); national.dispose(); roadMaterial.dispose(); terrainMat.dispose();
       pool.dispose();
       composer.dispose();
       lib.dispose();

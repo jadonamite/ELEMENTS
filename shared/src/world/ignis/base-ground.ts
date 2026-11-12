@@ -19,6 +19,19 @@ export const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
 function segment(x: number, z: number, ax: number, az: number, bx: number, bz: number): number {
   return Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / ((bx - ax) ** 2 + (bz - az) ** 2)));
 }
+/** Smooth value noise in 0..1; `scale` is the feature size in metres. */
+export function landNoise(x: number, z: number, scale: number): number {
+  const fx = x / scale, fz = z / scale, ix = Math.floor(fx), iz = Math.floor(fz);
+  const tx = fx - ix, tz = fz - iz, sx = tx * tx * (3 - 2 * tx), sz = tz * tz * (3 - 2 * tz);
+  const hash = (a: number, b: number): number => {
+    const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const top = hash(ix, iz) + (hash(ix + 1, iz) - hash(ix, iz)) * sx;
+  const bottom = hash(ix, iz + 1) + (hash(ix + 1, iz + 1) - hash(ix, iz + 1)) * sx;
+  return top + (bottom - top) * sz;
+}
+
 /** Positive inside, zero on the boundary, negative outside. */
 export function landDistance(x: number, z: number): number {
   let inside = false, d2 = Infinity;
@@ -60,7 +73,8 @@ function relief(x: number, z: number): number {
   const north = Math.max(0, Math.min(1, (10000 - z) / 8000));
   let h = 340 + north * 620 - Math.max(0, z - 10000) * 0.044;
   h += 65 * Math.sin(x / 1400 + z / 2300) + 42 * Math.cos(z / 800 - x / 1800);
-  h += 4 * Math.sin(x / 71) * Math.cos(z / 89) + 1.8 * Math.sin(x / 23 + z / 37);
+  // Small landforms: knolls and hollows with no repeat, instead of ruled ripples.
+  h += (landNoise(x, z, 520) - 0.5) * 16 + (landNoise(x + 311, z - 173, 170) - 0.5) * 7 + (landNoise(x - 97, z + 41, 48) - 0.5) * 2;
   const old = Math.hypot(x - 5600, z - 2500);
   h = Math.max(h, 1320 - old * 0.3);
   const r = Math.hypot(x - VOLCANO.x, z - VOLCANO.z);

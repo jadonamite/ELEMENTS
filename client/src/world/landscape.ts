@@ -1,3 +1,4 @@
+import type { LandMap } from './land-map.js';
 import {
   BackSide,
   Color,
@@ -76,9 +77,11 @@ export function fieldMesh(field: Field, material: MeshStandardMaterial): Mesh {
  * Ash on gentle ground, basalt rock on steep ground: the rock is projected from three sides
  * so it never stretches down a cliff.
  */
-export function slopeBlend(ground: MeshStandardMaterial, rock: MeshStandardMaterial): MeshStandardMaterial {
+export function slopeBlend(ground: MeshStandardMaterial, rock: MeshStandardMaterial, land?: LandMap): MeshStandardMaterial {
   const material = ground.clone();
-  const uniforms = { tRock: { value: null as Texture | null }, uRockTint: { value: rock.color }, uRockTile: { value: 1 / LOOKS.basalt_rock_face.tile } };
+  // Streamed terrain carries no vertex colours. Left on, the missing attribute reads as zero and blacks out the land.
+  material.vertexColors = false;
+  const uniforms = { ...(land?.uniforms ?? {}), tRock: { value: null as Texture | null }, uRockTint: { value: rock.color }, uRockTile: { value: 1 / LOOKS.basalt_rock_face.tile } };
   const watch = (): void => {
     if (rock.map && uniforms.tRock.value !== rock.map) uniforms.tRock.value = rock.map;
     if (ground.map && material.map !== ground.map) { material.map = ground.map; material.normalMap = ground.normalMap; material.aoMap = ground.aoMap; material.roughnessMap = ground.roughnessMap; material.needsUpdate = true; }
@@ -96,7 +99,7 @@ export function slopeBlend(ground: MeshStandardMaterial, rock: MeshStandardMater
         vTerrPos = (modelMatrix * terrainPoint).xyz;
         vTerrNormal = normalize(mat3(modelMatrix) * objectNormal);`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D tRock;\nuniform vec3 uRockTint;\nuniform float uRockTile;\nvarying vec3 vTerrPos;\nvarying vec3 vTerrNormal;')
+      .replace('#include <common>', `#include <common>\nuniform sampler2D tRock;\nuniform vec3 uRockTint;\nuniform float uRockTile;\nvarying vec3 vTerrPos;\nvarying vec3 vTerrNormal;${land ? '\nuniform sampler2D tLand;\nuniform vec4 uLandRect;\nuniform float uLandOn;' : ''}`)
       .replace('#include <map_fragment>', `
         #include <map_fragment>
         vec3 bw = pow(abs(vTerrNormal), vec3(4.0));
@@ -106,10 +109,25 @@ export function slopeBlend(ground: MeshStandardMaterial, rock: MeshStandardMater
           + texture2D(tRock, vTerrPos.xy * uRockTile).rgb * bw.z) * uRockTint;
         float steep = 1.0 - smoothstep(0.62, 0.86, vTerrNormal.y);
         float far = smoothstep(80.0, 260.0, length(vTerrPos.xz - cameraPosition.xz));
-        diffuseColor.rgb = mix(diffuseColor.rgb, rockCol, max(steep, far * 0.6));`);
+        ${land ? `
+        // The land map gives the colour; the scanned ground and rock give the grain, which fades out with distance.
+        vec4 landTexel = texture2D(tLand, (vTerrPos.xz - uLandRect.xy) * uLandRect.zw);
+        vec3 ground = diffuseColor.rgb;
+        #ifdef USE_MAP
+          // A second, much larger sample of the same scan hides its repeat.
+          ground = mix(ground, texture2D(map, vMapUv.yx * 0.137 + 0.37).rgb * diffuse, 0.5);
+        #endif
+        vec3 grain = mix(ground, rockCol, steep) / 0.11;
+        grain = mix(grain, vec3(1.0), far * 0.85);
+        vec3 landCol = mix(landTexel.rgb, landTexel.rgb * 0.62 + vec3(0.02), steep * 0.7);
+        diffuseColor.rgb = mix(mix(diffuseColor.rgb, rockCol, max(steep, far * 0.6)), landCol * clamp(grain, 0.35, 1.9), uLandOn);
+        // Lava shows through the dark seams of the crust.
+        float seam = 1.0 - smoothstep(0.55, 1.05, dot(grain, vec3(0.333)));
+        totalEmissiveRadiance += vec3(1.0, 0.22, 0.03) * landTexel.a * (0.6 + 3.4 * seam) * uLandOn;` : `
+        diffuseColor.rgb = mix(diffuseColor.rgb, rockCol, max(steep, far * 0.6));`}`);
   };
   // Separate program from the ground it was cloned from.
-  material.customProgramCacheKey = () => 'slope-blend';
+  material.customProgramCacheKey = () => land ? 'slope-blend-land' : 'slope-blend';
   watch();
   return material;
 }

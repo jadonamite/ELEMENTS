@@ -21,7 +21,7 @@ export function terrainAir(material: MeshStandardMaterial, fog: FogExp2): MeshSt
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vGroundDistance;')
       .replace('#include <fog_vertex>', '#include <fog_vertex>\nvGroundDistance = length(mvPosition.xyz);');
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 terrainFog; varying float vGroundDistance;')
-      .replace('#include <fog_fragment>', 'gl_FragColor.rgb = mix(gl_FragColor.rgb, terrainFog, 1.0 - exp(-vGroundDistance * 0.00010));');
+      .replace('#include <fog_fragment>', 'gl_FragColor.rgb = mix(gl_FragColor.rgb, terrainFog, 1.0 - exp(-vGroundDistance * 0.000045));');
   };
   m.customProgramCacheKey = () => `${material.customProgramCacheKey()}-national-air`;
   return m;
