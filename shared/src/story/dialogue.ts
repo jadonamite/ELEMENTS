@@ -68,7 +68,8 @@ const TALK_SITUATIONS: Record<string, readonly Criterion[]> = {
 /**
  * Things a townsperson sees happen, each a concept of its own heard by everyone near it. Guards answer a
  * fight, a theft or a red flag as alerts (they may cut a reaction); everyone else reacts. A speaker
- * reacts to the same kind of event at most once per WITNESS_COOLDOWN_SECONDS.
+ * reacts to the same kind of event at most once per WITNESS_COOLDOWN_SECONDS, and once anyone has
+ * called out an event, nobody else repeats that kind for WITNESS_ECHO_SECONDS.
  */
 const WITNESS: Record<string, SpeechTier> = {
   fight_started: 'reaction', theft_seen: 'reaction', red_flag_raised: 'reaction', loot_dropped: 'reaction', flee: 'reaction',
@@ -76,6 +77,7 @@ const WITNESS: Record<string, SpeechTier> = {
 const ALERT_ROLES = new Set(['guard_sindr', 'sentry']);
 const ALERT_SITUATIONS = new Set(['fight_started', 'theft_seen', 'red_flag_raised', 'flee']);
 export const WITNESS_COOLDOWN_SECONDS = 20;
+export const WITNESS_ECHO_SECONDS = 6;
 
 /** Lines a villain says to the hero's face: calling them out, the answer, the gang running in. Never cut by chatter. */
 const CALLOUTS = new Set(['challenge_issued', 'challenge_accepted', 'challenge_refused', 'gang_arrives']);
@@ -91,13 +93,14 @@ export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
       const witness = WITNESS[situation];
       if (witness) {
         const said = `said.${situation}`;
+        const heard = `heard.${situation}`;
         rules.push({
           id: `${role}/${situation}`,
           concept: situation,
-          criteria: [{ fact: 'who', value: role }, { fact: `self.${said}`, op: '!=', value: true }],
+          criteria: [{ fact: 'who', value: role }, { fact: `self.${said}`, op: '!=', value: true }, { fact: `world.${heard}`, op: '!=', value: true }],
           lines: lines as string[],
           tier: ALERT_ROLES.has(role) && ALERT_SITUATIONS.has(situation) ? 'alert' : witness,
-          remember: [{ fact: said, seconds: WITNESS_COOLDOWN_SECONDS }],
+          remember: [{ fact: said, seconds: WITNESS_COOLDOWN_SECONDS }, { fact: heard, seconds: WITNESS_ECHO_SECONDS, scope: 'world' }],
         });
         continue;
       }

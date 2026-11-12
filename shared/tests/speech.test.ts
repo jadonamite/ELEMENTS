@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { SpeechMemory, SpeechRules, SpeechTraffic, type SpeechRule } from '../src/story/speech.js';
-import { createDialogueMemory, pickDialogueLine, rulesFromDialogue, talkFacts, WITNESS_COOLDOWN_SECONDS, type PlayerDialogueContext } from '../src/story/dialogue.js';
+import { createDialogueMemory, pickDialogueLine, rulesFromDialogue, talkFacts, WITNESS_COOLDOWN_SECONDS, WITNESS_ECHO_SECONDS, type PlayerDialogueContext } from '../src/story/dialogue.js';
 
 const table = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../dialogue.json'), 'utf8'));
 const seq = (...xs: number[]) => { let i = 0; return () => xs[i++ % xs.length]!; };
@@ -148,8 +148,18 @@ test('witnesses: every Sindr townsperson reacts to fights, thefts, red flags, lo
   assert.equal(guard?.tier, 'alert');
   assert.equal(rules.speak({ concept: 'fight_started', speakerId: 'g1', facts: { who: 'guard_sindr' } }, memory, 5), null);
   assert.ok(rules.speak({ concept: 'fight_started', speakerId: 'g1', facts: { who: 'guard_sindr' } }, memory, WITNESS_COOLDOWN_SECONDS + 1));
-  const child = rules.answer('fight_started', [{ speakerId: 'c1', facts: { who: 'child_sindr' } }], memory, 0);
+  const child = rules.answer('fight_started', [{ speakerId: 'c1', facts: { who: 'child_sindr' } }], new SpeechMemory(), 0);
   assert.equal(child?.tier, 'reaction');
+});
+
+test('once someone calls out a fight, nobody else repeats it until the echo passes; other kinds still answer', () => {
+  const rules = new SpeechRules(rulesFromDialogue(table), () => 0);
+  const memory = new SpeechMemory();
+  const crowd = [{ speakerId: 's1', facts: { who: 'smith_sindr' } }, { speakerId: 't1', facts: { who: 'trader_sindr' } }];
+  assert.ok(rules.answer('fight_started', crowd, memory, 0));
+  assert.equal(rules.answer('fight_started', crowd, memory, WITNESS_ECHO_SECONDS - 1), null);
+  assert.ok(rules.answer('flee', crowd, memory, 1));
+  assert.ok(rules.answer('fight_started', crowd, memory, WITNESS_ECHO_SECONDS + 0.5));
 });
 
 test('a street challenger has a line for calling out, the answer, walking away and the gang arriving, all as alerts', () => {
