@@ -18,6 +18,8 @@ interface Cell { key: string; ix: number; iz: number; slot: number; collider: RA
 interface Slot { geometry: number; instance: number; used: boolean }
 interface Tier { batch: BatchedMesh; slots: Slot[]; cells: Map<string, Cell>; step: number }
 const SIZE = IGNIS.cellSize;
+/** Mid cells reach this many cells from the hero's cell: a 5x5 square less the near 3x3, 16 cells. */
+const MID_REACH = 2;
 
 function tier(capacity: number, step: number, material: Material): Tier {
   const n = SIZE / step + 1, vertices = n * n + 4 * n, indices = (n - 1) ** 2 * 6 + (n - 1) * 24;
@@ -67,7 +69,7 @@ export class TerrainStream {
 
   constructor(private readonly world: RAPIER.World, private readonly height: (x: number, z: number) => number,
     scene: Scene, material: Material, low: boolean, private readonly options: StreamOptions = {}) {
-    this.near = tier(9, 2, material); this.mid = tier(24, low ? 16 : 8, material);
+    this.near = tier(9, 2, material); this.mid = tier((MID_REACH * 2 + 1) ** 2 - 9, low ? 16 : 8, material);
     this.near.batch.name = 'national-near'; this.mid.batch.name = 'national-mid';
     scene.add(this.near.batch, this.mid.batch);
     this.checkpoint = new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial({ color: 0xb67c3f }), 512);
@@ -117,17 +119,14 @@ export class TerrainStream {
     if (ix === this.targetX && iz === this.targetZ) return;
     this.targetX = ix; this.targetZ = iz;
     this.generation++; this.completed = null; this.pending.length = 0;
+    // Near is the 3x3 square around the hero, mid the square ring around it. The resident outline is a square with no
+    // notches: seen from inside it, every edge skirt faces away and the far tiles only ever begin beyond it.
     const near = new Set<string>(), mid = new Set<string>();
-    const candidates: Array<{ ix: number; iz: number; distance: number }> = [];
-    for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) {
+    for (let dx = -MID_REACH; dx <= MID_REACH; dx++) for (let dz = -MID_REACH; dz <= MID_REACH; dz++) {
       const cx = ix + dx, cz = iz + dz;
       if (!landCell(cx, cz)) continue;
-      const key = `${cx}:${cz}`;
-      if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1) near.add(key);
-      else if (Math.hypot(dx, dz) <= 5) candidates.push({ ix: cx, iz: cz, distance: dx * dx + dz * dz });
+      (Math.abs(dx) <= 1 && Math.abs(dz) <= 1 ? near : mid).add(`${cx}:${cz}`);
     }
-    candidates.sort((a, b) => a.distance - b.distance);
-    for (const p of candidates.slice(0, 24)) mid.add(`${p.ix}:${p.iz}`);
     this.evict(this.near, near); this.evict(this.mid, mid);
     this.frontierDirty = true;
     for (const [into, wanted] of [[this.near, near], [this.mid, mid]] as const) for (const key of wanted) if (!into.cells.has(key)) {

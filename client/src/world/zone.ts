@@ -6,8 +6,10 @@ import {
   BufferGeometry,
   Color,
   CircleGeometry,
+  DepthTexture,
   DirectionalLight,
   EdgesGeometry,
+  FloatType,
   FogExp2,
   Group,
   HalfFloatType,
@@ -26,6 +28,7 @@ import {
   Vector2,
   Vector3,
   WebGLRenderer,
+  WebGLRenderTarget,
   type Material,
   type MeshStandardMaterial,
 } from 'three';
@@ -121,7 +124,10 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const debug = params.has('debug');
   const clock = new WorldClock(params);
   installHaze();
-  const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  // One camera sees from the hero's feet to the far coast, so depth is reversed and stored as a float: precision then
+  // holds at 0.1 m and at 20 km alike. Without EXT_clip_control three keeps the standard buffer, whose precision is set
+  // by the near plane, not the far one, so the same 26 km camera still works, coarser at the horizon.
+  const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', reversedDepthBuffer: true });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.35;
@@ -134,7 +140,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const scene = new Scene();
   const fog = new FogExp2(0x2e2a32, 0.0042);
   scene.fog = fog;
-  const camera = new PerspectiveCamera(balance.camera.fov, 1, balance.camera.near, 2600);
+  const camera = new PerspectiveCamera(balance.camera.fov, 1, balance.camera.near, 26000);
 
   // Sky first: it also lights the town through a prefiltered environment map.
 
@@ -214,17 +220,14 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     x0: Math.min(...built.areas.map(a => a.bounds.x0)), x1: Math.max(...built.areas.map(a => a.bounds.x1)),
     z0: Math.min(...built.areas.map(a => a.bounds.z0)), z1: Math.max(...built.areas.map(a => a.bounds.z1)),
   });
-  const national = nationalView(ground, terrainMat, low);
+  const national = nationalView(ground, terrainMat, low, fog);
+  scene.add(national.group);
   const residentCells = [stream.near.cells, stream.mid.cells];
-  const farCamera = new PerspectiveCamera(balance.camera.fov, 1, balance.camera.near, 26000);
-  const farSun = new DirectionalLight(0xffffff, 1), farHemi = new HemisphereLight(0xc4cbd1, 0x8a7050, 1);
-  national.scene.add(farSun, farHemi);
   const roadMaterial = terrainAir(lib.get('packed_dirt_road'), fog);
   scene.add(mineRoadMesh(roadMaterial));
   const turning = new Mesh(new CircleGeometry(22, 40).rotateX(-Math.PI / 2), roadMaterial);
   turning.position.set(10500 - ORIGIN.x, 740 - ORIGIN.y + 0.08, 7000 - ORIGIN.z); turning.name = 'cinderpit-turning-area'; scene.add(turning);
   const forest = routeForest(renderer, lib.get('charred_timber_beams'), world, low, fog); scene.add(forest.group);
-  const farStats = { calls: 0, triangles: 0 };
   const map = {
     ready: false, groundAt: ground,
     road: { lengthKm: MINE_LENGTH / 1000, pointAt(s: number) {
@@ -233,7 +236,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     maxGrade: MINE_MAX_GRADE,
     forest: { count: forest.spots.length, countNear: forest.countNear },
     get cells() { return { near: stream.near.cells.size, mid: stream.mid.cells.size, far: national.visible }; },
-    far: farStats, timing: stream.timing, streamStatus: stream.status,
+    far: national.stats, timing: stream.timing, streamStatus: stream.status,
     prepare: (x: number, z: number) => stream.prepare(x, z),
     waterAt(x: number, z: number) {
       return waterAt(x, z)?.surface ?? ((waterHeight(x + ORIGIN.x, z + ORIGIN.z) ?? NaN) - ORIGIN.y);
@@ -257,7 +260,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     volcano: { x: VOLCANO.x - ORIGIN.x, y: VOLCANO.height - ORIGIN.y, z: VOLCANO.z - ORIGIN.z },
   };
   // Debug only: the frame is built from these three layers, so a review can show and hide each one.
-  if (debug) Object.assign(win.elements!, { map, layers: { town: scene, far: national.scene, near: stream.near.batch, mid: stream.mid.batch } });
+  if (debug) Object.assign(win.elements!, { map, layers: { town: scene, far: national.group, near: stream.near.batch, mid: stream.mid.batch } });
 
   // The town.
   const builder = new WorldBuilder({ low });
@@ -294,40 +297,14 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     .then(() => { scene.add(props); map.ready = true; });
 
   // Post: sanitize first (stops NaN black frames), bloom for fire and slag, grade, then anti-aliasing.
-  // Pass order: the national far pass first, then the town pass with the depth buffer cleared.
-  // The far pass owns the frame including the sky (it is the only sky in either scene) and writes
-  // depth with its own 26 km camera; the town pass then clears that depth and draws the town and
-  // the near/mid cells over it with its own 2.6 km camera. The two depth scales are never compared,
-  // so a far tile can no longer win a depth test against a 500-2,600 m town object, and the far
-  // sky can no longer paint over far tiles. Resident-cell exclusion still keeps far tiles out from
-  // under the cells that are already resident.
-  const composer = new EffectComposer(renderer);
-  composer.renderTarget1.texture.type = HalfFloatType;
-  composer.renderTarget2.texture.type = HalfFloatType;
-  const farPass = new RenderPass(national.scene, farCamera);
-  composer.addPass(farPass);
-  const townPass = new RenderPass(scene, camera);
-  townPass.clear = false; townPass.clearDepth = true;
-  composer.addPass(townPass);
-  const renderFar = farPass.render.bind(farPass);
-  farPass.render = (...args) => {
-    // Record call count before far pass so we can compute far-only delta.
-    const callsBefore = renderer.info.render.calls, trisBefore = renderer.info.render.triangles;
-    renderFar(...args);
-    farStats.calls = renderer.info.render.calls - callsBefore;
-    farStats.triangles = renderer.info.render.triangles - trisBefore;
-  };
+  // One pass draws the town, the streamed cells and the national view with one camera into a float depth buffer.
+  const depthTexture = new DepthTexture(1, 1, FloatType);
+  const composer = new EffectComposer(renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthTexture }));
+  composer.addPass(new RenderPass(scene, camera));
   /** Readies an object to draw the way the scene pass draws it, before it first shows. */
   // Lazy model detail warms against matching lights without redrawing the live town for each arriving model.
   const warmUp = (object: Object3D, onProgress?: (fraction: number) => void): Promise<void> => {
-    if (object === scene) {
-      // Also compile far-pass materials (farMaterial, waterMat in national.scene).
-      // They are in national.scene which the town warm never visits, causing a first-frame stall.
-      return Promise.all([
-        warm(renderer, scene, camera, scene, composer.renderTarget1, onProgress ? p => onProgress(p * 0.9) : undefined),
-        renderer.compileAsync(national.scene, farCamera, national.scene),
-      ]).then(() => {});
-    }
+    if (object === scene) return warm(renderer, scene, camera, scene, composer.renderTarget1, onProgress);
     const modelWarmScene = new Scene(); modelWarmScene.fog = fog;
     modelWarmScene.environment = scene.environment; modelWarmScene.environmentIntensity = scene.environmentIntensity;
     for (const child of scene.children) if ('isLight' in child) modelWarmScene.add(child.clone());
@@ -387,14 +364,8 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       // Debug only: a fixed photographer's camera for comparison shots (window.elementsShotCam = [px, py, pz, tx, ty, tz]).
       const shot = debug ? (window as unknown as { elementsShotCam?: number[] }).elementsShotCam : undefined;
       if (shot && shot.length === 6) { camera.position.set(shot[0]!, shot[1]!, shot[2]!); camera.lookAt(shot[3]!, shot[4]!, shot[5]!); }
-      farCamera.position.copy(camera.position); farCamera.quaternion.copy(camera.quaternion);
-      farCamera.aspect = camera.aspect; farCamera.fov = camera.fov; farCamera.updateProjectionMatrix();
-      farCamera.updateMatrixWorld(); national.update(farCamera, residentCells);
+      camera.updateMatrixWorld(); national.update(camera, residentCells);
       national.sky.position.copy(camera.position);
-      farSun.color.copy(sun.color); farSun.intensity = sun.intensity; farSun.position.copy(clock.light.direction);
-      farHemi.color.copy(hemi.color); farHemi.groundColor.copy(hemi.groundColor); farHemi.intensity = hemi.intensity;
-      national.scene.environment = scene.environment; national.scene.environmentIntensity = scene.environmentIntensity;
-      (national.scene.fog as FogExp2).color.copy(fog.color);
       composer.render();
     },
     dispose() {

@@ -225,8 +225,10 @@ varying vec2 vUv;
 varying vec4 vData;
 varying vec4 vAnim;
 ${FX_COMMON_GLSL}
+#include <packing>
+// three's decode follows the renderer's depth layout (standard or reversed).
 float linearDepth(float d) {
-  return uNearFar.x * uNearFar.y / (uNearFar.y - d * (uNearFar.y - uNearFar.x));
+  return -perspectiveDepthToViewZ(d, uNearFar.x, uNearFar.y);
 }
 vec4 atlasFrame(float frame) {
   vec2 cell = vec2(mod(frame, 8.0), 7.0 - floor(frame / 8.0));

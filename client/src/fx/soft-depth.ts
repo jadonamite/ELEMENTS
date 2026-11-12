@@ -1,4 +1,4 @@
-import { DepthTexture, MeshDepthMaterial, Vector2, Vector4, WebGLRenderTarget, type Group, type Scene } from 'three';
+import { DepthTexture, FloatType, MeshDepthMaterial, Vector2, Vector4, WebGLRenderTarget, type Group, type Scene } from 'three';
 
 /** Captures opaque scene depth before effects, including animated bodies, on frames that draw soft effects. */
 export class SoftDepth {
@@ -18,7 +18,7 @@ export class SoftDepth {
   private scale = 0.5;
 
   constructor(private readonly scene: Scene, root: Group) {
-    this.target.depthTexture = new DepthTexture(1, 1);
+    this.target.depthTexture = new DepthTexture(1, 1, FloatType);
     this.previous = scene.onBeforeRender;
     this.hook = (renderer, currentScene, camera, geometry, material, group) => {
       if (this.busy) return;

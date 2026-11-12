@@ -85,14 +85,24 @@ for (let i = 1; i < broadPoints.length; i++) {
     }
   }
 }
-/** The broad cut/fill valley uses a separate conservative index; the narrow road index never truncates it. */
+/** How far the broad valley reaches either side of the road. The index margin (620 m) covers it. */
+export const VALLEY_REACH = 600;
+/**
+ * The broad cut/fill valley. Its height is a weighted blend over every road section within reach, and each weight
+ * fades to zero at the reach, so the height is continuous everywhere. Taking the single nearest section instead
+ * jumps where a bend brings two legs of different height near each other, and the ground grows a ledge there.
+ * `distance` is the distance to the nearest section (continuous too). The index is conservative, so no section with
+ * any weight is ever left out.
+ */
 export function mineValleyAt(x: number, z: number): RoadSample {
-  let d2 = Infinity, s = 0;
+  let d2 = Infinity, s = 0, weight = 0, sum = 0;
   for (const i of broadBins.get(`${Math.floor(x / 512)}:${Math.floor(z / 512)}`) ?? []) {
     const a = broadPoints[i - 1]!, b = broadPoints[i]!, dx = b.x - a.x, dz = b.z - a.z;
     const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz)));
-    const d = (x - a.x - dx * t) ** 2 + (z - a.z - dz * t) ** 2;
-    if (d < d2) { d2 = d; s = a.s + (b.s - a.s) * t; }
+    const d = (x - a.x - dx * t) ** 2 + (z - a.z - dz * t) ** 2, along = a.s + (b.s - a.s) * t;
+    if (d < d2) { d2 = d; s = along; }
+    const r = Math.sqrt(d) / VALLEY_REACH;
+    if (r < 1) { const w = (1 - r * r) ** 3 / (d + 400); weight += w; sum += w * mineHeight(along); }
   }
-  return { distance: Math.sqrt(d2), height: mineHeight(s), s };
+  return { distance: Math.sqrt(d2), height: weight > 0 ? sum / weight : mineHeight(s), s };
 }

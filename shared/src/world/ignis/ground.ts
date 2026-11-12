@@ -1,5 +1,5 @@
 import { IGNIS } from './coordinates.js';
-import { mineAt, mineValleyAt } from './mine-road.js';
+import { mineAt, mineValleyAt, VALLEY_REACH } from './mine-road.js';
 export { MINE_ROAD, MINE_LENGTH, MINE_MAX_GRADE, mineAt, minePointAt } from './mine-road.js';
 
 export const LAND_POLYGON: readonly (readonly [number, number])[] = [
@@ -11,7 +11,8 @@ export const RIVER = [[8000, 2000, 1100], [8100, 3000, 920], [8000, 3500, 820], 
   [8100, 10200, 330], [9000, 11000, 240], [10600, 12000, 170], [12000, 13000, 95],
   [13400, 14000, 35], [14350, 15000, 0]] as const;
 export const SETTLEMENTS = [
-  { name: 'Sindr', x: 7000, z: 9000, height: 380, radius: 450 },
+  // Sindr's pad covers the built town; the rest of its 900 x 700 m city map keeps the shelves of the relief.
+  { name: 'Sindr', x: 7000, z: 9000, height: 380, radius: 220 },
   { name: 'East Border Fort', x: 2000, z: 9000, height: 250, radius: 110 },
   { name: 'Pinewatch', x: 4500, z: 5500, height: 680, radius: 100 },
   { name: 'Crown Lake', x: 8000, z: 4000, height: 820, radius: 100 },
@@ -93,11 +94,12 @@ function relief(x: number, z: number): number {
 export function groundHeight(x: number, z: number): number {
   const land = x >= 6000 && x <= 8500 && z >= 7500 && z <= 10000 ? 2000 : landDistance(x, z);
   if (land < 0) return oceanBoundary(x, z) ? -12 * smooth(0, 100, -land) : relief(x, z);
-  const sindrFlat = (x - 7000) ** 2 + (z - 9000) ** 2 <= 450 ** 2;
-  let h = sindrFlat ? 380 : relief(x, z);
+  let h = relief(x, z);
   // Ocean-facing edges taper to a beach; the other boundaries are mountain ridges.
   if (x > 11000 && z > 1800) h *= smooth(0, 1500, land);
-  if (!sindrFlat) for (const pad of SETTLEMENTS) {
+  // Pads are laid on the relief first, flat inside and easing out over a shoulder. Everything after this (valley,
+  // river, road) carves pads and open ground alike, so no later step can leave a ledge at a pad's rim.
+  for (const pad of SETTLEMENTS) {
     const d = Math.hypot(x - pad.x, z - pad.z);
     const shoulder = pad.name === 'Sindr' ? 1200 : 220;
     if (d < pad.radius + shoulder) h = mix(pad.height, h, smooth(pad.radius, pad.radius + shoulder, d));
@@ -105,8 +107,7 @@ export function groundHeight(x: number, z: number): number {
   // The spring shelf is an altitude control independent of settlement pads.
   h = mix(1100, h, smooth(60, 250, Math.hypot(x - 8000, z - 2000)));
   const valley = mineValleyAt(x, z);
-  if (valley.distance < 600) h = mix(valley.height, h, smooth(80, 600, valley.distance));
-  for (const pad of SETTLEMENTS) if (Math.hypot(x - pad.x, z - pad.z) <= pad.radius) h = pad.height;
+  if (valley.distance < VALLEY_REACH) h = mix(valley.height, h, smooth(80, VALLEY_REACH, valley.distance));
   const lakeR = Math.hypot((x - LAKE.x) / LAKE.rx, (z - LAKE.z) / LAKE.rz);
   if (lakeR < 1.3) h = mix(818.5, h, smooth(1, 1.3, lakeR));
   const river = riverAt(x, z);

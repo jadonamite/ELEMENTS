@@ -137,7 +137,13 @@ export function createSky(): Mesh {
       void main() {
         vDir = normalize(position);
         vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        gl_Position = p.xyww;
+        // Pinned to the far end of the depth range, which is 0 when three reverses depth and 1 otherwise, so the
+        // sky draws last and only where nothing else did.
+        #ifdef USE_REVERSED_DEPTH_BUFFER
+          gl_Position = vec4(p.xy, 0.0, p.w);
+        #else
+          gl_Position = p.xyww;
+        #endif
       }`,
     fragmentShader: /* glsl */ `
       uniform float uTime;
