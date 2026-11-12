@@ -274,11 +274,11 @@ export class BodyKit {
         applySkinShader(mat, uniforms);
       }
     });
+    group.userData.sex = config.sex;
     const rigMesh = rig as SkinnedMesh | null;
     if (!rigMesh) return group;
     if (outfit.whole) {
       cullAsOneBody(group, rigMesh);
-      group.userData.sex = config.sex;
       return group;
     }
 
@@ -321,7 +321,6 @@ export class BodyKit {
     const preset = BODY_PRESET_OPTIONS.find(b => b.id === config.bodyPreset) ?? BODY_PRESET_OPTIONS[1]!;
     group.scale.set(...preset.scale);
     cullAsOneBody(group, rigMesh);
-    group.userData.sex = config.sex;
     return group;
   }
 

@@ -7,6 +7,7 @@ import './threat-arrows.css';
 import balance from '../../shared/balance.json';
 import dialogueData from '../../shared/dialogue.json';
 import { dialogueRules } from '../../shared/src/story/dialogue.js';
+import { stallFacts } from '../../shared/src/story/stall-talk.js';
 import { SpeechMemory } from '../../shared/src/story/speech.js';
 import { createArena, disposeObject, loadProps } from './scene.js';
 import { createZone, SPAWN } from './world/zone.js';
@@ -631,6 +632,9 @@ async function main(): Promise<void> {
       knownFlags = s.redFlags;
     },
     lootDropped: (x, z) => lifeSystem?.witness('loot_dropped', new Vector3(x, controller.position.y, z)),
+    // The keeper behind the counter greets the player, or speaks of a bare shelf or moving prices, and thanks a buyer.
+    stallOpened: (m, quotes) => void lifeSystem?.stallSays(m.id, m.nation, 'talk', stallFacts(m, quotes, balance.speech.stall.priceMoved)),
+    stallBought: (m) => void lifeSystem?.stallSays(m.id, m.nation, 'sale_made'),
     wornChanged: (worn) => {
       void hero.switchOutfit(parseOutfit(worn.outfit));
       fight.setHeroArmour(worn.armour);

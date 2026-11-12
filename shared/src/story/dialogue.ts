@@ -46,8 +46,9 @@ const TOPIC: Record<DialogueEventType, TalkTopic> = {
 
 /**
  * Situations in dialogue.json read as conditions of the "talk" concept. Weights set which situation wins
- * when several hold: a bounty over a red flag over the topic asked over the hour over a heavy pack over
- * who the player is. Situations not listed are concepts of their own (sale_made, fee_rising, ...).
+ * when several hold: a bounty over a red flag over the topic asked over a bare shelf over the hour over
+ * moving prices over a heavy pack over who the player is. Stall facts come from stall-talk.ts when a stall
+ * opens. Situations not listed are concepts of their own (sale_made, fee_rising, ...).
  */
 const TALK_SITUATIONS: Record<string, readonly Criterion[]> = {
   bounty: [{ fact: 'player.bounty', value: true, weight: 12 }],
@@ -55,6 +56,9 @@ const TALK_SITUATIONS: Record<string, readonly Criterion[]> = {
   sell_lead: [{ fact: 'topic', value: 'lead', weight: 8 }],
   rumour_allborn: [{ fact: 'topic', value: 'allborn', weight: 8 }],
   allborn_hint: [{ fact: 'topic', value: 'allborn', weight: 8 }],
+  out_of_stock: [{ fact: 'stall.emptyShelf', value: true, weight: 7 }],
+  prices_rising: [{ fact: 'stall.prices', value: 'rising', weight: 5 }],
+  prices_falling: [{ fact: 'stall.prices', value: 'falling', weight: 5 }],
   night: [{ fact: 'time', value: 'night', weight: 6 }],
   dusk: [{ fact: 'time', value: 'dusk', weight: 6 }],
   heavy_pack: [{ fact: 'player.carried', op: '>=', value: 4, weight: 4 }],
@@ -81,6 +85,8 @@ export const WITNESS_ECHO_SECONDS = 6;
 
 /** Lines a villain says to the hero's face: calling them out, the answer, the gang running in. Never cut by chatter. */
 const CALLOUTS = new Set(['challenge_issued', 'challenge_accepted', 'challenge_refused', 'gang_arrives']);
+/** Lines said across a counter to the player dealing with the speaker: part of that exchange, like a conversation. */
+const COUNTER = new Set(['sale_made']);
 
 /** Every situation in the dialogue table as a speech rule, conditioned on the speaker group. */
 export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
@@ -109,7 +115,7 @@ export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
         concept: talk ? 'talk' : situation,
         criteria: [{ fact: 'who', value: role }, ...(talk ?? [])],
         lines: lines as string[],
-        tier: talk ? 'conversation' : CALLOUTS.has(situation) ? 'alert' : 'ambient',
+        tier: talk || COUNTER.has(situation) ? 'conversation' : CALLOUTS.has(situation) ? 'alert' : 'ambient',
       });
     }
   }

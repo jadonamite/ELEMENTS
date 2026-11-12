@@ -29,20 +29,36 @@ export class TownVoices {
     this.traffic = new SpeechTraffic(o.limits);
   }
 
+  /** The speech rules every voice in the street answers by. */
+  get rules(): SpeechRules {
+    return this.o.rules;
+  }
+
+  /** Game time in seconds, as cooldowns and traffic count it. */
+  now(): number {
+    return this.o.now();
+  }
+
   /**
    * Speaks `line` in the person's recorded voice from where they stand, if traffic lets it start.
-   * Resolves false when there is no recording or no room. Conversation lines show in the talk panel, not as subtitles.
+   * `role` is the dialogue group the line came from when the person speaks as something other than their
+   * own (a trader keeping a merchant's stall); the voice is that group's, in the sex of the person's body.
+   * Resolves false when there is no recording, no room, or the body does not say its sex. Conversation lines show in the talk panel, so they
+   * get a subtitle only when `subtitle` asks for one.
    */
-  say(person: LiveTownsperson, line: string, tier: SpeechTier): Promise<boolean> {
+  say(person: LiveTownsperson, line: string, tier: SpeechTier,
+    { role = person.data.dialogueRole, subtitle = tier !== 'conversation' }: { role?: string; subtitle?: boolean } = {}): Promise<boolean> {
     const at = person.position;
     const id = person.data.id;
-    return this.o.sound.speak(voiceId(person.data.dialogueRole, person.data.sex), line, { x: at.x, y: at.y + 1.6, z: at.z }, {
+    const sex = bodySex(person);
+    if (!sex) return Promise.resolve(false);
+    return this.o.sound.speak(voiceId(role, sex), line, { x: at.x, y: at.y + 1.6, z: at.z }, {
       channel: id,
       admit: (seconds) => {
         const cut = this.traffic.request(id, tier, seconds, this.o.now());
         if (!cut) return false;
         for (const other of cut) this.o.sound.stopSpeech(other);
-        if (tier !== 'conversation') this.o.subtitle(person.data.name, line, seconds);
+        if (subtitle) this.o.subtitle(person.data.name, line, seconds);
         return true;
       },
     });
@@ -66,6 +82,12 @@ export class TownVoices {
     const speaker = said && near.find(p => p.data.id === said.speakerId);
     if (said && speaker) void this.say(speaker, said.line, said.tier);
   }
+}
+
+/** The sex the person's body was built as (the body kit marks every model it builds); null for a body that does not say. */
+export function bodySex(person: LiveTownsperson): 'male' | 'female' | null {
+  const sex = person.body.model.userData.sex as unknown;
+  return sex === 'male' || sex === 'female' ? sex : null;
 }
 
 function flat(a: Vector3, b: Vector3): number {

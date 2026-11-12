@@ -34,6 +34,10 @@ export interface ShopWindowEvents {
   coin(): number;
   changed(): Promise<void>;
   trade(action: 'buy' | 'sell', merchantId: string, item: string): Promise<StallResult>;
+  /** The stall was opened and read: its state and a buy quote per shelf, in shelf order. Not called for a closed stall. */
+  opened?(merchant: Merchant, buyQuotes: readonly (Quote | null)[]): void;
+  /** The player bought from the stall. */
+  bought?(merchant: Merchant): void;
 }
 
 function escape(text: string): string {
@@ -50,6 +54,8 @@ function shelfFor(itemId: string, inventory: Record<string, unknown>): string | 
 export class ShopWindow {
   private readonly el: HTMLDivElement;
   private merchantId: string | null = null;
+  /** The stall as last read, for whoever hears about a trade at it. */
+  private merchant: Merchant | null = null;
   private busy = false;
   private readonly onKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape' && this.isOpen) {
@@ -78,12 +84,13 @@ export class ShopWindow {
     this.merchantId = merchantId;
     this.el.hidden = false;
     document.body.classList.add('shop-open');
-    await this.render();
+    await this.render('', true);
   }
 
   close(): void {
     this.el.hidden = true;
     this.merchantId = null;
+    this.merchant = null;
     document.body.classList.remove('shop-open');
     document.querySelector<HTMLCanvasElement>('canvas')?.focus();
   }
@@ -93,7 +100,7 @@ export class ShopWindow {
     this.el.remove();
   }
 
-  private async render(note = ''): Promise<void> {
+  private async render(note = '', opening = false): Promise<void> {
     const id = this.merchantId;
     if (!id) return;
     const config = MERCHANTS.find((m) => m.id === id);
@@ -109,6 +116,9 @@ export class ShopWindow {
 
     const shelves = Object.entries(merchant.inventory);
     const buyQuotes = await Promise.all(shelves.map(([key]) => fetchQuote(id, key, 'buy', 1).catch(() => null)));
+    if (this.merchantId !== id) return;
+    this.merchant = merchant;
+    if (opening && merchant.status !== 'closed') this.events.opened?.(merchant, buyQuotes);
     const carried = Object.entries(this.events.satchel()).filter(([itemId, n]) => n > 0 && shelfFor(itemId, merchant.inventory));
     const sellQuotes = await Promise.all(carried.map(([itemId]) => fetchQuote(id, itemId, 'sell', 1).catch(() => null)));
 
@@ -326,6 +336,7 @@ export class ShopWindow {
       if (action === 'buy') {
         const r = await this.events.trade('buy', id, item);
         note = `Bought ${itemName(r.itemId ?? item)} for ${r.totalPrice} CHROMA.`;
+        if (this.merchant?.id === id) this.events.bought?.(this.merchant);
       } else {
         const r = await this.events.trade('sell', id, item);
         note = `Sold ${itemName(item)} for ${r.totalPrice} CHROMA.`;

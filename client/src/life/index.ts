@@ -11,13 +11,17 @@ import { SINDR_TOWNSFOLK } from './townsfolk.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
 import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
 import { LeadManager, type Lead } from '../../../shared/src/story/leads.js';
-import { createDialogueMemory, dialogueRules, type DialogueMemory, type PlayerDialogueContext } from '../../../shared/src/story/dialogue.js';
+import { createDialogueMemory, dialogueRules, talkFacts, type DialogueMemory, type PlayerDialogueContext } from '../../../shared/src/story/dialogue.js';
+import { merchantRole } from '../../../shared/src/story/stall-talk.js';
+import type { Facts } from '../../../shared/src/story/speech.js';
+import { placesFor } from '../../../shared/src/net/places.js';
 import dialogueData from '../../../shared/dialogue.json';
 import { TownVoices } from './town-voices.js';
 import type { ContextOffer } from '../ui/context-action.js';
 import balance from '../../../shared/balance.json';
 
 const TALK = balance.speech.talk;
+const STALL = balance.speech.stall;
 const { traffic: TRAFFIC, hearRadius: HEAR_RADIUS } = balance.speech;
 /** People wandering the streets beside the named townsfolk and the keepers of posts, and how many looks they share. */
 const CROWD_PEOPLE = 110;
@@ -157,6 +161,37 @@ export class SindrLifeSystem {
   /** Something happened at `at` that townsfolk nearby may call out (red_flag_raised, loot_dropped, theft_seen, ...). */
   witness(concept: string, at: Vector3): void {
     this.voices.witness(concept, at, this.townManager.townsfolk);
+  }
+
+  /**
+   * The keeper of stall `stallId` speaks to the player dealing with them: `concept` 'talk' when the stall opens
+   * (with the stall's facts), 'sale_made' when the player buys. They speak as a merchant of the stall's nation,
+   * in the voice of their own body's sex, with a subtitle, through the same traffic as everyone else.
+   * Resolves to the keeper's id, or null when nobody stands behind the counter or no rule matches.
+   */
+  async stallSays(stallId: string, nation: string, concept: string, facts: Facts = {}): Promise<{ keeper: string; line: string; spoken: boolean } | null> {
+    const keeper = this.stallKeeper(stallId);
+    if (!keeper) return null;
+    const role = merchantRole(nation);
+    const speaker = { id: keeper.data.id, role, nation, timeOfDay: this.clock.phase };
+    const said = this.voices.rules.speak({ concept, speakerId: keeper.data.id, facts: { ...talkFacts(speaker, this.getPlayerContext()), ...facts } }, this.dialogueMemory.speech, this.voices.now());
+    if (!said) return null;
+    const spoken = await this.voices.say(keeper, said.line, said.tier, { role, subtitle: true });
+    return { keeper: keeper.data.id, line: said.line, spoken };
+  }
+
+  /** Whoever keeps the stall (their post is at it) and stands behind it now; null when they are away or running. */
+  private stallKeeper(stallId: string): LiveTownsperson | null {
+    const stall = placesFor('sindr').stalls.find(s => s.id === stallId);
+    if (!stall) return null;
+    let best: LiveTownsperson | null = null, bestD = STALL.keeperReach;
+    for (const p of this.townManager.townsfolk) {
+      const work = p.data.schedule.work;
+      if (p.fleeing || Math.hypot(work.x - stall.x, work.z - stall.z) > STALL.keeperReach) continue;
+      const d = Math.hypot(p.position.x - stall.x, p.position.z - stall.z);
+      if (d <= bestD) { best = p; bestD = d; }
+    }
+    return best;
   }
 
   /** A fight newly seen this frame: someone near it calls it out, and one of those running shouts as they go. */

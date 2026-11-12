@@ -15,7 +15,7 @@ import {
   reportDeath,
   reportKill,
 } from './api.js';
-import type { LootPile, Standing } from './api.js';
+import type { LootPile, Merchant, Quote, Standing } from './api.js';
 import { CountingHouseWindow } from './counting-house-window.js';
 import { httpDoor, RoomDoor, type MoneyDoor, type RoomChannel, type TradeState } from './door.js';
 import { itemName } from './items.js';
@@ -53,6 +53,10 @@ export interface TownEconomyEvents {
   nightness(): number;
   /** A fallen enemy dropped what it carried at (x, z). */
   lootDropped?(x: number, z: number): void;
+  /** The player opened a stall that is trading: its state and a buy quote per shelf. */
+  stallOpened?(merchant: Merchant, buyQuotes: readonly (Quote | null)[]): void;
+  /** The player bought from a stall. */
+  stallBought?(merchant: Merchant): void;
 }
 
 export class TownEconomy {
@@ -129,6 +133,8 @@ export class TownEconomy {
       trade: (action, merchantId, item) => this.shuttered
         ? Promise.reject(new Error('The stalls are shuttered for the night'))
         : this.door.trade(action, merchantId, item, 1),
+      opened: (merchant, quotes) => events.stallOpened?.(merchant, quotes),
+      bought: (merchant) => events.stallBought?.(merchant),
     });
     this.countingHouse = new CountingHouseWindow({
       coin: () => this.coin,

@@ -2,6 +2,7 @@ export * from './combat/index.js';
 export * from './rising/index.js';
 export * from './story/dialogue.js';
 export * from './story/leads.js';
+export * from './story/stall-talk.js';
 export * from './story/nation-intro.js';
 export * from './agents/index.js';
 export * from './economy/index.js';
