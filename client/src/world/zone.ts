@@ -236,6 +236,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     maxGrade: MINE_MAX_GRADE,
     forest: { count: forest.spots.length, countNear: forest.countNear },
     get cells() { return { near: stream.near.cells.size, mid: stream.mid.cells.size, far: national.visible }; },
+    get streamIdle() { return stream.idle; },
     far: national.stats, timing: stream.timing, streamStatus: stream.status,
     prepare: (x: number, z: number) => stream.prepare(x, z),
     waterAt(x: number, z: number) {

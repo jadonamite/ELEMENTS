@@ -197,6 +197,8 @@ export class TerrainStream {
     if (this.status.failures <= (this.options.retryLimit ?? 2)) this.openWorker();
   }
 
+  /** True when every wanted cell is resident: nothing queued, in flight or waiting to upload. */
+  get idle(): boolean { return !this.pending.length && !this.busy && !this.completed; }
   has(x: number, z: number): boolean {
     return this.near.cells.has(`${Math.floor((x + ORIGIN.x) / SIZE)}:${Math.floor((z + ORIGIN.z) / SIZE)}`);
   }
