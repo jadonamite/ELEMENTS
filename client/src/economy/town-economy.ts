@@ -51,6 +51,8 @@ export interface TownEconomyEvents {
   wornChanged?(worn: { item: string | null; outfit: string; armour: number }): void;
   /** How dark the world is, 0 by day, 1 at night. The market closes at night. */
   nightness(): number;
+  /** A fallen enemy dropped what it carried at (x, z). */
+  lootDropped?(x: number, z: number): void;
 }
 
 export class TownEconomy {
@@ -343,7 +345,11 @@ export class TownEconomy {
       this.known = true;
     });
     room.on('loot', (m) => this.loot?.replace((m as { piles: LootPile[] }).piles));
-    room.on('loot_new', (m) => this.loot?.add((m as { pile: LootPile }).pile));
+    room.on('loot_new', (m) => {
+      const pile = (m as { pile: LootPile }).pile;
+      this.loot?.add(pile);
+      this.events.lootDropped?.(pile.x, pile.z);
+    });
     room.on('loot_gone', (m) => this.loot?.remove((m as { id: string }).id));
     room.on('outfit', (m) => {
       const body = m as { item?: string | null; outfit?: string; armour?: number; error?: string };
@@ -373,7 +379,11 @@ export class TownEconomy {
   enemyKilled(kind: string, at: Vector3, nation?: string): void {
     if (!this.enabled || this.door.online) return;
     reportKill(LOOT_KIND[kind] ?? kind, at.x, at.z, this.zone, nation ?? this.nation)
-      .then((pile) => { if (pile) this.loot?.add(pile); })
+      .then((pile) => {
+        if (!pile) return;
+        this.loot?.add(pile);
+        this.events.lootDropped?.(pile.x, pile.z);
+      })
       .catch(() => {
         // No drop: the server refused (production, or too many kills too fast).
       });
