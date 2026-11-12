@@ -1,2 +1,2 @@
 export { AnimationPlayer, type AnimationPlayerOptions } from './player.js';
-export { applyHandPose, type HandPoseMode } from './hand-poses.js';
+export { LEFT_FOOT, RIGHT_FOOT } from './foot-plant.js';

@@ -8,7 +8,7 @@ Measured with FFmpeg (`ebur128` ITU-R BS.1770-4 integrated loudness and `volumed
 - Mix levels:
   - Hits: 0 dB reference (~ -16 LUFS)
   - Footsteps: ~12 dB under hits (-28 LUFS / bus gain 0.251)
-  - Ambient bed: ~18 dB under hits (-34 LUFS / bus gain 0.126)
+  - Ambient bed: ~12 dB under hits (-28 LUFS / bus gain 0.25)
   - Master Limiter / Compressor: DynamicsCompressorNode threshold -6 dB, ratio 12:1, attack 3ms, release 150ms
 
 | File | Category | Duration | Peak (dBFS) | Status | Description |

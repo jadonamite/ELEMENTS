@@ -1,10 +1,11 @@
 import './home-menu.css';
 import type { Controls } from '../controls/index.js';
+import { globalMapMarkup, bindGlobalMap } from './global-map.js';
+import { abilitiesMarkup, bindAbilities } from './abilities-screen.js';
 
 export interface HomeMenuOptions {
   inTown: boolean;
-  currentElement: string;
-  isDim: boolean;
+  getCharacterState: () => { element: string; isDim: boolean; tier: number };
   onOpenPicker: () => void;
   onOpenCreator: () => void;
 }
@@ -33,9 +34,10 @@ export class HomeMenu {
     this.overlay.className = 'home-menu-overlay';
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-modal', 'true');
-    this.overlay.setAttribute('aria-label', 'Game menu and references');
+    this.overlay.setAttribute('aria-label', 'Game menu');
 
-    const locationName = options.inTown ? 'Sindr • IGNIS Nation' : 'Combat Arena';
+    const locationName = options.inTown ? 'Sindr / IGNIS Nation' : 'Combat Arena';
+    const character = options.getCharacterState();
 
     this.overlay.innerHTML = `
       <div class="home-menu-dialog">
@@ -48,16 +50,19 @@ export class HomeMenu {
         </div>
 
         <nav class="home-menu-nav" aria-label="Menu tabs">
-          <button type="button" class="home-nav-tab active" data-tab="modes">World & Modes</button>
+          <button type="button" class="home-nav-tab active" data-tab="map">Map</button>
+          <button type="button" class="home-nav-tab" data-tab="abilities">Abilities</button>
+          <button type="button" class="home-nav-tab" data-tab="modes">World & Modes</button>
           <button type="button" class="home-nav-tab" data-tab="fighter">Fighter & Character</button>
           <button type="button" class="home-nav-tab" data-tab="environment">Environment & Time</button>
           <button type="button" class="home-nav-tab" data-tab="help">Help</button>
         </nav>
 
         <div class="home-menu-body">
+          <div class="home-tab-pane active" id="pane-map">${globalMapMarkup(options.inTown)}</div>
+          <div class="home-tab-pane" id="pane-abilities">${abilitiesMarkup(character.element, character.isDim, character.tier)}</div>
           <div class="home-tab-pane" id="pane-help"><div class="controls-help"></div></div>
-          <!-- Tab 1: World & Modes -->
-          <div class="home-tab-pane active" id="pane-modes">
+          <div class="home-tab-pane" id="pane-modes">
             <div class="home-grid-2">
               <div class="home-card">
                 <div class="home-card-header">
@@ -175,6 +180,8 @@ export class HomeMenu {
     this.lightboxCaption = this.lightbox.querySelector('.ref-lightbox-caption')!;
 
     this.bindEvents();
+    bindGlobalMap(this.overlay, options.inTown, () => this.navigate({ town: '' }, ['arena']));
+    bindAbilities(this.overlay);
   }
 
   private bindEvents(): void {
@@ -198,6 +205,7 @@ export class HomeMenu {
         const target = tab.dataset.tab;
         const pane = this.overlay.querySelector(`#pane-${target}`);
         pane?.classList.add('active');
+        if (target === 'abilities') this.refreshAbilities();
       });
     }
 
@@ -262,9 +270,18 @@ export class HomeMenu {
   mountControls(controls: Controls): void { controls.mountHelp(this.overlay.querySelector('.controls-help')!); }
   toggle(): void { if (this.isOpen) this.close(); else this.open(); }
 
+  private refreshAbilities(): void {
+    const pane = this.overlay.querySelector<HTMLElement>('#pane-abilities');
+    if (!pane) return;
+    const character = this.options.getCharacterState();
+    pane.innerHTML = abilitiesMarkup(character.element, character.isDim, character.tier);
+    bindAbilities(pane);
+  }
+
   open(): void {
     this.returnFocus = document.activeElement as HTMLElement;
     if (document.pointerLockElement) document.exitPointerLock();
+    if (this.overlay.querySelector<HTMLButtonElement>('.home-nav-tab.active')?.dataset.tab === 'abilities') this.refreshAbilities();
     this.isOpen = true;
     this.overlay.inert = false;
     this.overlay.classList.add('open');

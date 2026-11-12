@@ -38,8 +38,11 @@ export const ACTIONS: readonly ActionDefinition[] = [
 const rules = createCombatRules(balance.combat as unknown as CombatBalance);
 export const definition = (id: ControlAction): ActionDefinition => ACTIONS.find(a => a.id === id)!;
 export function availableActions(tier: number, hush: boolean, online = false): ActionDefinition[] {
-  return ACTIONS.filter(a => (!a.move || rules.tierAllows(a.move, tier)) &&
-    !(a.shaper && hush) && !(a.hush && !hush) && !(a.id === 'duel' && online));
+  return ACTIONS.filter(a => {
+    if (tier === 0 && (a.group === 'Bending' || a.id === 'bending')) return false;
+    return (!a.move || rules.tierAllows(a.move, tier)) &&
+      !(a.shaper && hush) && !(a.hush && !hush) && !(a.id === 'duel' && online);
+  });
 }
 export const KEY_BINDINGS: Readonly<Record<string, ControlAction>> = {
   KeyW: 'move', KeyA: 'move', KeyS: 'move', KeyD: 'move', ShiftLeft: 'run', ShiftRight: 'run',

@@ -2,7 +2,6 @@ import { type Bone, Line3, Quaternion, Vector3 } from 'three';
 import balance from '../../shared/balance.json';
 import type { HeroInstance } from './hero.js';
 import { StaffAirTrail } from './weapon.js';
-import { applyHandPose } from './anim/hand-poses.js';
 
 const tuning = balance.stance;
 export type SwordPhase = 'sheathed' | 'drawing' | 'armed' | 'sheathing';
@@ -67,8 +66,6 @@ export class SwordStance {
 
   /** Call after the animation mixer has posed the skeleton for this frame. */
   update(delta: number): void {
-    applyHandPose(this.hero.model, this.phase === 'armed' ? 'grip' : 'rest');
-
     if (this.phase === 'drawing' || this.phase === 'sheathing') {
       this.elapsed += delta;
       const t = Math.min(1, this.elapsed / this.length);

@@ -94,7 +94,7 @@ export function parseOutfit(value: string | null | undefined): OutfitId {
 }
 
 /** A sheet person the player is, if their configuration names one that exists for their sex. */
-function personOf(config: CharacterConfig): OutfitId | null {
+export function personOf(config: CharacterConfig): OutfitId | null {
   const id = config.person as OutfitId | undefined;
   return id && OUTFITS[id]?.whole && outfitFits(id, config.sex) ? id : null;
 }

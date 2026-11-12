@@ -2,436 +2,1757 @@
   "version": 1,
   "hints": [
     {
-      "id": "ctrl-move",
-      "kind": "controls",
-      "title": "Move",
-      "text": "Traverse streets, markets, and open ground.",
-      "action": "move",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-look",
-      "kind": "controls",
-      "title": "Look around",
-      "text": "Survey your surroundings and keep sight of approaching fighters.",
-      "action": "look",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-run",
-      "kind": "controls",
-      "title": "Sprint",
-      "text": "Sprint across open ground to close distance against ranged opponents.",
-      "action": "run",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-jump",
-      "kind": "controls",
-      "title": "Jump and rise",
-      "text": "Leap over obstacles. Tap again while airborne to rise higher.",
-      "action": "jump",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-strike",
-      "kind": "controls",
-      "title": "Light strike",
-      "text": "Deliver quick strikes with weapon or bare fists to open combat.",
-      "action": "strike",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-heavy",
-      "kind": "controls",
-      "title": "Heavy strike",
-      "text": "Break through enemy defenses with heavy attacks. Slower to wind up, harder to stop.",
-      "action": "heavy",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 5
-    },
-    {
-      "id": "ctrl-block",
-      "kind": "controls",
-      "title": "Guard",
-      "text": "Raise your guard to absorb the force of incoming blows.",
-      "action": "block",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-parry",
-      "kind": "controls",
-      "title": "Parry",
-      "text": "Raise guard within 0.15 seconds of an impact to deflect the blow and stagger the attacker.",
-      "action": "parry",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
-    },
-    {
-      "id": "ctrl-dodge",
-      "kind": "controls",
-      "title": "Dodge",
-      "text": "Evade incoming swings with brief invulnerability during the roll.",
-      "action": "dodge",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-lock",
-      "kind": "controls",
-      "title": "Lock target",
-      "text": "Focus your camera and attacks onto a single opponent.",
-      "action": "lock",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-bending",
-      "kind": "controls",
-      "title": "Toggle bending",
-      "text": "Ignite elemental power to imbue strikes or sheath it to move unnoticed.",
-      "action": "bending",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 5
-    },
-    {
-      "id": "ctrl-rise",
-      "kind": "controls",
-      "title": "Rising attack",
-      "text": "Launch opponents skyward with an elemental uppercut.",
-      "action": "rise",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-ground",
-      "kind": "controls",
-      "title": "Ground slam",
-      "text": "Slam downward to shake the earth and destabilize surrounding enemies.",
-      "action": "ground",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-ultimate",
-      "kind": "controls",
-      "title": "Ultimate power",
-      "text": "Unleash your nation's signature elemental storm once combat reaches its peak.",
-      "action": "ultimate",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 5
-    },
-    {
-      "id": "ctrl-stance",
-      "kind": "controls",
-      "title": "Switch fighting stance",
-      "text": "Alternate between armed weapons, bare-fisted brawling, and kicking styles.",
-      "action": "stance",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 5
-    },
-    {
-      "id": "ctrl-satchel",
-      "kind": "controls",
-      "title": "Open satchel",
-      "text": "Check your carried coin, gathered materials, and crafted gear.",
-      "action": "satchel",
-      "element": null,
-      "where": ["town"],
-      "minSeconds": 4
-    },
-    {
-      "id": "ctrl-interact",
-      "kind": "controls",
-      "title": "Interact and claim",
-      "text": "Talk to townsfolk, bargain with merchants, and gather dropped loot from the cobblestones.",
-      "action": "interact",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 5
-    },
-    {
-      "id": "ctrl-spark",
-      "kind": "controls",
-      "title": "Shard spark",
-      "text": "As the Hush, fling shard fragments to strike foes from range.",
-      "action": "spark",
-      "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 4
-    },
-    {
-      "id": "lore-rising",
+      "id": "lore-001",
       "kind": "lore",
       "title": "The rising",
-      "text": "You don't choose what you become. The world decides as you rise: Shaper or Hush.",
+      "text": "The rising decides whether you become a Shaper or a Hush.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §1"
     },
     {
-      "id": "lore-shapers",
+      "id": "lore-002",
       "kind": "lore",
-      "title": "The Shapers",
-      "text": "Born with elemental fire, water, earth, or wind. They fight on the frontline and channel raw forces.",
+      "title": "The Lit",
+      "text": "Shapers are called the Lit on the street.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §2"
     },
     {
-      "id": "lore-hush",
+      "id": "lore-003",
       "kind": "lore",
       "title": "The Hush",
-      "text": "Born without an element. Derided as the Dim, they alone hold the skill to smelt ore, tan hide, and craft weapons from raw goods.",
+      "text": "The Hush are also called the Dim, an insult.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 7
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §2"
     },
     {
-      "id": "lore-allborn",
+      "id": "lore-004",
       "kind": "lore",
-      "title": "Rumours of the Allborn",
-      "text": "Whispers speak of an Allborn who commands all four elements and knows how to break out of this world.",
+      "title": "One element",
+      "text": "The rising gives each Shaper an element and a nation.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §1"
     },
     {
-      "id": "lore-ignis",
+      "id": "lore-005",
       "kind": "lore",
-      "title": "The nation of Ignis",
-      "text": "A volcanic fortress of black iron and ember-lit streets. Ambitious, unyielding, and at war with all neighbours.",
-      "element": "IGNIS",
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "title": "The search",
+      "text": "Trapped inside ELEMENTS, you begin the search for the Allborn with a rumour.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §1"
     },
     {
-      "id": "lore-aques",
+      "id": "lore-006",
       "kind": "lore",
-      "title": "The delta of Aques",
-      "text": "Canals, waterways, and timber houses on stilts. Travelers journey to its pools to recuperate and heal.",
-      "element": "AQUES",
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "title": "The Prism",
+      "text": "The Allborn is also known as the Prism.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §2"
     },
     {
-      "id": "lore-terra",
+      "id": "lore-007",
       "kind": "lore",
-      "title": "The canyon of Terra",
-      "text": "A canyon fortress hewn directly from ochre cliffs. The wealthiest territory outside Chromara.",
-      "element": "TERRA",
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "title": "Four elements",
+      "text": "People say the Allborn commands all four elements.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §1"
     },
     {
-      "id": "lore-aura",
+      "id": "lore-008",
       "kind": "lore",
-      "title": "The towers of Aura",
-      "text": "Tall stone spires and rope bridges high above the clouds. Aloof and peaceable toward outsiders.",
-      "element": "AURA",
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "title": "A way home",
+      "text": "People say only the Allborn can open a way out.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §1"
     },
     {
-      "id": "lore-edict",
+      "id": "lore-009",
+      "kind": "lore",
+      "title": "The Hush at work",
+      "text": "Only the Hush can craft from raw materials.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §2"
+    },
+    {
+      "id": "lore-010",
+      "kind": "lore",
+      "title": "The Vakna",
+      "text": "A Hush who awakens to an element is called a Vakna.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §2"
+    },
+    {
+      "id": "lore-011",
+      "kind": "lore",
+      "title": "Two crafts",
+      "text": "Vakna keep their crafting skills when they gain an element.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §2"
+    },
+    {
+      "id": "lore-012",
+      "kind": "lore",
+      "title": "IGNIS",
+      "text": "IGNIS is a volcanic forge city of black stone and ember-lit streets.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-013",
+      "kind": "lore",
+      "title": "AQUES",
+      "text": "Canals run between the stilt houses of AQUES’s river delta.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-014",
+      "kind": "lore",
+      "title": "TERRA",
+      "text": "TERRA is a canyon fortress cut into ochre cliffs.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-015",
+      "kind": "lore",
+      "title": "AURA",
+      "text": "AURA stands on high cliffs, with wind towers and rope bridges.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-016",
+      "kind": "lore",
+      "title": "Crimson",
+      "text": "Crimson is the colour of IGNIS.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-017",
+      "kind": "lore",
+      "title": "Azure",
+      "text": "Azure is the colour of AQUES.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-018",
+      "kind": "lore",
+      "title": "Ochre",
+      "text": "Ochre is the colour of TERRA.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-019",
+      "kind": "lore",
+      "title": "Pale white",
+      "text": "Pale white is the colour of AURA.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-020",
+      "kind": "lore",
+      "title": "The forge nation",
+      "text": "IGNIS is at war with every other nation.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-021",
+      "kind": "lore",
+      "title": "The canyon nation",
+      "text": "TERRA is the richest nation after Chromara.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-022",
+      "kind": "lore",
+      "title": "The healers",
+      "text": "People travel to AQUES to recover and be healed.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-023",
+      "kind": "lore",
+      "title": "The high cliffs",
+      "text": "AURA is peaceable toward every nation.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-024",
+      "kind": "lore",
+      "title": "Going to town",
+      "text": "When people talk about going to town, they mean Chromara.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-025",
+      "kind": "lore",
+      "title": "Younglings",
+      "text": "Newcomers are treated as younglings who have just come of age.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-026",
+      "kind": "lore",
+      "title": "Four rulers",
+      "text": "Each nation has its own ruler.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §3"
+    },
+    {
+      "id": "lore-027",
       "kind": "lore",
       "title": "The Edict",
-      "text": "The ruling power abolished the true names of the elements to fracture the nations and weaken their masters.",
+      "text": "The Edict is the law that banished the old names of the elements.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §4"
     },
     {
-      "id": "lore-chromara",
+      "id": "lore-028",
       "kind": "lore",
-      "title": "The city of Chromara",
-      "text": "The seat of authority spans the center of the world, housing the Great Treasury and the Lord's garrisons.",
+      "title": "The seat",
+      "text": "Whoever holds the seat of the Edict is the Lord.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §4"
     },
     {
-      "id": "lore-sentries",
+      "id": "lore-029",
       "kind": "lore",
-      "title": "The Lord's Sentries",
-      "text": "Heavily armoured peacekeepers enforce order across the plazas. Violating local laws invites swift confiscation.",
+      "title": "The vanished Lord",
+      "text": "The previous Lord vanished before the current Lord took the seat.",
       "element": null,
-      "where": ["town"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §4"
     },
     {
-      "id": "lore-monsters",
+      "id": "lore-030",
       "kind": "lore",
-      "title": "Beasts of the wild",
-      "text": "Nameless elemental currents coalesce in untamed lands, spawning ember hounds and river serpents.",
+      "title": "Chromara",
+      "text": "Chromara is the great city at the centre of the world.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §4"
     },
     {
-      "id": "fight-meter",
-      "kind": "fighting",
-      "title": "The combo meter",
-      "text": "Landing hits, parrying attacks, and guarding blows fills your combat meter. It slowly drains between clashes.",
+      "id": "lore-031",
+      "kind": "lore",
+      "title": "The treasury",
+      "text": "The treasury and the main market are in Chromara.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 5
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §4"
     },
     {
-      "id": "fight-empty-meter",
-      "kind": "fighting",
-      "title": "Faded strikes",
-      "text": "When meter drops below 25, bending attacks deal only 60% damage and elemental hazards dissipate quickly.",
+      "id": "lore-032",
+      "kind": "lore",
+      "title": "The Sentries",
+      "text": "The Sentries enforce the Edict.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §4"
     },
     {
-      "id": "fight-chains",
-      "kind": "fighting",
-      "title": "Chained moves",
-      "text": "With meter above 25, chaining one bending move into another cancels cooldowns and increases damage.",
+      "id": "lore-033",
+      "kind": "lore",
+      "title": "The border forts",
+      "text": "The Lord’s army holds border forts in every nation.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §4"
     },
     {
-      "id": "fight-ignis-burn",
-      "kind": "fighting",
-      "title": "Ignis burns",
-      "text": "Fire attacks leave targets ablaze, dealing continuous damage after the initial strike.",
-      "element": "IGNIS",
-      "where": ["town", "arena"],
-      "minSeconds": 5
-    },
-    {
-      "id": "fight-aques-ice",
-      "kind": "fighting",
-      "title": "Aques shatter",
-      "text": "Water moves slow enemies and freeze ground. Hitting a frozen target shatters the ice for bonus damage.",
-      "element": "AQUES",
-      "where": ["town", "arena"],
-      "minSeconds": 6
-    },
-    {
-      "id": "fight-terra-walls",
-      "kind": "fighting",
-      "title": "Terra stone walls",
-      "text": "Raising an earth wall creates an impenetrable barrier that halts projectile barrages and advancing foes.",
-      "element": "TERRA",
-      "where": ["town", "arena"],
-      "minSeconds": 6
-    },
-    {
-      "id": "fight-aura-blades",
-      "kind": "fighting",
-      "title": "Aura gale blades",
-      "text": "Air blades slice through multiple enemies in a single stroke, piercing ranks of attackers.",
-      "element": "AURA",
-      "where": ["town", "arena"],
-      "minSeconds": 5
-    },
-    {
-      "id": "fight-slow-mo",
-      "kind": "fighting",
-      "title": "The finishing blow",
-      "text": "Striking down the final opponent in a skirmish slows time to survey the battlefield.",
+      "id": "lore-034",
+      "kind": "lore",
+      "title": "Nation markets",
+      "text": "Every nation has markets of its own.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 5
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §4"
     },
     {
-      "id": "world-red-flags",
-      "kind": "world",
-      "title": "Watch standing and fines",
-      "text": "Street brawling and theft raise red flags with the watch. If fines go unpaid, you face arrest and seizure of carried goods.",
+      "id": "lore-035",
+      "kind": "lore",
+      "title": "Deserters",
+      "text": "Deserters from the Lord’s army roam the roads between nations.",
       "element": null,
-      "where": ["town"],
-      "minSeconds": 7
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §5"
     },
     {
-      "id": "world-challengers",
-      "kind": "world",
-      "title": "Street challengers",
-      "text": "Wandering duelists test their skills in town. Stand before a challenger to initiate single combat.",
+      "id": "lore-036",
+      "kind": "lore",
+      "title": "Street gangs",
+      "text": "Robbers and miscreants gather in Chromara’s back streets.",
       "element": null,
-      "where": ["town"],
-      "minSeconds": 5
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §5"
     },
     {
-      "id": "world-crowd-shelter",
-      "kind": "world",
-      "title": "Crowd reactions",
-      "text": "Townsfolk retreat to doorways and stalls when blades are drawn, returning only after peace is restored.",
+      "id": "lore-037",
+      "kind": "lore",
+      "title": "Wild beasts",
+      "text": "Monsters take the shape of local beasts touched by elemental power.",
       "element": null,
-      "where": ["town"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §5"
     },
     {
-      "id": "world-shrine-awakening",
-      "kind": "world",
-      "title": "The shrine",
-      "text": "If you fall in combat, you awaken at your nation's local shrine. Any materials carried in your hands remain at the site of your fall.",
+      "id": "lore-038",
+      "kind": "lore",
+      "title": "Nation bosses",
+      "text": "Each nation’s boss guards a rumour held by its master.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 7
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §8"
     },
     {
-      "id": "world-loot-pickup",
-      "kind": "world",
-      "title": "Ground drops",
-      "text": "Defeated outlaws drop coin and shards onto the flagstones. Walk over each drop to collect it into your pouch.",
+      "id": "lore-039",
+      "kind": "lore",
+      "title": "The unseen Lord",
+      "text": "The unseen Lord rules through the Sentries and the Edict.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §5"
     },
     {
-      "id": "world-counting-houses",
-      "kind": "world",
-      "title": "Counting houses",
-      "text": "Visit Sindr's counting houses to bank coin securely beyond the reach of footpads and corrupt bailiffs.",
+      "id": "lore-040",
+      "kind": "lore",
+      "title": "The nameless boss",
+      "text": "The Lord banned the world boss’s name too.",
       "element": null,
-      "where": ["town"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §9"
     },
     {
-      "id": "world-night-ambush",
-      "kind": "world",
-      "title": "Night curfew",
-      "text": "After dark, shops bolt their shutters and guards draw closer to lit braziers. Deserted alleys attract desperate outlaws.",
+      "id": "lore-041",
+      "kind": "lore",
+      "title": "Near Chromara",
+      "text": "The world boss rises near Chromara and changes element every few days.",
       "element": null,
-      "where": ["town"],
-      "minSeconds": 6
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §9"
     },
     {
-      "id": "tip-barehanded",
+      "id": "lore-042",
+      "kind": "lore",
+      "title": "One shared fight",
+      "text": "Every player fighting the world boss chips away at one shared health bar.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §9"
+    },
+    {
+      "id": "lore-043",
+      "kind": "lore",
+      "title": "After the fall",
+      "text": "The world boss returns stronger after it falls.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §9"
+    },
+    {
+      "id": "lore-044",
+      "kind": "lore",
+      "title": "The sleeping boss",
+      "text": "While the world boss sleeps, its next element strengthens monsters of that element.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §9"
+    },
+    {
+      "id": "lore-045",
+      "kind": "lore",
+      "title": "The Lord’s coin",
+      "text": "CHROMA carries an ear stamped on its face.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §10"
+    },
+    {
+      "id": "lore-046",
+      "kind": "lore",
+      "title": "Earned in play",
+      "text": "CHROMA is earned by playing and cannot be bought with money or cashed out.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §10"
+    },
+    {
+      "id": "lore-047",
+      "kind": "lore",
+      "title": "Sealed notes",
+      "text": "Counting houses exchange deposited coin for sealed notes honoured by other counting houses.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §10"
+    },
+    {
+      "id": "lore-048",
+      "kind": "lore",
+      "title": "Three houses",
+      "text": "Chromara has three counting houses and one bank.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §10"
+    },
+    {
+      "id": "lore-049",
+      "kind": "lore",
+      "title": "Two houses",
+      "text": "Each nation has two counting houses.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §10"
+    },
+    {
+      "id": "lore-050",
+      "kind": "lore",
+      "title": "The Dim traders",
+      "text": "Most trade runs through the Dim.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §10"
+    },
+    {
+      "id": "lore-051",
+      "kind": "lore",
+      "title": "Before the Edict",
+      "text": "Dungeon ruins still bear carvings of the elements’ old names.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §14"
+    },
+    {
+      "id": "lore-052",
+      "kind": "lore",
+      "title": "The Raid Hall",
+      "text": "The Dim run the Raid Hall in Chromara and its nation branches.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §15"
+    },
+    {
+      "id": "lore-053",
+      "kind": "lore",
+      "title": "Hired fighters",
+      "text": "NPC fighters are hired for CHROMA and paid per run.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §15"
+    },
+    {
+      "id": "lore-054",
+      "kind": "lore",
+      "title": "After dark",
+      "text": "Robbers become bolder at night, and some monsters appear only after dark.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §15"
+    },
+    {
+      "id": "lore-055",
+      "kind": "lore",
+      "title": "A remembered favour",
+      "text": "Favours improve an NPC’s opinion of you because they remember how you treat them.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §15"
+    },
+    {
+      "id": "lore-056",
+      "kind": "lore",
+      "title": "Beginners",
+      "text": "Beginners wear commoner’s rags until they buy or earn nation garb.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §16"
+    },
+    {
+      "id": "lore-057",
+      "kind": "lore",
+      "title": "Army uniform",
+      "text": "The Lord’s soldiers and the Sentries wear a uniform marked with the ear seal.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §16"
+    },
+    {
+      "id": "lore-058",
+      "kind": "lore",
+      "title": "One rising",
+      "text": "Each account gets one rising, with no way to buy another roll.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §17"
+    },
+    {
+      "id": "lore-059",
+      "kind": "lore",
+      "title": "The far roads",
+      "text": "The Sentries patrol near Chromara, leaving the far roads lawless.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §15"
+    },
+    {
+      "id": "lore-060",
+      "kind": "lore",
+      "title": "The guild hall",
+      "text": "Guilds and clans share a vault and can build a hall on their land.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §13"
+    },
+    {
+      "id": "lore-061",
+      "kind": "lore",
+      "title": "The master’s lead",
+      "text": "The first master gives a newcomer one fight, mentions the Allborn and points them to town.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §17"
+    },
+    {
+      "id": "lore-062",
+      "kind": "lore",
+      "title": "Dungeon keys",
+      "text": "Only the Dim can craft the keys needed for dungeon runs.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §14"
+    },
+    {
+      "id": "lore-063",
+      "kind": "lore",
+      "title": "The healer’s work",
+      "text": "AQUES treats lasting injuries and gear wear faster and cheaper than anywhere else.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §15"
+    },
+    {
+      "id": "lore-064",
+      "kind": "lore",
+      "title": "Rival nations",
+      "text": "Travellers from an enemy nation face higher prices and close attention from guards.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §15"
+    },
+    {
+      "id": "controls-065",
+      "kind": "controls",
+      "title": "Move",
+      "text": "Walk through Sindr to approach people or collect dropped loot.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "move"
+    },
+    {
+      "id": "controls-066",
+      "kind": "controls",
+      "title": "Look around",
+      "text": "Turn the camera to check the street around you.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "look"
+    },
+    {
+      "id": "controls-067",
+      "kind": "controls",
+      "title": "Run",
+      "text": "Hold Run while moving to run.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "run"
+    },
+    {
+      "id": "controls-068",
+      "kind": "controls",
+      "title": "Jump",
+      "text": "Jump once, then tap again in the air to rise higher.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "jump"
+    },
+    {
+      "id": "controls-069",
+      "kind": "controls",
+      "title": "Strike",
+      "text": "Use Strike for a light attack in your current fighting style.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "strike"
+    },
+    {
+      "id": "controls-070",
+      "kind": "controls",
+      "title": "Heavy strike",
+      "text": "Use Heavy strike for your style’s heavy attack.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "heavy"
+    },
+    {
+      "id": "controls-071",
+      "kind": "controls",
+      "title": "Raise your guard",
+      "text": "Hold Guard to block an incoming blow.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "block"
+    },
+    {
+      "id": "controls-072",
+      "kind": "controls",
+      "title": "Parry",
+      "text": "Raise your guard just as a blow lands to parry it.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "parry"
+    },
+    {
+      "id": "controls-073",
+      "kind": "controls",
+      "title": "Dodge",
+      "text": "Dodge to move out of a blow’s path.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "dodge"
+    },
+    {
+      "id": "controls-074",
+      "kind": "controls",
+      "title": "Lock on",
+      "text": "Lock onto a foe to keep the camera on your target.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "lock"
+    },
+    {
+      "id": "controls-075",
+      "kind": "controls",
+      "title": "Draw a weapon",
+      "text": "Draw your weapon to switch to weapon attacks.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "weapon"
+    },
+    {
+      "id": "controls-076",
+      "kind": "controls",
+      "title": "Use your hands",
+      "text": "Switch to hands for bare-handed strikes.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "hands"
+    },
+    {
+      "id": "controls-077",
+      "kind": "controls",
+      "title": "Use your legs",
+      "text": "Switch to legs to fight with kicks.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "legs"
+    },
+    {
+      "id": "controls-078",
+      "kind": "controls",
+      "title": "Change stance",
+      "text": "Switch between your weapon and your hands.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "stance"
+    },
+    {
+      "id": "controls-079",
+      "kind": "controls",
+      "title": "Bending",
+      "text": "Switch bending on or off to choose whether to fight with it.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "bending"
+    },
+    {
+      "id": "controls-080",
+      "kind": "controls",
+      "title": "Rise",
+      "text": "Use Rise for your element’s launching move.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "rise"
+    },
+    {
+      "id": "controls-081",
+      "kind": "controls",
+      "title": "Ground strike",
+      "text": "Use Ground for your element’s ground move when no interaction is offered.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "ground"
+    },
+    {
+      "id": "controls-082",
+      "kind": "controls",
+      "title": "Element move",
+      "text": "Your bending move’s effect depends on your element.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "bend_move"
+    },
+    {
+      "id": "controls-083",
+      "kind": "controls",
+      "title": "Ultimate",
+      "text": "Use your element’s ultimate once tier five allows it.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "ultimate"
+    },
+    {
+      "id": "controls-084",
+      "kind": "controls",
+      "title": "Shard spark",
+      "text": "A Hush can spend a shard to throw a small elemental spark.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "spark"
+    },
+    {
+      "id": "controls-085",
+      "kind": "controls",
+      "title": "Technique",
+      "text": "Use Technique for your element’s special technique.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "technique"
+    },
+    {
+      "id": "controls-086",
+      "kind": "controls",
+      "title": "Interact",
+      "text": "Use Interact when an offer appears near a stall or a person.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "interact"
+    },
+    {
+      "id": "controls-087",
+      "kind": "controls",
+      "title": "A challenge",
+      "text": "Use Challenge to call a fighter into a brawl.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "duel"
+    },
+    {
+      "id": "controls-088",
+      "kind": "controls",
+      "title": "Your satchel",
+      "text": "Open your satchel to see what you carry.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "satchel"
+    },
+    {
+      "id": "controls-089",
+      "kind": "controls",
+      "title": "Help and controls",
+      "text": "Open the menu to read the controls.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "client/src/controls/actions.ts; client/src/input.ts",
+      "action": "menu"
+    },
+    {
+      "id": "tip-090",
       "kind": "tip",
-      "title": "Fists and bending",
-      "text": "Shapers channel stronger elemental surges when fighting bare-handed than when holding forged steel.",
+      "title": "Collect the drop",
+      "text": "Walk over the loot where an enemy died to collect it.",
       "element": null,
-      "where": ["town", "arena"],
-      "minSeconds": 5
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-091",
+      "kind": "tip",
+      "title": "Carried coin",
+      "text": "Villains mostly drop the CHROMA they carried.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-092",
+      "kind": "tip",
+      "title": "Bank before travel",
+      "text": "Deposit coin at a counting house before taking a full pack onto the road.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-093",
+      "kind": "tip",
+      "title": "Either counting house",
+      "text": "A sealed note from one counting house is honoured at the other.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-094",
+      "kind": "tip",
+      "title": "Marked players",
+      "text": "Counting houses refuse withdrawals while you have a red flag or bounty.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-095",
+      "kind": "tip",
+      "title": "On the ground",
+      "text": "If you die in the world, the materials you carried stay where you fell.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-096",
+      "kind": "tip",
+      "title": "The shrine",
+      "text": "After dying in the world, you wake at your nation’s shrine.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-097",
+      "kind": "tip",
+      "title": "A full pack",
+      "text": "Robbers target players who carry too much.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-098",
+      "kind": "tip",
+      "title": "Read the price",
+      "text": "Read a merchant’s reason on a price before trading.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-099",
+      "kind": "tip",
+      "title": "Shop stock",
+      "text": "A merchant’s stock affects the price they offer.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-100",
+      "kind": "tip",
+      "title": "The keeper’s purse",
+      "text": "Each merchant pays for what you sell from their own purse.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-101",
+      "kind": "tip",
+      "title": "Closed after dark",
+      "text": "Return to Sindr’s stalls when they open after the night closure.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-102",
+      "kind": "tip",
+      "title": "A closed window",
+      "text": "A trade is refused after dark even if you opened the shop window earlier.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-103",
+      "kind": "tip",
+      "title": "The notice board",
+      "text": "The board outside the market lists open bounties and their rewards.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-104",
+      "kind": "tip",
+      "title": "Your standing",
+      "text": "Read the notice board to check your red flags and bounty.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-105",
+      "kind": "tip",
+      "title": "An empty purse",
+      "text": "You can buy the shop of a merchant who has gone broke.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-106",
+      "kind": "tip",
+      "title": "Your own stall",
+      "text": "A shop owner can take its takings and set prices for each shelf.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-107",
+      "kind": "tip",
+      "title": "Trade by hand",
+      "text": "You can trade with another player hand to hand.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-108",
+      "kind": "tip",
+      "title": "Trade taxes",
+      "text": "Trades between two Lit are taxed more heavily than trades with the Dim.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-109",
+      "kind": "tip",
+      "title": "Fresh supplies",
+      "text": "Potions and supplies are sold in Sindr’s market square.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-110",
+      "kind": "tip",
+      "title": "Arms and armour",
+      "text": "Sindr’s market has a merchant for arms and armour.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-111",
+      "kind": "tip",
+      "title": "Raw materials",
+      "text": "Sindr’s market has a merchant for shards and materials.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-112",
+      "kind": "tip",
+      "title": "Earn and spend",
+      "text": "Spend CHROMA on supplies or save it for training.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-113",
+      "kind": "tip",
+      "title": "A red flag",
+      "text": "Robbing another player earns a red flag.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-114",
+      "kind": "tip",
+      "title": "Three flags",
+      "text": "Three red flags held at once become a bounty.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-115",
+      "kind": "tip",
+      "title": "Waiting out a flag",
+      "text": "Red flags fade with time, but a bounty stays.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-116",
+      "kind": "tip",
+      "title": "Pay the bounty",
+      "text": "A bounty ends when you pay it off or someone beats you and collects it.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-117",
+      "kind": "tip",
+      "title": "The cost of jail",
+      "text": "Jail takes 40% of your CHROMA, materials and gear, including the vault.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-118",
+      "kind": "tip",
+      "title": "The vault has limits",
+      "text": "Banking does not protect your savings from a jail seizure.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-119",
+      "kind": "tip",
+      "title": "A fine on top",
+      "text": "Getting out of jail costs a fine as well as the seizure.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-120",
+      "kind": "tip",
+      "title": "Land stays yours",
+      "text": "Jail does not seize land.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-121",
+      "kind": "tip",
+      "title": "Potions in a fight",
+      "text": "Drinking a potion leaves you open to attack.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-122",
+      "kind": "tip",
+      "title": "Training",
+      "text": "To rise a fighting tier, qualify through fights, pay the master and win the trial.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-123",
+      "kind": "tip",
+      "title": "Permanent tiers",
+      "text": "Losing a fight does not lower your permanent tier.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "tip-124",
+      "kind": "tip",
+      "title": "A fair stake",
+      "text": "An accepted duel risks only the stake both players agreed on.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6–7; docs/GAME-LOOP.md §1; docs/LOOP-IN-SINDR.md"
+    },
+    {
+      "id": "fighting-125",
+      "kind": "fighting",
+      "title": "Fire and wind",
+      "text": "Wind can extinguish fire.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-126",
+      "kind": "fighting",
+      "title": "Fire and water",
+      "text": "Water can extinguish fire.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-127",
+      "kind": "fighting",
+      "title": "Incoming stone",
+      "text": "Wind and water can redirect flying boulders.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-128",
+      "kind": "fighting",
+      "title": "A stone wall",
+      "text": "TERRA walls block elemental attacks while they stand.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-129",
+      "kind": "fighting",
+      "title": "Water within reach",
+      "text": "AQUES needs water nearby to bend.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-130",
+      "kind": "fighting",
+      "title": "Earth underfoot",
+      "text": "TERRA needs an earth surface underfoot; wooden floors cannot supply it.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-131",
+      "kind": "fighting",
+      "title": "Fire anywhere",
+      "text": "IGNIS bends without needing an outside source.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-132",
+      "kind": "fighting",
+      "title": "Air anywhere",
+      "text": "AURA bends without needing an outside source.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-133",
+      "kind": "fighting",
+      "title": "Reusable water",
+      "text": "Water attacks leave splash pools that can be used again.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-134",
+      "kind": "fighting",
+      "title": "Water quality",
+      "text": "Wellspring water heals more strongly than water from a waterskin.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-135",
+      "kind": "fighting",
+      "title": "Internal scars",
+      "text": "Water healing cannot cure deep internal scars.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-136",
+      "kind": "fighting",
+      "title": "Keep the blade",
+      "text": "IGNIS can keep a weapon in hand while bending.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-137",
+      "kind": "fighting",
+      "title": "Free hands",
+      "text": "AQUES and TERRA put weapons away to bend.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-138",
+      "kind": "fighting",
+      "title": "AURA weapons",
+      "text": "AURA can bend with a staff, war fans or a glider in hand.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-139",
+      "kind": "fighting",
+      "title": "Close range",
+      "text": "Hands and legs fight faster and closer than weapons, with shorter reach.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-140",
+      "kind": "fighting",
+      "title": "Bending freely",
+      "text": "Bending combos spend the combo meter, while ordinary bending does not run out.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-141",
+      "kind": "fighting",
+      "title": "Build a combo",
+      "text": "Landing hits fills the combo meter.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-142",
+      "kind": "fighting",
+      "title": "No fixed cycle",
+      "text": "Elemental advantages depend on terrain, weather and the move used.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-143",
+      "kind": "fighting",
+      "title": "Choose when to bend",
+      "text": "A Shaper can fight without bending to pass unnoticed as one of the Dim.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
+    },
+    {
+      "id": "fighting-144",
+      "kind": "fighting",
+      "title": "The ultimate tier",
+      "text": "Each element’s signature ultimate opens at tier five.",
+      "element": null,
+      "where": [
+        "town",
+        "arena"
+      ],
+      "source": "docs/LORE.md §6; docs/COMBAT-BENDING-NATIONS.md §1"
     }
   ]
 }

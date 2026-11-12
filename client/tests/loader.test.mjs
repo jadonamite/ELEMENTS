@@ -1,63 +1,44 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { Loader } from '../src/ui/loader.ts';
-import { actionGlyph } from '../src/controls/glyphs.js';
+import { readFileSync, statSync } from 'node:fs';
+import { Loader, hintClass, hintDuration } from '../src/ui/loader.ts';
+import { LOADER_PICTURES, nextLoaderPicture } from '../src/ui/loader-pictures.ts';
+import { ACTIONS } from '../src/controls/actions.ts';
+import { actionGlyph } from '../src/controls/glyphs.ts';
 
-test('hints.json is valid and covers all required categories', () => {
-  const filePath = new URL('../public/hints/hints.json', import.meta.url);
-  const raw = readFileSync(filePath, 'utf8');
-  const data = JSON.parse(raw);
+const data = JSON.parse(readFileSync(new URL('../public/hints/hints.json', import.meta.url), 'utf8'));
 
-  assert.equal(data.version, 1, 'Version is 1');
-  assert.ok(Array.isArray(data.hints), 'Hints is an array');
-  assert.ok(data.hints.length >= 40, `At least 40 hints present (found ${data.hints.length})`);
-
-  const ids = new Set();
-  const kinds = new Set();
-  for (const h of data.hints) {
-    assert.ok(h.id, 'Hint has id');
-    assert.ok(!ids.has(h.id), `Duplicate hint id: ${h.id}`);
-    ids.add(h.id);
-
-    assert.ok(h.title, `Hint ${h.id} has title`);
-    assert.ok(h.text, `Hint ${h.id} has text`);
-    assert.ok(Array.isArray(h.where) && h.where.length > 0, `Hint ${h.id} has valid where array`);
-    assert.ok(['lore', 'controls', 'fighting', 'world', 'tip'].includes(h.kind), `Invalid kind ${h.kind} on ${h.id}`);
-    kinds.add(h.kind);
-
-    if (h.kind === 'controls') {
-      assert.ok(h.action, `Controls hint ${h.id} must specify action`);
-    }
-
-    if (h.minSeconds) {
-      assert.ok(h.minSeconds >= 4, `minSeconds should be at least 4s on ${h.id}`);
-    }
+test('both hint classes have at least 60 distinct sourced entries', () => {
+  assert.equal(data.version, 1);
+  const ids = new Set(), texts = new Set();
+  for (const hint of data.hints) {
+    assert.ok(!ids.has(hint.id), hint.id);
+    assert.ok(!texts.has(hint.text), hint.text);
+    ids.add(hint.id); texts.add(hint.text);
+    assert.ok(hint.title && hint.text && hint.source, hint.id);
+    assert.ok(hint.where.includes('town') && hint.where.includes('arena'));
+    assert.ok(hintDuration(hint) >= 5000);
+    if (hint.kind === 'controls') assert.ok(ACTIONS.some(a => a.id === hint.action));
   }
-
-  assert.ok(kinds.has('lore'), 'Has lore hints');
-  assert.ok(kinds.has('controls'), 'Has controls hints');
-  assert.ok(kinds.has('fighting'), 'Has fighting hints');
-  assert.ok(kinds.has('world'), 'Has world hints');
-  assert.ok(kinds.has('tip'), 'Has tip hints');
+  for (const kind of ['know', 'hint']) assert.ok(data.hints.filter(h => hintClass(h.kind) === kind).length >= 60);
 });
 
-test('controls hints produce valid SVG glyphs for both desktop and touch', () => {
-  const filePath = new URL('../public/hints/hints.json', import.meta.url);
-  const data = JSON.parse(readFileSync(filePath, 'utf8'));
+test('control glyphs use current actions on desktop and touch', () => {
+  const controls = data.hints.filter(h => h.action);
+  assert.ok(controls.length >= 12);
+  for (const hint of controls) for (const device of ['desktop', 'touch']) {
+    assert.match(actionGlyph(hint.action, device), /^<svg[^]*<\/svg>$/);
+    assert.doesNotMatch(actionGlyph(hint.action, device), /undefined/);
+  }
+});
 
-  const controlsHints = data.hints.filter(h => h.kind === 'controls');
-  assert.ok(controlsHints.length >= 12, 'At least 12 controls hints');
-
-  for (const h of controlsHints) {
-    const desktopSvg = actionGlyph(h.action, 'desktop');
-    assert.ok(desktopSvg.startsWith('<svg') && desktopSvg.endsWith('</svg>'), `Desktop SVG valid for ${h.action}`);
-    assert.ok(!desktopSvg.includes('undefined'), `Desktop SVG for ${h.action} has no undefined`);
-
-    const touchSvg = actionGlyph(h.action, 'touch');
-    assert.ok(touchSvg.startsWith('<svg') && touchSvg.endsWith('</svg>'), `Touch SVG valid for ${h.action}`);
-    assert.ok(!touchSvg.includes('undefined'), `Touch SVG for ${h.action} has no undefined`);
+test('the picture collection has at least 30 distinct compact JPGs', () => {
+  assert.ok(LOADER_PICTURES.length >= 30);
+  assert.equal(new Set(LOADER_PICTURES).size, LOADER_PICTURES.length);
+  for (const id of LOADER_PICTURES) {
+    const file = new URL(`../public/assets/ui/loader/pictures/${id}.jpg`, import.meta.url);
+    assert.ok(statSync(file).size <= 120 * 1024, `${id} is under 120 KB`);
+    assert.equal(readFileSync(file).subarray(0, 2).toString('hex'), 'ffd8');
   }
 });
 
@@ -92,14 +73,15 @@ function domFixture() {
       this.parentElement = null;
     }
     get innerHTML() { return this._innerHTML || ''; }
-    set innerHTML(val) { this._innerHTML = val; this.parseChildren(val); }
+    set innerHTML(val) { this._innerHTML = val; this.children = []; this.parseChildren(val); }
     parseChildren(html) {
-      const tagRegex = /<([a-z0-9]+)([^>]*)>/gi;
+      const tagRegex = /<(\/?)([a-z0-9]+)([^>]*)>/gi;
+      const stack = [this];
       let m;
       while ((m = tagRegex.exec(html)) !== null) {
-        if (m[1].startsWith('/')) continue;
-        const tag = m[1];
-        const attrs = m[2];
+        if (m[1] === '/') { if (stack.length > 1) stack.pop(); continue; }
+        const tag = m[2];
+        const attrs = m[3];
         const el = new MockElement(tag);
         const classMatch = attrs.match(/class=["']([^"']+)["']/i);
         if (classMatch) el.className = classMatch[1];
@@ -108,8 +90,9 @@ function domFixture() {
         if (/\bdisabled\b/i.test(attrs)) el.disabled = true;
         const dataMatches = attrs.matchAll(/data-([a-z0-9-]+)=["']([^"']+)["']/gi);
         for (const dm of dataMatches) el.dataset[dm[1]] = dm[2];
-        el.parentElement = this;
-        this.children.push(el);
+        el.parentElement = stack.at(-1);
+        stack.at(-1).children.push(el);
+        if (!attrs.endsWith('/') && !['img', 'br', 'input', 'hr'].includes(tag)) stack.push(el);
       }
     }
     setAttribute(k, v) { this.attributes.set(k, String(v)); }
@@ -126,11 +109,19 @@ function domFixture() {
       }
     }
     focus() {}
+    querySelectorAll(selector) {
+      const matches = [];
+      for (const child of this.children) {
+        if (child.className.split(/\s+/).includes(selector.replace(/^\./, '')) || child.tagName.toLowerCase() === selector) matches.push(child);
+        matches.push(...child.querySelectorAll(selector));
+      }
+      return matches;
+    }
     querySelector(selector) {
       const cls = selector.replace(/^\./, '');
       const id = selector.replace(/^#/, '');
       for (const c of this.children) {
-        if (c.className.split(/\s+/).includes(cls) || c.id === id) {
+        if (c.className.split(/\s+/).includes(cls) || c.id === id || c.tagName.toLowerCase() === selector) {
           return c;
         }
         const found = c.querySelector(selector);
@@ -172,6 +163,7 @@ function domFixture() {
   });
 
   return {
+    storage: mockLocalStorage,
     restore() {
       for (const [k, v] of Object.entries(originals)) {
         if (v === undefined) delete globalThis[k];
@@ -181,121 +173,161 @@ function domFixture() {
   };
 }
 
-test('Loader manages progress monotonically and handles enter handover', () => {
+test('pictures persist a no-repeat cycle and avoid the cycle-boundary repeat', () => {
   const fx = domFixture();
   try {
-    let entered = false;
-    let changedFighter = false;
-    const loader = new Loader({
-      destination: 'town',
-      element: 'IGNIS',
-      onEnter: () => { entered = true; },
-      onChangeFighter: () => { changedFighter = true; },
-    });
-
-    const root = document.querySelector('#elements-loader');
-    assert.ok(root, 'Loader mounted in document');
-    assert.equal(root.getAttribute('role'), 'region');
-
-    const barFill = root.querySelector('.loader-bar-fill');
-    const stageEl = root.querySelector('.loader-stage');
-    const percentEl = root.querySelector('.loader-percentage');
-    const enterBtn = root.querySelector('.loader-enter-btn');
-
-    assert.ok(barFill && stageEl && percentEl && enterBtn);
-    assert.equal(enterBtn.disabled, true, 'Enter button is initially disabled');
-
-    // Test stage and progress update
-    loader.setProgress(0.25, "Raising Sindr's streets");
-    assert.equal(percentEl.textContent, '25%');
-    assert.equal(stageEl.textContent, "Raising Sindr's streets");
-
-    // Monotonic guarantee: smaller progress is ignored
-    loader.setProgress(0.10, 'Early check');
-    assert.equal(percentEl.textContent, '25%', 'Progress does not move backward');
-    assert.equal(stageEl.textContent, "Raising Sindr's streets");
-
-    loader.setProgress(0.60, 'Forging the hero');
-    assert.equal(percentEl.textContent, '60%');
-    assert.equal(stageEl.textContent, 'Forging the hero');
-
-    // Handover to ready
-    loader.ready('Enter Sindr');
-    assert.equal(percentEl.textContent, '100%');
-    assert.equal(stageEl.textContent, 'Sindr is ready');
-    assert.equal(enterBtn.disabled, false);
-    assert.equal(enterBtn.textContent, 'Enter Sindr');
-
-    // Clicking enter fires onEnter
-    enterBtn.click();
-    assert.equal(entered, true, 'onEnter callback fired');
-
-    loader.dispose();
-  } finally {
-    fx.restore();
-  }
+    fx.storage.setItem('elements_loader_pictures_v2', '[]');
+    const cycle = () => Array.from({ length: LOADER_PICTURES.length }, nextLoaderPicture);
+    const first = cycle(), second = cycle();
+    assert.equal(new Set(first).size, LOADER_PICTURES.length);
+    assert.equal(new Set(second).size, LOADER_PICTURES.length);
+    assert.notEqual(first.at(-1), second[0]);
+    assert.equal(JSON.parse(fx.storage.getItem('elements_loader_pictures_v2')).length, LOADER_PICTURES.length);
+    fx.storage.setItem('elements_loader_pictures_v2', '{broken');
+    assert.doesNotThrow(nextLoaderPicture);
+    fx.storage.setItem('elements_loader_pictures_v2', JSON.stringify([null, {}, 'not-a-picture']));
+    assert.ok(nextLoaderPicture().endsWith('.jpg'));
+  } finally { fx.restore(); }
 });
 
-test('Loader shows hints with action glyphs and adapts to device', async () => {
+test('blocked storage still provides a complete session picture cycle', () => {
   const fx = domFixture();
   try {
-    const loader = new Loader({
-      destination: 'town',
-      onEnter: () => {},
-    });
+    fx.storage.setItem('elements_loader_pictures_v2', '[]');
+    const first = nextLoaderPicture();
+    globalThis.localStorage = { getItem() { throw Error('blocked'); }, setItem() { throw Error('blocked'); } };
+    const rest = Array.from({ length: LOADER_PICTURES.length - 1 }, nextLoaderPicture);
+    assert.equal(new Set([first, ...rest]).size, LOADER_PICTURES.length);
+  } finally { fx.restore(); }
+});
 
+test('real progress fills four emblems and fills rule ticks monotonically', () => {
+  const fx = domFixture();
+  let loader;
+  try {
+    loader = new Loader({ destination: 'town', onEnter() {} });
     const root = document.querySelector('#elements-loader');
-    const [knowPanel, hintPanel] = root.querySelector('.loader-hints').children;
-    assert.equal(knowPanel.dataset.class, 'know');
-    assert.equal(hintPanel.dataset.class, 'hint');
-    const hintBadge = hintPanel.querySelector('.loader-hint-badge');
-    const hintTitle = hintPanel.querySelector('.loader-hint-title');
-    const hintText = hintPanel.querySelector('.loader-hint-text');
-    const hintGlyph = hintPanel.querySelector('.loader-hint-glyph');
+    const marks = root.querySelectorAll('.loader-element-reveal');
+    const ticks = root.querySelectorAll('.loader-tick-ink');
+    const ink = () => marks.map(m => Number((100 * (1 - Number(m.getAttribute('d').match(/^M-4 ([\d.]+)/)[1]) / 64)).toFixed(8)));
+    const filled = () => ticks.filter(t => t.style.opacity === '1').length;
+    assert.equal(marks.length, 4);
+    assert.equal(ticks.length, 51);
+    assert.deepEqual(ink(), [0, 0, 0, 0]);
+    assert.equal(filled(), 0);
+    loader.setProgress(.1);
+    assert.deepEqual(ink(), [40, 0, 0, 0]);
+    assert.equal(filled(), 6);
+    loader.setProgress(.4);
+    assert.deepEqual(ink(), [100, 60, 0, 0]);
+    assert.equal(filled(), 21);
+    loader.setProgress(.5, 'Half loaded');
+    assert.deepEqual(ink(), [100, 100, 0, 0]);
+    loader.setProgress(.1, 'Old stage');
+    loader.setProgress(NaN, 'Invalid');
+    loader.setProgress(Infinity, 'Invalid');
+    assert.equal(root.querySelector('.loader-percentage').textContent, '50%');
+    assert.equal(root.querySelector('.loader-stage').textContent, 'Half loaded');
+    assert.deepEqual(ink(), [100, 100, 0, 0]);
+    loader.setProgress(.9);
+    assert.ok(Math.abs(ink()[3] - 60) < 1e-8);
+    assert.equal(filled(), 46);
+    loader.setProgress(5);
+    assert.deepEqual(ink(), [100, 100, 100, 100]);
+    assert.equal(filled(), 51);
+    assert.equal(root.querySelector('.loader-elements').getAttribute('aria-valuenow'), '100');
+  } finally { loader?.dispose(); fx.restore(); }
+});
 
-    // Show a controls hint explicitly (instant for testing)
-    loader.showHint({
-      id: 'ctrl-strike',
-      kind: 'controls',
-      title: 'Light strike',
-      text: 'Deliver quick strikes with weapon or bare fists to open combat.',
-      action: 'strike',
-      element: null,
-      where: ['town', 'arena'],
-      minSeconds: 4,
-    }, true);
-
-    assert.equal(hintBadge.dataset.kind, 'controls');
-    assert.equal(hintTitle.textContent, 'Light strike');
-    assert.ok(hintGlyph.innerHTML.includes('<svg'), 'Renders SVG glyph');
-
-    // Switch device to touch and verify glyph updates
-    loader.setDevice('touch');
-    assert.ok(hintGlyph.innerHTML.includes('<svg'), 'Touch glyph rendered');
-
-    loader.setDevice('desktop');
-    assert.ok(hintGlyph.innerHTML.includes('<svg'), 'Desktop glyph rendered');
-
-    // Show a lore hint without action (instant for testing)
-    loader.showHint({
-      id: 'lore-rising',
-      kind: 'lore',
-      title: 'The rising',
-      text: "You don't choose what you become.",
-      element: null,
-      where: ['town', 'arena'],
-    }, true);
-
-    // Lore goes to "Did you know"; the controls hint stays in its own panel.
-    assert.equal(knowPanel.querySelector('.loader-hint-badge').dataset.kind, 'lore');
-    assert.equal(knowPanel.querySelector('.loader-hint-title').textContent, 'The rising');
-    assert.equal(knowPanel.querySelector('.loader-hint-glyph').innerHTML, '', 'No glyph for non-action hint');
-    assert.equal(hintTitle.textContent, 'Light strike');
-    assert.equal(loader.getHint('know').id, 'lore-rising');
-    assert.equal(loader.getHint('hint').id, 'ctrl-strike');
-
+test('a single panel alternates only after the full reading time, then fades', t => {
+  const fx = domFixture();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const loader = new Loader({ destination: 'town', onEnter() {} });
+    const root = document.querySelector('#elements-loader');
+    assert.equal(root.querySelectorAll('.loader-hint').length, 1);
+    assert.equal(root.querySelectorAll('button').length, 0);
+    const first = loader.getHint();
+    const duration = hintDuration(first);
+    t.mock.timers.tick(duration - 1);
+    assert.equal(loader.getHint().id, first.id);
+    t.mock.timers.tick(1);
+    assert.equal(loader.getHint().id, first.id, 'Old text remains during fade');
+    t.mock.timers.tick(200);
+    assert.notEqual(hintClass(loader.getHint().kind), hintClass(first.kind));
+    const second = loader.getHint();
+    assert.equal(root.querySelector('.loader-hint-badge').textContent, hintClass(second.kind) === 'know' ? 'Did you know' : 'Hint');
+    t.mock.timers.tick(hintDuration(second));
+    t.mock.timers.tick(200);
+    assert.equal(hintClass(loader.getHint().kind), hintClass(first.kind));
     loader.dispose();
-  } finally {
-    fx.restore();
-  }
+    t.mock.timers.tick(100000);
+    assert.equal(document.querySelector('#elements-loader'), null);
+  } finally { t.mock.timers.reset(); fx.restore(); }
+});
+
+test('long hints get 300ms per word and never less than five seconds', () => {
+  assert.equal(hintDuration({ title: 'A fact', text: 'Short text.' }), 5000);
+  assert.equal(hintDuration({ title: 'One', text: Array(30).fill('word').join(' ') }), 9300);
+  assert.equal(hintDuration({ title: 'One', text: 'Two', minSeconds: 12 }), 12000);
+});
+
+test('hint glyphs follow the visible hint and device without a second panel', () => {
+  const fx = domFixture();
+  try {
+    const loader = new Loader({ destination: 'town', onEnter() {} });
+    const root = document.querySelector('#elements-loader');
+    const hint = data.hints.find(h => h.action === 'strike');
+    loader.showHint(hint, true);
+    const glyph = root.querySelector('.loader-hint-glyph');
+    assert.equal(glyph.innerHTML, actionGlyph('strike', 'desktop'));
+    loader.setDevice('touch');
+    assert.equal(glyph.innerHTML, actionGlyph('strike', 'touch'));
+    const lore = data.hints.find(h => hintClass(h.kind) === 'know');
+    loader.showHint(lore, true);
+    assert.equal(loader.getHint('hint'), null);
+    assert.equal(loader.getHint('know').id, lore.id);
+    assert.equal(glyph.innerHTML, '');
+    loader.dispose();
+  } finally { fx.restore(); }
+});
+
+test('ready starts once without input and removes the loader after its fade', t => {
+  const fx = domFixture();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    let entered = 0;
+    const loader = new Loader({ destination: 'arena', onEnter() { entered++; } });
+    loader.setProgress(.99);
+    assert.equal(entered, 0);
+    loader.ready();
+    loader.ready();
+    assert.equal(entered, 1);
+    const root = document.querySelector('#elements-loader');
+    assert.ok(root.classList.contains('loader-hidden'));
+    assert.equal(root.querySelector('.loader-percentage').textContent, '100%');
+    t.mock.timers.tick(300);
+    assert.equal(document.querySelector('#elements-loader'), null);
+    assert.equal(window.elementsLoader, undefined);
+    loader.ready();
+    assert.equal(entered, 1);
+  } finally { t.mock.timers.reset(); fx.restore(); }
+});
+
+test('reduced motion swaps content and completes the handover without a fade', t => {
+  const fx = domFixture();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    window.matchMedia = query => ({ matches: query.includes('reduced-motion') });
+    const loader = new Loader({ destination: 'town', onEnter() {} });
+    const hint = data.hints.find(h => h.action === 'jump');
+    loader.showHint(hint);
+    assert.equal(loader.getHint().id, hint.id);
+    loader.setProgress(.1);
+    const marks = document.querySelector('#elements-loader').querySelectorAll('.loader-element-reveal');
+    assert.deepEqual(marks.map(m => Number(m.getAttribute('d').match(/^M-4 ([\d.]+)/)[1])), [38.4, 64, 64, 64]);
+    loader.ready();
+    t.mock.timers.tick(0);
+    assert.equal(document.querySelector('#elements-loader'), null);
+  } finally { t.mock.timers.reset(); fx.restore(); }
 });

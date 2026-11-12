@@ -3,19 +3,22 @@ import type { HeroController } from '../controller.js';
 import type { CombatSpace } from '../attacks/space.js';
 import type { SoundManager } from '../audio.js';
 import type { WorldClock } from '../world/clock.js';
-import { SINDR_STREETS, SINDR_WALK, TownManager } from './town-manager.js';
+import { SINDR_STREETS, SINDR_WALK, TownManager, type LiveTownsperson } from './town-manager.js';
 import { loadLookBodies, ownLooks } from './townsfolk-bodies.js';
-import { drawnCrowd, drawnInTown, makeCrowd, staffPosts } from './crowd.js';
+import { drawnCrowd, drawnInTown, makeCrowd, staffPosts, type PlayerPerson } from './crowd.js';
 import type { Browse, Post } from '../world/builder.js';
 import { SINDR_TOWNSFOLK } from './townsfolk.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
 import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
 import { LeadManager, type Lead } from '../../../shared/src/story/leads.js';
-import { createDialogueMemory, type DialogueMemory, type PlayerDialogueContext } from '../../../shared/src/story/dialogue.js';
+import { createDialogueMemory, dialogueRules, type DialogueMemory, type PlayerDialogueContext } from '../../../shared/src/story/dialogue.js';
+import dialogueData from '../../../shared/dialogue.json';
+import { TownVoices } from './town-voices.js';
 import type { ContextOffer } from '../ui/context-action.js';
 import balance from '../../../shared/balance.json';
 
 const TALK = balance.speech.talk;
+const { traffic: TRAFFIC, hearRadius: HEAR_RADIUS } = balance.speech;
 /** People wandering the streets beside the named townsfolk and the keepers of posts, and how many looks they share. */
 const CROWD_PEOPLE = 110;
 const CROWD_LOOKS = 30;
@@ -38,6 +41,8 @@ export interface SindrLifeOptions {
   sound: SoundManager;
   getPlayerContext: () => PlayerDialogueContext;
   onNotice: (message: string) => void;
+  /** The sheet person the player is; the town draws nobody as their double. */
+  playerPerson?: PlayerPerson | undefined;
   /** Where fighting is happening now; townsfolk run from it. */
   getThreats: () => readonly Vector3[];
   /** The world's solid shapes, so people running from a fight don't run through walls. */
@@ -47,6 +52,8 @@ export interface SindrLifeOptions {
   warm?: (model: Object3D) => Promise<void>;
   /** Where passers-by stop to look at goods, as the town was built. */
   browse?: readonly Browse[];
+  /** Shows a line someone in the street said, under their name, for `seconds`. */
+  subtitle: (name: string, line: string, seconds: number) => void;
 }
 
 export class SindrLifeSystem {
@@ -55,6 +62,7 @@ export class SindrLifeSystem {
   readonly waypointMarker: WaypointMarker;
   readonly dialogueUI: NpcDialogueUI;
   readonly dialogueMemory: DialogueMemory;
+  readonly voices: TownVoices;
   readonly ready: Promise<void>;
   private disposed = false;
 
@@ -68,6 +76,8 @@ export class SindrLifeSystem {
   private getPlayerContext: () => PlayerDialogueContext;
   private onNotice: (message: string) => void;
   private getThreats: () => readonly Vector3[];
+  /** Where fights were first seen this frame, by whom. */
+  private readonly alarms: Array<{ person: LiveTownsperson; at: Vector3 }> = [];
 
   constructor(options: SindrLifeOptions) {
     this.scene = options.scene;
@@ -84,10 +94,22 @@ export class SindrLifeSystem {
     this.leadManager = new LeadManager();
     this.waypointMarker = new WaypointMarker(this.scene);
     this.dialogueMemory = createDialogueMemory();
+    this.voices = new TownVoices({
+      sound: this.sound,
+      rules: dialogueRules(dialogueData),
+      memory: this.dialogueMemory.speech,
+      limits: TRAFFIC,
+      hearRadius: HEAR_RADIUS,
+      now: () => performance.now() / 1000,
+      hero: () => this.controller.position,
+      subtitle: options.subtitle,
+    });
+    this.townManager.onAlarm = (person, at) => this.alarms.push({ person, at });
 
     this.dialogueUI = new NpcDialogueUI(
       this.dialogueMemory,
       this.sound,
+      this.voices,
       this.leadManager,
       () => this.clock.phase,
       (lead: Lead) => {
@@ -98,8 +120,8 @@ export class SindrLifeSystem {
 
     // The named townsfolk, then a crowd wearing its own looks, copied round the streets.
     // Only sheet people are drawn (drawnInTown); the rest wait for their sheets.
-    const crowd = drawnCrowd(makeCrowd(CROWD_PEOPLE, CROWD_LOOKS));
-    const named = ownLooks(SINDR_TOWNSFOLK).filter(drawnInTown);
+    const crowd = drawnCrowd(makeCrowd(CROWD_PEOPLE, CROWD_LOOKS, undefined, options.playerPerson));
+    const named = ownLooks(SINDR_TOWNSFOLK, options.playerPerson).filter(drawnInTown);
     const cast = SINDR_TOWNSFOLK.filter(p => p.look || named.some(l => l.id === p.id));
     const keepers = staffPosts(options.posts ?? [], crowd, cast);
     const people = [...cast, ...keepers, ...crowd.people];
@@ -116,6 +138,7 @@ export class SindrLifeSystem {
 
     // 1. Update townsfolk routines and locomotion
     this.townManager.update(delta, minute, heroPos, this.getThreats(), this.camera);
+    this.speakAlarms();
 
     // 2. Update active waypoint marker & check lead completion
     this.waypointMarker.update(delta, this.camera, heroPos);
@@ -131,6 +154,20 @@ export class SindrLifeSystem {
       Math.hypot(partner.position.x - heroPos.x, partner.position.z - heroPos.z) > TALK.leaveDistance)) {
       this.dialogueUI.close();
     }
+  }
+
+  /** Something happened at `at` that townsfolk nearby may call out (red_flag_raised, loot_dropped, theft_seen, ...). */
+  witness(concept: string, at: Vector3): void {
+    this.voices.witness(concept, at, this.townManager.townsfolk);
+  }
+
+  /** A fight newly seen this frame: someone near it calls it out, and one of those running shouts as they go. */
+  private speakAlarms(): void {
+    if (this.alarms.length === 0) return;
+    const at = this.alarms[0]!.at;
+    this.voices.witness('fight_started', at, this.townManager.townsfolk);
+    this.voices.witness('flee', at, this.alarms.map(a => a.person));
+    this.alarms.length = 0;
   }
 
   /** The townsperson the player faces within reach, offered on the context key; none during a fight. */

@@ -4,6 +4,7 @@ import { roll } from '../../../shared/src/rising/roll.js';
 const STORAGE_SESSION_TOKEN_KEY = 'elements_session_token';
 const STORAGE_ACCOUNT_ID_KEY = 'elements_account_id';
 const STORAGE_DRAWING_KEY = 'elements_drawing_result';
+const STORAGE_LOCAL_PLAYER_KEY = 'elements_local_player';
 
 export function hasGameServer(): boolean {
   return (import.meta as unknown as { env?: { VITE_NO_SERVER?: string } }).env?.VITE_NO_SERVER !== '1';
@@ -28,10 +29,26 @@ export function localSession(accountId?: string): SessionResponse {
 
 export function getStoredAuthToken(): string | null {
   try {
-    return sessionStorage.getItem(STORAGE_SESSION_TOKEN_KEY) || localStorage.getItem(STORAGE_SESSION_TOKEN_KEY);
+    return sessionStorage.getItem(STORAGE_SESSION_TOKEN_KEY) || localStorage.getItem(STORAGE_SESSION_TOKEN_KEY) || localPlayToken();
   } catch {
     return null;
   }
+}
+
+/**
+ * Local play signs in without the login service: a development build with no real session uses a
+ * "dev:<name>" token, which only a game server started for development accepts. The name is kept, so
+ * the same local player owns the same purse and satchel between runs. `?login` asks for the real sign-in.
+ */
+function localPlayToken(): string | null {
+  const dev = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true;
+  if (!dev || typeof window === 'undefined' || new URLSearchParams(window.location.search).has('login')) return null;
+  let name = localStorage.getItem(STORAGE_LOCAL_PLAYER_KEY);
+  if (!name) {
+    name = `local${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem(STORAGE_LOCAL_PLAYER_KEY, name);
+  }
+  return `dev:${name}`;
 }
 
 export function setStoredAuthToken(token: string | null): void {

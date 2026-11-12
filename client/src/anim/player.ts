@@ -11,10 +11,13 @@ import {
   type AnimationAction,
   type Object3D,
 } from 'three';
+import { FootPlant } from './foot-plant.js';
 
 export interface AnimationPlayerOptions {
   /** Default cross-fade transition time in seconds. Defaults to 0.25s. */
   defaultFadeDuration?: number;
+  /** Keep the feet above the floor after every update (humanoid rigs only). */
+  plantFeet?: boolean;
 }
 
 export class AnimationPlayer {
@@ -30,6 +33,9 @@ export class AnimationPlayer {
   private currentClipName: string | null = null;
   private readonly defaultFadeDuration: number;
   private isDisposed = false;
+  private plant: FootPlant | null = null;
+  private landedSince = 0;
+  private readonly plantFeet: boolean;
 
   constructor(
     root: Object3D,
@@ -37,6 +43,8 @@ export class AnimationPlayer {
     options: AnimationPlayerOptions = {},
   ) {
     this.mixer = new AnimationMixer(root);
+    this.plantFeet = options.plantFeet ?? false;
+    this.plant = this.plantFeet ? FootPlant.for(root) : null;
     this.defaultFadeDuration = options.defaultFadeDuration ?? 0.25;
 
     for (const clip of clips) {
@@ -93,6 +101,17 @@ export class AnimationPlayer {
     return this.play(name, fadeDuration, false);
   }
 
+  /**
+   * Feet that have come down since this was last asked (LEFT_FOOT, RIGHT_FOOT bits), so each landing is
+   * reported once; undefined for a body whose feet are not tracked.
+   */
+  takeLanded(): number | undefined {
+    if (!this.plant) return undefined;
+    const landed = this.landedSince;
+    this.landedSince = 0;
+    return landed;
+  }
+
   /** Playback speed of a clip, where 1 is its authored speed. */
   setSpeed(name: string, scale: number): void {
     this.actions.get(name)?.setEffectiveTimeScale(scale);
@@ -110,6 +129,10 @@ export class AnimationPlayer {
     if (this.isDisposed) return;
     this.updateWeights(deltaSeconds * this.mixer.timeScale);
     this.mixer.update(deltaSeconds);
+    if (this.plant) {
+      this.plant.apply();
+      this.landedSince |= this.plant.landed;
+    }
   }
 
   private updateWeights(deltaSeconds: number): void {
@@ -174,6 +197,7 @@ export class AnimationPlayer {
     this.currentClipName = null;
 
     (this as { mixer: AnimationMixer }).mixer = new AnimationMixer(root);
+    this.plant = this.plantFeet ? FootPlant.for(root) : null;
     for (const clip of clips) {
       const action = this.mixer.clipAction(clip);
       this.actions.set(clip.name, action);

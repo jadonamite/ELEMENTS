@@ -21,7 +21,7 @@ import {
 } from 'three';
 import balance from '../../shared/balance.json';
 import { BodyKit, parseOutfit, type OutfitId } from './body.js';
-import { getDefaultCharacterConfig, getStoredCharacter } from './creator/creator-types.js';
+import { getDefaultCharacterConfig, getStoredCharacter, type CharacterConfig } from './creator/creator-types.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { AnimationPlayer } from './anim/index.js';
@@ -35,6 +35,8 @@ export type Limb = 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'knee_r' | 'knee_
 export interface HeroInstance {
   /** Root 3D container added to the scene. */
   model: Group;
+  /** Who the player is: sex, body and sheet person. */
+  character: CharacterConfig;
   /** Animation player controlling locomotion and combat clips. */
   anim: AnimationPlayer;
   /** Weapon mesh/group attached to the right hand or back. */
@@ -390,6 +392,11 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   // Build animation clips, including bare hands combos & bending moves
   const combatClips = (await loader.loadAsync('/assets/characters/combat.glb')).animations;
   calmRunBounce(heroGltf.animations);
+  // Locomotion is the retargeted Mixamo pack: idle, walk, strafe and turn in place, jump.
+  const locomotionClips = (await loader.loadAsync('/assets/characters/locomotion.glb')).animations;
+  // The mannequin's own relaxed idle, walk and jump are replaced by the pack; its start/land jump clips are unused.
+  const REPLACED = new Set(['idle_relaxed', 'walk', 'jump', 'jump_start', 'jump_land']);
+  const bodyClips = heroGltf.animations.filter(clip => !REPLACED.has(clip.name));
 
   // Unarmed fighting uses real punch and knee clips; the bare moves map onto them by name.
   const unarmed = [
@@ -424,7 +431,8 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   }
 
   const rawAnimationClips: readonly AnimationClip[] = [
-    ...heroGltf.animations,
+    ...bodyClips,
+    ...locomotionClips,
     ...combatClips,
     ...subclips,
   ];
@@ -432,6 +440,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   const allClips = await kit.fitClips(config.sex, rawAnimationClips, 'hero', currentOutfit, config.person);
   const anim = new AnimationPlayer(heroModel, allClips, {
     defaultFadeDuration: 0.25,
+    plantFeet: true,
   });
   let strikeLimbs = new StrikeLimbs(heroModel, allClips, balance.combat.activeWindow as [number, number],
     balance.controller.modelForwardYaw);
@@ -481,6 +490,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
 
   return {
     model: heroModel,
+    character: config,
     anim,
     sword: holder,
     get weaponSlot(): WeaponSlotData { return weaponSlot; },
