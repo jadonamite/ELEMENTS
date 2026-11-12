@@ -32,7 +32,7 @@ function homes(count: number): SettlementHouse[] {
 function precinct(name: typeof SETTLEMENTS[number]['name'], industry: SettlementPrecinct['industry'], count: number, dx = 0, dz = 0): SettlementPrecinct {
   const anchor = SETTLEMENTS.find(p => p.name === name)!;
   return { ...anchor, anchor: { x: anchor.x, z: anchor.z }, x: anchor.x + dx, z: anchor.z + dz,
-    id: `ignis:settlement:${name.toLowerCase().replaceAll(' ', '-')}`, radius: industry === 'fort' ? 150 : 110, shoulder: 70,
+    id: `ignis:settlement:${name.toLowerCase().replaceAll(' ', '-')}`, radius: Math.max(anchor.radius, industry === 'fort' ? 150 : 110), shoulder: 70,
     contentReach: industry === 'fishing' ? 160 : industry === 'fort' ? 150 : 110, industry, houses: homes(count) };
 }
 export const SETTLEMENT_PRECINCTS: readonly SettlementPrecinct[] = [
