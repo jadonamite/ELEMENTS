@@ -415,7 +415,10 @@
       "I'll give you the benefit of the doubt this time. But I'm watching.",
       "New to Chromara? The Edict banishes the old names. You'll want to learn the new ones.",
       "A warning, not a fine. This once. The Edict is posted at every gate. Read it."
-    ]
+    ],
+    "_delivery": {
+      "catching_edict_breaker": "Stern and official, stating a rule."
+    }
   },
   "rival_guild": {
     "_note": "AI agents in the rival guild. They fight the boss and race for the final blow. Speak like players: competitive, brief. Not friendly.",
@@ -460,7 +463,13 @@
       "You beat us to it. We won't make that mistake again.",
       "Enjoy the bonus. We've got the next one.",
       "They got the kill. Note it. Learn from it. We won't be second twice."
-    ]
+    ],
+    "_delivery": {
+      "competing_for_final_blow": "Shouting over a fight, breathless and sharp.",
+      "boss_changing_element": "Shouting a warning mid-fight.",
+      "after_final_blow_won": "Breathless and pleased.",
+      "after_final_blow_lost": "Breathless, grudging."
+    }
   },
   "smith_sindr": {
     "_note": "Sindr forge master and smiths. Dim crafters proud of honest metalwork.",

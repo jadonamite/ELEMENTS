@@ -126,6 +126,8 @@ export class TownManager {
   /** Goods to stop and look at (stalls, tables, counters) that the walk map reaches, and the way to face them. */
   readonly sights: Array<{ at: Vector3; facing: number }> = [];
   readonly refuges: Vector3[] = [];
+  /** Told when someone first sees a fight near them and starts to run, with where the fight is. */
+  onAlarm: ((person: LiveTownsperson, at: Vector3) => void) | null = null;
   private frame = 0;
   private refugeBudget = 0;
   private disposed = false;
@@ -413,6 +415,7 @@ export class TownManager {
       p.looking = null;
       p.path = [];
       p.fearCheck = 0;
+      this.onAlarm?.(p, p.alarmAt);
     }
     if (!p.fleeing) return false;
     const ongoing = p.alarmAt && threats.some(t => t.distanceToSquared(p.alarmAt!) < (FEAR_RADIUS * 2) ** 2);

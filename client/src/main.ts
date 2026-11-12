@@ -418,6 +418,7 @@ async function main(): Promise<void> {
       space,
       posts: zone.posts,
       browse: zone.browse,
+      subtitle: (name, line, seconds) => hudLine(`${name}: "${line}"`, seconds * 1000 + 600),
     });
     cleanup.push(() => lifeSystem?.dispose());
   }
@@ -620,9 +621,16 @@ async function main(): Promise<void> {
     hudLine(`Cutthroat: "${said.line}"`, 1500 + said.line.length * 60);
   };
   // Loot, the market stalls and death drops, held by the server. Sindr is an IGNIS town.
+  let knownFlags: number | null = null;
   townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', {
     notice,
-    standingChanged: (s) => fightHud.setStanding(s.redFlags, s.hasBounty),
+    standingChanged: (s) => {
+      fightHud.setStanding(s.redFlags, s.hasBounty);
+      // A flag added in play, not the standing read on arrival, is called out by whoever saw it.
+      if (knownFlags !== null && s.redFlags > knownFlags) lifeSystem?.witness('red_flag_raised', controller.position);
+      knownFlags = s.redFlags;
+    },
+    lootDropped: (x, z) => lifeSystem?.witness('loot_dropped', new Vector3(x, controller.position.y, z)),
     wornChanged: (worn) => {
       void hero.switchOutfit(parseOutfit(worn.outfit));
       fight.setHeroArmour(worn.armour);
