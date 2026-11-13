@@ -1,5 +1,5 @@
 import { IGNIS } from './coordinates.js';
-import { shapedLand } from './land-form.js';
+import { LAKE, shapedLand } from './land-form.js';
 
 export const SETTLEMENTS = [
   // Map pins. Sindr and Cinderpit are surveyed pads; the other heights are nominal and each precinct takes its
@@ -31,7 +31,7 @@ function homes(count: number): SettlementHouse[] {
     w: 10, d: 9,
   }));
 }
-function precinct(name: typeof SETTLEMENTS[number]['name'], industry: SettlementPrecinct['industry'], count: number, dx = 0, dz = 0): SettlementPrecinct {
+function precinct(name: typeof SETTLEMENTS[number]['name'], industry: SettlementPrecinct['industry'], count: number, dx = 0, dz = 0, water?: number): SettlementPrecinct {
   const anchor = SETTLEMENTS.find(p => p.name === name)!, x = anchor.x + dx, z = anchor.z + dz;
   const radius = Math.max(anchor.radius, industry === 'fort' ? 150 : 110);
   // The floor is the average land under the precinct, so cut and fill balance; the bank widens with the height it has to take up.
@@ -39,7 +39,8 @@ function precinct(name: typeof SETTLEMENTS[number]['name'], industry: Settlement
   if (name !== 'Cinderpit') {
     let sum = shapedLand(x, z).height, lean = 0;
     for (let i = 0; i < 12; i++) sum += shapedLand(x + Math.cos(i * Math.PI / 6) * radius * 0.6, z + Math.sin(i * Math.PI / 6) * radius * 0.6).height;
-    height = Math.max(3, Math.round(sum / 13));
+    // A waterside floor stands just above its water so landings and quays meet it.
+    height = water === undefined ? Math.max(3, Math.round(sum / 13)) : water + 1.5;
     for (let i = 0; i < 12; i++) lean = Math.max(lean, Math.abs(shapedLand(x + Math.cos(i * Math.PI / 6) * radius, z + Math.sin(i * Math.PI / 6) * radius).height - height));
     shoulder = Math.min(300, Math.max(70, lean * 3));
   }
@@ -50,7 +51,7 @@ function precinct(name: typeof SETTLEMENTS[number]['name'], industry: Settlement
 export const SETTLEMENT_PRECINCTS: readonly SettlementPrecinct[] = [
   precinct('Cinderpit', 'mine', 8), precinct('Pinewatch', 'forestry', 6),
   // Atlas water pins locate the lake/outlet, so dry buildings stand on the adjoining bank.
-  precinct('Crown Lake', 'fishing', 4, 560, 0),
+  precinct('Crown Lake', 'fishing', 4, 560, 0, LAKE.height),
   precinct('Terrace village', 'farming', 6, 200, -200),
   precinct('Salt Quay', 'port', 6, -220, 0),
   precinct('March station', 'station', 4),

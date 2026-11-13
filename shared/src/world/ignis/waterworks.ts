@@ -38,6 +38,11 @@ export function waterworkCells(work: NationalWaterwork): readonly string[] {
  */
 export function nationalWaterworksGround(x: number, z: number, height: number, riverOwns = false, waterWeight = 1): number {
   const water = riverOwns ? null : nationalWaterAt(x, z);
+  // Under a road's own deck the channel keeps its bed; elsewhere a road keeps its surface.
+  if (water && waterWeight < 1) for (const bridge of ROUTE_BRIDGES) {
+    const p = segmentSample(x, z, bridge.from, bridge.to);
+    if (p.along >= 0 && p.along <= p.length && p.distance <= bridge.clear / 2 + 0.8) { waterWeight = 1; break; }
+  }
   let result = water ? water.bed - 0.25 : height;
   let nearest = Infinity, bankTarget = height, bankBlend = 0;
   if (!water && !riverOwns) for (const channel of PUBLIC_WATERWAYS) for (let i = 1; i < channel.points.length; i++) {

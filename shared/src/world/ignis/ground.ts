@@ -25,9 +25,7 @@ export function groundHeight(x: number, z: number): number {
   if (road.distance < 14) h = mix(road.height, h, mineWeight);
   const cart = nationalRoadAt(x, z);
   const roadWeight = cart ? smooth(cart.route.width / 2, cart.route.width / 2 + cart.route.shoulder, cart.distance) : 1;
-  // Under a road's deck the channel keeps its bed; elsewhere a road keeps its own surface.
-  const bridged = cart !== null && base.river > 9 && nationalWaterAt(x, z) !== null;
-  h = nationalWaterworksGround(x, z, h, base.river <= 9, bridged ? 1 : mineWeight * roadWeight);
+  h = nationalWaterworksGround(x, z, h, base.river <= 9, mineWeight * roadWeight);
   return h;
 }
 export type Biome = 'ash' | 'grass' | 'pine' | 'rock' | 'snow';

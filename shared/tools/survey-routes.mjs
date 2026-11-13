@@ -5,6 +5,9 @@ import { writeFileSync } from 'node:fs';
 const dist = new URL('../dist/world/ignis/', import.meta.url);
 const { baseGround, riverAt, LAKE } = await import(new URL('base-ground.js', dist));
 const { ROUTE_PLANS } = await import(new URL('route-plans.js', dist));
+const { nationalWaterAt } = await import(new URL('canals.js', dist));
+// A town channel anywhere in or beside a cell counts like the river: cross it once, never follow it.
+const canalNear = (x, z) => { for (let dx = -12; dx <= 12; dx += 6) for (let dz = -12; dz <= 12; dz += 6) if (nationalWaterAt(x + dx, z + dz)) return true; return false; };
 
 const CELL = 16, W = 16000 / CELL + 1, D = 18000 / CELL + 1;
 const height = new Float32Array(W * D), block = new Uint8Array(W * D);
@@ -12,7 +15,7 @@ for (let iz = 0; iz < D; iz++) for (let ix = 0; ix < W; ix++) {
   const x = ix * CELL, z = iz * CELL, g = baseGround(x, z), i = iz * W + ix;
   height[i] = g.height;
   const lake = Math.hypot((x - LAKE.x) / LAKE.rx, (z - LAKE.z) / LAKE.rz);
-  block[i] = !g.inland || lake < 1.12 ? 2 : riverAt(x, z).distance < 26 ? 1 : 0;
+  block[i] = !g.inland || lake < 1.12 ? 2 : riverAt(x, z).distance < 26 || (Math.abs(x - 7000) < 500 && Math.abs(z - 9000) < 500 && canalNear(x, z)) ? 1 : 0;
 }
 const DIRS = [[1, 0], [2, 1], [1, 1], [1, 2], [0, 1], [-1, 2], [-1, 1], [-2, 1], [-1, 0], [-2, -1], [-1, -1], [-1, -2], [0, -1], [1, -2], [1, -1], [2, -1]];
 const TURN = [0, 1, 8, 40, 90, 160, 160, 160, 160];

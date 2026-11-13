@@ -230,6 +230,11 @@ function portWorks(b: WorldBuilder): void {
     b.box('pale_stone', x, 0.32, z, 14, 0.04, 14);
     for (const side of [-1, 1]) block(b, 'ashlar_stone_blocks', x + side * 8, 0.35, z, 0.4, 0.7, 16);
   }
+  // A stone quay runs east from the yard to deep water, with a cross head for mooring.
+  block(b, 'ashlar_stone_blocks', 178, -1.4, 0, 200, 3, 7);
+  block(b, 'ashlar_stone_blocks', 272, -1.4, 0, 12, 3, 44);
+  for (const z of [-18, -6, 6, 18]) block(b, 'raw_timber', 276.5, 0.5, z, 0.5, 1, 0.5);
+  b.box('packed_dirt_road', 80, 0.035, 0, 60, 0.05, 6);
   // Freight shed is open to the yard; fish-drying racks have a separate approach.
   shelter(b, 65, 48, 20, 24);
   for (const z of [-20, -4, 12]) {
