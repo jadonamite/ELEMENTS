@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { GAME_HOUR_MS, SINDR_TOWNSFOLK, speaksBanished } from '@elements/shared';
+import { GAME_HOUR_MS, SINDR_TOWNSFOLK, carriesItemId, speaksBanished } from '@elements/shared';
 import { migrateDatabase, setDatabase } from '../src/db.js';
 import {
   createAgentRuntime,
@@ -19,6 +19,7 @@ import {
   verifyWorldSupply,
 } from '../src/economy/index.js';
 import { ensureSindrMerchants } from '../src/economy/agents/agentLoop.js';
+import { talkPrompt } from '../src/economy/agents/conversations/conversationService.js';
 import { defaultResponder, fakeRouter, type FakeCall } from './helpers/fakeProviders.js';
 
 const DAY = 24 * GAME_HOUR_MS;
@@ -191,6 +192,44 @@ test('Conversations: a player who tries to make a keeper say a banished name get
     rt2.detach();
     assert.equal(ok?.reply, 'Crimson shards, ten apiece, fairly weighed.');
     assert.equal(ok?.source.split(':')[0], 'nvidia');
+  } finally {
+    runtime.detach();
+  }
+});
+
+test('Item ids never reach talk: prompts carry the names players read, and an id a model writes is named', async () => {
+  const db = freshDb();
+  const id = 'armour_shaper_ignis';
+  const { router, calls } = fakeRouter({
+    responder: (c) => {
+      if (c.intent === 'conversation') return `My ${id} is the best in Sindr.`;
+      if (c.intent === 'plan' || c.intent === 'event') {
+        const ids: string[] = JSON.parse(c.user).keepers.map((k: { id: string }) => k.id);
+        return JSON.stringify({ plans: Object.fromEntries(ids.map((k) => [k, { focus: `Push the ${id} today.`, mood: 'keen', targetStockRatio: {}, bargainWillingness: 0.4, preparedLines: [`Fresh ${id} on the rack.`] }])) });
+      }
+      return 'x';
+    },
+  });
+  const runtime = createAgentRuntime({ router });
+  try {
+    const keeper = keepersIn('sindr').find((k) => k.merchant && id in k.merchant.inventory)!;
+    const result = await generateBatchPlans({ placeId: 'sindr', agents: [{ id: keeper.id, role: 'merchant', name: keeper.name, character: keeper.character, stock: keeper.merchant!.inventory }], phase: 'morning', router, db, now: D0 });
+    const plan = result.plans[keeper.id]!;
+    assert.equal(plan.focus, 'Push the IGNIS Shaper armour today.');
+    assert.deepEqual(plan.preparedLines, ['Fresh IGNIS Shaper armour on the rack.']);
+    assert.ok(calls.find((c) => c.intent === 'plan')!.user.includes('"name":"IGNIS Shaper armour"'), 'the planner is told the name');
+
+    const res = await runtime.conversations.talk({ accountId: 'acct_i', agentId: keeper.id, message: 'What armour do you have?' }, db, D0);
+    const asked = calls.filter((c) => c.intent === 'conversation');
+    assert.equal(asked.length, 1);
+    assert.ok(!carriesItemId(asked[0]!.system), asked[0]!.system);
+    assert.ok(asked[0]!.system.includes('IGNIS Shaper armour'), 'the keeper is told the name of what they sell');
+    assert.equal(res?.reply, 'My IGNIS Shaper armour is the best in Sindr.');
+
+    // Every keeper's prompt, from its written plan, is free of ids too.
+    for (const k of keepersIn('sindr')) {
+      assert.ok(!carriesItemId(talkPrompt(k, k.name, plan, 0, [{ said: 'hi', reply: `The ${id} sold.` }])), k.id);
+    }
   } finally {
     runtime.detach();
   }
