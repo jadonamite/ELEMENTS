@@ -1248,7 +1248,9 @@
       "maxCloseHour": 22,
       "restockStockRatio": 0.3,
       "tributeStockRatio": 0.9,
-      "tributePriceRatio": 0.25
+      "tributePriceRatio": 0.25,
+      "maxCallsPerHour": 20,
+      "timeoutMs": 5000
     },
     "shops": {
       "salePrice": 2000,

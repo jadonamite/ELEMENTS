@@ -177,6 +177,8 @@ export const AGENT_CONFIG = {
   tributeStockRatio: economyBalance?.agents?.tributeStockRatio ?? 0.9,
   // Share of base price the Lord pays for goods shipped as tribute.
   tributePriceRatio: economyBalance?.agents?.tributePriceRatio ?? 0.25,
+  maxCallsPerHour: economyBalance?.agents?.maxCallsPerHour ?? 20,
+  timeoutMs: economyBalance?.agents?.timeoutMs ?? 5000,
 } as const;
 
 export const SHOPS_CONFIG = {

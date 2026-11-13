@@ -14,6 +14,31 @@ export interface AgentTributeSchedule {
   intervalMs: number;
 }
 
+export interface CustomerMemorySummary {
+  friendlyPatrons: number;
+  hostileCustomers: number;
+  neutralCustomers: number;
+  recentInteractionsCount: number;
+}
+
+export interface DemandFloodingSummary {
+  floodedItems: string[];
+  scarceItems: string[];
+  dominantShardColor?: string;
+}
+
+export interface SolvencyUrgency {
+  distanceToBroke: number;
+  isWarning: boolean;
+  isBroke: boolean;
+  daysBroke: number;
+}
+
+export interface TributeStatus {
+  timeUntilTributeMs: number;
+  isDueSoon: boolean;
+}
+
 export interface AgentObservation {
   merchantId: string;
   purse: number;
@@ -27,6 +52,10 @@ export interface AgentObservation {
   daysBroke?: number;
   personality?: string;
   now?: number;
+  customerMemory?: CustomerMemorySummary;
+  floodingSummary?: DemandFloodingSummary;
+  solvencyUrgency?: SolvencyUrgency;
+  tributeStatus?: TributeStatus;
 }
 
 export type RestockAction = {
