@@ -1,4 +1,4 @@
-import { baseGround, LAKE, landDistance, mix, oceanBoundary, riverAt, smooth } from './base-ground.js';
+import { baseGround, coastAt, LAKE, mix, riverAt, smooth } from './base-ground.js';
 export * from './base-ground.js';
 export { SETTLEMENTS } from './settlements.js';
 import { mineAt } from './mine-road.js';
@@ -12,7 +12,7 @@ export function waterHeight(x: number, z: number): number | null {
   if (publicWater) return publicWater.surface;
   if (((x - LAKE.x) / LAKE.rx) ** 2 + ((z - LAKE.z) / LAKE.rz) ** 2 <= 1) return LAKE.height;
   if (river.distance <= 9) return river.water;
-  return landDistance(x, z) <= 0 && oceanBoundary(x, z) ? 0 : null;
+  return coastAt(x, z).ocean ? 0 : null;
 }
 export function groundHeight(x: number, z: number): number {
   const base = baseGround(x, z);

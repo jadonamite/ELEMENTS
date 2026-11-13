@@ -86,7 +86,7 @@ export function nationalView(height: (x: number, z: number) => number, material:
   const group = new Group(); group.name = 'national-view';
   const sky = createSky(); sky.scale.setScalar(18000); group.add(sky);
   const n = low ? 49 : 97, vertices = n * n + 4 * n, indices = (n - 1) ** 2 * 6 + (n - 1) * 24;
-  const batch = new BatchedMesh(42, vertices * 42, indices * 42, farMaterial);
+  const batch = new BatchedMesh(64, vertices * 64, indices * 64, farMaterial);
   batch.name = 'national-far'; batch.frustumCulled = false; batch.sortObjects = false; group.add(batch);
   // Water and the crater take the terrain's light air, not the town's street haze, which would erase them by 2 km.
   const waterMat = terrainAir(new MeshStandardMaterial({ color: 0x2f5563, roughness: 0.32 }), fog);
@@ -116,7 +116,7 @@ export function nationalView(height: (x: number, z: number) => number, material:
   const bounds: Sphere[] = [], frustum = new Frustum(), projection = new Matrix4();
   const ready = (async () => {
     let slice = performance.now();
-    for (let ix = 0; ix <= 5; ix++) for (let iz = 0; iz <= 5; iz++) {
+    for (let ix = -1; ix <= 6; ix++) for (let iz = -1; iz <= 6; iz++) {
       if (stopped) return;
       const gx = (ix + 0.5) * 3072, gz = (iz + 0.5) * 3072;
       // Conservative polygon intersection, including all land boundary tiles.

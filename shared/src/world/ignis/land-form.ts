@@ -43,20 +43,54 @@ export function landDistance(x: number, z: number): number {
   }
   return Math.sqrt(d2) * (inside ? 1 : -1);
 }
-/** Only the eastern and southeastern polygon edges meet the sea. Other edges meet adjacent highlands. */
+/** Edges 4 to 7 of the polygon (east and south-east) meet the sea. The others meet adjacent highlands. */
+const seaEdge = (edge: number): boolean => edge >= 4 && edge <= 7;
+export interface Coast {
+  /** Signed distance to the land polygon: positive inside. */
+  land: number;
+  /** Open sea: outside the polygon, nearer a sea edge than any other. */
+  ocean: boolean;
+  /** For open sea, metres out from the nearest land of any kind. For everything else, metres to the open sea. Zero where they meet. */
+  reach: number;
+  /** Metres to the nearest edge that is not sea. */
+  highland: number;
+}
+/**
+ * Where a spot stands against the shore, as distances that change smoothly everywhere, so the ground built from
+ * them has no step at the polygon's edge or where a sea edge meets a mountain edge.
+ */
+export function coastAt(x: number, z: number): Coast {
+  let inside = false, sea = Infinity, other = Infinity;
+  for (let i = 0, j = LAND_POLYGON.length - 1; i < LAND_POLYGON.length; j = i++) {
+    const a = LAND_POLYGON[j]!, b = LAND_POLYGON[i]!;
+    if ((a[1] > z) !== (b[1] > z) && x < (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+    const t = segment(x, z, a[0], a[1], b[0], b[1]);
+    const d = (x - a[0] - (b[0] - a[0]) * t) ** 2 + (z - a[1] - (b[1] - a[1]) * t) ** 2;
+    // Edge j runs from vertex j to vertex i.
+    if (seaEdge(j)) sea = Math.min(sea, d); else other = Math.min(other, d);
+  }
+  sea = Math.sqrt(sea); other = Math.sqrt(other);
+  const edge = Math.min(sea, other), ocean = !inside && sea <= other;
+  return { land: inside ? edge : -edge, ocean, highland: other,
+    reach: inside ? sea : ocean ? Math.min(edge, other - sea) : Math.min(sea, sea - other) };
+}
+/** Whether the nearest stretch of the nation's edge is sea. */
 export function oceanBoundary(x: number, z: number): boolean {
   let best = Infinity, edge = -1;
   for (let i = 0; i < LAND_POLYGON.length; i++) {
     const a = LAND_POLYGON[i]!, b = LAND_POLYGON[(i + 1) % LAND_POLYGON.length]!;
     const t = segment(x, z, a[0], a[1], b[0], b[1]);
     const d = (x - a[0] - (b[0] - a[0]) * t) ** 2 + (z - a[1] - (b[1] - a[1]) * t) ** 2;
-    if (d < best) { best = d; edge = i; }
+    if (d <= best && (d < best || seaEdge(i))) { best = d; edge = i; }
   }
-  return edge >= 4 && edge <= 7;
+  return seaEdge(edge);
 }
+/** How far past the border the highlands are drawn and walkable. */
+const BEYOND = 3000;
+/** Whether a cell holds ground worth building: any part of the nation, its shore, or the highlands just beyond a land border. */
 export function landCell(ix: number, iz: number, size: number = IGNIS.cellSize): boolean {
-  const x = (ix + 0.5) * size, z = (iz + 0.5) * size;
-  return landDistance(x, z) >= -size * Math.SQRT1_2;
+  const x = (ix + 0.5) * size, z = (iz + 0.5) * size, coast = coastAt(x, z), reach = size * Math.SQRT1_2;
+  return coast.land >= -reach || (coast.land > -BEYOND && (!coast.ocean || coast.reach < reach));
 }
 export function riverAt(x: number, z: number): { distance: number; water: number } {
   let d2 = Infinity, water = 0;
@@ -112,7 +146,7 @@ const PADS = [
   { x: 10500, z: 7000, height: 740, radius: 180, shoulder: 220 },
 ] as const;
 /** Broad authored relief. Detail is in metres and never defines a town boundary. */
-function relief(x: number, z: number): number {
+function relief(x: number, z: number, highland: number): number {
   const north = Math.max(0, Math.min(1, (10000 - z) / 8000));
   let h = 340 + north * 620 - Math.max(0, z - 10000) * 0.044;
   h += 65 * Math.sin(x / 1400 + z / 2300) + 42 * Math.cos(z / 800 - x / 1800);
@@ -125,11 +159,8 @@ function relief(x: number, z: number): number {
   // runs in a broad valley instead of a slot canyon or on a dyke.
   const drain = riverAt(x, z);
   if (drain.distance < DRAIN_REACH) h = mix(drain.water + 0.5 + drain.distance * 0.02, h, smooth(60, DRAIN_REACH, drain.distance));
-  // Western, northern and southern boundaries rise above their approaches.
-  if (x < 6500 || z < 1400 || z > 15500) {
-    const d = Math.abs(landDistance(x, z));
-    h += 170 * (1 - smooth(0, 150, d));
-  }
+  // Every boundary that is not sea is a ridge above its approaches.
+  h += 170 * (1 - smooth(0, 150, highland));
   return h;
 }
 /**
@@ -137,11 +168,12 @@ function relief(x: number, z: number): number {
  * lake and river. `dry` is how far a spot is from open water, 0 in the lake or river bed and 1 clear of both.
  */
 export function shapedLand(x: number, z: number): BaseGround & { dry: number } {
-  const land = x >= 6000 && x <= 8500 && z >= 7500 && z <= 10000 ? 2000 : landDistance(x, z);
-  if (land < 0) return { height: oceanBoundary(x, z) ? -12 * smooth(0, 100, -land) : relief(x, z), inland: false, river: Infinity, dry: 0 };
-  let h = relief(x, z);
-  // Ocean-facing edges taper to a beach; the other boundaries are mountain ridges.
-  if (x > 11000 && z > 1800) h *= smooth(0, 1500, land);
+  const town = x >= 6000 && x <= 8500 && z >= 7500 && z <= 10000, coast = town ? null : coastAt(x, z);
+  // Open sea: the floor shelves from the shore to 12 m.
+  if (coast?.ocean) return { height: -12 * smooth(0, 100, coast.reach), inland: false, river: Infinity, dry: 0 };
+  let h = relief(x, z, coast ? coast.highland : Infinity);
+  // All other ground, inside the nation or in the highlands beyond it, falls to a beach over its last 1.5 km to the sea.
+  if (coast) h *= smooth(0, 1500, coast.reach);
   // Farmed hillsides are cut into level fields before pads, rivers and roads shape them.
   const fields = terraceAt(x, z);
   if (fields > 0) h = mix(h, terraced(h), fields);
