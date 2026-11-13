@@ -20,7 +20,7 @@ import {
 import { getDatabase, getActiveShopOwnership, insertShopSale } from '../db.js';
 import { recordTransaction } from './ledgerService.js';
 import { getNpcMemory } from './npcMemoryService.js';
-import { addItems, removeItems, withSavepoint } from './satchelService.js';
+import { addItems, getLedgerItemBalance, recordItemMove, removeItems, withSavepoint } from './satchelService.js';
 
 interface RawMerchantRow {
   id: string;
@@ -441,6 +441,16 @@ export function buyFromMerchant(
       },
       db,
     );
+
+    const baseStockItemId = (stockKey === 'shard' ? shardItemId(merchant.nation) : stockKey) ?? boughtItemId;
+    if (boughtItemId !== baseStockItemId) {
+      const exact = Math.max(0, getLedgerItemBalance(merchant.id, boughtItemId, db));
+      const conversion = Math.min(params.quantity, Math.max(0, params.quantity - exact));
+      if (conversion > 0) {
+        recordItemMove(db, merchant.id, 'world', { itemId: baseStockItemId, quantity: conversion }, 'stock_conversion', merchant.id, now);
+        recordItemMove(db, 'world', merchant.id, { itemId: boughtItemId, quantity: conversion }, 'stock_conversion', merchant.id, now);
+      }
+    }
 
     addItems(
       {

@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { TOTAL_CHROMA_SUPPLY } from '@elements/shared';
 import { migrateDatabase } from '../src/db.js';
 import { grantPlayerStartingPurse, recordTransaction } from '../src/economy/ledgerService.js';
+import { addItems, removeItems } from '../src/economy/satchelService.js';
 import { genesisArgs, playerImplicitAccount, worldAccount } from '../src/chain/accounts.js';
 import { Settler, type ChainClient, type ChainMove } from '../src/chain/settler.js';
 import type { ChainConfig } from '../src/chain/config.js';
@@ -144,4 +145,66 @@ test('settlement stops when the contract belongs to another ledger', async () =>
   play(db);
   assert.equal(await settler.tick(), null);
   assert.match(settler.haltReason ?? '', /another ledger/);
+});
+
+test('the shared settler maps item world entries to mint and burn operations', async () => {
+  const db = freshDb();
+  grantPlayerStartingPurse('alice', db);
+  addItems({ accountId: 'alice', from: 'world', stacks: [{ itemId: 'potion', quantity: 3 }], reason: 'grant' }, db);
+  removeItems({ accountId: 'alice', to: 'world', stacks: [{ itemId: 'potion', quantity: 1 }], reason: 'item_use' }, db);
+  const opsSent: unknown[][] = [];
+  const balances = new Map<string, bigint>();
+  const supplies = new Map<string, bigint>();
+  let last = 0;
+  const client: ChainClient = {
+    async lastBatch() { return last; },
+    async settle(batch, raw) {
+      assert.equal(batch, last + 1);
+      const ops = raw as Array<{from:string|null;to:string|null;token_id:string;amount:string}>;
+      opsSent.push(raw);
+      for (const op of ops) {
+        const amount = BigInt(op.amount);
+        const from = op.from ? `${op.from}:${op.token_id}` : null;
+        const to = op.to ? `${op.to}:${op.token_id}` : null;
+        if (from) { const old=balances.get(from)??0n; assert.ok(old>=amount); balances.set(from,old-amount); }
+        else supplies.set(op.token_id,(supplies.get(op.token_id)??0n)+amount);
+        if (to) balances.set(to,(balances.get(to)??0n)+amount);
+        else supplies.set(op.token_id,(supplies.get(op.token_id)??0n)-amount);
+      }
+      last=batch;
+      return `items-${batch}`;
+    },
+  };
+  const settler = new Settler({ ...config, contractId:'items.game.testnet' }, client, db, 'items');
+  await drain(settler);
+  assert.equal(last, 1);
+  assert.equal(balances.get(`${playerImplicitAccount(config.playerSecret,'alice')}:potion`),2n);
+  assert.equal(supplies.get('potion'),2n);
+  const sent = opsSent[0] as Array<{from:string|null;to:string|null}>;
+  assert.equal(sent[0]!.from, null);
+  assert.equal(sent[1]!.to, null);
+});
+
+test('the item settler halts on every contract refusal, including supply underflow', async () => {
+  for (const refusal of [
+    'Supply underflow',
+    'Amount must be positive',
+    'Operation has no source or destination',
+    'Sender and receiver cannot be the same',
+    'attempt to add with overflow',
+    'Insufficient balance',
+    'Batch out of order',
+    'Only the game account settles',
+  ]) {
+    const db = freshDb();
+    addItems({ accountId: 'alice', from: 'world', stacks: [{ itemId: 'potion', quantity: 1 }], reason: 'grant' }, db);
+    const client: ChainClient = {
+      async lastBatch() { return 0; },
+      async settle() { throw new Error(`Contract panicked: ${refusal}`); },
+    };
+    const settler = new Settler({ ...config, contractId: 'items.game.testnet' }, client, db, 'items');
+    assert.equal(await settler.tick(), null, refusal);
+    assert.ok((settler.haltReason ?? '').toLowerCase().includes(refusal.toLowerCase()), refusal);
+    assert.equal(await settler.tick(), null, 'a halted settler does not retry');
+  }
 });

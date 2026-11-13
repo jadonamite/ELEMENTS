@@ -1,6 +1,7 @@
 import { normalizeControlProgress, mergeControlProgress, type ControlProgress } from '@elements/shared';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
+import { reconcileItemLedger } from './economy/satchelService.js';
 import { randomInt } from 'node:crypto';
 import {
   roll,
@@ -329,6 +330,7 @@ export function createDatabase(dbPath?: string): DatabaseSync {
   const db = new DatabaseSync(resolvedPath);
   db.exec('PRAGMA busy_timeout = 5000;');
   migrateDatabase(db);
+  reconcileItemLedger(db);
   return db;
 }
 
