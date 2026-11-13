@@ -8,8 +8,8 @@ const secretKey = process.env.ITEMS_SMOKE_PRIVATE_KEY;
 if (!gameAccount || !contractId || !receiverId || !secretKey) {
   throw new Error('Set ITEMS_SMOKE_GAME_ACCOUNT, ITEMS_TRANSFER_SMOKE_CONTRACT_ID, ITEMS_TRANSFER_SMOKE_RECEIVER_ID and ITEMS_SMOKE_PRIVATE_KEY');
 }
-if (!contractId.includes('smoke') || !receiverId.includes('smoke') || !contractId.endsWith('.elements-dev.testnet') || !receiverId.endsWith('.elements-dev.testnet')) {
-  throw new Error('Smoke refuses contracts outside the disposable elements-dev.testnet namespace');
+if (!contractId.includes('smoke') || !receiverId.includes('smoke') || !contractId.endsWith('.testnet') || !receiverId.endsWith('.testnet')) {
+  throw new Error('Smoke refuses contracts outside the disposable testnet namespace');
 }
 const disposableContractId = contractId as string;
 const disposableReceiverId = receiverId as string;
@@ -17,6 +17,7 @@ const disposableReceiverId = receiverId as string;
 const provider = new JsonRpcProvider({ url: process.env.NEAR_RPC_URL ?? 'https://rpc.testnet.fastnear.com' });
 const account = new Account(gameAccount, provider, KeyPairSigner.fromSecretKey(secretKey as KeyPairString));
 const view = (method: string, args: Record<string, unknown>) => provider.callFunction({ contractId: disposableContractId, method, args });
+const transactions: string[] = [];
 async function call(methodName: string, args: Record<string, unknown>, deposit = 0n): Promise<void> {
   const result = await account.callFunctionRaw({
     contractId: disposableContractId,
@@ -30,6 +31,7 @@ async function call(methodName: string, args: Record<string, unknown>, deposit =
   if (typeof status === 'object' && status && 'Failure' in status) {
     throw new Error(`${methodName} failed: ${JSON.stringify(status.Failure)}`);
   }
+  transactions.push(result.transaction.hash as string);
 }
 async function balance(owner: string, token: string): Promise<bigint> {
   return BigInt(String(await view('mt_balance_of', { account_id: owner, token_id: token })));
@@ -39,28 +41,35 @@ function expect(actual: bigint, expected: bigint, label: string): void {
 }
 
 const tokens = ['smoke_potion', 'smoke_shard'];
+const [senderPotionBefore, senderShardBefore, receiverPotionBefore, receiverShardBefore] = await Promise.all([
+  balance(gameAccount, tokens[0]),
+  balance(gameAccount, tokens[1]),
+  balance(disposableReceiverId, tokens[0]),
+  balance(disposableReceiverId, tokens[1]),
+]);
+const previousBatch = Number(await view('last_batch', {}));
 await call('settle', {
-  batch: 1,
+  batch: previousBatch + 1,
   ops: tokens.map((token_id) => ({ from: null, to: gameAccount, token_id, amount: '30', memo: 'transfer-call smoke' })),
 });
 
 await call('mt_transfer_call', {
   receiver_id: disposableReceiverId, token_id: tokens[0], amount: '9', approval: null, memo: null, msg: 'keep_all',
 }, 1n);
-expect(await balance(gameAccount, tokens[0]), 21n, 'single keep all sender');
-expect(await balance(receiverId, tokens[0]), 9n, 'single keep all receiver');
+expect(await balance(gameAccount, tokens[0]), senderPotionBefore + 21n, 'single keep all sender');
+expect(await balance(disposableReceiverId, tokens[0]), receiverPotionBefore + 9n, 'single keep all receiver');
 
 await call('mt_transfer_call', {
   receiver_id: disposableReceiverId, token_id: tokens[0], amount: '8', approval: null, memo: null, msg: 'keep_part',
 }, 1n);
-expect(await balance(gameAccount, tokens[0]), 17n, 'single keep part sender');
-expect(await balance(receiverId, tokens[0]), 13n, 'single keep part receiver');
+expect(await balance(gameAccount, tokens[0]), senderPotionBefore + 17n, 'single keep part sender');
+expect(await balance(disposableReceiverId, tokens[0]), receiverPotionBefore + 13n, 'single keep part receiver');
 
 await call('mt_transfer_call', {
   receiver_id: disposableReceiverId, token_id: tokens[0], amount: '6', approval: null, memo: null, msg: 'keep_none',
 }, 1n);
-expect(await balance(gameAccount, tokens[0]), 17n, 'single keep none sender');
-expect(await balance(receiverId, tokens[0]), 13n, 'single keep none receiver');
+expect(await balance(gameAccount, tokens[0]), senderPotionBefore + 17n, 'single keep none sender');
+expect(await balance(disposableReceiverId, tokens[0]), receiverPotionBefore + 13n, 'single keep none receiver');
 
 await call('mt_batch_transfer_call', {
   receiver_id: disposableReceiverId,
@@ -70,9 +79,9 @@ await call('mt_batch_transfer_call', {
   memo: null,
   msg: 'keep_part',
 }, 1n);
-expect(await balance(gameAccount, tokens[0]), 12n, 'batch potion sender');
-expect(await balance(receiverId, tokens[0]), 18n, 'batch potion receiver');
-expect(await balance(gameAccount, tokens[1]), 27n, 'batch shard sender');
-expect(await balance(receiverId, tokens[1]), 3n, 'batch shard receiver');
+expect(await balance(gameAccount, tokens[0]), senderPotionBefore + 12n, 'batch potion sender');
+expect(await balance(disposableReceiverId, tokens[0]), receiverPotionBefore + 18n, 'batch potion receiver');
+expect(await balance(gameAccount, tokens[1]), senderShardBefore + 27n, 'batch shard sender');
+expect(await balance(disposableReceiverId, tokens[1]), receiverShardBefore + 3n, 'batch shard receiver');
 
-console.log(JSON.stringify({ contractId: disposableContractId, receiverId: disposableReceiverId, result: 'single and batch callbacks refunded unused tokens correctly' }, null, 2));
+console.log(JSON.stringify({ contractId: disposableContractId, receiverId: disposableReceiverId, transactions, result: 'single and batch callbacks refunded unused tokens correctly' }, null, 2));
