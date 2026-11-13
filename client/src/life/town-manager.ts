@@ -126,6 +126,8 @@ export class TownManager {
   /** Goods to stop and look at (stalls, tables, counters) that the walk map reaches, and the way to face them. */
   readonly sights: Array<{ at: Vector3; facing: number }> = [];
   readonly refuges: Vector3[] = [];
+  /** Told when someone first sees a fight near them and starts to run, with where the fight is. */
+  onAlarm: ((person: LiveTownsperson, at: Vector3) => void) | null = null;
   private frame = 0;
   private refugeBudget = 0;
   private disposed = false;
@@ -173,7 +175,7 @@ export class TownManager {
       const meshes: Mesh[] = [];
       object.traverse((n) => { if ((n as Mesh).isMesh) meshes.push(n as Mesh); });
       const face = meshes.filter(m => /^eye/i.test(m.name));
-      const anim = body.clips.length ? new AnimationPlayer(object, body.clips, { defaultFadeDuration: 0.25 }) : null;
+      const anim = body.clips.length ? new AnimationPlayer(object, body.clips, { defaultFadeDuration: 0.25, plantFeet: true }) : null;
       const idle = IDLE[npc.role];
       anim?.play(idle);
       // Each person starts at their own point in the clip, so a crowd never moves in step.
@@ -413,6 +415,7 @@ export class TownManager {
       p.looking = null;
       p.path = [];
       p.fearCheck = 0;
+      this.onAlarm?.(p, p.alarmAt);
     }
     if (!p.fleeing) return false;
     const ongoing = p.alarmAt && threats.some(t => t.distanceToSquared(p.alarmAt!) < (FEAR_RADIUS * 2) ** 2);

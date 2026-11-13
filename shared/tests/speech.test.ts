@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { SpeechMemory, SpeechRules, SpeechTraffic, type SpeechRule } from '../src/story/speech.js';
-import { createDialogueMemory, pickDialogueLine, rulesFromDialogue, talkFacts, type PlayerDialogueContext } from '../src/story/dialogue.js';
+import { createDialogueMemory, pickDialogueLine, rulesFromDialogue, talkFacts, WITNESS_COOLDOWN_SECONDS, WITNESS_ECHO_SECONDS, type PlayerDialogueContext } from '../src/story/dialogue.js';
 
 const table = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../dialogue.json'), 'utf8'));
 const seq = (...xs: number[]) => { let i = 0; return () => xs[i++ % xs.length]!; };
@@ -113,4 +113,60 @@ test('talk facts read the player as lit only when a Shaper, and a bounty from th
   assert.equal(f['player.lit'], false);
   assert.equal(f['player.bounty'], true);
   assert.equal(pickDialogueLine(table, { id: 'x', role: 'nobody' }, shaper, 'greeting', createDialogueMemory()).category, 'fallback');
+});
+
+test('every line in dialogue.json is spoken as written: no blanks, no placeholders, no banished names', () => {
+  const banished = new RegExp(`\\b(${table._meta.banished.join('|')})\\b`, 'i');
+  const bad: string[] = [];
+  for (const [role, block] of Object.entries(table as Record<string, Record<string, unknown>>)) {
+    if (role === '_meta') continue;
+    for (const [situation, lines] of Object.entries(block)) {
+      if (!Array.isArray(lines)) continue;
+      for (const line of lines as string[]) if (/[{}[\]]/.test(line) || banished.test(line)) bad.push(`${role}/${situation}: ${line}`);
+    }
+  }
+  assert.deepEqual(bad, []);
+});
+
+test('a Hush player never hears a nation name filled in for them', () => {
+  const hush: PlayerDialogueContext = { name: 'Doran', isLit: false, role: 'Hush', element: 'NONE' };
+  const memory = createDialogueMemory();
+  for (let i = 0; i < 40; i++) {
+    const { text } = pickDialogueLine(table, { id: 'trader_1', role: 'trader_sindr' }, hush, 'greeting', memory);
+    assert.ok(!text.includes('NONE') && !text.includes('Doran'), text);
+  }
+});
+
+test('witnesses: every Sindr townsperson reacts to fights, thefts, red flags, loot and danger; guards raise alerts; once per cooldown', () => {
+  const rules = new SpeechRules(rulesFromDialogue(table), () => 0);
+  const roles = ['smith_sindr', 'trader_sindr', 'innkeeper_sindr', 'guard_sindr', 'worshipper_sindr', 'porter_sindr', 'child_sindr'];
+  for (const concept of ['fight_started', 'theft_seen', 'red_flag_raised', 'loot_dropped', 'flee']) {
+    for (const who of roles) assert.ok(rules.match({ concept, speakerId: who, facts: { who } }), `${who} has no ${concept}`);
+  }
+  const memory = new SpeechMemory();
+  const guard = rules.speak({ concept: 'fight_started', speakerId: 'g1', facts: { who: 'guard_sindr' } }, memory, 0);
+  assert.equal(guard?.tier, 'alert');
+  assert.equal(rules.speak({ concept: 'fight_started', speakerId: 'g1', facts: { who: 'guard_sindr' } }, memory, 5), null);
+  assert.ok(rules.speak({ concept: 'fight_started', speakerId: 'g1', facts: { who: 'guard_sindr' } }, memory, WITNESS_COOLDOWN_SECONDS + 1));
+  const child = rules.answer('fight_started', [{ speakerId: 'c1', facts: { who: 'child_sindr' } }], new SpeechMemory(), 0);
+  assert.equal(child?.tier, 'reaction');
+});
+
+test('once someone calls out a fight, nobody else repeats it until the echo passes; other kinds still answer', () => {
+  const rules = new SpeechRules(rulesFromDialogue(table), () => 0);
+  const memory = new SpeechMemory();
+  const crowd = [{ speakerId: 's1', facts: { who: 'smith_sindr' } }, { speakerId: 't1', facts: { who: 'trader_sindr' } }];
+  assert.ok(rules.answer('fight_started', crowd, memory, 0));
+  assert.equal(rules.answer('fight_started', crowd, memory, WITNESS_ECHO_SECONDS - 1), null);
+  assert.ok(rules.answer('flee', crowd, memory, 1));
+  assert.ok(rules.answer('fight_started', crowd, memory, WITNESS_ECHO_SECONDS + 0.5));
+});
+
+test('a street challenger has a line for calling out, the answer, walking away and the gang arriving, all as alerts', () => {
+  const rules = new SpeechRules(rulesFromDialogue(table), () => 0);
+  for (const concept of ['challenge_issued', 'challenge_accepted', 'challenge_refused', 'gang_arrives']) {
+    const said = rules.speak({ concept, speakerId: 'cutthroat', facts: { who: 'street_gang' } });
+    assert.ok(said, concept);
+    assert.equal(said.tier, 'alert');
+  }
 });

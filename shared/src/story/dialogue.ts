@@ -1,4 +1,4 @@
-import { SpeechMemory, SpeechRules, type Criterion, type Facts, type SpeechRule } from './speech.js';
+import { SpeechMemory, SpeechRules, type Criterion, type Facts, type SpeechRule, type SpeechTier } from './speech.js';
 
 export interface PlayerDialogueContext {
   name: string;
@@ -33,20 +33,8 @@ export function createDialogueMemory(): DialogueMemory {
   };
 }
 
-/** Formats template string with player/speaker variables. */
-export function formatDialogueText(
-  template: string,
-  player: PlayerDialogueContext,
-  speaker?: SpeakerDialogueContext,
-): string {
-  let result = template;
-  result = result.replaceAll('{player}', player.name || 'traveler');
-  result = result.replaceAll('{nation}', player.element || 'IGNIS');
-  result = result.replaceAll('{coin}', 'CHROMA');
-  return result;
-}
-
-type DialogueTable = Record<string, Record<string, string[] | string>>;
+/** dialogue.json: speaker group -> situation -> lines. Lines are spoken as written by recorded voices, so they hold no blanks. */
+type DialogueTable = Record<string, Record<string, unknown>>;
 
 /** What the player asked about in a conversation. */
 export type TalkTopic = 'greeting' | 'lead' | 'allborn';
@@ -77,6 +65,23 @@ const TALK_SITUATIONS: Record<string, readonly Criterion[]> = {
   greeting_local: [],
 };
 
+/**
+ * Things a townsperson sees happen, each a concept of its own heard by everyone near it. Guards answer a
+ * fight, a theft or a red flag as alerts (they may cut a reaction); everyone else reacts. A speaker
+ * reacts to the same kind of event at most once per WITNESS_COOLDOWN_SECONDS, and once anyone has
+ * called out an event, nobody else repeats that kind for WITNESS_ECHO_SECONDS.
+ */
+const WITNESS: Record<string, SpeechTier> = {
+  fight_started: 'reaction', theft_seen: 'reaction', red_flag_raised: 'reaction', loot_dropped: 'reaction', flee: 'reaction',
+};
+const ALERT_ROLES = new Set(['guard_sindr', 'sentry']);
+const ALERT_SITUATIONS = new Set(['fight_started', 'theft_seen', 'red_flag_raised', 'flee']);
+export const WITNESS_COOLDOWN_SECONDS = 20;
+export const WITNESS_ECHO_SECONDS = 6;
+
+/** Lines a villain says to the hero's face: calling them out, the answer, the gang running in. Never cut by chatter. */
+const CALLOUTS = new Set(['challenge_issued', 'challenge_accepted', 'challenge_refused', 'gang_arrives']);
+
 /** Every situation in the dialogue table as a speech rule, conditioned on the speaker group. */
 export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
   const rules: SpeechRule[] = [];
@@ -85,12 +90,26 @@ export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
     for (const [situation, lines] of Object.entries(block)) {
       if (!Array.isArray(lines)) continue;
       const talk = TALK_SITUATIONS[situation];
+      const witness = WITNESS[situation];
+      if (witness) {
+        const said = `said.${situation}`;
+        const heard = `heard.${situation}`;
+        rules.push({
+          id: `${role}/${situation}`,
+          concept: situation,
+          criteria: [{ fact: 'who', value: role }, { fact: `self.${said}`, op: '!=', value: true }, { fact: `world.${heard}`, op: '!=', value: true }],
+          lines: lines as string[],
+          tier: ALERT_ROLES.has(role) && ALERT_SITUATIONS.has(situation) ? 'alert' : witness,
+          remember: [{ fact: said, seconds: WITNESS_COOLDOWN_SECONDS }, { fact: heard, seconds: WITNESS_ECHO_SECONDS, scope: 'world' }],
+        });
+        continue;
+      }
       rules.push({
         id: `${role}/${situation}`,
         concept: talk ? 'talk' : situation,
         criteria: [{ fact: 'who', value: role }, ...(talk ?? [])],
-        lines,
-        tier: talk ? 'conversation' : 'ambient',
+        lines: lines as string[],
+        tier: talk ? 'conversation' : CALLOUTS.has(situation) ? 'alert' : 'ambient',
       });
     }
   }
@@ -116,6 +135,13 @@ export function talkFacts(speaker: SpeakerDialogueContext, player: PlayerDialogu
 
 const rulesByTable = new WeakMap<object, SpeechRules>();
 
+/** The speech rules built over a dialogue table, built once per table. */
+export function dialogueRules(table: DialogueTable): SpeechRules {
+  let rules = rulesByTable.get(table);
+  if (!rules) rulesByTable.set(table, (rules = new SpeechRules(rulesFromDialogue(table))));
+  return rules;
+}
+
 /**
  * The line a speaker says when the player talks to them, from the speech rules built over dialogue.json.
  * Never the same line twice in a row for one speaker when memory is given.
@@ -127,15 +153,10 @@ export function pickDialogueLine(
   event: DialogueEventType = 'greeting',
   memory?: DialogueMemory,
 ): { text: string; category: string; line: string } {
-  let rules = rulesByTable.get(dialogueTable);
-  if (!rules) rulesByTable.set(dialogueTable, (rules = new SpeechRules(rulesFromDialogue(dialogueTable))));
+  const rules = dialogueRules(dialogueTable);
   const at = event === 'dusk' || event === 'night' ? { ...speaker, timeOfDay: event } : speaker;
   const facts = { ...talkFacts(at, player, TOPIC[event]), feeling: player.feelingScore ?? memory?.feelingScores.get(speaker.id) ?? 50 };
   const said = rules.speak({ concept: 'talk', speakerId: speaker.id, facts }, memory?.speech);
-  if (!said) {
-    const text = `Greetings, ${player.name || 'traveler'}.`;
-    return { text, category: 'fallback', line: text };
-  }
-  const text = formatDialogueText(said.line, player, speaker);
-  return { text, category: said.rule.id.slice(said.rule.id.indexOf('/') + 1), line: said.line };
+  if (!said) return { text: 'Greetings, traveler.', category: 'fallback', line: 'Greetings, traveler.' };
+  return { text: said.line, category: said.rule.id.slice(said.rule.id.indexOf('/') + 1), line: said.line };
 }

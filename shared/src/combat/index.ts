@@ -218,6 +218,12 @@ export function createCombatRules(balance: CombatBalance) {
 
   /** Tier gates: moves exist from the start, the tier decides what may be used. */
   function tierAllows(moveId: MoveId | 'chain', tier: number): boolean {
+    if (tier === 0) {
+      if (isBendMove(moveId) || moveId === 'shard_spark' || moveId === 'chain') return false;
+      return moveId === 'light_1' || moveId === 'heavy_1' || moveId === 'dodge' ||
+        moveId === 'bare_light_1' || moveId === 'bare_heavy_1' ||
+        moveId === 'leg_light_1' || moveId === 'leg_heavy_1';
+    }
     return tier >= (tiers.required[moveId] ?? ONE);
   }
   /** Bending damage from tiers 6 and 7 up. */

@@ -50,8 +50,10 @@
     "animationFade": 0.25,
     "modelForwardYaw": 0,
     "clipSpeeds": {
-      "walk": 0.97,
-      "run": 5.0
+      "walk": 1.59,
+      "run": 5.0,
+      "strafe_l": 1.67,
+      "strafe_r": 1.67
     },
     "runBounceKeep": 0.45
   },
@@ -1703,6 +1705,8 @@
     "bannedNameWords": []
   },
   "speech": {
+    "traffic": { "maxAmbient": 2, "maxAlerts": 2, "ambientGapSeconds": 3 },
+    "hearRadius": 25,
     "talk": { "reach": 3.5, "besideReach": 1.2, "minFacingDot": 0.35, "leaveDistance": 5.5, "noTalkNearFoeMetres": 12 }
   }
 }

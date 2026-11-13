@@ -1,4 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
+import { addShells } from '../world/town-physics.js';
 import {
   ACESFilmicToneMapping, Color, DirectionalLight, FogExp2, Group, HalfFloatType, HemisphereLight, InstancedMesh, Matrix4,
   type Material, type Mesh, type MeshStandardMaterial, PCFShadowMap, PerspectiveCamera, Quaternion, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer,
@@ -103,7 +104,7 @@ export class Stage {
     const group = b.build((bucket: Bucket) => this.glows[bucket] ?? this.lib.get(bucket as Surface));
     this.scene.add(group);
     const colliders = b.colliders.map((c) => this.world.createCollider(RAPIER.ColliderDesc.cuboid(c.hx, c.hy, c.hz).setTranslation(c.x, c.y, c.z)
-      .setRotation(c.q ?? { x: 0, y: Math.sin(c.yaw / 2), z: 0, w: Math.cos(c.yaw / 2) })));
+      .setRotation(c.q ?? { x: 0, y: Math.sin(c.yaw / 2), z: 0, w: Math.cos(c.yaw / 2) }))).concat(addShells(this.world, b.shells));
     const fires = createFires(b.fires);
     const embers = createEmbers(b.embers, this.low ? 4 : 10);
     group.add(fires, embers);

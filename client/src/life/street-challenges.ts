@@ -28,6 +28,8 @@ export interface StreetChallengeOptions {
   drawForFight: () => void;
   onSeenByGuard: () => void;
   notice: (message: string) => void;
+  /** A villain says the line for this moment of the challenge (a speech concept: challenge_issued, ...). */
+  say: (speaker: Enemy, concept: 'challenge_issued' | 'challenge_accepted' | 'challenge_refused' | 'gang_arrives') => void;
 }
 
 type Phase = 'waiting' | 'offered' | 'fighting';
@@ -77,8 +79,9 @@ export class StreetChallenges {
     if (this.phase === 'offered' && challenger) {
       if (!challenger.alive || !challenger.challenging) { this.startFight(); return; }
       if (challenger.controller.position.distanceTo(hero) > REFUSE_DISTANCE) {
-        challenger.flee();
         this.o.notice('You walk away. The challenge goes unanswered.');
+        this.o.say(challenger, 'challenge_refused');
+        challenger.flee();
         this.reset(BETWEEN_CHALLENGES);
       }
       return;
@@ -89,6 +92,8 @@ export class StreetChallenges {
         this.gangCalled = true;
         for (let i = 0; i < GANG_MATES; i++) this.fighters.push(this.o.spawnVillain(this.outOfSight(hero, heroFacing, i)));
         this.o.notice('The rest of the gang runs in.');
+        const caller = this.challenger?.alive ? this.challenger : this.fighters[this.fighters.length - 1];
+        if (caller) this.o.say(caller, 'gang_arrives');
       }
       if (!this.seen && this.guardSees(hero)) {
         this.seen = true;
@@ -108,9 +113,11 @@ export class StreetChallenges {
     this.fighters = [challenger];
     this.phase = 'offered';
     this.o.notice('A cutthroat of the Sindr Alley gang calls you out. Accept, or walk away.');
+    this.o.say(challenger, 'challenge_issued');
   }
 
   private startFight(): void {
+    const answered = this.challenger?.challenging === true;
     this.challenger?.engage();
     this.phase = 'fighting';
     this.fightTime = 0;
@@ -118,6 +125,7 @@ export class StreetChallenges {
     this.seen = false;
     this.o.drawForFight();
     this.o.notice('Brawling in the street breaks the law. Watch for the guard.');
+    if (answered && this.challenger) this.o.say(this.challenger, 'challenge_accepted');
   }
 
   /** A spot behind the hero that the world lets someone walk out of, as far back as it allows. */

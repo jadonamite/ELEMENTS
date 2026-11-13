@@ -22,6 +22,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LOOKS, resolveSurface, surfaceColor, worldUv, type Surface } from './materials.js';
+import { Treads } from './treads.js';
 import { roof } from './roofs.js';
 
 export type PlantKind = 'ginkgo' | 'maple' | 'weed' | 'fern';
@@ -35,6 +36,8 @@ export interface Collider {
   /** Full rotation for tilted boxes (stair and lane ramps); overrides yaw. */
   q?: { x: number; y: number; z: number; w: number };
 }
+/** A solid surface of any shape (a curved roof), as world-space triangles. */
+export interface Shell { vertices: Float32Array; indices: Uint32Array }
 /** A light source the nearest-lights pool may pick: braziers, forge mouths, windows. */
 export interface Emitter { position: Vector3; color: number; intensity: number; range: number; flicker: number }
 
@@ -178,6 +181,9 @@ export class WorldBuilder {
   /** Pieces by material and ground cell. */
   private readonly buckets = new Map<string, { bucket: Bucket; list: BufferGeometry[] }>();
   readonly colliders: Collider[] = [];
+  readonly shells: Shell[] = [];
+  /** What each piece of ground is made of, for anything that asks what feet stand on. */
+  readonly treads = new Treads<Surface>();
   readonly emitters: Emitter[] = [];
   /** Where people belong: behind every counter, at every anvil and door. */
   readonly posts: Post[] = [];
@@ -224,6 +230,7 @@ export class WorldBuilder {
     if (!localUv && !GLOWS.includes(b as Glow)) g = worldUv(g, LOOKS[b as Surface].tile);
     if (!g.getAttribute('uv1')) g.setAttribute('uv1', g.getAttribute('uv'));
     g.computeBoundingBox();
+    if (!GLOWS.includes(bucket as Glow)) this.treads.add(bucket as Surface, g.boundingBox!);
     const c = g.boundingBox!.getCenter(new Vector3());
     const cellSize = this.low ? 350 : BUILD_CELL;
     const key = `${b}|${cellKey(c.x, c.z, cellSize)}`;
@@ -268,6 +275,17 @@ export class WorldBuilder {
     const c = this.world(x, y, z);
     const yaw = Math.atan2(this.frame.elements[8]!, this.frame.elements[10]!);
     this.colliders.push({ x: c.x, y: c.y, z: c.z, hx: sx / 2, hy: sy / 2, hz: sz / 2, yaw });
+  }
+
+  /** A solid surface made of the same triangles as a drawn piece, in the current frame. */
+  solidSurface(positions: ArrayLike<number>, indices: ArrayLike<number>): void {
+    const vertices = new Float32Array(positions.length);
+    const p = new Vector3();
+    for (let i = 0; i < positions.length; i += 3) {
+      p.set(positions[i]!, positions[i + 1]!, positions[i + 2]!).applyMatrix4(this.frame);
+      vertices[i] = p.x; vertices[i + 1] = p.y; vertices[i + 2] = p.z;
+    }
+    this.shells.push({ vertices, indices: Uint32Array.from(indices) });
   }
 
   /** A solid block tilted about the frame's x axis (a ramp rising along +z for a negative pitch). */
@@ -490,7 +508,8 @@ export class WorldBuilder {
       this.box('basalt_rock_face', cx, top + ch + 0.1, -0.3, 1.2, 0.2, 1.2);
       this.chimneys.push(this.world(cx, top + ch + 0.3, -0.3));
     }
-    this.solid(0, (top + rise) / 2, 0, w + 0.2, top + rise, d + jetty * 2);
+    // Solid to the wall head; the roof above is its own solid.
+    this.solid(0, top / 2, 0, w + 0.2, top, d + jetty * 2);
   }
 
   /** Charred half-timbering over a plaster floor: sill, head, posts and braces on all four faces. */

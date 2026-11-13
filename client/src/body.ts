@@ -80,8 +80,8 @@ const OUTFITS: Record<OutfitId, Outfit> = {
   },
   hush_ignis: { path: { male: '/assets/characters/people/hush_ignis_male.glb', female: '/assets/characters/people/hush_ignis_female.glb' }, ...person() },
   hush_aques: { path: { male: '/assets/characters/people/hush_aques_male.glb', female: '/assets/characters/people/hush_aques_female.glb' }, ...person() },
-  hush_aura: { path: { female: '/assets/characters/people/hush_aura_female.glb' }, ...person() },
-  hush_terra: { path: { female: '/assets/characters/people/hush_terra_female.glb' }, ...person() },
+  hush_aura: { path: { male: '/assets/characters/people/hush_aura_male.glb', female: '/assets/characters/people/hush_aura_female.glb' }, ...person() },
+  hush_terra: { path: { male: '/assets/characters/people/hush_terra_male.glb', female: '/assets/characters/people/hush_terra_female.glb' }, ...person() },
   robber: { path: { female: '/assets/characters/people/robber_female.glb' }, ...person() },
   deserter: { path: { male: '/assets/characters/people/deserter_male.glb' }, ...person() },
   warlord_ignis: { path: { female: '/assets/characters/people/warlord_ignis_female.glb' }, ...person() },
@@ -94,7 +94,7 @@ export function parseOutfit(value: string | null | undefined): OutfitId {
 }
 
 /** A sheet person the player is, if their configuration names one that exists for their sex. */
-function personOf(config: CharacterConfig): OutfitId | null {
+export function personOf(config: CharacterConfig): OutfitId | null {
   const id = config.person as OutfitId | undefined;
   return id && OUTFITS[id]?.whole && outfitFits(id, config.sex) ? id : null;
 }

@@ -1,7 +1,7 @@
 import type { CharacterConfig } from '../creator/creator-types.js';
 import { BODY_PRESET_OPTIONS, HAIR_COLOR_PRESETS, HAIR_STYLE_OPTIONS, SKIN_TONE_PRESETS } from '../creator/creator-types.js';
 import type { Post } from '../world/builder.js';
-import { outfitFits, type OutfitId } from '../body.js';
+import { outfitFits, personOf, type OutfitId } from '../body.js';
 import type { Townsperson, TownsfolkRole } from './townsfolk.js';
 
 /** One way a person can look: body, hair, skin, build, height and cloth dye. Built once, copied for everyone who wears it. */
@@ -43,10 +43,24 @@ export const CLOTH: Record<TownsfolkRole, readonly number[]> = {
 /** Hush as drawn on the character sheets: Sindr's own and visitors from the other nations. Children and guards have no sheet yet. */
 const SHEET_TOWNSFOLK: readonly OutfitId[] = ['hush_ignis', 'hush_aques', 'hush_aura', 'hush_terra'];
 
-function sheetPerson(role: TownsfolkRole, sex: 'male' | 'female', r: () => number): OutfitId | undefined {
+/** The sheet person the player is: nobody in town is drawn as their double. */
+export interface PlayerPerson { outfit: OutfitId; sex: 'male' | 'female' }
+
+export function playerPerson(config: CharacterConfig): PlayerPerson | undefined {
+  const outfit = personOf(config);
+  return outfit ? { outfit, sex: config.sex } : undefined;
+}
+
+/**
+ * A sheet person for a trade and sex, never the player's own. When the player's is the only one that fits,
+ * it is worn anyway and the trade's cloth dye is what sets the townsperson apart.
+ */
+function sheetPerson(role: TownsfolkRole, sex: 'male' | 'female', r: () => number, player?: PlayerPerson): OutfitId | undefined {
   if (role === 'child' || role === 'guard') return undefined;
   const fits = SHEET_TOWNSFOLK.filter(o => outfitFits(o, sex));
-  return fits.length ? pick(r, fits) : undefined;
+  const others = player && player.sex === sex ? fits.filter(o => o !== player.outfit) : fits;
+  const from = others.length ? others : fits;
+  return from.length ? pick(r, from) : undefined;
 }
 
 /**
@@ -66,7 +80,7 @@ export function drawnCrowd(crowd: Crowd): Crowd {
 
 /** A look rolled for a trade and sex, varied in every part the body kit offers. */
 
-export function rollLook(id: string, role: TownsfolkRole, sex: 'male' | 'female', r: () => number): Look {
+export function rollLook(id: string, role: TownsfolkRole, sex: 'male' | 'female', r: () => number, player?: PlayerPerson): Look {
   const hairs = HAIR_STYLE_OPTIONS.filter(h => h.allowedSex.includes(sex));
   return {
     id,
@@ -79,7 +93,7 @@ export function rollLook(id: string, role: TownsfolkRole, sex: 'male' | 'female'
     },
     cloth: pick(r, CLOTH[role]),
     height: 0.93 + r() * 0.13,
-    outfit: sheetPerson(role, sex, r),
+    outfit: sheetPerson(role, sex, r, player),
   };
 }
 
@@ -109,7 +123,7 @@ export interface Crowd {
  * A town crowd: `lookCount` distinct looks worn by `count` people, each with their own name and trade.
  * Same seed, same crowd. Positions come later, from the streets the world says are open.
  */
-export function makeCrowd(count: number, lookCount: number, seed = 7): Crowd {
+export function makeCrowd(count: number, lookCount: number, seed = 7, player?: PlayerPerson): Crowd {
   const r = seeded(seed);
   const looks: Look[] = [];
   const lookRole: TownsfolkRole[] = [];
@@ -118,7 +132,7 @@ export function makeCrowd(count: number, lookCount: number, seed = 7): Crowd {
     let x = r(), role: TownsfolkRole = 'porter';
     for (const [name, share] of CROWD_ROLES) { if ((x -= share) < 0) { role = name; break; } }
     const sex = r() < 0.5 ? 'male' : 'female';
-    looks.push(rollLook(`crowd_look_${i}`, role, sex, r));
+    looks.push(rollLook(`crowd_look_${i}`, role, sex, r, player));
     lookRole.push(role);
     lookSex.push(sex);
   }

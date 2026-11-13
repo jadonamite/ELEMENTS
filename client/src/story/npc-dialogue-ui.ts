@@ -8,7 +8,7 @@ import {
 } from '../../../shared/src/story/dialogue.js';
 import type { LeadManager, Lead } from '../../../shared/src/story/leads.js';
 import dialogueData from '../../../shared/dialogue.json';
-import { voiceId } from '../../../shared/src/story/voice.js';
+import type { TownVoices } from '../life/town-voices.js';
 import './npc-dialogue.css';
 
 /** One reply the player can give. */
@@ -39,6 +39,7 @@ export class NpcDialogueUI {
   constructor(
     private dialogueMemory: DialogueMemory,
     private soundManager: SoundManager,
+    private voices: TownVoices,
     private leadManager: LeadManager,
     private timeOfDay: () => 'day' | 'dusk' | 'night' | 'dawn',
     private onLeadPurchased?: (lead: Lead) => void,
@@ -181,13 +182,12 @@ export class NpcDialogueUI {
 
   /** Speaks the line in the person's recorded voice, from where they stand; a bark when it has no recording. */
   private say(npc: LiveTownsperson, text: string): void {
-    const at = npc.position;
-    void this.soundManager.speak(voiceId(npc.data.dialogueRole, npc.data.sex), text, { x: at.x, y: at.y + 1.6, z: at.z })
+    void this.voices.say(npc, text, 'conversation')
       .then(spoken => { if (!spoken && this.currentNpc === npc && this.open) this.soundManager.playBark(npc.data.role, npc.data.sex); });
   }
 
   close(): void {
-    this.soundManager.stopSpeech();
+    if (this.currentNpc) this.voices.end(this.currentNpc);
     this.open = false;
     this.el.hidden = true;
   }
