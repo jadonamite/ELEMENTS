@@ -31,3 +31,20 @@ export function readChainConfig(env: NodeJS.ProcessEnv = process.env): ChainConf
     batchSize: Number(env.CHAIN_BATCH_SIZE) || 80,
   };
 }
+
+/** Items use their own contract and settle-only key; player derivation stays shared with CHROMA. */
+export function readItemsChainConfig(env: NodeJS.ProcessEnv = process.env): ChainConfig | null {
+  const gameAccount = env.NEAR_ACCOUNT_ID;
+  const playerSecret = env.CHAIN_PLAYER_SECRET;
+  const contractId = env.ITEMS_CONTRACT_ID;
+  const privateKey = env.ITEMS_PRIVATE_KEY;
+  if (!gameAccount || !playerSecret || !contractId || !privateKey) return null;
+  const network = env.NEAR_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
+  return {
+    network, rpcUrl: env.NEAR_RPC_URL || `https://rpc.${network}.fastnear.com`,
+    explorerUrl: network === 'mainnet' ? 'https://nearblocks.io' : 'https://testnet.nearblocks.io',
+    gameAccount, playerSecret, contractId, privateKey,
+    settleEveryMs: Number(env.CHAIN_SETTLE_MS) || 60_000,
+    batchSize: Number(env.CHAIN_BATCH_SIZE) || 80,
+  };
+}
