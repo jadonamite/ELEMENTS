@@ -1,13 +1,14 @@
-import { type Bounty, type Standing } from './api.js';
+import { type Bounty, type DailyChronicle, type Standing } from './api.js';
 import './notice-board-window.css';
 
-// The notice board in the market square: what the watch has against you, and who else it is paying
-// for. It reads; it does not trade or change a thing.
+// The notice board in the market square: what the watch has against you, who else it is paying
+// for, and the daily market chronicle. It reads; it does not trade or change a thing.
 
 export interface NoticeBoardEvents {
   standing(): Standing;
   accountId(): string | null;
   bounties(): Promise<Bounty[]>;
+  chronicle?(): Promise<DailyChronicle | null>;
   isGuest(): boolean;
 }
 
@@ -104,6 +105,31 @@ export class NoticeBoardWindow {
         ? '<p class="notice-board-empty">No other name is posted today.</p>'
         : `<ul class="notice-board-list">${rows}</ul>`;
 
+    let chronicle: DailyChronicle | null = null;
+    if (this.events.chronicle) {
+      try {
+        chronicle = await this.events.chronicle();
+      } catch {
+        // Continue without chronicle if unavailable
+      }
+    }
+
+    const chronicleHtml = chronicle
+      ? `
+      <div class="notice-board-section">
+        <h3 class="notice-board-heading">${escape(chronicle.title)}</h3>
+        <p class="notice-board-clear"><strong>${escape(chronicle.headline)}</strong></p>
+        ${chronicle.paragraphs.map((p) => `<p class="notice-board-reason">${escape(p)}</p>`).join('')}
+        ${
+          chronicle.shortNotices.length > 0
+            ? `<ul class="notice-board-list">${chronicle.shortNotices
+                .map((n) => `<li class="notice-board-row"><span class="notice-board-reason">${escape(n)}</span></li>`)
+                .join('')}</ul>`
+            : ''
+        }
+      </div>`
+      : '';
+
     this.el.innerHTML = `
       <div class="notice-board-panel">
         <div class="notice-board-header">
@@ -115,6 +141,7 @@ export class NoticeBoardWindow {
         </div>
         <div class="notice-board-body">
           ${standingHtml}
+          ${chronicleHtml}
           <div class="notice-board-section">
             <h3 class="notice-board-heading">Posted by the watch</h3>
             ${listHtml}

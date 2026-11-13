@@ -281,3 +281,54 @@ export async function fetchAccountNotes(accountId: string): Promise<CountingHous
   const data = await call<{ notes: CountingHouseNote[] }>(`/api/economy/counting-house/notes/${encodeURIComponent(accountId)}`);
   return data.notes;
 }
+
+export interface DailyChronicle {
+  dayNumber: number;
+  title: string;
+  headline: string;
+  paragraphs: string[];
+  shortNotices: string[];
+  writtenAt: number;
+}
+
+export async function fetchDailyChronicle(): Promise<DailyChronicle | null> {
+  try {
+    const report = await call<{ chronicle?: DailyChronicle }>('/api/economy/director/today');
+    return report.chronicle ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export interface ConversationOutcome {
+  agentId: string;
+  agentName: string;
+  reply: string;
+  thinkingBeat: string;
+  memoryScore: number;
+  haggleOutcome?: {
+    success: boolean;
+    agreedPrice?: number;
+    reason: string;
+  };
+}
+
+export async function talkToAgent(
+  agentId: string,
+  message: string,
+  options: {
+    intent?: 'ask' | 'haggle' | 'gossip';
+    itemType?: string;
+    offeredPrice?: number;
+  } = {},
+): Promise<ConversationOutcome> {
+  return call(`/api/economy/agents/${encodeURIComponent(agentId)}/talk`, {
+    method: 'POST',
+    body: JSON.stringify({
+      message,
+      intent: options.intent ?? 'ask',
+      itemType: options.itemType,
+      offeredPrice: options.offeredPrice,
+    }),
+  });
+}

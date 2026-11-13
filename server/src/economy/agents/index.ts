@@ -10,3 +10,6 @@ export * from './router/modelRouter.js';
 export * from './plans/agentPlan.js';
 export * from './plans/eventQueue.js';
 export * from './judge/dailyJudge.js';
+export * from './townsfolk/townsfolkRoster.js';
+export * from './townsfolk/townsfolkMinds.js';
+export * from './conversations/conversationService.js';

@@ -39,6 +39,9 @@ import {
   wornLook,
   getLatestDailyJudgeReport,
   createDeterministicJudgeReport,
+  getTownsfolkMindState,
+  ConversationService,
+  ModelRouter,
 } from './economy/index.js';
 import { SINDR_MERCHANTS } from '@elements/shared';
 
@@ -591,6 +594,58 @@ export function setupApi(app: Application): void {
     } catch (err: unknown) {
       res.status(500).json({
         error: err instanceof Error ? err.message : 'Failed to query director report',
+      });
+    }
+  });
+
+  const conversationService = new ConversationService({ router: new ModelRouter() });
+
+  app.get('/api/economy/townsfolk/:npcId/mind', (req: Request, res: Response) => {
+    const npcId = String(req.params.npcId ?? '');
+    try {
+      const state = getTownsfolkMindState(npcId);
+      if (!state) {
+        res.status(404).json({ error: 'Townsfolk NPC not found' });
+        return;
+      }
+      res.json(state);
+    } catch (err: unknown) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to query townsfolk mind',
+      });
+    }
+  });
+
+  app.post('/api/economy/agents/:agentId/talk', async (req: Request, res: Response) => {
+    const agentId = String(req.params.agentId ?? '');
+    const token = extractToken(req);
+    let accountId = 'guest_player';
+    if (token) {
+      const verified = await requireAccount(req, res);
+      if (!verified) return;
+      accountId = verified;
+    }
+
+    const message = typeof req.body?.message === 'string' ? req.body.message : '';
+    const intent =
+      req.body?.intent === 'haggle' ? 'haggle' : req.body?.intent === 'gossip' ? 'gossip' : 'ask';
+    const itemType = typeof req.body?.itemType === 'string' ? req.body.itemType : undefined;
+    const offeredPrice =
+      typeof req.body?.offeredPrice === 'number' ? req.body.offeredPrice : undefined;
+
+    try {
+      const result = await conversationService.talk({
+        accountId,
+        agentId,
+        message,
+        intent,
+        itemType,
+        offeredPrice,
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Conversation failed',
       });
     }
   });

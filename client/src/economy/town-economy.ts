@@ -15,6 +15,7 @@ import {
   reportDeath,
   reportKill,
   fetchMerchantMind,
+  fetchDailyChronicle,
 } from './api.js';
 import type { LootPile, Standing } from './api.js';
 import { CountingHouseWindow } from './counting-house-window.js';
@@ -145,6 +146,7 @@ export class TownEconomy {
       standing: () => this.standingNow,
       accountId: () => this.accountId,
       bounties: () => fetchOpenBounties(),
+      chronicle: () => fetchDailyChronicle(),
       isGuest: () => isGuestSession(),
     });
     this.tradeWindow = new TradeWindow({
