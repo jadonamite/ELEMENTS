@@ -6,3 +6,7 @@ node_modules/
 .env
 .env.*
 *.sqlite
+contracts/
+/*.glb
+test-results/
+art/
