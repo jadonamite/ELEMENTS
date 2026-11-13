@@ -1250,7 +1250,88 @@
       "tributeStockRatio": 0.9,
       "tributePriceRatio": 0.25,
       "maxCallsPerHour": 20,
-      "timeoutMs": 5000
+      "timeoutMs": 5000,
+      "router": {
+        "order": ["nvidia", "cloudflare", "gemini", "groq", "openrouter"],
+        "cooldowns": {
+          "normalMs": 15000,
+          "stretchedMs": 30000,
+          "batchFlushNormalMs": 5000,
+          "batchFlushStretchedMs": 12000
+        },
+        "providers": {
+          "nvidia": {
+            "name": "NVIDIA NIM",
+            "baseUrl": "https://integrate.api.nvidia.com/v1",
+            "models": {
+              "plan": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+              "event": "nvidia/nemotron-3.5-bolt-e4b"
+            },
+            "rpm": 40,
+            "rpd": 1000,
+            "timeoutMs": 5000,
+            "extraBody": {
+              "chat_template_kwargs": {
+                "enable_thinking": false
+              }
+            }
+          },
+          "cloudflare": {
+            "name": "Cloudflare Workers AI",
+            "baseUrl": "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1",
+            "models": {
+              "plan": "@cf/qwen/qwen3-30b-a3b-fp8",
+              "event": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+            },
+            "rpm": 30,
+            "rpd": 520,
+            "timeoutMs": 6000
+          },
+          "gemini": {
+            "name": "Google Gemini",
+            "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "models": {
+              "plan": "gemini-flash-lite-latest",
+              "event": "gemini-flash-lite-latest"
+            },
+            "rpm": 15,
+            "rpd": 500,
+            "timeoutMs": 5000
+          },
+          "groq": {
+            "name": "Groq",
+            "baseUrl": "https://api.groq.com/openai/v1",
+            "models": {
+              "plan": "openai/gpt-oss-20b",
+              "event": "openai/gpt-oss-20b"
+            },
+            "rpm": 30,
+            "rpd": 1000,
+            "timeoutMs": 4000
+          },
+          "openrouter": {
+            "name": "OpenRouter",
+            "baseUrl": "https://openrouter.ai/api/v1",
+            "models": {
+              "plan": "meta-llama/llama-3.3-70b-instruct:free",
+              "event": "meta-llama/llama-3.3-70b-instruct:free"
+            },
+            "rpm": 20,
+            "rpd": 50,
+            "timeoutMs": 6000
+          },
+          "nearai": {
+            "name": "NEAR AI Cloud (Daily Judge)",
+            "baseUrl": "https://cloud-api.near.ai/v1",
+            "models": {
+              "judge": "google/gemini-2.5-flash-lite"
+            },
+            "rpm": 10,
+            "rpd": 50,
+            "timeoutMs": 8000
+          }
+        }
+      }
     },
     "shops": {
       "salePrice": 2000,

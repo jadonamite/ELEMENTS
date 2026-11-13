@@ -385,3 +385,25 @@ test('Character controls: authenticated, per-character, bounded, merged across d
     assert.deepEqual(await (await call('learner-a')).json(), { progress: { strike: { uses: 3, shown: 2 } }, tier: 5 });
   } finally { setTokenVerifier(null); await ts.close(); db.close(); }
 });
+
+test('GET /api/economy/director/today serves the daily judge report and chronicle', async () => {
+  const db = new DatabaseSync(':memory:');
+  migrateDatabase(db);
+  setDatabase(db);
+  const ts = await startTestServer();
+  try {
+    const res = await fetch(`${ts.baseUrl}/api/economy/director/today`);
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as any;
+    assert.ok(data);
+    assert.equal(typeof data.dayNumber, 'number');
+    assert.ok(data.chronicle);
+    assert.ok(typeof data.chronicle.title === 'string');
+    assert.ok(Array.isArray(data.chronicle.paragraphs));
+    assert.ok(data.agentGuidance);
+  } finally {
+    await ts.close();
+    db.close();
+  }
+});
+

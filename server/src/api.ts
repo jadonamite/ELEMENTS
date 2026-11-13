@@ -37,7 +37,10 @@ import {
   takeOffArmour,
   wearArmour,
   wornLook,
+  getLatestDailyJudgeReport,
+  createDeterministicJudgeReport,
 } from './economy/index.js';
+import { SINDR_MERCHANTS } from '@elements/shared';
 
 function extractToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
@@ -567,6 +570,28 @@ export function setupApi(app: Application): void {
       res.json(mind);
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to query merchant mind' });
+    }
+  });
+
+  app.get('/api/economy/director/today', (_req: Request, res: Response) => {
+    try {
+      const report = getLatestDailyJudgeReport();
+      if (!report) {
+        const initial = createDeterministicJudgeReport(
+          1,
+          Date.now(),
+          0,
+          0,
+          SINDR_MERCHANTS.map((m) => m.id),
+        );
+        res.json(initial);
+        return;
+      }
+      res.json(report);
+    } catch (err: unknown) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to query director report',
+      });
     }
   });
 

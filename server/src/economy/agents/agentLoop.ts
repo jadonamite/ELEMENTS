@@ -24,6 +24,7 @@ import {
   saveMerchantMindEntry,
   getActiveShopOwnership,
 } from '../../db.js';
+import { getLatestAgentPlan, getLatestDailyJudgeReport } from './db.js';
 import { recordTransaction } from '../ledgerService.js';
 import { recordItemMove } from '../satchelService.js';
 import {
@@ -228,6 +229,8 @@ export async function tickMerchantAgent(
     floodingSummary,
     solvencyUrgency,
     tributeStatus,
+    currentPlan: getLatestAgentPlan(merchant.id, db) ?? undefined,
+    guidance: getLatestDailyJudgeReport(db)?.agentGuidance?.[merchant.id]?.directive ?? undefined,
   };
 
   const decision = await decider.decide(obs);
