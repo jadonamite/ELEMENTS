@@ -4,31 +4,30 @@ import {
   Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, PlaneGeometry, Quaternion,
   SRGBColorSpace, Texture, Vector3, type Material, type WebGLRenderer,
 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { IGNIS, LEGACY_SINDR_ORIGIN, type Point3 } from '../../../shared/src/world/ignis/coordinates.js';
-import { groundAt, groundHeight, landDistance, mineAt, riverAt, SETTLEMENTS, smooth } from '../../../shared/src/world/ignis/ground.js';
+import { groundHeight, landDistance, mineAt, riverAt, SETTLEMENTS, waterHeight } from '../../../shared/src/world/ignis/ground.js';
+import { LAND_COUNT, LAND_TYPES, landAt, type LandType } from '../../../shared/src/world/ignis/land.js';
 import { nationalRoadAt } from '../../../shared/src/world/ignis/routes.js';
 import { SETTLEMENT_PRECINCTS } from '../../../shared/src/world/ignis/settlements.js';
 import { seeded, type Part } from './builder.js';
 import { terrainAir } from './national-view.js';
+import { existingTree } from './trees.js';
 
-export type ForestRegion = 'managed' | 'deep' | 'burn' | 'regrowth';
-export type ForestKind = 'pine' | 'sapling' | 'snag' | 'stump';
+export type ForestKind = 'pine' | 'sapling' | 'snag' | 'stump' | 'ginkgo' | 'maple';
 export interface ForestSpot extends Point3 {
   id: string;
-  region: ForestRegion;
+  land: LandType;
   kind: ForestKind;
   yaw: number;
   scale: number;
 }
 interface ResidentCell { ix: number; iz: number }
+type Tier = 'near' | 'mid' | 'far';
 interface ForestChunk {
   group: Group;
   spots: readonly ForestSpot[];
-  near: boolean;
+  tier: Tier;
   instances: InstancedMesh[];
 }
 export interface NationalForestOptions {
@@ -42,79 +41,113 @@ export interface NationalForestOptions {
 }
 export interface NationalForest {
   group: Group;
-  /** Live residency totals, including all planted stems regardless of graphics quality. */
-  stats: { cells: number; stems: number; colliders: number; managed: number; deep: number; burn: number; regrowth: number };
+  /** Live totals of what is planted round the hero. */
+  stats: { cells: number; stems: number; colliders: number; far: number };
   update(near: ReadonlyMap<string, ResidentCell>, mid?: ReadonlyMap<string, ResidentCell>, localPosition?: Point3): void;
   dispose(): void;
 }
 
-/** Forest clearance follows the existing graded lake and Pinewatch roads, not an independent road surface. */
-export const FOREST_ACCESS = {
-  northSouth: { routeId: 'lake', from: [6400, 5000], to: [6400, 7000], canopySetback: 12 },
-  pinewatch: { routeId: 'forest', from: [4500, 5500], to: [6400, 7000], canopySetback: 12 },
-} as const;
-
 const SIZE = IGNIS.cellSize;
-const ellipse = (x: number, z: number, cx: number, cz: number, rx: number, rz: number): number =>
-  Math.hypot((x - cx) / rx, (z - cz) / rz);
+/** Distant tree cards are kept this many cells from the hero's cell. */
+const FAR_REACH = 7;
 const up = new Vector3(0, 1, 0);
 
-/** Authored stand boundaries; the shared soil mask and elevation decide whether a stem can survive. */
-function standAt(x: number, z: number): { region: ForestRegion; density: number } | null {
-  const west = ellipse(x, z, 4900, 6100, 1750, 2350);
-  const mineward = ellipse(x, z, 6800, 6500, 1650, 1500);
-  const south = ellipse(x, z, 5200, 8300, 1500, 1650);
-  const edge = Math.min(west, mineward, south);
-  if (edge >= 1) return null;
-  const fringe = 1 - smooth(0.82, 1, edge);
-  // A broken old fire front curves across the eastern woodland, rather than covering a whole biome.
-  const scar = ellipse(x, z, 7080, 6350, 950, 970)
-    + Math.sin(z / 137) * 0.055 + Math.sin(x / 191 + z / 231) * 0.07;
-  if (scar < 0.72) return { region: 'burn', density: 0.38 * fringe };
-  if (scar < 1.06) return { region: 'regrowth', density: 0.72 * fringe };
-  // Worked compartments flank Pinewatch; rides are kept open between them.
-  if (ellipse(x, z, 4730, 5840, 1000, 1000) < 1) return { region: 'managed', density: 0.72 * fringe };
-  return { region: 'deep', density: 0.9 * fringe };
-}
+/**
+ * The one tree of each land type: stems per 16 m square, then [kind, share, smallest scale, largest scale].
+ * Land types not listed grow no trees; their plants are ground cover.
+ */
+export const GROWTH: Partial<Record<LandType, { density: number; mix: readonly (readonly [ForestKind, number, number, number])[] }>> = {
+  ginkgo: { density: 0.8, mix: [['ginkgo', 1, 0.95, 1.7]] },
+  maple: { density: 0.75, mix: [['maple', 1, 0.9, 1.5]] },
+  pine: { density: 0.85, mix: [['pine', 0.86, 0.9, 1.55], ['sapling', 0.1, 0.2, 0.42], ['snag', 0.04, 0.7, 1.1]] },
+  burn: { density: 0.42, mix: [['snag', 0.75, 0.65, 1.2], ['stump', 0.25, 0.65, 1.2]] },
+  regrowth: { density: 0.6, mix: [['sapling', 0.72, 0.18, 0.48], ['snag', 0.14, 0.6, 1], ['stump', 0.14, 0.7, 1.05]] },
+};
+const weights = new Float32Array(LAND_COUNT);
 
-/** Pure global placements for one terrain cell. No nation-wide mesh or placement array is allocated. */
+/** Pure global placements for one terrain cell, read from the shared land map so trees stand on their own colour. */
 export function nationalForestCell(ix: number, iz: number): readonly ForestSpot[] {
   if (!Number.isInteger(ix) || !Number.isInteger(iz)) throw new Error('Forest cell indices must be integers');
-  if ((ix + 1) * SIZE < 3150 || ix * SIZE > 8500 || (iz + 1) * SIZE < 3700 || iz * SIZE > 10000) return [];
+  if (ix < 0 || iz < 0 || ix * SIZE >= IGNIS.width || iz * SIZE >= IGNIS.depth) return [];
   const rand = seeded(Math.imul(ix, 73856093) ^ Math.imul(iz, 19349663) ^ 0x51f04);
   const spots: ForestSpot[] = [];
   for (let row = 0; row < 16; row++) for (let col = 0; col < 16; col++) {
     // Every candidate consumes the same random sequence, even when it is rejected.
-    const jitterX = rand(), jitterZ = rand(), chance = rand(), kindRoll = rand(), size = rand(), yaw = rand() * Math.PI * 2;
-    const gx = ix * SIZE + (col + 0.5) * 16, gz = iz * SIZE + (row + 0.5) * 16;
-    const provisional = standAt(gx, gz);
-    if (!provisional) continue;
-    const jitter = provisional.region === 'managed' ? 5 : 14;
-    const x = gx + (jitterX - 0.5) * jitter, z = gz + (jitterZ - 0.5) * jitter;
-    const stand = standAt(x, z);
-    if (!stand || chance > stand.density || landDistance(x, z) < 70) continue;
+    const jitterX = rand(), jitterZ = rand(), chance = rand(), typeRoll = rand(), kindRoll = rand(), size = rand(), yaw = rand() * Math.PI * 2;
+    const x = ix * SIZE + (col + 0.5) * 16 + (jitterX - 0.5) * 14, z = iz * SIZE + (row + 0.5) * 16 + (jitterZ - 0.5) * 14;
+    if (landDistance(x, z) < 70) continue;
+    const height = groundHeight(x, z);
+    landAt(x, z, height, 0, weights);
+    // A spot belongs to one land type, drawn by weight, so woods thin out across a border instead of stopping.
+    let land: LandType | null = null, left = typeRoll;
+    for (let i = 0; i < LAND_COUNT; i++) { left -= weights[i]!; if (left < 0) { land = LAND_TYPES[i]!; break; } }
+    const growth = land && GROWTH[land];
+    if (!land || !growth || chance > growth.density) continue;
     // Keep crowns, roots and collision out of cart shoulders, building precincts and the river reserve.
     if (mineAt(x, z).distance < 30 || nationalRoadAt(x, z) !== null || riverAt(x, z).distance < 42) continue;
-    if (SETTLEMENTS.some(p => Math.hypot(x - p.x, z - p.z) < p.radius + (p.name === 'Sindr' ? 650 : 65))) continue;
+    if (SETTLEMENTS.some(p => Math.hypot(x - p.x, z - p.z) < p.radius + 65)) continue;
     if (SETTLEMENT_PRECINCTS.some(p => Math.hypot(x - p.x, z - p.z) < p.contentReach + 40)) continue;
-    // Repeated forestry compartments have narrow extraction rides and staggered open turning glades.
-    if (stand.region === 'managed') {
-      const ride = ((x - 3700 + 0.14 * (z - 5500)) % 192 + 192) % 192;
-      if (ride < 12 || ride > 180 || ellipse(x, z, 4880, 5880, 90, 70) < 1) continue;
-    }
-    const soil = groundAt(x, z);
-    if (soil.height < 450 || soil.height > 1050 || soil.mask[2]! < 0.12 || soil.mask[3]! > 0.38 || soil.mask[4]! > 0.02) continue;
-    if (soil.water !== null && soil.water > soil.height - 1.5) continue;
-    const slope = Math.hypot(groundHeight(x + 3, z) - groundHeight(x - 3, z), groundHeight(x, z + 3) - groundHeight(x, z - 3)) / 6;
-    if (slope > 0.58) continue;
-    let kind: ForestKind = 'pine', scale = 0.8 + size * 0.45;
-    if (stand.region === 'deep') { kind = kindRoll < 0.07 ? 'snag' : kindRoll < 0.19 ? 'sapling' : 'pine'; scale = kind === 'sapling' ? 0.23 + size * 0.22 : 1 + size * 0.55; }
-    if (stand.region === 'managed') { kind = kindRoll < 0.15 ? 'stump' : kindRoll < 0.32 ? 'sapling' : 'pine'; scale = kind === 'sapling' ? 0.2 + size * 0.18 : 0.75 + size * 0.35; }
-    if (stand.region === 'burn') { kind = kindRoll < 0.7 ? 'snag' : kindRoll < 0.88 ? 'stump' : 'sapling'; scale = kind === 'sapling' ? 0.11 + size * 0.13 : 0.65 + size * 0.55; }
-    if (stand.region === 'regrowth') { kind = kindRoll < 0.12 ? 'snag' : kindRoll < 0.23 ? 'stump' : kindRoll < 0.94 ? 'sapling' : 'pine'; scale = kind === 'sapling' ? 0.18 + size * 0.3 : 0.7 + size * 0.35; }
-    spots.push({ id: `ignis:forest:${ix}:${iz}:${row}:${col}`, x, y: soil.height, z, yaw, scale, kind, region: stand.region });
+    const water = waterHeight(x, z);
+    if (water !== null && water > height - 1.5) continue;
+    if (Math.hypot(groundHeight(x + 3, z) - height, groundHeight(x, z + 3) - height) / 3 > 0.58) continue;
+    let pick = growth.mix[0]!, share = kindRoll;
+    for (const entry of growth.mix) { pick = entry; share -= entry[1]; if (share < 0) break; }
+    spots.push({ id: `ignis:forest:${ix}:${iz}:${row}:${col}`, x, y: height, z, yaw, scale: pick[2] + size * (pick[3] - pick[2]), kind: pick[0], land });
   }
   return spots;
+}
+
+/** One painted sheet of four distant trees: ginkgo, maple, pine, burnt trunk. */
+function farSheet(): CanvasTexture {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
+  const ctx = canvas.getContext('2d')!, rand = seeded(0x77a1);
+  const cell = (i: number, draw: () => void): void => {
+    ctx.save(); ctx.translate((i % 2) * 256, (1 - Math.floor(i / 2)) * 256);
+    ctx.beginPath(); ctx.rect(0, 0, 256, 256); ctx.clip(); draw(); ctx.restore();
+  };
+  const trunk = (colour: string, width: number, top: number): void => {
+    ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(128, 256); ctx.lineTo(128, top); ctx.stroke();
+  };
+  const crown = (cy: number, rx: number, ry: number, hue: number, sat: number, light: number): void => {
+    for (let n = 0; n < 420; n++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()), x = 128 + Math.cos(a) * rx * r, y = cy + Math.sin(a) * ry * r;
+      // Lit from above: the top of the crown is brighter than its underside.
+      ctx.fillStyle = `hsl(${hue + rand() * 14}, ${sat}%, ${light * (0.62 + 0.5 * (1 - (y - cy + ry) / (2 * ry))) + rand() * 6}%)`;
+      ctx.beginPath(); ctx.arc(x, y, 7 + rand() * 9, 0, Math.PI * 2); ctx.fill();
+    }
+  };
+  cell(0, () => { trunk('#4a3a2a', 9, 120); crown(100, 78, 84, 44, 70, 46); });
+  cell(1, () => { trunk('#3a2a22', 9, 150); crown(120, 104, 62, 4, 66, 36); });
+  cell(2, () => {
+    trunk('#3b3226', 7, 20);
+    for (let tier = 0; tier < 11; tier++) {
+      const y = 30 + tier * 19, half = 12 + tier * 7.5;
+      ctx.fillStyle = `hsl(${98 + rand() * 18}, 24%, ${17 + rand() * 9}%)`;
+      ctx.beginPath(); ctx.moveTo(128, y - 22); ctx.lineTo(128 - half, y + 12 + rand() * 6); ctx.lineTo(128 + half, y + 12 + rand() * 6); ctx.closePath(); ctx.fill();
+    }
+  });
+  cell(3, () => {
+    trunk('#1d1917', 10, 16);
+    for (let n = 0; n < 7; n++) {
+      const y = 60 + n * 24, side = n % 2 ? 1 : -1;
+      ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(128, y); ctx.lineTo(128 + side * (24 + rand() * 30), y - 20 - rand() * 16); ctx.stroke();
+    }
+  });
+  const map = new CanvasTexture(canvas); map.colorSpace = SRGBColorSpace; map.anisotropy = 4;
+  return map;
+}
+
+/** Two crossed cards showing one cell of the far sheet, standing on the ground. */
+function farCard(cellIndex: number, width: number, height: number): BufferGeometry {
+  const a = new PlaneGeometry(width, height).translate(0, height / 2, 0), b = a.clone().rotateY(Math.PI / 2);
+  const card = mergeGeometries([a, b], false)!; a.dispose(); b.dispose();
+  const uv = card.getAttribute('uv');
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (cellIndex % 2 + uv.getX(i)) * 0.5, (Math.floor(cellIndex / 2) + uv.getY(i)) * 0.5);
+  // Cards face the sky for light, so a wood shades as one mass.
+  const normal = card.getAttribute('normal');
+  for (let i = 0; i < normal.count; i++) normal.setXYZ(i, 0, 1, 0);
+  return card;
 }
 
 /** Painted needle sprays share one cutout texture, following the existing instanced foliage kit. */
@@ -194,47 +227,31 @@ function pineKit(bark: Material, needles: Material, coarse: boolean): Part[] {
   ];
 }
 
-/** Existing scanned dead wood is baked into one stable, bottom-anchored instance frame. */
-async function deadWood(loader: GLTFLoader, id: 'dead_burnt_tree' | 'dead_tree_trunk', height: number,
-  ownedGeometries: Set<BufferGeometry>, ownedMaterials: Set<Material>, ownedTextures: Set<Texture>): Promise<Part[]> {
-  const gltf = await loader.loadAsync(`/assets/env/ignis/models/${id}_low.glb`);
-  gltf.scene.updateMatrixWorld(true);
-  const bounds = new Box3().setFromObject(gltf.scene), centre = bounds.getCenter(new Vector3());
-  const scale = height / Math.max(0.01, bounds.max.y - bounds.min.y);
-  const normalize = new Matrix4().makeScale(scale, scale, scale)
-    .multiply(new Matrix4().makeTranslation(-centre.x, -bounds.min.y, -centre.z));
-  const parts: Part[] = [];
-  gltf.scene.traverse(object => {
-    const mesh = object as Mesh;
-    if (!mesh.isMesh) return;
-    ownedGeometries.add(mesh.geometry);
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const material of materials) {
-      ownedMaterials.add(material);
-      for (const value of Object.values(material)) if (value instanceof Texture) ownedTextures.add(value);
-    }
-    const geometry = mesh.geometry.clone().applyMatrix4(normalize.clone().multiply(mesh.matrixWorld));
-    ownedGeometries.add(geometry);
-    if (Array.isArray(mesh.material)) {
-      // Preserve the model's material groups; InstancedMesh supports material arrays.
-      for (let i = 0; i < materials.length; i++) {
-        const indices: number[] = [];
-        for (const group of geometry.groups) if (group.materialIndex === i) {
-          for (let j = group.start; j < group.start + group.count; j++) indices.push(geometry.index ? geometry.index.getX(j) : j);
-        }
-        if (!indices.length) continue;
-        const part = geometry.clone(); part.clearGroups(); part.setIndex(indices); part.computeBoundingSphere();
-        ownedGeometries.add(part);
-        parts.push({ geometry: part, material: materials[i]!, castShadow: false, name: id });
-      }
-    } else parts.push({ geometry, material: mesh.material, castShadow: false, name: id });
-  });
-  return parts;
+/** A fire-killed tree: a charred trunk snapped short of its top with a few bare limbs, about 11 m tall. */
+function snagKit(bark: Material, coarse: boolean): Part[] {
+  const rand = seeded(5519), wood: BufferGeometry[] = [], sides = coarse ? 4 : 7;
+  wood.push(limb(new Vector3(0, -0.4, 0), new Vector3(0, 0.8, 0), 0.52, 0.3, sides));
+  wood.push(limb(new Vector3(0, 0.6, 0), new Vector3(0.25, 6.5, -0.1), 0.3, 0.2, sides));
+  wood.push(limb(new Vector3(0.25, 6.5, -0.1), new Vector3(0.05, 11, 0.2), 0.2, 0.07, sides));
+  for (let i = 0; i < (coarse ? 3 : 6); i++) {
+    const y = 3.2 + i * 1.25, a = i * 2.3 + rand(), reach = 1.1 + rand() * 1.9;
+    const from = new Vector3(0.12, y, 0), elbow = new Vector3(Math.cos(a) * reach * 0.6, y + 0.5 + rand() * 0.5, Math.sin(a) * reach * 0.6);
+    wood.push(limb(from, elbow, 0.085, 0.05, coarse ? 3 : 4));
+    wood.push(limb(elbow, new Vector3(Math.cos(a) * reach, y + 0.2 + rand() * 1.5, Math.sin(a) * reach), 0.05, 0.012, coarse ? 3 : 4));
+  }
+  return [{ geometry: merge(wood), material: bark, castShadow: false, name: 'national-snag' }];
+}
+
+/** What is left of a felled or burnt-through tree: a short butt with flared roots. */
+function stumpKit(bark: Material): Part[] {
+  const wood = [limb(new Vector3(0, -0.3, 0), new Vector3(0, 0.35, 0), 0.62, 0.4, 7), limb(new Vector3(0, 0.3, 0), new Vector3(0.04, 0.9, 0), 0.4, 0.34, 7)];
+  const cap = new CylinderGeometry(0.34, 0.34, 0.02, 7).translate(0.04, 0.9, 0);
+  return [{ geometry: merge([...wood, cap]), material: bark, castShadow: false, name: 'national-stump' }];
 }
 
 /** Cell meshes and nearby collision share one owner; all positions remain in nation-global metres. */
 export async function createNationalForest(options: NationalForestOptions): Promise<NationalForest> {
-  const { renderer, bark, low, world, fog } = options;
+  const { bark, low, world, fog } = options;
   const origin = { ...(options.origin ?? LEGACY_SINDR_ORIGIN) };
   const geometries = new Set<BufferGeometry>(), materials = new Set<Material>(), textures = new Set<Texture>();
   const disposeResources = (): void => {
@@ -242,23 +259,38 @@ export async function createNationalForest(options: NationalForestOptions): Prom
     for (const m of materials) m.dispose();
     for (const t of textures) t.dispose();
   };
-  const ktx2 = new KTX2Loader().setTranscoderPath('/assets/env/ignis/basis/').detectSupport(renderer);
-  const loader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
-  let snag: Part[], stump: Part[];
-  try {
-    // Sequential ownership keeps a failed load from leaving another allocation in flight.
-    snag = await deadWood(loader, 'dead_burnt_tree', 12, geometries, materials, textures);
-    stump = await deadWood(loader, 'dead_tree_trunk', 0.9, geometries, materials, textures);
-  } catch (error) { disposeResources(); throw error; }
-  finally { ktx2.dispose(); }
+  const snag = snagKit(bark, low), midSnag = low ? snag : snagKit(bark, true), stump = stumpKit(bark);
   const needle = needleMaterial(); materials.add(needle); if (needle.map) textures.add(needle.map);
   let foliage: Material = needle;
   if (fog) { foliage = terrainAir(needle, fog); materials.add(foliage); }
-  const nearPine = pineKit(bark, foliage, low), farPine = low ? nearPine : pineKit(bark, foliage, true);
-  for (const part of [...nearPine, ...farPine]) geometries.add(part.geometry);
+  const nearPine = pineKit(bark, foliage, low), midPine = low ? nearPine : pineKit(bark, foliage, true);
+  // The town's ginkgo and maple, with fewer leaf cards the farther the cell; one leaf material serves all four.
+  let leaves: Material | null = null;
+  const broadleaf = (kind: 'ginkgo' | 'maple', share: number): Part[] => {
+    const kit = existingTree(kind, share);
+    if (leaves) { (kit.leaves as MeshStandardMaterial).map?.dispose(); kit.leaves.dispose(); }
+    else { leaves = kit.leaves; materials.add(leaves); const map = (leaves as MeshStandardMaterial).map; if (map) textures.add(map); }
+    return [{ geometry: kit.crown, material: leaves, castShadow: false, name: `${kind}-leaves` },
+      ...(kit.wood ? [{ geometry: kit.wood, material: bark, castShadow: false, name: `${kind}-wood` }] : [])];
+  };
+  const sheet = farSheet(); textures.add(sheet);
+  let cardMaterial = new MeshStandardMaterial({ map: sheet, alphaTest: 0.4, side: DoubleSide, roughness: 1, metalness: 0 });
+  materials.add(cardMaterial);
+  if (fog) { cardMaterial = terrainAir(cardMaterial, fog); materials.add(cardMaterial); }
+  const card = (cellIndex: number, width: number, height: number): Part[] =>
+    [{ geometry: farCard(cellIndex, width, height), material: cardMaterial, castShadow: false, name: 'far-card' }];
+  const kits: Record<ForestKind, Record<Tier, Part[] | null>> = {
+    ginkgo: { near: broadleaf('ginkgo', low ? 0.1 : 0.45), mid: broadleaf('ginkgo', low ? 0.06 : 0.14), far: card(0, 11, 12.5) },
+    maple: { near: broadleaf('maple', low ? 0.1 : 0.45), mid: broadleaf('maple', low ? 0.06 : 0.14), far: card(1, 12, 9) },
+    pine: { near: nearPine, mid: midPine, far: card(2, 9, 15.5) },
+    sapling: { near: nearPine, mid: midPine, far: null },
+    snag: { near: snag, mid: midSnag, far: card(3, 7, 12) },
+    stump: { near: stump, mid: null, far: null },
+  };
+  for (const kit of Object.values(kits)) for (const parts of Object.values(kit)) for (const part of parts ?? []) geometries.add(part.geometry);
   const group = new Group(); group.name = 'ignis-national-forest';
   const chunks = new Map<string, ForestChunk>(), colliders = new Map<string, RAPIER.Collider>();
-  const stats = { cells: 0, stems: 0, colliders: 0, managed: 0, deep: 0, burn: 0, regrowth: 0 };
+  const stats = { cells: 0, stems: 0, colliders: 0, far: 0 };
   let disposed = false;
   const destroyChunk = (chunk: ForestChunk): void => {
     chunk.group.removeFromParent();
@@ -269,17 +301,17 @@ export async function createNationalForest(options: NationalForestOptions): Prom
       colliders.delete(spot.id);
     }
   };
-  const build = (ix: number, iz: number, near: boolean, spots: readonly ForestSpot[]): ForestChunk => {
+  const build = (ix: number, iz: number, tier: Tier, spots: readonly ForestSpot[]): ForestChunk => {
     const owner = new Group(), cx = (ix + 0.5) * SIZE, cz = (iz + 0.5) * SIZE;
     owner.name = `ignis:forest:${ix}:${iz}`; owner.position.set(cx - origin.x, -origin.y, cz - origin.z);
     const instances: InstancedMesh[] = [], matrix = new Matrix4(), rotation = new Quaternion(), scale = new Vector3();
-    for (const kind of ['pine', 'sapling', 'snag', 'stump'] as const) {
-      const stems = spots.filter(p => p.kind === kind);
-      if (!stems.length) continue;
-      const parts = kind === 'snag' ? snag : kind === 'stump' ? stump : near ? nearPine : farPine;
+    for (const kind of Object.keys(kits) as ForestKind[]) {
+      const parts = kits[kind][tier];
+      const stems = parts ? spots.filter(p => p.kind === kind) : [];
+      if (!parts || !stems.length) continue;
       for (const part of parts) {
         const mesh = new InstancedMesh(part.geometry, part.material, stems.length);
-        mesh.name = `${kind}:${part.name}`; mesh.castShadow = false; mesh.receiveShadow = true;
+        mesh.name = `${kind}:${part.name}`; mesh.castShadow = false; mesh.receiveShadow = tier !== 'far';
         for (let i = 0; i < stems.length; i++) {
           const p = stems[i]!;
           matrix.compose(new Vector3(p.x - cx, p.y, p.z - cz), rotation.setFromAxisAngle(up, p.yaw), scale.set(p.scale, p.scale * (0.9 + (Math.sin(p.x * 0.17) + 1) * 0.1), p.scale));
@@ -292,36 +324,48 @@ export async function createNationalForest(options: NationalForestOptions): Prom
       }
     }
     group.add(owner);
-    return { group: owner, spots, near, instances };
+    return { group: owner, spots, tier, instances };
   };
+  const COLLIDER: Partial<Record<ForestKind, [number, number]>> = { stump: [0.9, 0.4], snag: [8, 0.3], pine: [12, 0.3], ginkgo: [4, 0.3], maple: [3, 0.26] };
   return {
     group, stats,
     update(near, mid = new Map(), localPosition) {
       if (disposed) return;
-      const wanted = new Map<string, { cell: ResidentCell; near: boolean }>();
-      for (const [key, cell] of mid) wanted.set(key, { cell, near: false });
-      for (const [key, cell] of near) wanted.set(key, { cell, near: true });
+      const wanted = new Map<string, { cell: ResidentCell; tier: Tier }>();
+      if (localPosition) {
+        const hx = Math.floor((localPosition.x + origin.x) / SIZE), hz = Math.floor((localPosition.z + origin.z) / SIZE);
+        for (let dz = -FAR_REACH; dz <= FAR_REACH; dz++) for (let dx = -FAR_REACH; dx <= FAR_REACH; dx++)
+          wanted.set(`${hx + dx}:${hz + dz}`, { cell: { ix: hx + dx, iz: hz + dz }, tier: 'far' });
+      }
+      for (const [key, cell] of mid) wanted.set(key, { cell, tier: 'mid' });
+      for (const [key, cell] of near) wanted.set(key, { cell, tier: 'near' });
       for (const [key, chunk] of chunks) if (!wanted.has(key)) { destroyChunk(chunk); chunks.delete(key); }
+      // Distant cells are planted a few at a time; cells the hero stands in or beside are planted at once.
+      let budget = 3;
       for (const [key, entry] of wanted) {
         const old = chunks.get(key);
-        if (old?.near === entry.near) continue;
+        if (old?.tier === entry.tier) continue;
+        if (!old && entry.tier === 'far' && budget-- <= 0) continue;
         const spots = old?.spots ?? nationalForestCell(entry.cell.ix, entry.cell.iz);
         if (old) destroyChunk(old);
-        chunks.set(key, build(entry.cell.ix, entry.cell.iz, entry.near, spots));
+        chunks.set(key, build(entry.cell.ix, entry.cell.iz, entry.tier, spots));
       }
-      stats.cells = 0; stats.stems = 0; stats.managed = 0; stats.deep = 0; stats.burn = 0; stats.regrowth = 0;
+      stats.cells = 0; stats.stems = 0; stats.far = 0;
       for (const chunk of chunks.values()) {
         if (chunk.spots.length) stats.cells++;
+        stats.stems += chunk.spots.length;
+        if (chunk.tier === 'far') { stats.far += chunk.spots.length; continue; }
+        if (!world || chunk.tier !== 'near' || !localPosition) continue;
         for (const spot of chunk.spots) {
-          stats.stems++; stats[spot.region]++;
+          const solid = COLLIDER[spot.kind];
+          if (!solid) continue;
           const old = colliders.get(spot.id);
-          const within = chunk.near && localPosition && Math.hypot(localPosition.x + origin.x - spot.x, localPosition.z + origin.z - spot.z) < 80;
-          if (world && within && !old) {
-            const height = (spot.kind === 'stump' ? 0.9 : spot.kind === 'snag' ? 8 : 12) * spot.scale;
-            const radius = (spot.kind === 'stump' ? 0.4 : 0.3) * spot.scale;
+          const within = Math.hypot(localPosition.x + origin.x - spot.x, localPosition.z + origin.z - spot.z) < 80;
+          if (within && !old) {
+            const height = solid[0] * spot.scale, radius = solid[1] * spot.scale;
             colliders.set(spot.id, world.createCollider(RAPIER.ColliderDesc.cylinder(height / 2, radius)
               .setTranslation(spot.x - origin.x, spot.y - origin.y + height / 2, spot.z - origin.z)));
-          } else if (world && old && !within) { world.removeCollider(old, false); colliders.delete(spot.id); }
+          } else if (old && !within) { world.removeCollider(old, false); colliders.delete(spot.id); }
         }
       }
       stats.colliders = colliders.size;
@@ -330,7 +374,7 @@ export async function createNationalForest(options: NationalForestOptions): Prom
       if (disposed) return; disposed = true;
       for (const chunk of chunks.values()) destroyChunk(chunk);
       chunks.clear(); group.removeFromParent(); disposeResources();
-      stats.cells = 0; stats.stems = 0; stats.colliders = 0; stats.managed = 0; stats.deep = 0; stats.burn = 0; stats.regrowth = 0;
+      stats.cells = 0; stats.stems = 0; stats.colliders = 0; stats.far = 0;
     },
   };
 }

@@ -100,6 +100,8 @@ export function slopeBlend(ground: MeshStandardMaterial, rock: MeshStandardMater
         vTerrNormal = normalize(mat3(modelMatrix) * objectNormal);`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\nuniform sampler2D tRock;\nuniform vec3 uRockTint;\nuniform float uRockTile;\nvarying vec3 vTerrPos;\nvarying vec3 vTerrNormal;${land ? '\nuniform sampler2D tLand;\nuniform vec4 uLandRect;\nuniform float uLandOn;' : ''}`)
+      // Open land is matte: soil, ash and grass never mirror the sun.
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = max(roughnessFactor, 0.94);')
       .replace('#include <map_fragment>', `
         #include <map_fragment>
         vec3 bw = pow(abs(vTerrNormal), vec3(4.0));
