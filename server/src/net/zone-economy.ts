@@ -20,6 +20,7 @@ import {
   withdrawFromCountingHouse,
 } from '../economy/index.js';
 import { onKill, type KillReport } from './kill-hook.js';
+import { reportCrimeNear } from '../economy/agents/events/worldEvents.js';
 import { dropForDeath, dropForKill, isGuest, isOutsider, lockedPurse, tradeableChroma } from './money.js';
 import type { ServerPlayer, ZoneWorld } from './world.js';
 
@@ -148,8 +149,13 @@ export class ZoneEconomy {
     if (!p.alive) return fail('You have fallen');
     if (!this.piles.has(pileId)) return fail('Loot pile not found');
     try {
+      const pile = this.piles.get(pileId);
       const { contents } = claimLootPile({ pileId, accountId: p.accountId, x: p.x, z: p.z, now: this.clock() }, this.db);
       this.piles.delete(pileId);
+      // A fallen traveller's goods picked up by someone else: theft, as the keepers nearby see it.
+      if (pile?.source === 'player_death' && pile.ownerId !== p.accountId) {
+        reportCrimeNear({ zone: this.world.zone, x: pile.x, z: pile.z, kind: 'theft', now: this.clock() });
+      }
       return [
         { to: id, type: 'loot_result', body: { pile: pileId, ok: true, contents } },
         { type: 'loot_gone', body: { id: pileId, by: id } },

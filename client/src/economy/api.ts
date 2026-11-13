@@ -306,6 +306,8 @@ export interface ConversationOutcome {
   reply: string;
   thinkingBeat: string;
   memoryScore: number;
+  /** Which provider wrote the reply, or 'written'. */
+  source: string;
   haggleOutcome?: {
     success: boolean;
     agreedPrice?: number;
@@ -320,6 +322,8 @@ export async function talkToAgent(
     intent?: 'ask' | 'haggle' | 'gossip';
     itemType?: string;
     offeredPrice?: number;
+    /** Someone from the crowd, who exists only in the browser: their trade, name and zone. */
+    crowd?: { role: string; name: string; place: string };
   } = {},
 ): Promise<ConversationOutcome> {
   return call(`/api/economy/agents/${encodeURIComponent(agentId)}/talk`, {
@@ -329,6 +333,7 @@ export async function talkToAgent(
       intent: options.intent ?? 'ask',
       itemType: options.itemType,
       offeredPrice: options.offeredPrice,
+      crowd: options.crowd,
     }),
   });
 }

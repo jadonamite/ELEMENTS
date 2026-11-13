@@ -40,10 +40,8 @@ import {
   getLatestDailyJudgeReport,
   createDeterministicJudgeReport,
   getTownsfolkMindState,
-  ConversationService,
-  ModelRouter,
+  getAgentRuntime,
 } from './economy/index.js';
-import { SINDR_MERCHANTS } from '@elements/shared';
 
 function extractToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
@@ -578,75 +576,69 @@ export function setupApi(app: Application): void {
 
   app.get('/api/economy/director/today', (_req: Request, res: Response) => {
     try {
-      const report = getLatestDailyJudgeReport();
-      if (!report) {
-        const initial = createDeterministicJudgeReport(
-          1,
-          Date.now(),
-          0,
-          0,
-          SINDR_MERCHANTS.map((m) => m.id),
-        );
-        res.json(initial);
-        return;
-      }
-      res.json(report);
+      res.json(getLatestDailyJudgeReport() ?? createDeterministicJudgeReport(1, Date.now(), 0, 0));
     } catch (err: unknown) {
-      res.status(500).json({
-        error: err instanceof Error ? err.message : 'Failed to query director report',
-      });
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to query director report' });
     }
   });
-
-  const conversationService = new ConversationService({ router: new ModelRouter() });
 
   app.get('/api/economy/townsfolk/:npcId/mind', (req: Request, res: Response) => {
     const npcId = String(req.params.npcId ?? '');
     try {
       const state = getTownsfolkMindState(npcId);
       if (!state) {
-        res.status(404).json({ error: 'Townsfolk NPC not found' });
+        res.status(404).json({ error: 'Nobody by that name here' });
         return;
       }
       res.json(state);
     } catch (err: unknown) {
-      res.status(500).json({
-        error: err instanceof Error ? err.message : 'Failed to query townsfolk mind',
-      });
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to query townsfolk mind' });
     }
   });
 
+  // The minds' working: which provider served each recent call and how fast, the budget pressure, the event queue.
+  app.get('/api/economy/minds/telemetry', (_req: Request, res: Response) => {
+    const { router, queue } = getAgentRuntime();
+    res.json({
+      calls: router.getRecentTelemetry().slice(-200),
+      pressure: router.governor.getPressureLevel(),
+      usage: router.governor.getUsageStats(),
+      judge: router.judgeAvailable() ? 'on' : `off: ${router.offReason('nearai') ?? 'no key'}`,
+      events: queue.stats,
+    });
+  });
+
+  // Face to face: a player speaks to a keeper, a named townsperson or someone in the crowd.
   app.post('/api/economy/agents/:agentId/talk', async (req: Request, res: Response) => {
-    const agentId = String(req.params.agentId ?? '');
+    const agentId = String(req.params.agentId ?? '').slice(0, 64);
     const token = extractToken(req);
-    let accountId = 'guest_player';
+    let accountId = `guest:${req.ip ?? 'unknown'}`;
     if (token) {
       const verified = await requireAccount(req, res);
       if (!verified) return;
       accountId = verified;
     }
-
-    const message = typeof req.body?.message === 'string' ? req.body.message : '';
-    const intent =
-      req.body?.intent === 'haggle' ? 'haggle' : req.body?.intent === 'gossip' ? 'gossip' : 'ask';
-    const itemType = typeof req.body?.itemType === 'string' ? req.body.itemType : undefined;
-    const offeredPrice =
-      typeof req.body?.offeredPrice === 'number' ? req.body.offeredPrice : undefined;
-
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const crowd = body.crowd && typeof body.crowd === 'object' ? (body.crowd as Record<string, unknown>) : null;
     try {
-      const result = await conversationService.talk({
+      const result = await getAgentRuntime().conversations.talk({
         accountId,
         agentId,
-        message,
-        intent,
-        itemType,
-        offeredPrice,
+        message: typeof body.message === 'string' ? body.message : '',
+        intent: body.intent === 'haggle' ? 'haggle' : body.intent === 'gossip' ? 'gossip' : 'ask',
+        itemType: typeof body.itemType === 'string' ? body.itemType.slice(0, 64) : undefined,
+        offeredPrice: typeof body.offeredPrice === 'number' && Number.isFinite(body.offeredPrice) ? body.offeredPrice : undefined,
+        crowd: crowd && typeof crowd.role === 'string' && typeof crowd.name === 'string' && typeof crowd.place === 'string'
+          ? { role: crowd.role, name: crowd.name, place: crowd.place }
+          : undefined,
       });
+      if (!result) {
+        res.status(404).json({ error: 'Nobody by that name here' });
+        return;
+      }
       res.json(result);
     } catch (err: unknown) {
-      res.status(500).json({
-        error: err instanceof Error ? err.message : 'Conversation failed',
-      });
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Conversation failed' });
     }
   });
 

@@ -1,107 +1,59 @@
+import { AGENT_ROUTER_CONFIG } from '@elements/shared';
 import type { ModelCallPayload, ModelCallResult, ProviderConfig, ProviderKey } from './types.js';
 
-export function getProviderConfigs(): Record<ProviderKey, ProviderConfig> {
-  const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+/** Environment variable that holds each provider's key. */
+const KEY_ENV: Record<ProviderKey, string> = {
+  nvidia: 'NVIDIA_API_KEY',
+  cloudflare: 'CLOUDFLARE_API_TOKEN',
+  gemini: 'GEMINI_API_KEY',
+  groq: 'GROQ_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  nearai: 'NEAR_AI_API_KEY',
+};
 
+interface RouterBalance {
+  order?: ProviderKey[];
+  cooldowns?: { normalMs?: number; stretchedMs?: number; batchFlushNormalMs?: number; batchFlushStretchedMs?: number };
+  providers?: Partial<Record<ProviderKey, Omit<ProviderConfig, 'key' | 'apiKeyEnv'>>>;
+}
+
+const routerBalance = (): RouterBalance => (AGENT_ROUTER_CONFIG ?? {}) as RouterBalance;
+
+/** Free providers in the order the router tries them; NEAR AI is never in it (it judges only). */
+export function getProviderOrder(): ProviderKey[] {
+  return (routerBalance().order ?? ['nvidia', 'cloudflare', 'gemini', 'groq', 'openrouter']).filter((k) => k !== 'nearai');
+}
+
+export function getRouterCooldowns(): Required<NonNullable<RouterBalance['cooldowns']>> {
+  const c = routerBalance().cooldowns ?? {};
   return {
-    nvidia: {
-      key: 'nvidia',
-      name: 'NVIDIA NIM',
-      baseUrl: 'https://integrate.api.nvidia.com/v1',
-      apiKeyEnv: 'NVIDIA_API_KEY',
-      models: {
-        plan: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
-        event: 'nvidia/nemotron-3.5-bolt-e4b',
-        conversation: 'nvidia/nemotron-3.5-bolt-e4b',
-      },
-      rpm: 40,
-      rpd: 1000,
-      timeoutMs: 5000,
-      extraBody: {
-        chat_template_kwargs: { enable_thinking: false },
-      },
-    },
-    cloudflare: {
-      key: 'cloudflare',
-      name: 'Cloudflare Workers AI',
-      baseUrl: cfAccountId
-        ? `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1`
-        : 'https://api.cloudflare.com/client/v4/ai/v1',
-      apiKeyEnv: 'CLOUDFLARE_API_TOKEN',
-      models: {
-        plan: '@cf/qwen/qwen3-30b-a3b-fp8',
-        event: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-        conversation: '@cf/qwen/qwen3-30b-a3b-fp8',
-      },
-      rpm: 30,
-      rpd: 520,
-      timeoutMs: 6000,
-    },
-    gemini: {
-      key: 'gemini',
-      name: 'Google Gemini',
-      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-      apiKeyEnv: 'GEMINI_API_KEY',
-      models: {
-        plan: 'gemini-flash-lite-latest',
-        event: 'gemini-flash-lite-latest',
-        conversation: 'gemini-flash-lite-latest',
-      },
-      rpm: 15,
-      rpd: 500,
-      timeoutMs: 5000,
-    },
-    groq: {
-      key: 'groq',
-      name: 'Groq',
-      baseUrl: 'https://api.groq.com/openai/v1',
-      apiKeyEnv: 'GROQ_API_KEY',
-      models: {
-        plan: 'openai/gpt-oss-20b',
-        event: 'openai/gpt-oss-20b',
-        conversation: 'openai/gpt-oss-20b',
-      },
-      rpm: 30,
-      rpd: 1000,
-      timeoutMs: 4000,
-    },
-    openrouter: {
-      key: 'openrouter',
-      name: 'OpenRouter',
-      baseUrl: 'https://openrouter.ai/api/v1',
-      apiKeyEnv: 'OPENROUTER_API_KEY',
-      models: {
-        plan: 'meta-llama/llama-3.3-70b-instruct:free',
-        event: 'meta-llama/llama-3.3-70b-instruct:free',
-        conversation: 'meta-llama/llama-3.3-70b-instruct:free',
-      },
-      rpm: 20,
-      rpd: 50,
-      timeoutMs: 6000,
-    },
-    nearai: {
-      key: 'nearai',
-      name: 'NEAR AI Cloud (Daily Judge)',
-      baseUrl: process.env.NEAR_AI_BASE_URL ?? 'https://cloud-api.near.ai/v1',
-      apiKeyEnv: 'NEAR_AI_API_KEY',
-      models: {
-        judge: 'google/gemini-2.5-flash-lite',
-      },
-      rpm: 10,
-      rpd: 50,
-      timeoutMs: 8000,
-    },
-    rule: {
-      key: 'rule',
-      name: 'Rule Decider Fallback',
-      baseUrl: '',
-      apiKeyEnv: '',
-      models: {},
-      rpm: 100000,
-      rpd: 10000000,
-      timeoutMs: 100,
-    },
+    normalMs: c.normalMs ?? 15_000,
+    stretchedMs: c.stretchedMs ?? 30_000,
+    batchFlushNormalMs: c.batchFlushNormalMs ?? 5_000,
+    batchFlushStretchedMs: c.batchFlushStretchedMs ?? 12_000,
   };
+}
+
+/** Providers from balance.json, with URLs filled from the environment (Cloudflare's account, NEAR AI's base). */
+export function getProviderConfigs(): Partial<Record<ProviderKey, ProviderConfig>> {
+  const out: Partial<Record<ProviderKey, ProviderConfig>> = {};
+  for (const [key, raw] of Object.entries(routerBalance().providers ?? {}) as Array<[ProviderKey, Omit<ProviderConfig, 'key' | 'apiKeyEnv'>]>) {
+    if (!KEY_ENV[key]) continue;
+    let baseUrl = raw.baseUrl;
+    if (key === 'cloudflare') baseUrl = baseUrl.replace('{accountId}', process.env.CLOUDFLARE_ACCOUNT_ID ?? '');
+    if (key === 'nearai' && process.env.NEAR_AI_BASE_URL) baseUrl = process.env.NEAR_AI_BASE_URL;
+    const models = { ...raw.models };
+    if (key === 'nearai' && process.env.NEAR_AI_MODEL) models.judge = process.env.NEAR_AI_MODEL;
+    out[key] = { ...raw, key, baseUrl, models, apiKeyEnv: KEY_ENV[key] };
+  }
+  return out;
+}
+
+/** An HTTP refusal from a provider, with its status so the router can tell a spent account from a busy one. */
+export class ProviderHttpError extends Error {
+  constructor(readonly status: number, statusText: string) {
+    super(`HTTP ${status}: ${statusText}`);
+  }
 }
 
 export async function executeProviderCall(
@@ -110,12 +62,7 @@ export async function executeProviderCall(
   payload: ModelCallPayload,
   fetchFn: typeof fetch = globalThis.fetch,
 ): Promise<ModelCallResult> {
-  const model =
-    config.models[payload.intent] ??
-    config.models.plan ??
-    config.models.event ??
-    'default';
-
+  const model = config.models[payload.intent] ?? config.models.plan ?? config.models.event ?? 'default';
   const endpoint = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
   const requestBody: Record<string, unknown> = {
@@ -124,13 +71,10 @@ export async function executeProviderCall(
     temperature: payload.temperature ?? 0.2,
     ...(config.extraBody ?? {}),
   };
-
-  if (payload.responseFormat) {
-    requestBody.response_format = payload.responseFormat;
-  }
+  if (payload.responseFormat) requestBody.response_format = payload.responseFormat;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), payload.intent === 'conversation' ? (config.talkTimeoutMs ?? 4000) : config.timeoutMs);
   const startTime = Date.now();
 
   try {
@@ -144,28 +88,20 @@ export async function executeProviderCall(
       body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
-
-    clearTimeout(timer);
     const latencyMs = Date.now() - startTime;
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    }
+    if (!res.ok) throw new ProviderHttpError(res.status, res.statusText);
 
     const json = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
       usage?: { total_tokens?: number };
     };
-
     const content = json?.choices?.[0]?.message?.content ?? '';
-    const tokensEstimate = json?.usage?.total_tokens ?? Math.ceil(content.length / 4);
-
     return {
       provider: config.key,
       model,
       content,
       latencyMs,
-      tokensEstimate,
+      tokensEstimate: json?.usage?.total_tokens ?? Math.ceil(content.length / 4),
     };
   } finally {
     clearTimeout(timer);

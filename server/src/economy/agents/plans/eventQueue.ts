@@ -1,11 +1,8 @@
-import {
-  type AgentAction,
-  type AgentEvent,
-  type EventTier,
-} from '@elements/shared';
+import type { DatabaseSync } from 'node:sqlite';
+import type { AgentEvent, EventTier, PlanPhase } from '@elements/shared';
 import type { BudgetGovernor } from '../router/budgetGovernor.js';
 import type { ModelRouter } from '../router/modelRouter.js';
-import type { AgentPlanContext } from './agentPlan.js';
+import { generateBatchPlans, type AgentPlanContext, type BatchPlanResult } from './agentPlan.js';
 
 export interface QueuedEventOptions {
   tier: EventTier;
@@ -15,25 +12,25 @@ export interface QueuedEventOptions {
   timestamp?: number;
 }
 
-export interface FlushResult {
-  agentId: string;
-  reasoning: string;
-  actions: AgentAction[];
-}
+/** Most events an agent keeps waiting for its next plan. */
+const KEEP_EVENTS = 30;
 
+/**
+ * Events are queued, never sent. Every event adds a line to the agent's next plan. A significant one also
+ * marks the agent dirty; dirty agents in a place are re-planned together in one call, no more often than the
+ * place's flush interval, and an agent no more often than its cooldown. Under budget pressure the governor
+ * stretches both, then stops marking agents dirty: their events wait for the next phase plan.
+ */
 export class AgentEventQueue {
   private readonly eventsByAgent = new Map<string, AgentEvent[]>();
   private readonly dirtyAgentsByPlace = new Map<string, Set<string>>();
   private readonly lastAgentFlush = new Map<string, number>();
   private readonly lastPlaceFlush = new Map<string, number>();
+  private readonly flushing = new Set<string>();
+  /** Counts for the load test and the handover: events by tier, deferrals, flushes. */
+  readonly stats = { ordinary: 0, significant: 0, face_to_face: 0, deferred: 0, flushes: 0, flushedAgents: 0 };
 
-  recordEvent(
-    placeId: string,
-    agentId: string,
-    options: QueuedEventOptions,
-    governor?: BudgetGovernor,
-    now = Date.now(),
-  ): AgentEvent {
+  recordEvent(placeId: string, agentId: string, options: QueuedEventOptions, governor?: BudgetGovernor, now = Date.now()): AgentEvent {
     const event: AgentEvent = {
       id: `evt_${now}_${Math.random().toString(36).slice(2, 8)}`,
       tier: options.tier,
@@ -42,35 +39,23 @@ export class AgentEventQueue {
       timestamp: options.timestamp ?? now,
       metadata: options.metadata,
     };
-
-    // Append to agent's event history
     const list = this.eventsByAgent.get(agentId) ?? [];
     list.push(event);
-    if (list.length > 30) {
-      list.splice(0, list.length - 30);
-    }
+    if (list.length > KEEP_EVENTS) list.splice(0, list.length - KEEP_EVENTS);
     this.eventsByAgent.set(agentId, list);
+    this.stats[options.tier]++;
 
-    // Tier 1: face_to_face is handled synchronously by conversation engine
-    // Tier 2: significant marks agent dirty unless governor defers
     if (options.tier === 'significant') {
-      const shouldDefer = governor ? governor.shouldDeferTier2(now) : false;
-      if (!shouldDefer) {
-        this.markDirty(placeId, agentId);
-      }
+      if (governor?.shouldDeferTier2(now)) this.stats.deferred++;
+      else this.markDirty(placeId, agentId);
     }
-    // Tier 3: ordinary is solely folded into next observation, no wake
-
     return event;
   }
 
   markDirty(placeId: string, agentId: string): void {
-    let placeSet = this.dirtyAgentsByPlace.get(placeId);
-    if (!placeSet) {
-      placeSet = new Set<string>();
-      this.dirtyAgentsByPlace.set(placeId, placeSet);
-    }
-    placeSet.add(agentId);
+    let set = this.dirtyAgentsByPlace.get(placeId);
+    if (!set) this.dirtyAgentsByPlace.set(placeId, (set = new Set()));
+    set.add(agentId);
   }
 
   isAgentDirty(placeId: string, agentId: string): boolean {
@@ -78,135 +63,67 @@ export class AgentEventQueue {
   }
 
   getDirtyAgents(placeId: string): string[] {
-    const set = this.dirtyAgentsByPlace.get(placeId);
-    return set ? Array.from(set) : [];
+    return [...(this.dirtyAgentsByPlace.get(placeId) ?? [])];
   }
 
   getRecentEvents(agentId: string): AgentEvent[] {
     return [...(this.eventsByAgent.get(agentId) ?? [])];
   }
 
+  /** The event lines waiting for an agent's next plan; they are cleared once planned. */
+  eventLines(agentId: string): string[] {
+    return (this.eventsByAgent.get(agentId) ?? []).map((e) => e.description);
+  }
+
   clearRecentEvents(agentId: string): void {
-    this.eventsByAgent.set(agentId, []);
+    this.eventsByAgent.delete(agentId);
   }
 
   canFlushPlace(placeId: string, governor: BudgetGovernor, now = Date.now()): boolean {
-    const lastFlush = this.lastPlaceFlush.get(placeId) ?? 0;
-    const interval = governor.getBatchFlushIntervalMs(now);
-    return now - lastFlush >= interval;
+    if (this.flushing.has(placeId)) return false;
+    return now - (this.lastPlaceFlush.get(placeId) ?? -Infinity) >= governor.getBatchFlushIntervalMs(now);
   }
 
   canFlushAgent(agentId: string, governor: BudgetGovernor, now = Date.now()): boolean {
-    const lastFlush = this.lastAgentFlush.get(agentId) ?? 0;
-    const cooldown = governor.getCooldownMs(now);
-    return now - lastFlush >= cooldown;
+    return now - (this.lastAgentFlush.get(agentId) ?? -Infinity) >= governor.getCooldownMs(now);
   }
 
+  /**
+   * Re-plans a place's dirty agents that are past their cooldown, in one call. `contextFor` builds each agent's
+   * plan context (with its event lines); agents still cooling down stay dirty for a later flush.
+   */
   async flushDirtyAgents(params: {
     placeId: string;
-    agents: AgentPlanContext[];
+    phase: PlanPhase;
+    contextFor: (agentId: string) => AgentPlanContext | null;
     router: ModelRouter;
     governor: BudgetGovernor;
+    db?: DatabaseSync | undefined;
     now?: number;
-  }): Promise<Record<string, FlushResult>> {
+  }): Promise<BatchPlanResult | null> {
     const now = params.now ?? Date.now();
-    const { placeId, agents, router, governor } = params;
+    const { placeId, router, governor } = params;
+    const dirty = this.dirtyAgentsByPlace.get(placeId);
+    if (!dirty || dirty.size === 0 || !this.canFlushPlace(placeId, governor, now)) return null;
 
-    const dirtySet = this.dirtyAgentsByPlace.get(placeId);
-    if (!dirtySet || dirtySet.size === 0) {
-      return {};
-    }
-
-    // Filter agents: must be dirty and past cooldown
-    const eligibleAgents = agents.filter(
-      (a) => dirtySet.has(a.id) && this.canFlushAgent(a.id, governor, now),
-    );
-
-    if (eligibleAgents.length === 0) {
-      return {};
-    }
+    const ready = [...dirty].filter((id) => this.canFlushAgent(id, governor, now));
+    const contexts = ready.map((id) => params.contextFor(id)).filter((c): c is AgentPlanContext => c !== null);
+    if (contexts.length === 0) return null;
 
     this.lastPlaceFlush.set(placeId, now);
-
-    // Build batch payload for significant events
-    const batchInput = eligibleAgents.map((a) => ({
-      agentId: a.id,
-      role: a.role,
-      name: a.name,
-      purse: a.purse,
-      recentEvents: (this.eventsByAgent.get(a.id) ?? []).slice(-5),
-    }));
-
-    const systemPrompt = [
-      `You are the responsive mind engine for agents in ${placeId}.`,
-      'A significant event has occurred (purse near broke line, large sale/purchase, or local disturbance).',
-      'Provide concise, urgent action reactions and a 1-sentence reasoning line per agent.',
-      'Respond ONLY with valid JSON in this exact structure:',
-      '{ "reactions": { "agent_id": { "reasoning": "string", "actions": [] } } }',
-    ].join(' ');
-
-    const results: Record<string, FlushResult> = {};
-
-    let modelResponse: Record<string, { reasoning?: string; actions?: AgentAction[] }> = {};
-
-    // Only route to model if governor allows
-    if (!governor.shouldUseTemplateFloor(now)) {
-      const callResult = await router.route({
-        intent: 'event',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: JSON.stringify({ place: placeId, agents: batchInput }) },
-        ],
-        responseFormat: { type: 'json_object' },
-        metadata: {
-          placeId,
-          agentIds: eligibleAgents.map((a) => a.id),
-        },
-      });
-
-      if (callResult?.content) {
-        try {
-          let cleaned = callResult.content.trim();
-          if (cleaned.startsWith('```')) {
-            cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
-          }
-          const parsed = JSON.parse(cleaned) as {
-            reactions?: Record<string, { reasoning?: string; actions?: AgentAction[] }>;
-          };
-          if (parsed && typeof parsed.reactions === 'object') {
-            modelResponse = parsed.reactions;
-          }
-        } catch {
-          console.warn(`[EventQueue] Failed to parse batch event response for ${placeId}; using deterministic fallbacks.`);
-        }
-      }
+    this.flushing.add(placeId);
+    for (const c of contexts) {
+      dirty.delete(c.id);
+      this.lastAgentFlush.set(c.id, now);
     }
-
-    for (const agent of eligibleAgents) {
-      const reaction = modelResponse[agent.id];
-      if (reaction && typeof reaction.reasoning === 'string' && Array.isArray(reaction.actions)) {
-        results[agent.id] = {
-          agentId: agent.id,
-          reasoning: reaction.reasoning,
-          actions: reaction.actions,
-        };
-      } else {
-        // Fallback: rule-based reaction
-        const lastEvt = (this.eventsByAgent.get(agent.id) ?? []).slice(-1)[0];
-        results[agent.id] = {
-          agentId: agent.id,
-          reasoning: lastEvt
-            ? `Noticed ${lastEvt.description}; adjusting caution.`
-            : 'Activity in the square calls for closer attention.',
-          actions: [],
-        };
-      }
-
-      // Mark agent clean and update cooldown
-      dirtySet.delete(agent.id);
-      this.lastAgentFlush.set(agent.id, now);
+    try {
+      const result = await generateBatchPlans({ placeId, agents: contexts, phase: params.phase, router, db: params.db, now, intent: 'event' });
+      for (const c of contexts) this.clearRecentEvents(c.id);
+      this.stats.flushes++;
+      this.stats.flushedAgents += contexts.length;
+      return result;
+    } finally {
+      this.flushing.delete(placeId);
     }
-
-    return results;
   }
 }

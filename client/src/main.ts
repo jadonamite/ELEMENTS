@@ -36,6 +36,7 @@ import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
 import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
 import { TownEconomy } from './economy/town-economy.js';
+import { talkToAgent } from './economy/api.js';
 import { ContextAction } from './ui/context-action.js';
 import { StreetChallenges } from './life/street-challenges.js';
 import { nightness } from './world/effects.js';
@@ -433,6 +434,15 @@ async function main(): Promise<void> {
       posts: zone.posts,
       browse: zone.browse,
       subtitle: (name, line, seconds) => hudLine(`${name}: "${line}"`, seconds * 1000 + 600),
+      mind: {
+        // Named people and keepers by their id; someone from the crowd by their trade, name and zone.
+        talk: async (npc, message, intent) => {
+          const crowd = /^(crowd|post)_\d+$/.test(npc.data.id) ? { role: npc.data.role, name: npc.data.name, place: 'sindr' } : undefined;
+          const res = await talkToAgent(npc.data.id, message, { intent, ...(crowd ? { crowd } : {}) });
+          return res.reply;
+        },
+        trade: (merchantId) => townEconomy?.openShop(merchantId),
+      },
     });
     cleanup.push(() => lifeSystem?.dispose());
   }
@@ -645,6 +655,7 @@ async function main(): Promise<void> {
       knownFlags = s.redFlags;
     },
     lootDropped: (x, z) => lifeSystem?.witness('loot_dropped', new Vector3(x, controller.position.y, z)),
+    talkToKeeper: (merchantId) => { lifeSystem?.talkToKeeper(merchantId); },
     wornChanged: (worn) => {
       void hero.switchOutfit(parseOutfit(worn.outfit));
       fight.setHeroArmour(worn.armour);

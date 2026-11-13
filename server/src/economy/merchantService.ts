@@ -21,6 +21,7 @@ import { getDatabase, getActiveShopOwnership, insertShopSale } from '../db.js';
 import { recordTransaction } from './ledgerService.js';
 import { getNpcMemory } from './npcMemoryService.js';
 import { addItems, getLedgerItemBalance, recordItemMove, removeItems, withSavepoint } from './satchelService.js';
+import { reportMerchantTrade } from './agents/events/worldEvents.js';
 
 interface RawMerchantRow {
   id: string;
@@ -329,7 +330,7 @@ export function quoteMerchantTrade(
   };
 }
 
-export function buyFromMerchant(
+function buyFromMerchantNow(
   params: {
     merchantId: string;
     buyerAccountId: string;
@@ -473,7 +474,7 @@ export function buyFromMerchant(
   });
 }
 
-export function sellToMerchant(
+function sellToMerchantNow(
   params: {
     merchantId: string;
     sellerAccountId: string;
@@ -567,6 +568,70 @@ export function sellToMerchant(
 
     return { unitPrice: quote.unitPrice, totalPrice };
   });
+}
+
+/** Net units of an item sold to a merchant (sells minus buys) inside the demand window. */
+function netSold(merchantId: string, itemType: string, now: number, db: DatabaseSync): number {
+  let net = 0;
+  for (const e of getMerchantDemandWindow(merchantId, now, db)[itemType] ?? []) net += e.action === 'sell' ? e.quantity : -e.quantity;
+  return net;
+}
+
+/** Tells the minds about a trade that went through: the sale, and anything a keeper or rival would notice. */
+function reportTrade(
+  params: { merchantId: string; itemType: string; quantity: number; now: number },
+  action: 'buy' | 'sell',
+  before: { purse: number; net: number },
+  db: DatabaseSync,
+): void {
+  try {
+    const merchant = getMerchant(params.merchantId, db);
+    if (!merchant) return;
+    const stockKey = stockKeyForItem(params.itemType, merchant.inventory) ?? params.itemType;
+    let unitPrice = merchant.inventory[stockKey]?.basePrice ?? 0;
+    try {
+      unitPrice = quoteMerchantTrade({ merchantId: params.merchantId, itemType: params.itemType, action: 'buy', quantity: 1, now: params.now }, db).unitPrice;
+    } catch {
+      // A shelf that cannot be quoted keeps its base price for the report.
+    }
+    reportMerchantTrade({
+      merchantId: params.merchantId,
+      action,
+      itemType: params.itemType,
+      stockKey,
+      quantity: params.quantity,
+      purseBefore: before.purse,
+      purseAfter: merchant.balance,
+      netSoldBefore: before.net,
+      netSoldAfter: netSold(params.merchantId, params.itemType, params.now, db),
+      unitPrice,
+      now: params.now,
+    });
+  } catch (err) {
+    console.error('Trade report failed:', err);
+  }
+}
+
+export function buyFromMerchant(
+  params: Parameters<typeof buyFromMerchantNow>[0],
+  db: DatabaseSync = getDatabase(),
+): ReturnType<typeof buyFromMerchantNow> {
+  const now = params.now ?? Date.now();
+  const before = { purse: getMerchant(params.merchantId, db)?.balance ?? 0, net: netSold(params.merchantId, params.itemType, now, db) };
+  const result = buyFromMerchantNow({ ...params, now }, db);
+  reportTrade({ ...params, now }, 'buy', before, db);
+  return result;
+}
+
+export function sellToMerchant(
+  params: Parameters<typeof sellToMerchantNow>[0],
+  db: DatabaseSync = getDatabase(),
+): ReturnType<typeof sellToMerchantNow> {
+  const now = params.now ?? Date.now();
+  const before = { purse: getMerchant(params.merchantId, db)?.balance ?? 0, net: netSold(params.merchantId, params.itemType, now, db) };
+  const result = sellToMerchantNow({ ...params, now }, db);
+  reportTrade({ ...params, now }, 'sell', before, db);
+  return result;
 }
 
 export function tickAllMerchantsDay(db: DatabaseSync = getDatabase()): {

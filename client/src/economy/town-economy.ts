@@ -55,6 +55,8 @@ export interface TownEconomyEvents {
   nightness(): number;
   /** A fallen enemy dropped what it carried at (x, z). */
   lootDropped?(x: number, z: number): void;
+  /** Opens a talk with a shop's keeper, from the shop window. */
+  talkToKeeper?(merchantId: string): void;
 }
 
 export class TownEconomy {
@@ -132,6 +134,7 @@ export class TownEconomy {
       trade: (action, merchantId, item) => this.shuttered
         ? Promise.reject(new Error('The stalls are shuttered for the night'))
         : this.door.trade(action, merchantId, item, 1),
+      talk: (merchantId) => this.events.talkToKeeper?.(merchantId),
     });
     this.countingHouse = new CountingHouseWindow({
       coin: () => this.coin,

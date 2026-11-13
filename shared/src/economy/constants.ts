@@ -167,6 +167,10 @@ export const SINDR_MERCHANTS: SindrMerchantConfig[] = economyBalance?.merchants?
   },
 ];
 
+/** Every zone's merchants as balance.json lists them (`merchants.<zone>`); Sindr's are the only ones today. */
+export const MERCHANTS_BY_ZONE: Readonly<Record<string, readonly SindrMerchantConfig[]>> =
+  economyBalance?.merchants ?? { sindr: SINDR_MERCHANTS };
+
 export const AGENT_CONFIG = {
   tickGameMinutes: economyBalance?.agents?.tickGameMinutes ?? 30,
   dayStartHour: economyBalance?.agents?.dayStartHour ?? 6,
@@ -177,9 +181,26 @@ export const AGENT_CONFIG = {
   tributeStockRatio: economyBalance?.agents?.tributeStockRatio ?? 0.9,
   // Share of base price the Lord pays for goods shipped as tribute.
   tributePriceRatio: economyBalance?.agents?.tributePriceRatio ?? 0.25,
-  maxCallsPerHour: economyBalance?.agents?.maxCallsPerHour ?? 20,
-  timeoutMs: economyBalance?.agents?.timeoutMs ?? 5000,
+  /** When something in the world wakes a mind (queued, never sent at once). */
+  events: {
+    /** A robbery or theft this close to a counter is news to its keeper, metres. */
+    nearStallMetres: economyBalance?.agents?.events?.nearStallMetres ?? 15,
+    /** Net units of one item sold to a keeper inside the demand window that make a flood. */
+    floodNet: economyBalance?.agents?.events?.floodNet ?? 10,
+    /** A purse under brokeThreshold times this is near the broke line. */
+    brokeWarnRatio: economyBalance?.agents?.events?.brokeWarnRatio ?? 1.5,
+    /** A price moving by this share since a rival last heard of it is a price war. */
+    priceSwing: economyBalance?.agents?.events?.priceSwing ?? 0.15,
+  },
+  /** Face-to-face talk: lines a player may send a minute, and lines one mind answers a minute. */
+  talk: {
+    linesPerPlayerMinute: economyBalance?.agents?.talk?.linesPerPlayerMinute ?? 5,
+    linesPerAgentMinute: economyBalance?.agents?.talk?.linesPerAgentMinute ?? 12,
+  },
 } as const;
+
+/** The model router's providers, order and cooldowns, as balance.json sets them (server only). */
+export const AGENT_ROUTER_CONFIG: unknown = economyBalance?.agents?.router ?? null;
 
 export const SHOPS_CONFIG = {
   salePrice: economyBalance?.shops?.salePrice ?? 2_000,

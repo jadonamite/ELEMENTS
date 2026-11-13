@@ -12,6 +12,15 @@ export function ensureAgentTables(db: DatabaseSync = getDatabase()): void {
       PRIMARY KEY (agent_id, phase)
     );
 
+    CREATE TABLE IF NOT EXISTS agent_talk (
+      agent_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      said TEXT NOT NULL,
+      reply TEXT NOT NULL,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_talk ON agent_talk(agent_id, account_id, at);
+
     CREATE TABLE IF NOT EXISTS daily_judge_reports (
       day_number INTEGER PRIMARY KEY,
       date TEXT NOT NULL,
@@ -117,4 +126,35 @@ export function getDailyJudgeReportByDay(
   } catch {
     return null;
   }
+}
+
+/** The last few things a player and a mind said to each other, oldest first. */
+export function getTalkMemory(
+  agentId: string,
+  accountId: string,
+  limit = 3,
+  db: DatabaseSync = getDatabase(),
+): Array<{ said: string; reply: string; at: number }> {
+  ensureAgentTables(db);
+  const rows = db
+    .prepare('SELECT said, reply, at FROM agent_talk WHERE agent_id = ? AND account_id = ? ORDER BY at DESC LIMIT ?')
+    .all(agentId, accountId, limit) as Array<{ said: string; reply: string; at: number }>;
+  return rows.reverse();
+}
+
+export function saveTalk(
+  agentId: string,
+  accountId: string,
+  said: string,
+  reply: string,
+  at: number,
+  db: DatabaseSync = getDatabase(),
+): void {
+  ensureAgentTables(db);
+  db.prepare('INSERT INTO agent_talk (agent_id, account_id, said, reply, at) VALUES (?, ?, ?, ?, ?)').run(agentId, accountId, said, reply, at);
+  // Keep the last ten exchanges per pair.
+  db.prepare(
+    `DELETE FROM agent_talk WHERE agent_id = ? AND account_id = ? AND at < (
+       SELECT MIN(at) FROM (SELECT at FROM agent_talk WHERE agent_id = ? AND account_id = ? ORDER BY at DESC LIMIT 10))`,
+  ).run(agentId, accountId, agentId, accountId);
 }

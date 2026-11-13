@@ -4,10 +4,10 @@ export type ProviderKey =
   | 'gemini'
   | 'groq'
   | 'openrouter'
-  | 'nearai'
-  | 'rule';
+  | 'nearai';
 
-export type CallIntent = 'plan' | 'event' | 'conversation' | 'judge';
+/** What a call is for: phase plans, an event flush, a face-to-face line, the evening chronicle, the daily judge. */
+export type CallIntent = 'plan' | 'event' | 'conversation' | 'chronicle' | 'judge';
 
 export type GovernorPressureLevel = 0 | 1 | 2 | 3;
 
@@ -20,11 +20,15 @@ export interface ProviderConfig {
     plan?: string;
     event?: string;
     conversation?: string;
+    chronicle?: string;
     judge?: string;
   };
   rpm: number;
   rpd: number;
+  /** Batch calls (plans, flushes, the chronicle, the judge) may take this long. */
   timeoutMs: number;
+  /** A face-to-face line may take this long before the next provider, or a written line, answers. */
+  talkTimeoutMs?: number;
   extraHeaders?: Record<string, string>;
   extraBody?: Record<string, unknown>;
 }

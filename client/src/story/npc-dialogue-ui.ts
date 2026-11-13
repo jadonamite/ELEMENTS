@@ -18,7 +18,18 @@ interface Choice {
 }
 
 /** Most replies a conversation offers at once; each has a number key. */
-const MAX_CHOICES = 4;
+const MAX_CHOICES = 5;
+
+/** The town's minds, on the server: a person's own answer to what the player says. */
+export interface MindDesk {
+  /** The person's reply, or null when the server cannot be reached (the written lines answer then). */
+  talk(npc: LiveTownsperson, message: string, intent: 'ask' | 'gossip'): Promise<string | null>;
+  /** Opens the shop a keeper keeps. */
+  trade(merchantId: string): void;
+}
+
+/** What a person does while they think, in the line where their answer will appear. */
+const THINKING = ['glances up, considering', 'pauses, weighing your words', 'hums under their breath', 'looks you over', 'rubs their chin'];
 
 /**
  * The conversation panel. It is driven by keys, the mouse wheel and the left button while the mouse is
@@ -35,6 +46,9 @@ export class NpcDialogueUI {
   private choices: Choice[] = [];
   private selected = 0;
   private open = false;
+  /** Waiting for a mind's answer: the choices hold until it comes. */
+  private thinking = false;
+  private sayForm: HTMLFormElement | null = null;
 
   constructor(
     private dialogueMemory: DialogueMemory,
@@ -43,6 +57,7 @@ export class NpcDialogueUI {
     private leadManager: LeadManager,
     private timeOfDay: () => 'day' | 'dusk' | 'night' | 'dawn',
     private onLeadPurchased?: (lead: Lead) => void,
+    private mind?: MindDesk,
   ) {
     this.el = document.createElement('section');
     this.el.className = 'npc-talk';
@@ -107,13 +122,78 @@ export class NpcDialogueUI {
   }
 
   private choicesFor(npc: LiveTownsperson): Choice[] {
-    const choices: Choice[] = [{ label: 'Talk', run: () => this.again('talk') }];
+    const mind = this.mind;
+    if (!mind) {
+      const choices: Choice[] = [{ label: 'Talk', run: () => this.again('talk') }];
+      if (npc.data.role === 'innkeeper') {
+        if (this.leadManager.getAvailableLeads().length > 0) choices.push({ label: 'Buy a lead (15 CHROMA)', run: () => this.buyLead() });
+        choices.push({ label: 'Ask of the Allborn', run: () => this.again('rumour_allborn') });
+      }
+      choices.push({ label: 'Leave', run: () => this.close() });
+      return choices.slice(0, MAX_CHOICES);
+    }
+    const choices: Choice[] = [{ label: "What's new?", run: () => void this.ask(npc, "What's new with you?", 'ask') }];
     if (npc.data.role === 'innkeeper') {
       if (this.leadManager.getAvailableLeads().length > 0) choices.push({ label: 'Buy a lead (15 CHROMA)', run: () => this.buyLead() });
       choices.push({ label: 'Ask of the Allborn', run: () => this.again('rumour_allborn') });
+    } else {
+      choices.push({ label: 'Any gossip?', run: () => void this.ask(npc, 'Heard any gossip lately?', 'gossip') });
     }
+    choices.push({ label: 'Say something', run: () => this.openSay(npc) });
+    const shop = npc.data.keeps;
+    if (shop) choices.push({ label: 'Trade', run: () => { this.close(); mind.trade(shop); } });
     choices.push({ label: 'Leave', run: () => this.close() });
     return choices.slice(0, MAX_CHOICES);
+  }
+
+  /** Asks the person's mind: a thinking beat in the line, then their answer (or a written line if none comes). */
+  private async ask(npc: LiveTownsperson, message: string, intent: 'ask' | 'gossip'): Promise<void> {
+    if (!this.mind || this.thinking) return;
+    this.closeSay();
+    this.thinking = true;
+    this.el.classList.add('thinking');
+    this.textEl.textContent = `${npc.data.name.split(' ')[0]} ${THINKING[Math.floor(Math.random() * THINKING.length)]}...`;
+    this.soundManager.playBark(npc.data.role, npc.data.sex);
+    const reply = await this.mind.talk(npc, message, intent).catch(() => null);
+    this.thinking = false;
+    this.el.classList.remove('thinking');
+    if (!this.open || this.currentNpc !== npc) return;
+    if (reply) this.textEl.textContent = reply;
+    else this.again('talk');
+    this.setChoices(this.choicesFor(npc));
+  }
+
+  /** A line the player types: the choices give way to a field until it is sent or put away. */
+  private openSay(npc: LiveTownsperson): void {
+    this.closeSay();
+    const form = document.createElement('form');
+    form.className = 'npc-talk-say';
+    form.innerHTML = '<input class="npc-talk-input" type="text" maxlength="200" autocomplete="off" aria-label="What you say" placeholder="Say something"><button type="submit" class="npc-talk-choice npc-talk-send">Say</button>';
+    const input = form.querySelector('input')!;
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (text) void this.ask(npc, text, 'ask');
+      else this.closeSay();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeSay();
+      }
+    });
+    this.choicesEl.hidden = true;
+    this.el.appendChild(form);
+    this.sayForm = form;
+    input.focus();
+  }
+
+  private closeSay(): void {
+    if (!this.sayForm) return;
+    this.sayForm.remove();
+    this.sayForm = null;
+    this.choicesEl.hidden = false;
   }
 
   private again(event: DialogueEventType): void {
@@ -157,7 +237,7 @@ export class NpcDialogueUI {
 
   /** Runs reply `index` (0-based). False when there is no such reply. */
   choose(index: number): boolean {
-    const choice = this.open ? this.choices[index] : undefined;
+    const choice = this.open && !this.thinking && !this.sayForm ? this.choices[index] : undefined;
     if (!choice) return false;
     choice.run();
     return true;
@@ -188,6 +268,9 @@ export class NpcDialogueUI {
 
   close(): void {
     if (this.currentNpc) this.voices.end(this.currentNpc);
+    this.closeSay();
+    this.thinking = false;
+    this.el.classList.remove('thinking');
     this.open = false;
     this.el.hidden = true;
   }

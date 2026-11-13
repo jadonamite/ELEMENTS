@@ -1,7 +1,9 @@
 import type { GovernorPressureLevel, ProviderConfig, ProviderKey } from './types.js';
 
 export interface GovernorOptions {
-  providers: Record<string, ProviderConfig>;
+  providers: Partial<Record<ProviderKey, ProviderConfig>>;
+  /** The free providers whose budget the pressure is read from; defaults to every provider but NEAR AI. */
+  pool?: ProviderKey[];
   normalCooldownMs?: number;
   stretchedCooldownMs?: number;
   batchFlushNormalMs?: number;
@@ -9,7 +11,8 @@ export interface GovernorOptions {
 }
 
 export class BudgetGovernor {
-  private readonly providers: Record<string, ProviderConfig>;
+  private readonly providers: Partial<Record<ProviderKey, ProviderConfig>>;
+  private readonly pool: ProviderKey[];
   private readonly normalCooldownMs: number;
   private readonly stretchedCooldownMs: number;
   private readonly batchFlushNormalMs: number;
@@ -24,6 +27,7 @@ export class BudgetGovernor {
 
   constructor(options: GovernorOptions) {
     this.providers = options.providers;
+    this.pool = options.pool ?? (Object.keys(options.providers) as ProviderKey[]).filter((k) => k !== 'nearai');
     this.normalCooldownMs = options.normalCooldownMs ?? 15000;
     this.stretchedCooldownMs = options.stretchedCooldownMs ?? 30000;
     this.batchFlushNormalMs = options.batchFlushNormalMs ?? 5000;
@@ -53,7 +57,7 @@ export class BudgetGovernor {
     if (!this.isProviderHealthy(provider, now)) return false;
 
     const config = this.providers[provider];
-    if (!config) return true; // Rule provider or untracked
+    if (!config) return false;
 
     // Prune minute history
     const oneMinAgo = now - 60_000;
@@ -70,42 +74,32 @@ export class BudgetGovernor {
     return true;
   }
 
+  /**
+   * How hard the pool is pressed, 0 to 3. Two measures, the worse wins:
+   * - pace: calls in the last hour against an even share of the day's budget (the pool's daily total / 24).
+   *   Half a share stretches, a full share defers significant events, two shares sends talk to written lines.
+   * - the day: what is left of the pool's daily budget (under 40% stretches, 20% defers, 5% is the floor).
+   * A minute when every provider is busy is not pressure: those calls just fall back on their own.
+   */
   getPressureLevel(now = Date.now()): GovernorPressureLevel {
-    // Check key free batch workers: nvidia, cloudflare, gemini, groq
-    const trackedKeys: ProviderKey[] = ['nvidia', 'cloudflare', 'gemini', 'groq'];
-    let totalCapDay = 0;
-    let totalUsedDay = 0;
-    let availableCount = 0;
-
-    for (const key of trackedKeys) {
+    let capDay = 0;
+    let usedDay = 0;
+    let usedHour = 0;
+    for (const key of this.pool) {
       const cfg = this.providers[key];
       if (!cfg) continue;
-
-      totalCapDay += cfg.rpd;
-      const oneDayAgo = now - 24 * 60 * 60_000;
-      const dayCalls = (this.callHistoryDay.get(key) ?? []).filter((t) => t > oneDayAgo);
-      totalUsedDay += dayCalls.length;
-
-      if (this.hasBudget(key, now)) {
-        availableCount++;
-      }
+      capDay += cfg.rpd;
+      const calls = (this.callHistoryDay.get(key) ?? []).filter((t) => t > now - 24 * 60 * 60_000);
+      usedDay += calls.length;
+      usedHour += calls.filter((t) => t > now - 60 * 60_000).length;
     }
+    if (capDay === 0) return 3;
 
-    if (totalCapDay === 0 || availableCount === 0) {
-      return 3; // Template Floor
-    }
-
-    const remainingFraction = Math.max(0, 1 - totalUsedDay / totalCapDay);
-
-    if (remainingFraction > 0.40 && availableCount >= 2) {
-      return 0; // Normal
-    } else if (remainingFraction > 0.20 && availableCount >= 1) {
-      return 1; // Stretched
-    } else if (remainingFraction > 0.05 && availableCount >= 1) {
-      return 2; // Deferred
-    } else {
-      return 3; // Template Floor
-    }
+    const pace = usedHour / (capDay / 24);
+    const fromPace: GovernorPressureLevel = pace >= 2 ? 3 : pace >= 1 ? 2 : pace >= 0.5 ? 1 : 0;
+    const left = Math.max(0, 1 - usedDay / capDay);
+    const fromDay: GovernorPressureLevel = left <= 0.05 ? 3 : left <= 0.2 ? 2 : left <= 0.4 ? 1 : 0;
+    return Math.max(fromPace, fromDay) as GovernorPressureLevel;
   }
 
   getCooldownMs(now = Date.now()): number {

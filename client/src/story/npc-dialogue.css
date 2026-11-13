@@ -36,6 +36,20 @@
 }
 .npc-talk-badge.lit { color: var(--control-ember-light); }
 .npc-talk-line { margin: 0 0 var(--space-4); min-height: 2.9em; }
+.npc-talk.thinking .npc-talk-line { color: var(--control-key-face); font-style: italic; }
+.npc-talk-say { display: flex; gap: var(--space-2); }
+.npc-talk-input {
+  flex: 1;
+  min-height: var(--target-min-size);
+  padding: var(--space-1) var(--space-3);
+  color: var(--control-ink);
+  background: var(--control-key-base);
+  border: 1px solid var(--control-line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+.npc-talk-input:focus-visible { outline: 2px solid var(--control-ember-light); outline-offset: 2px; }
+.npc-talk-say .npc-talk-send { width: auto; padding: var(--space-1) var(--space-4); border-color: var(--control-line); }
 .npc-talk-choices {
   list-style: none;
   margin: 0;

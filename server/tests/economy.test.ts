@@ -63,7 +63,6 @@ import {
   tickMerchantAgentsDay,
   getMerchantMind,
   RuleDecider,
-  NearAiDecider,
   type AgentDecider,
   getShopsForSale,
   buyShop,
@@ -1085,122 +1084,6 @@ test('Agent decider: with a fake decider that returns illegal actions, nothing i
       (updatedMerchant.inventory.shard?.maxStock ?? 200),
     'Stock must never exceed maxStock',
   );
-});
-
-test('NearAiDecider: falls back cleanly when env is missing and parses valid mock responses', async () => {
-  const db = new DatabaseSync(':memory:');
-  migrateDatabase(db);
-  setDatabase(db);
-  ensureSindrMerchants(db, 0);
-
-  const obs: AgentObservation = {
-    merchantId: 'sindr_shards',
-    purse: 20000,
-    stock: { shard: { stock: 20, maxStock: 200, basePrice: 10 } },
-    demandWindows: {},
-    recentTrades: [],
-    tributeSchedule: { nextTributeTime: 1000, intervalMs: 1000 },
-    timeOfDay: 12,
-    isOpen: true,
-    status: 'open',
-    daysBroke: 0,
-    personality: 'A sharp-eyed firebrand.',
-    now: 12 * GAME_HOUR_MS,
-  };
-
-  // Case 1: Missing env variables (clean fallback to RuleDecider)
-  const deciderMissingEnv = new NearAiDecider({
-    baseUrl: undefined,
-    apiKey: undefined,
-    model: undefined,
-  });
-  const fallbackResult = await deciderMissingEnv.decide(obs);
-  assert.ok(fallbackResult.actions.length > 0, 'RuleDecider must restock low stock');
-  assert.equal(fallbackResult.actions[0]?.type, 'restock');
-  assert.ok(fallbackResult.reasoning.length > 0);
-
-  // Case 2: Injected fake fetch returning valid AI response
-  const fakeFetchValid: typeof fetch = async () => {
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                actions: [{ type: 'restock', itemType: 'shard', quantity: 25 }],
-                reasoning: 'Racks are empty so I purchased 25 shards from the Lord.',
-              }),
-            },
-          },
-        ],
-      }),
-    } as unknown as Response;
-  };
-
-  const deciderWithFakeAi = new NearAiDecider({
-    baseUrl: 'https://cloud-api.near.ai/v1',
-    apiKey: 'mock-key',
-    model: 'meta-llama/Llama-3.2-3B-Instruct',
-    fetchFn: fakeFetchValid,
-  });
-
-  const aiResult = await deciderWithFakeAi.decide(obs);
-  assert.equal(aiResult.actions.length, 1);
-  assert.equal(aiResult.actions[0]?.type, 'restock');
-  assert.equal((aiResult.actions[0] as { quantity: number }).quantity, 25);
-  assert.equal(aiResult.reasoning, 'Racks are empty so I purchased 25 shards from the Lord.');
-
-  // Case 3: Injected fake fetch returning illegal actions (dropped cleanly)
-  const fakeFetchIllegal: typeof fetch = async () => {
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                actions: [
-                  { type: 'set_price', itemType: 'shard', price: 99 },
-                  { type: 'restock', itemType: 'shard', quantity: 999999 },
-                ],
-                reasoning: 'Tried to change prices and overspend.',
-              }),
-            },
-          },
-        ],
-      }),
-    } as unknown as Response;
-  };
-
-  const deciderIllegal = new NearAiDecider({
-    baseUrl: 'https://cloud-api.near.ai/v1',
-    apiKey: 'mock-key',
-    model: 'meta-llama/Llama-3.2-3B-Instruct',
-    fetchFn: fakeFetchIllegal,
-  });
-
-  const illegalResult = await deciderIllegal.decide(obs);
-  assert.equal(illegalResult.actions.length, 0, 'Illegal actions from AI must be dropped');
-  assert.equal(illegalResult.reasoning, 'Tried to change prices and overspend.');
-
-  // Case 4: Fake fetch throwing network error or timeout (clean fallback to RuleDecider for that tick)
-  const fakeFetchError: typeof fetch = async () => {
-    throw new Error('Connection timed out after 5000ms');
-  };
-
-  const deciderError = new NearAiDecider({
-    baseUrl: 'https://cloud-api.near.ai/v1',
-    apiKey: 'mock-key',
-    model: 'meta-llama/Llama-3.2-3B-Instruct',
-    fetchFn: fakeFetchError,
-  });
-
-  const timeoutResult = await deciderError.decide(obs);
-  assert.ok(timeoutResult.actions.length > 0, 'Must fall back to RuleDecider on fetch error');
-  assert.equal(timeoutResult.actions[0]?.type, 'restock');
 });
 
 test('RuleDecider over 7 simulated days keeps all three merchants solvent and ledger conserves world supply', async () => {

@@ -28,6 +28,7 @@ import {
 import { getAccountBalance, recordTransaction } from './ledgerService.js';
 import { getMerchant, getAllMerchants, saveMerchant } from './merchantService.js';
 import { getActiveRedFlags, hasActiveBounty } from './crimeService.js';
+import { reportPricesSet } from './agents/events/worldEvents.js';
 import { removeItems, withSavepoint } from './satchelService.js';
 
 // Lists all closed shops currently offered for player acquisition.
@@ -227,6 +228,7 @@ export function setShopPrices(
     },
     db,
   );
+  reportPricesSet({ merchantId: params.merchantId, multipliers: validation.sanitized, now });
 
   return {
     success: true,

@@ -18,6 +18,7 @@ import {
 } from '@elements/shared';
 import { balance } from './balance.js';
 import { ServerEnemy } from './enemies.js';
+import { reportCrimeNear } from '../economy/agents/events/worldEvents.js';
 import type { EnemyKind } from './zones.js';
 import type { ServerPlayer, ZoneWorld } from './world.js';
 import type { ZoneEconomy } from './zone-economy.js';
@@ -62,6 +63,7 @@ export class ServerRobberGang {
 
   spawnAmbush(player: ServerPlayer, world: ZoneWorld): void {
     this.despawn(world);
+    reportCrimeNear({ zone: world.zone, x: player.x, z: player.z, kind: 'robbery', now: Date.now() });
     this.state.state = 'ambushing';
     this.state.currentTargetId = player.accountId;
 
