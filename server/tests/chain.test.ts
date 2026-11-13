@@ -184,3 +184,27 @@ test('the shared settler maps item world entries to mint and burn operations', a
   assert.equal(sent[0]!.from, null);
   assert.equal(sent[1]!.to, null);
 });
+
+test('the item settler halts on every contract refusal, including supply underflow', async () => {
+  for (const refusal of [
+    'Supply underflow',
+    'Amount must be positive',
+    'Operation has no source or destination',
+    'Sender and receiver cannot be the same',
+    'attempt to add with overflow',
+    'Insufficient balance',
+    'Batch out of order',
+    'Only the game account settles',
+  ]) {
+    const db = freshDb();
+    addItems({ accountId: 'alice', from: 'world', stacks: [{ itemId: 'potion', quantity: 1 }], reason: 'grant' }, db);
+    const client: ChainClient = {
+      async lastBatch() { return 0; },
+      async settle() { throw new Error(`Contract panicked: ${refusal}`); },
+    };
+    const settler = new Settler({ ...config, contractId: 'items.game.testnet' }, client, db, 'items');
+    assert.equal(await settler.tick(), null, refusal);
+    assert.ok((settler.haltReason ?? '').toLowerCase().includes(refusal.toLowerCase()), refusal);
+    assert.equal(await settler.tick(), null, 'a halted settler does not retry');
+  }
+});

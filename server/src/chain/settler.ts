@@ -187,7 +187,7 @@ export class Settler {
       const message = err instanceof Error ? err.message : String(err);
       this.db.prepare(`UPDATE ${this.batchTable} SET error = ? WHERE batch = ?`).run(message.slice(0, 500), batch);
       // A contract refusal means the books disagree; a network error is retried next tick.
-      if (/Insufficient balance|out of order|Only the game account/.test(message)) {
+      if (/Insufficient balance|Supply underflow|Amount must be positive|Operation has no source or destination|Sender and receiver cannot be the same|out of order|Only the game account|overflow|underflow/i.test(message)) {
         this.halt(`batch ${batch} refused by the contract: ${message}`);
       } else {
         console.warn(`[chain] batch ${batch} not confirmed, will check and retry: ${message}`);
