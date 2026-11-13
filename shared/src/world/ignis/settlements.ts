@@ -1,7 +1,9 @@
 import { IGNIS } from './coordinates.js';
+import { shapedLand } from './land-form.js';
 
 export const SETTLEMENTS = [
-  // Sindr's pad covers the built town; the rest of its 900 x 700 m city map keeps the shelves of the relief.
+  // Map pins. Sindr and Cinderpit are surveyed pads; the other heights are nominal and each precinct takes its
+  // floor from the land under it.
   { name: 'Sindr', x: 7000, z: 9000, height: 380, radius: 220 },
   { name: 'East Border Fort', x: 2000, z: 9000, height: 250, radius: 110 },
   { name: 'Pinewatch', x: 4500, z: 5500, height: 680, radius: 100 },
@@ -30,9 +32,19 @@ function homes(count: number): SettlementHouse[] {
   }));
 }
 function precinct(name: typeof SETTLEMENTS[number]['name'], industry: SettlementPrecinct['industry'], count: number, dx = 0, dz = 0): SettlementPrecinct {
-  const anchor = SETTLEMENTS.find(p => p.name === name)!;
-  return { ...anchor, anchor: { x: anchor.x, z: anchor.z }, x: anchor.x + dx, z: anchor.z + dz,
-    id: `ignis:settlement:${name.toLowerCase().replaceAll(' ', '-')}`, radius: Math.max(anchor.radius, industry === 'fort' ? 150 : 110), shoulder: 70,
+  const anchor = SETTLEMENTS.find(p => p.name === name)!, x = anchor.x + dx, z = anchor.z + dz;
+  const radius = Math.max(anchor.radius, industry === 'fort' ? 150 : 110);
+  // The floor is the average land under the precinct, so cut and fill balance; the bank widens with the height it has to take up.
+  let height: number = anchor.height, shoulder = 70;
+  if (name !== 'Cinderpit') {
+    let sum = shapedLand(x, z).height, lean = 0;
+    for (let i = 0; i < 12; i++) sum += shapedLand(x + Math.cos(i * Math.PI / 6) * radius * 0.6, z + Math.sin(i * Math.PI / 6) * radius * 0.6).height;
+    height = Math.max(3, Math.round(sum / 13));
+    for (let i = 0; i < 12; i++) lean = Math.max(lean, Math.abs(shapedLand(x + Math.cos(i * Math.PI / 6) * radius, z + Math.sin(i * Math.PI / 6) * radius).height - height));
+    shoulder = Math.min(300, Math.max(70, lean * 3));
+  }
+  return { ...anchor, anchor: { x: anchor.x, z: anchor.z }, x, z, height,
+    id: `ignis:settlement:${name.toLowerCase().replaceAll(' ', '-')}`, radius, shoulder,
     contentReach: industry === 'fishing' ? 160 : industry === 'fort' ? 150 : 110, industry, houses: homes(count) };
 }
 export const SETTLEMENT_PRECINCTS: readonly SettlementPrecinct[] = [

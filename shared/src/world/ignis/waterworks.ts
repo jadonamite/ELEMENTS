@@ -1,5 +1,6 @@
 import { IGNIS, LEGACY_SINDR_ORIGIN, type Point3 } from './coordinates.js';
 import { MARKET_RACE, MARKET_SLICE } from './market-slice.js';
+import { ROUTE_BRIDGES } from './routes.js';
 
 export interface WaterworkPoint { x: number; z: number; surface: number; bed: number; bank: number }
 export interface PublicWaterway { id: string; width: number; points: readonly WaterworkPoint[] }
@@ -30,7 +31,7 @@ export const PUBLIC_CROSSINGS: readonly PublicCrossing[] = [
   { id: 'B2', from: globalPoint(600, 307, 380), to: globalPoint(600, 330, 380), clear: 6, river: false },
   { id: 'B4', from: globalPoint(635, 500, 353), to: globalPoint(665, 500, 353), clear: 6, river: false },
   { id: 'B5', from: globalPoint(675, 665, 345), to: globalPoint(711, 665, 345), clear: 8, river: false },
-  { id: 'port-river-crossing', from: { x: 9630, z: 11330, y: 225 }, to: { x: 9770, z: 11530, y: 210 }, clear: 5.5, river: true },
+  ...ROUTE_BRIDGES,
 ];
 export const NATIONAL_WATERWORKS = [
   ...PUBLIC_WATERWAYS.map(channel => ({ id: channel.id, kind: 'channel' as const, channel })),

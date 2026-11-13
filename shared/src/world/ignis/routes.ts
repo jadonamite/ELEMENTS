@@ -1,6 +1,8 @@
-import { baseGround } from './base-ground.js';
+import { baseGround, riverAt } from './base-ground.js';
+import type { Point3 } from './coordinates.js';
 import { mineAt, MINE_ROAD, type RoadPoint } from './mine-road.js';
-import { SETTLEMENT_PRECINCTS } from './settlements.js';
+import { ROUTE_LINES } from './route-lines.js';
+import { ROUTE_PLANS } from './route-plans.js';
 
 export interface NationalRoute {
   id: string;
@@ -19,18 +21,16 @@ export interface RouteGap {
   to: readonly [number, number];
   reason: string;
 }
-type Control = readonly [x: number, z: number, height: number];
-const arrival = (name: string): Control => {
-  const p = SETTLEMENT_PRECINCTS.find(place => place.name === name)!;
-  return [p.x, p.z, p.height];
-};
-
 /** Widest cut or fill bank either side of a road. Deep cuts spread over this instead of standing as walls. */
 const BANK_REACH = 90;
 /** Deepest cut or fill. Where the land is steeper than the grade allows, the road runs steeper instead of standing on a causeway. */
 const MAX_EARTHWORK = 12;
 /** Metres of bank per metre of cut or fill. */
 const BANK_RUN = 1.6;
+
+/** A road within this distance of the river's centre line is on its bridge. The water is 9 m to each side. */
+const DECK_REACH = 15;
+const DECK_CLEARANCE = 6;
 
 const laid: NationalRoute[] = [];
 /**
@@ -43,7 +43,9 @@ function bedAt(x: number, z: number): number {
 }
 /** The land a road is laid on, including the mine road where the two meet or cross. */
 function landAt(x: number, z: number): number {
-  const mine = mineAt(x, z), land = baseGround(x, z).height;
+  const mine = mineAt(x, z), river = riverAt(x, z);
+  // Over the river the road rides a bridge deck, DECK_CLEARANCE above the water.
+  const land = river.distance < DECK_REACH ? Math.max(baseGround(x, z).height, river.water + DECK_CLEARANCE) : baseGround(x, z).height;
   if (mine.distance >= 14) return land;
   const t = Math.max(0, Math.min(1, (mine.distance - 6) / 8));
   return mine.height + (land - mine.height) * t * t * (3 - 2 * t);
@@ -88,57 +90,61 @@ function drape(points: RoadPoint[], maxGrade: number, graded: boolean): void {
   }
 }
 
-/** Control points give the alignment only. Heights come from the land, see `drape`. */
-function route(id: string, controls: readonly Control[], source: NationalRoute['source'] = 'atlas', kind: NationalRoute['kind'] = 'cart'): NationalRoute {
-  const points: RoadPoint[] = [];
-  let s = 0;
-  for (let i = 0; i < controls.length; i++) {
-    const b = controls[i]!;
-    if (i === 0) { points.push({ x: b[0], z: b[1], y: 0, s: 0 }); continue; }
-    const a = controls[i - 1]!, length = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    const count = Math.max(1, Math.ceil(length / 8));
-    for (let j = 1; j <= count; j++) {
-      const t = j / count;
-      points.push({ x: a[0] + (b[0] - a[0]) * t, z: a[1] + (b[1] - a[1]) * t, y: 0, s: s + length * t });
+/** The surveyed line gives the alignment only. Heights come from the land, see `drape`. */
+function route(id: string, line: readonly (readonly [number, number])[], source: NationalRoute['source'], kind: NationalRoute['kind']): NationalRoute {
+  // Even stations along the line, so grading and easing treat every piece alike.
+  let total = 0;
+  for (let i = 1; i < line.length; i++) total += Math.hypot(line[i]![0] - line[i - 1]![0], line[i]![1] - line[i - 1]![1]);
+  const count = Math.max(1, Math.ceil(total / 8)), step = total / count, s = total;
+  const points: RoadPoint[] = [{ x: line[0]![0], z: line[0]![1], y: 0, s: 0 }];
+  let walked = 0, index = 1;
+  for (let k = 1; k < count; k++) {
+    const target = k * step;
+    for (;;) {
+      const a = line[index - 1]!, b = line[index]!, length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (walked + length >= target || index === line.length - 1) {
+        const t = length ? Math.min(1, (target - walked) / length) : 0;
+        points.push({ x: a[0] + (b[0] - a[0]) * t, z: a[1] + (b[1] - a[1]) * t, y: 0, s: target });
+        break;
+      }
+      walked += length; index++;
     }
-    s += length;
   }
+  const end = line[line.length - 1]!;
+  points.push({ x: end[0], z: end[1], y: 0, s: total });
   const maxGrade = kind === 'cart' ? 0.08 : 0.18;
-  drape(points, maxGrade * 0.95, kind === 'cart');
+  drape(points, maxGrade * 0.95, true);
   const road: NationalRoute = { id, kind, width: kind === 'cart' ? 5.5 : 2, shoulder: kind === 'cart' ? 18 : 8, maxGrade, points, length: s, source };
   laid.push(road);
   return road;
 }
 
 /**
- * Town approaches stop outside the existing city circulation. Water pins are not road endpoints.
+ * Town approaches stop outside the existing city circulation.
  * The developed mine road remains the sole owner of its corridor and turning-yard approach.
  */
 export const NATIONAL_ROUTES: readonly NationalRoute[] = [
   { id: 'mine', kind: 'cart', width: 5.5, shoulder: 14, maxGrade: 0.08,
     points: MINE_ROAD, length: MINE_ROAD[MINE_ROAD.length - 1]!.s, source: 'existing' },
-  route('fort', [arrival('East Border Fort'), [3500, 9600, 290], [4500, 9300, 320], [5500, 9000, 350], [6800, 9000, 380]]),
-  route('lake', [[6800, 9000, 380], [6400, 7000, 540], [6400, 5000, 700], [7400, 4200, 820],
-    [7500, 4000, 820], [7520, 3500, 835], [7800, 3420, 860], [8200, 3420, 870], [8480, 3600, 845], arrival('Crown Lake')]),
-  route('forest', [[6400, 7000, 540], [5200, 6300, 620], arrival('Pinewatch')]),
-  route('port-upper', [[7100, 9000, 380], [8600, 10500, 300], [9630, 11330, 225]]),
-  route('terrace-arrival', [[8600, 10500, 300], arrival('Terrace village')], 'derived'),
-  route('port-lower', [[9770, 11530, 210], [10000, 11700, 195], [12000, 13500, 90], [13800, 14750, 20], arrival('Salt Quay')]),
-  route('ash', [[6800, 9000, 380], [6500, 11000, 330], [7200, 13000, 270], arrival('March station'), [10000, 17000, 180]]),
-  // The atlas starts at the lake pin. Use the already-authored dry eastern hamlet instead.
-  route('north', [arrival('Crown Lake'), [8560, 3350, 860], [9200, 2500, 940], [9500, 1000, 1050]]),
-  route('barrens', [[10500, 7200, 740], [11000, 8500, 640], [11300, 10000, 530], [12400, 10600, 460]]),
-  // The massif approach is derived from the mine/Barrens junction, outside the river catchment.
-  // Steeper summit access is a foot route; it does not claim a cart road to the crater.
-  route('volcano-approach', [arrival('Cinderpit'), [10500, 6940, 740], [11100, 6200, 900], [11600, 5500, 1040], [12300, 5200, 1170],
-    [12800, 4600, 1300], [12600, 3900, 1430], [11900, 3600, 1560], [11700, 4100, 1650], [12150, 3750, 1700]], 'derived', 'foot'),
+  ...ROUTE_PLANS.map(plan => route(plan.id, ROUTE_LINES[plan.id] ?? plan.waypoints, plan.source, plan.kind)),
 ];
 
-/** These require authored bridge/landing geometry and collision before continuous travel is claimed. */
-export const NATIONAL_ROUTE_GAPS: readonly RouteGap[] = [
-  { id: 'sindr-west-east', from: [6800, 9000], to: [7100, 9000],
-    reason: 'Existing Sindr circulation owns the central river crossing; national ribbons do not replace it.' },
-];
+export interface RouteBridge { id: string; from: Point3; to: Point3; clear: number; river: true }
+/** One deck for every place a cart road crosses the river, from bank to bank at the road's own heights. */
+export const ROUTE_BRIDGES: readonly RouteBridge[] = NATIONAL_ROUTES.flatMap(road => {
+  if (road.id === 'mine' || road.kind !== 'cart') return [];
+  const bridges: RouteBridge[] = [];
+  let from: RoadPoint | null = null;
+  for (let i = 0; i < road.points.length; i++) {
+    const p = road.points[i]!, over = riverAt(p.x, p.z).distance < DECK_REACH;
+    if (over && !from) from = road.points[Math.max(0, i - 1)]!;
+    if (!over && from) {
+      bridges.push({ id: `bridge:${road.id}:${bridges.length}`, from: { x: from.x, y: from.y, z: from.z }, to: { x: p.x, y: p.y, z: p.z }, clear: road.width, river: true });
+      from = null;
+    }
+  }
+  return bridges;
+});
 
 export function routePointAt(route: NationalRoute, station: number): RoadPoint {
   const s = Math.max(0, Math.min(route.length, station));

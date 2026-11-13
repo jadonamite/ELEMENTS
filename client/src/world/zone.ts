@@ -232,6 +232,8 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   scene.add(national.group);
   const residentCells = [stream.near.cells, stream.mid.cells];
   const roadMaterial = terrainAir(lib.get('packed_dirt_road'), fog);
+  // Road ribbons carry no vertex colours; reading the missing attribute draws them black.
+  roadMaterial.vertexColors = false;
   scene.add(mineRoadMesh(roadMaterial));
   const nationalRoadGroup = new Group(); nationalRoadGroup.name = 'ignis-national-roads'; scene.add(nationalRoadGroup);
   const routeChunks = nationalRoadChunks();

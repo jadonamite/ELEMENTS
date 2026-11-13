@@ -52,3 +52,20 @@ test('global cell edges have identical height samples and biome masks are determ
   assert.deepEqual(groundAt(8500, 8200), groundAt(8500, 8200));
   assert.ok(Math.abs(groundAt(8500, 8200).mask.reduce((a, b) => a + b, 0) - 1) < 1e-10);
 });
+
+test('every national road holds its grade, sits on the ground, and bridges the river above the water', async () => {
+  const { NATIONAL_ROUTES, ROUTE_BRIDGES } = await import('../src/world/ignis/routes.js');
+  for (const road of NATIONAL_ROUTES) {
+    if (road.id === 'mine') continue;
+    for (let i = 1; i < road.points.length; i++) {
+      const a = road.points[i - 1]!, b = road.points[i]!;
+      assert.ok(Math.abs(b.y - a.y) / (b.s - a.s) <= road.maxGrade, `${road.id} grade at ${b.s.toFixed(0)}`);
+      if (waterHeight(b.x, b.z) === null) assert.ok(Math.abs(b.y - groundHeight(b.x, b.z)) < 1, `${road.id} off the ground at ${b.s.toFixed(0)}`);
+    }
+  }
+  assert.ok(ROUTE_BRIDGES.length >= 2);
+  for (const bridge of ROUTE_BRIDGES) {
+    const water = riverAt((bridge.from.x + bridge.to.x) / 2, (bridge.from.z + bridge.to.z) / 2).water;
+    assert.ok(Math.min(bridge.from.y, bridge.to.y) > water + 1.5, bridge.id);
+  }
+});

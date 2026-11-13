@@ -1,6 +1,8 @@
 import { LAKE, landDistance, landNoise, oceanBoundary, riverAt, smooth, TERRACE_STEP, terraceAt, VOLCANO } from './base-ground.js';
 export { landNoise } from './base-ground.js';
 import { SETTLEMENT_PRECINCTS, SETTLEMENTS } from './settlements.js';
+import { mineAt } from './mine-road.js';
+import { nationalRoadAt } from './routes.js';
 
 /**
  * What the land is made of at a spot. One answer for the painter, the plants and the air above it,
@@ -125,6 +127,12 @@ export function landColour(weights: Float32Array, glow: number, x: number, z: nu
   if (sulphur > 0) {
     const pool = sulphur * smooth(0.62, 0.72, landNoise(x, z, 60));
     r += (64 - r) * pool; g += (168 - g) * pool; b += (160 - b) * pool;
+  }
+  // Roads are worn pale, lighter than the land they cross, so they read from far off.
+  const cart = nationalRoadAt(x, z), track = Math.min(cart ? cart.distance : Infinity, mineAt(x, z).distance);
+  if (track < 14) {
+    const worn = 1 - smooth(4, 14, track);
+    r += (176 - r) * worn; g += (158 - g) * worn; b += (128 - b) * worn;
   }
   // Broad patches so no land type is one flat colour.
   const patch = 0.86 + landNoise(x + 401, z + 77, 180) * 0.28;
