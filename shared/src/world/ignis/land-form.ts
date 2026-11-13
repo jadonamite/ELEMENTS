@@ -185,6 +185,9 @@ export function shapedLand(x: number, z: number): BaseGround & { dry: number } {
   h = mix(1100, h, smooth(60, 250, Math.hypot(x - 8000, z - 2000)));
   const valley = mineValleyAt(x, z);
   if (valley.distance < VALLEY_REACH) h = mix(valley.height, h, smooth(80, VALLEY_REACH, valley.distance));
+  // The mine yard is surveyed: its floor stays exact where the road's valley reaches it.
+  const yard = PADS[1], fromYard = Math.hypot(x - yard.x, z - yard.z);
+  if (fromYard < yard.radius + 135) h = mix(yard.height, h, smooth(yard.radius, yard.radius + 135, fromYard));
   const lakeR = Math.hypot((x - LAKE.x) / LAKE.rx, (z - LAKE.z) / LAKE.rz);
   if (lakeR < 2.2) h = mix(818.5, h, smooth(1, 2.2, lakeR));
   const river = riverAt(x, z);

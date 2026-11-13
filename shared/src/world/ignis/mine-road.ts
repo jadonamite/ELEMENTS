@@ -3,7 +3,8 @@ export interface RoadPoint { x: number; y: number; z: number; s: number }
 const alignment: readonly (readonly [number, number])[] = [
   [7100, 9000], [7180, 9000], [7500, 8670], [7900, 8460],
   [8200, 8000], [8500, 8000], [8670, 7550], [8860, 7710], [9110, 7240], [9400, 7000],
-  [9700, 6800], [10150, 6680], [10600, 6780], [10780, 7100], [10680, 7350], [10500, 7200], [10500, 7000],
+  // The last loop swings wide of the mine yard, so the yard's bank never stands over the road, and comes in from the south.
+  [9700, 6800], [10150, 6680], [10800, 6480], [11000, 7050], [10800, 7440], [10500, 7260], [10500, 7000],
 ];
 const points: RoadPoint[] = [];
 function append(x: number, z: number): void {
