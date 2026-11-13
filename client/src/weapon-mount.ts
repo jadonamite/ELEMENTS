@@ -1,4 +1,5 @@
 import { Group, Matrix4, Object3D, Quaternion, Vector3 } from 'three';
+import { crossings, type TorsoFit } from './torso-fit.js';
 
 /** A rig's palm frame, measured from its own metacarpals in the rest pose. */
 export function palmSocket(model: Object3D): Object3D {
@@ -65,22 +66,60 @@ export function hitSegment(holder: Object3D, base: Vector3, tip: Vector3): void 
   holder.worldToLocal(end.getWorldPosition(tip));
 }
 
-/** Back and belt frames are rig properties shared by every weapon. */
-export function carrySockets(model: Object3D): { back: Object3D; hip: Object3D } {
-  model.updateMatrixWorld(true);
-  const create = (name: string, boneName: string, position: Vector3, direction: Vector3): Object3D => {
-    const bone = model.getObjectByName(boneName);
-    if (!bone) throw new Error(`Carry rig has no ${boneName} bone.`);
+/** Gap from the cloth to the scabbard's centre line: strap, half the sheath's thickness and some air. */
+const BACK_CLEARANCE = 0.045;
+/** Where the sheath runs on the back: down and toward the left hip, as the hilt clears the right shoulder. */
+const BACK_SLOPE = { across: 0.40, down: 0.9165 };
+const SHEATH_REACH = 0.8;
+
+/**
+ * Back and belt frames, derived from the worn body: the hilt rises beside the right shoulder and the sheath
+ * lies along the back surface it measures, so every body, outfit and build gets its own fit.
+ */
+export function carrySockets(model: Object3D, fit: TorsoFit): { back: Object3D; hip: Object3D } {
+  const { up, left, forward, centre, width, main } = fit;
+  const create = (name: string, boneName: string, origin: Vector3, direction: Vector3): Object3D => {
+    const index = fit.boneIndex.get(boneName);
+    const bone = index === undefined ? undefined : main.skeleton.bones[index];
+    if (index === undefined || !bone) throw new Error(`Carry rig has no ${boneName} bone.`);
+    const heading = direction.clone().normalize();
+    const x = left.clone().addScaledVector(heading, -left.dot(heading)).normalize();
+    const frame = new Matrix4().makeBasis(x, heading, new Vector3().crossVectors(x, heading)).setPosition(origin);
     const socket = new Object3D(); socket.name = name;
-    const modelFrame = new Matrix4().compose(position,
-      new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), direction.normalize()), new Vector3(1, 1, 1));
-    const local = new Matrix4().copy(bone.matrixWorld).invert().multiply(model.matrixWorld).multiply(modelFrame);
-    local.decompose(socket.position, socket.quaternion, socket.scale);
+    // Bone space = bone inverse x bind matrix x the frame in the body mesh's own space.
+    main.skeleton.boneInverses[index]!.clone().multiply(main.bindMatrix).multiply(frame)
+      .decompose(socket.position, socket.quaternion, socket.scale);
     bone.add(socket);
     return socket;
   };
-  // The grip clears the right shoulder; the shell ends above the left belt line.
-  const back = create('WeaponBackSocket', 'spine_03', new Vector3(-0.20, 1.57, -0.23), new Vector3(0.40, -0.9165, 0));
-  const hip = create('WeaponHipSocket', 'pelvis', new Vector3(0.23, 0.98, -0.04), new Vector3(0.10, -0.99, -0.08));
+
+  const hiltLift = fit.bone('neck_01').sub(centre).dot(up) + 0.05;
+  const hiltSide = -(width * 0.5 + 0.015);
+  const along = (s: number, depth: number): Vector3 => centre.clone()
+    .addScaledVector(left, hiltSide + BACK_SLOPE.across * s).addScaledVector(up, hiltLift - BACK_SLOPE.down * s).addScaledVector(forward, depth);
+  // Measure the back surface along the sheath's path, looking in from behind.
+  const samples: { s: number; surface: number }[] = [];
+  for (let s = 0; s <= SHEATH_REACH + 1e-6; s += 0.1) {
+    const hits = crossings(fit.soup, along(s, -0.6), forward, 1.2);
+    if (hits.length) samples.push({ s, surface: hits[0]! - 0.6 });
+  }
+  if (samples.length < 3) throw new Error('Carry rig: could not find the back surface to rest the sheath on.');
+  // A straight line behind every sample, as close to the back as the clearance allows.
+  const mean = (f: (v: { s: number; surface: number }) => number): number => samples.reduce((t, v) => t + f(v), 0) / samples.length;
+  const ms = mean(v => v.s), mz = mean(v => v.surface);
+  const slope = Math.max(-0.4, Math.min(0.4, samples.reduce((t, v) => t + (v.s - ms) * (v.surface - mz), 0)
+    / (samples.reduce((t, v) => t + (v.s - ms) ** 2, 0) || 1)));
+  const depth = mz - slope * ms - BACK_CLEARANCE;
+  const lowest = Math.max(...samples.map(v => depth + slope * v.s - (v.surface - BACK_CLEARANCE)));
+  const hiltDepth = depth - Math.max(0, lowest);
+
+  const direction = left.clone().multiplyScalar(BACK_SLOPE.across).addScaledVector(up, -BACK_SLOPE.down).addScaledVector(forward, slope);
+  const back = create('WeaponBackSocket', 'spine_03', along(0, hiltDepth), direction);
+
+  // The belt frame sits at the left hip, scaled from the reference build's shoulder width.
+  const scale = width / 0.36;
+  const hipOrigin = fit.bone('pelvis').addScaledVector(left, 0.231 * scale).addScaledVector(up, 0.029);
+  const hip = create('WeaponHipSocket', 'pelvis', hipOrigin,
+    left.clone().multiplyScalar(0.10).addScaledVector(up, -0.99).addScaledVector(forward, -0.08));
   return { back, hip };
 }

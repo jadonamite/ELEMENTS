@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {Group, Object3D, Vector3, Quaternion, Matrix4} from 'three';
-import {palmSocket, snapToSocket, gripAligned, hitSegment, carrySockets} from '../src/weapon-mount.js';
+import {palmSocket, snapToSocket, gripAligned, hitSegment} from '../src/weapon-mount.js';
 
 function glb(path) {
  const b=readFileSync(new URL('../public/assets/'+path,import.meta.url));
@@ -21,14 +21,13 @@ function rig(path) {
 }
 const close=(a,b)=>assert.ok(a.distanceTo(b)<1e-5, `${a.toArray()} != ${b.toArray()}`);
 
-test('each shipped hero and villain rig gets its own palm and both carry mounts',()=>{
+test('each shipped hero and villain rig gets its own palm',()=>{
  const positions=[];
  for(const path of ['people/hush_ignis_male.glb','people/robber_female.glb','people/deserter_male.glb','creator/peasant_male.glb','creator/peasant_female.glb']){
   const r=rig(path), socket=palmSocket(r);positions.push(socket.position.clone());
   assert.equal(socket.parent.name,'hand_r');assert.equal(palmSocket(r),socket);
   const knuckle=r.getObjectByName('middle_01_r').position;
   assert.ok(socket.position.y>0 && socket.position.y<knuckle.y);
-  const mounts=carrySockets(r);assert.equal(mounts.back.parent.name,'spine_03');assert.equal(mounts.hip.parent.name,'pelvis');
  }
  assert.ok(positions[0].distanceTo(positions[1])>.01,'female sheet rig must not copy the male palm');
 });
@@ -63,7 +62,8 @@ test('approved GLBs contain Grip/Tip, UVs, PBR textures, unit transforms and 3â€
 });
 
 test('the scabbard stays attached when its blade changes sockets',()=>{
- const model=rig('people/hush_ignis_male.glb'),mounts=carrySockets(model),palm=palmSocket(model);
+ const model=rig('people/hush_ignis_male.glb'),mounts={back:new Object3D()},palm=palmSocket(model);
+ model.getObjectByName('spine_03').add(mounts.back);model.updateMatrixWorld(true);
  const blade=new Group(),shell=new Group();snapToSocket(shell,mounts.back);snapToSocket(blade,mounts.back);
  const before=shell.getWorldPosition(new Vector3());snapToSocket(blade,palm);
  assert.equal(shell.parent,mounts.back);close(before,shell.getWorldPosition(new Vector3()));

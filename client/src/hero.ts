@@ -15,6 +15,8 @@ import {
   Object3D,
   Vector3,
   type Bone,
+  type Material,
+  type SkinnedMesh,
 } from 'three';
 import balance from '../../shared/balance.json';
 import { BodyKit, parseOutfit, type OutfitId } from './body.js';
@@ -24,6 +26,8 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { AnimationPlayer } from './anim/index.js';
 import { StrikeLimbs, type StrikeLimb } from './anim/strike-limb.js';
 import { STAFF_WEAPON, SWORD_WEAPON, heroWeaponFor, type WeaponSlotData } from './weapon.js';
+import { fitBaldric, removeBaldric } from './baldric.js';
+import { fitTorso } from './torso-fit.js';
 import { carrySockets, gripAligned, hitSegment, palmSocket, snapToSocket } from './weapon-mount.js';
 import { fetchWornArmour } from './economy/api.js';
 import { getStoredAuthToken, hasGameServer } from './auth/server-api.js';
@@ -175,7 +179,9 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   const bladeTip = new Vector3();
   hitSegment(holder, bladeBase, bladeTip);
   let palm = palmSocket(heroModel);
-  let mounts = carrySockets(heroModel);
+  let torso = fitTorso(heroModel);
+  if (!torso) throw new Error('Hero rig has no torso to carry a weapon on.');
+  let mounts = carrySockets(heroModel, torso);
   let activeCarry = mounts.back;
   let scabbard: Object3D | null = null;
 
@@ -190,6 +196,16 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     }
   };
   await loadCarry(weaponSlot);
+
+  // The strap is cut to the worn body and skinned to its bones, so it is rebuilt with the body and the sheath.
+  let baldric: SkinnedMesh | null = null;
+  const refitBaldric = (): void => {
+    removeBaldric(baldric);
+    baldric = null;
+    let leather: Material | undefined;
+    scabbard?.traverse(node => { const mesh = node as Mesh; if (mesh.isMesh && !leather) leather = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material; });
+    if (leather && torso) baldric = fitBaldric(torso, leather.clone());
+  };
 
   let isArmedState = false;
   const arm = (armed: boolean): void => {
@@ -243,6 +259,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     hitSegment(holder, bladeBase, bladeTip);
     setElemental(elemental, elementalNation);
     arm(isArmedState);
+    refitBaldric();
   };
 
   const getLimbWorldPosition = (limb: Limb, out: Vector3): Vector3 => {
@@ -310,12 +327,15 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     balance.controller.modelForwardYaw);
   anim.play('idle_relaxed');
   arm(false);
+  refitBaldric();
 
   const switchOutfit = async (newOutfitId: OutfitId): Promise<void> => {
     if (newOutfitId === currentOutfit) return;
     currentOutfit = newOutfitId;
 
     if (holder.parent) holder.parent.remove(holder);
+    removeBaldric(baldric);
+    baldric = null;
     mounts.back.removeFromParent();
     mounts.hip.removeFromParent();
 
@@ -342,7 +362,9 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     const nextKneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
     if (nextKneeL) kneeL = nextKneeL;
     palm = palmSocket(heroModel);
-    mounts = carrySockets(heroModel);
+    torso = fitTorso(heroModel);
+    if (!torso) throw new Error('Hero rig has no torso to carry a weapon on.');
+    mounts = carrySockets(heroModel, torso);
     activeCarry = weaponSlot.carry?.mount === 'hip' ? mounts.hip : mounts.back;
     if (scabbard) snapToSocket(scabbard, activeCarry);
     arm(isArmedState);
@@ -350,6 +372,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     const newFittedClips = await kit.fitClips(config.sex, rawAnimationClips, 'hero', newOutfitId, config.person);
     anim.rebind(heroModel, newFittedClips);
     strikeLimbs = new StrikeLimbs(heroModel, newFittedClips, balance.combat.activeWindow as [number, number], balance.controller.modelForwardYaw);
+    refitBaldric();
   };
 
   return {

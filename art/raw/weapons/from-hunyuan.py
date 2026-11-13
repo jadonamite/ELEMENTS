@@ -5,7 +5,7 @@
 # Per model: stand it along +Y (Blender +Z) with the grip at the origin, scale it to its real
 # length, straighten the blade, decimate, unwrap, bake colour / normal / roughness / metal from the
 # raw mesh at 1K, and add the Grip and Tip empties the game reads.
-import bpy, bmesh, sys, os, math, json
+import bpy, sys, os, math, json
 import numpy as np
 from mathutils import Vector
 
@@ -18,13 +18,14 @@ ONLY = argv[argv.index('--only') + 1:] if '--only' in argv else None
 WORK = os.path.join(OUT, '_work')
 os.makedirs(WORK, exist_ok=True)
 
-# kind: blade (sword or knife), club, scabbard. grip_end: which end of the raw model is the hilt.
+# kind: blade (sword or knife), club, scabbard. warm: brightness gain for leather, wood and rawhide pixels
+# (the raw Hunyuan colour is darker than the drawing there); iron is left as baked.
 SPECS = {
-    'worn-iron-sword': dict(raw='worn_iron_sword', length=0.95, tris=5500, kind='blade'),
-    'deserter-sword':  dict(raw='deserter_sword',  length=1.00, tris=5500, kind='blade'),
-    'long-knife':      dict(raw='long_knife',      length=0.52, tris=4500, kind='blade'),
-    'bound-club':      dict(raw='bound_club',      length=0.62, tris=4500, kind='club'),
-    'back-scabbard':   dict(raw='back_scabbard',   length=0.78, tris=4500, kind='scabbard'),
+    'worn-iron-sword': dict(raw='worn_iron_sword', length=0.95, tris=5500, kind='blade', warm=1.0),
+    'deserter-sword':  dict(raw='deserter_sword',  length=1.00, tris=5500, kind='blade', warm=1.0),
+    'long-knife':      dict(raw='long_knife',      length=0.52, tris=4500, kind='blade', warm=1.5),
+    'bound-club':      dict(raw='bound_club',      length=0.62, tris=4500, kind='club', warm=1.3),
+    'back-scabbard':   dict(raw='back_scabbard',   length=0.78, tris=4500, kind='scabbard', warm=1.47),
 }
 ORDER = ['worn-iron-sword', 'deserter-sword', 'long-knife', 'bound-club', 'back-scabbard']
 TEX = 1024
@@ -288,6 +289,20 @@ def save_png(img, path):
     img.save()
 
 
+def grade(img, gain):
+    """Lift the warm (saturated) pixels by `gain` (the pixel values are already display-encoded); grey iron is untouched."""
+    if abs(gain - 1.0) < 1e-6:
+        return
+    a = pixels(img)
+    rgb = a[:, :, :3]
+    hi, lo = rgb.max(axis=2), rgb.min(axis=2)
+    sat = (hi - lo) / np.maximum(hi, 1e-4)
+    w = np.clip((sat - 0.10) / 0.18, 0.0, 1.0)[:, :, None]
+    a[:, :, :3] = np.clip(rgb * (1.0 + (gain - 1.0) * w), 0.0, 1.0)
+    img.pixels.foreach_set(a.ravel())
+    img.update()
+
+
 def bake_all(high, low, name):
     sc = bpy.context.scene
     sc.render.engine = 'CYCLES'
@@ -351,7 +366,6 @@ def finish_material(low, name, col, nor, rou, met, extra=None):
     return paths
 
 
-STRAP_THICKNESS = 0.004
 
 
 def leather_patch(low, tip_z):
@@ -394,45 +408,9 @@ def fill_strip(imgs, box, strip):
         img.update()
 
 
-def add_baldric(low, imgs, tip_z, strip):
-    """A closed band round the chest in the scabbard's own frame, textured from its leather."""
-    fit = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'strap-fit.json')))
-    ring = fit['ring']
-    n = len(ring)
+def reserve_strap(low, imgs, tip_z, strip):
+    """Fill the reserved texture rows with the scabbard's own leather; the game cuts the strap to the wearer."""
     fill_strip(imgs, leather_patch(low, tip_z), strip)
-    # glTF (x, y, z) -> Blender (x, -z, y)
-    conv = lambda v: (v[0], -v[2], v[1])
-    bm = bmesh.new()
-    uvl = bm.loops.layers.uv.new(low.data.uv_layers.active.name)
-    top = [bm.verts.new(conv(r[0])) for r in ring]
-    bot = [bm.verts.new(conv(r[1])) for r in ring]
-    centre = np.mean([conv(r[0]) for r in ring], axis=0)
-    v0, v1 = 0.012, strip - 0.012
-    for j in range(n):
-        k = (j + 1) % n
-        f = bm.faces.new((top[j], top[k], bot[k], bot[j]))
-        u0, u1 = 0.02 + 0.96 * j / n, 0.02 + 0.96 * (j + 1) / n
-        for loop, uv in zip(f.loops, ((u0, v1), (u1, v1), (u1, v0), (u0, v0))):
-            loop[uvl].uv = uv
-        out = np.array(f.calc_center_median()) - centre
-        if np.dot(np.array(f.normal), out) < 0:
-            f.normal_flip()
-    mesh = bpy.data.meshes.new('baldric')
-    bm.to_mesh(mesh)
-    bm.free()
-    obj = bpy.data.objects.new('baldric', mesh)
-    bpy.context.scene.collection.objects.link(obj)
-    sol = obj.modifiers.new('thick', 'SOLIDIFY')
-    sol.thickness = STRAP_THICKNESS
-    sol.offset = -1.0
-    bpy.ops.object.select_all(action='DESELECT')
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
-    bpy.ops.object.modifier_apply(modifier=sol.name)
-    bpy.ops.object.shade_smooth_by_angle(angle=math.radians(60))
-    low.select_set(True)
-    bpy.context.view_layer.objects.active = low
-    bpy.ops.object.join()
 
 
 def export(name, objs):
@@ -486,8 +464,9 @@ def build(name):
     strip = 0.2 if spec['kind'] == 'scabbard' else 0.0
     unwrap(low, v_floor=strip)
     col, nor, rou, met = bake_all(high, low, name)
+    grade(col, spec['warm'])
     if spec['kind'] == 'scabbard':
-        add_baldric(low, (col, nor, rou, met), tip_z, strip)
+        reserve_strap(low, (col, nor, rou, met), tip_z, strip)
     finish_material(low, name, col, nor, rou, met)
     grip = smooth_marker('Grip', (0, 0, 0))
     tip = smooth_marker('Tip', (0, 0, float(tip_z)))
