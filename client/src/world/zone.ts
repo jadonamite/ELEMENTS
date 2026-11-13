@@ -70,6 +70,7 @@ import { addTownPhysics } from './town-physics.js';
 import { installHaze } from './haze.js';
 import { warm } from './warmup.js';
 import { buildGorge } from './gorge.js';
+import { buildWildLands } from './wild-lands.js';
 import { buildBarrens } from './barrens.js';
 import { buildFort } from './fort.js';
 import { buildRoofTestRow } from './roof-test.js';
@@ -303,7 +304,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   // The town.
   const builder = new WorldBuilder({ low });
   buildSindr(builder);
-  if (legacyEast) { buildGorge(builder); buildBarrens(builder); buildFort(builder); }
+  if (legacyEast) { buildGorge(builder); buildBarrens(builder); buildFort(builder); } else buildWildLands(builder);
   if (new URLSearchParams(window.location.search).has('roofTest')) {
     buildRoofTestRow(builder);
   }

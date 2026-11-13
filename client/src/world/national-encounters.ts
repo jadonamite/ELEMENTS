@@ -3,6 +3,7 @@ import { Vector3, type WebGLRenderer } from 'three';
 import { LEGACY_SINDR_ORIGIN as ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
 import { groundHeight, waterHeight } from '../../../shared/src/world/ignis/ground.js';
 import { NATIONAL_ROUTES, routePointAt } from '../../../shared/src/world/ignis/routes.js';
+import { wildPlace } from '../../../shared/src/world/ignis/wild.js';
 import { CombatSpace } from '../attacks/space.js';
 import type { VillainKind } from '../enemy.js';
 import type { Fight } from '../fight.js';
@@ -33,7 +34,10 @@ export const NATIONAL_ENCOUNTERS: readonly RoadEncounter[] = NATIONAL_ROUTES.fla
       heading: Math.atan2(p.x - before.x, p.z - before.z), kind: 'hounds' });
   }
   return spots;
-});
+}).concat((() => {
+  const hollow = wildPlace('hollow');
+  return [{ id: 'hollow:camp', x: hollow.x + 6, z: hollow.z + 4, heading: 0, kind: 'robber' as const }];
+})());
 
 export class NationalEncounterManager {
   private readonly visited = new Map<string, number>();
