@@ -113,9 +113,9 @@ test('No merchant tick calls NEAR AI: a whole day of phases and ticks spends not
     const phases = lines.filter((l) => / plans: /.test(l)).map((l) => l.split(' ')[1]);
     assert.deepEqual(phases, ['night', 'morning', 'midday', 'evening', 'night']);
     assert.ok(lines.some((l) => l.startsWith('evening chronicle')), 'the chronicle is written in the evening');
-    // Plans per phase: one keepers call and one townsfolk call for the town, plus the chronicle.
+    // Plans per phase: one keepers call and three townsfolk calls (a dozen people each), plus the chronicle.
     const perIntent = calls.reduce<Record<string, number>>((a, c) => ((a[c.intent] = (a[c.intent] ?? 0) + 1), a), {});
-    assert.deepEqual(perIntent, { plan: 10, chronicle: 1 });
+    assert.deepEqual(perIntent, { plan: 20, chronicle: 1 });
 
     t = D0 + DAY + 60_000; // past midnight
     await loop.step();
@@ -126,6 +126,12 @@ test('No merchant tick calls NEAR AI: a whole day of phases and ticks spends not
     loop.stop();
     runtime.detach();
   }
+});
+
+test('Model JSON is read past a thinking block and code fences', async () => {
+  const { parseModelJson } = await import('../src/economy/agents/plans/agentPlan.js');
+  assert.deepEqual(parseModelJson('<think>maybe {a} or {b}</think>\n```json\n{"plans":{}}\n```'), { plans: {} });
+  assert.equal(parseModelJson('no json here'), null);
 });
 
 test('Plans: banished names in a model plan never reach a keeper; numbers are clamped to range', async () => {

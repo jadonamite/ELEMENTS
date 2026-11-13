@@ -83,7 +83,7 @@ export function createDeterministicPlan(
 /** Pulls the JSON object out of a model reply, past code fences and stray text around it. */
 export function parseModelJson<T>(content: string | undefined | null): T | null {
   if (!content) return null;
-  let text = content.trim();
+  let text = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   if (text.startsWith('```')) text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');

@@ -24,12 +24,16 @@ export function economyDayNumber(now: number, db: DatabaseSync = getDatabase()):
   return latest.dayNumber + Math.max(0, today - latestDay);
 }
 
-/** The day's trade: coin moved through the ledger since the day began. */
+/** Ledger reasons that are trade, as opposed to the world's setup (genesis, opening purses, grants). */
+const TRADE_REASONS = ['merchant_buy', 'merchant_sell', 'merchant_restock', 'merchant_tribute', 'player_trade', 'shop_buy', 'shop_sell'];
+
+/** The day's trade: coin that changed hands in trade since the day began. */
 function dayActivity(now: number, db: DatabaseSync): { totalTransactions: number; totalVolumeChroma: number } {
   const since = Math.floor(now / DAY_MS) * DAY_MS;
   const row = db
-    .prepare('SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS v FROM ledger_entries WHERE timestamp >= ? AND timestamp <= ?')
-    .get(since, now) as { n: number; v: number } | undefined;
+    .prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS v FROM ledger_entries
+       WHERE timestamp >= ? AND timestamp <= ? AND reason IN (${TRADE_REASONS.map(() => '?').join(',')})`)
+    .get(since, now, ...TRADE_REASONS) as { n: number; v: number } | undefined;
   return { totalTransactions: Number(row?.n ?? 0), totalVolumeChroma: Number(row?.v ?? 0) };
 }
 

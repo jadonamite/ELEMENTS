@@ -48,11 +48,34 @@ export function createDeterministicTownsfolkPlan(mind: Pick<Mind, 'role'>, phase
   };
 }
 
+/** People planned in one call: a long batch is slow and its reply breaks more often. */
+const TOWNSFOLK_PER_CALL = 12;
+
 /**
- * One call plans the light minds of a place for a phase: every named townsperson and one mind per crowd trade.
- * Anyone the reply leaves out keeps the written routine of their trade.
+ * Plans the light minds of a place for a phase: every named townsperson and one mind per crowd trade, a dozen
+ * to a call. Anyone a reply leaves out keeps the written routine of their trade.
  */
 export async function generateTownsfolkBatchPlans(params: {
+  placeId: string;
+  phase: PlanPhase;
+  router: ModelRouter;
+  db?: DatabaseSync | undefined;
+  now?: number;
+  news?: string[];
+}): Promise<{ plans: Record<string, AgentPlan>; source: string }> {
+  const minds = [...townsfolkIn(params.placeId), ...crowdMindsIn(params.placeId)];
+  const plans: Record<string, AgentPlan> = {};
+  const sources = new Set<string>();
+  for (let i = 0; i < minds.length; i += TOWNSFOLK_PER_CALL) {
+    const part = await planTownsfolk({ ...params, minds: minds.slice(i, i + TOWNSFOLK_PER_CALL) });
+    Object.assign(plans, part.plans);
+    sources.add(part.source);
+  }
+  return { plans, source: minds.length === 0 ? 'none' : [...sources].join(', ') };
+}
+
+async function planTownsfolk(params: {
+  minds: Mind[];
   placeId: string;
   phase: PlanPhase;
   router: ModelRouter;
@@ -63,8 +86,7 @@ export async function generateTownsfolkBatchPlans(params: {
 }): Promise<{ plans: Record<string, AgentPlan>; source: string }> {
   const now = params.now ?? Date.now();
   const db = params.db ?? getDatabase();
-  const { placeId, phase, router } = params;
-  const minds = [...townsfolkIn(placeId), ...crowdMindsIn(placeId)];
+  const { placeId, phase, router, minds } = params;
   const plans: Record<string, AgentPlan> = {};
   if (minds.length === 0) return { plans, source: 'none' };
 
