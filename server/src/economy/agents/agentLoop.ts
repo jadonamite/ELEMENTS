@@ -3,12 +3,17 @@ import {
   type AgentAction,
   type AgentObservation,
   type AgentTradeRecord,
+  type CustomerMemorySummary,
+  type DemandFloodingSummary,
   type MerchantStatus,
+  type SolvencyUrgency,
+  type TributeStatus,
   AGENT_CONFIG,
   GAME_HOUR_MS,
   MERCHANT_CONFIG,
   SINDR_MERCHANTS,
   TREASURY_ACCOUNT_ID,
+  formatActionSummary,
   updateMerchantSolvency,
   validateActions,
   shardItemId,
@@ -26,6 +31,7 @@ import {
   getMerchantDemandWindow,
   saveMerchant,
 } from '../merchantService.js';
+import { getNpcMemorySummary } from '../npcMemoryService.js';
 import type { AgentDecider } from './types.js';
 import { RuleDecider } from './ruleDecider.js';
 
@@ -171,6 +177,40 @@ export async function tickMerchantAgent(
   };
   const config = SINDR_MERCHANTS.find((s) => s.id === merchantId);
 
+  const brokeThreshold = MERCHANT_CONFIG.brokeThreshold;
+  const distanceToBroke = merchant.balance - brokeThreshold;
+  const solvencyUrgency: SolvencyUrgency = {
+    distanceToBroke,
+    isWarning: merchant.balance < 1500,
+    isBroke: merchant.balance < brokeThreshold,
+    daysBroke: merchant.daysBroke ?? 0,
+  };
+
+  const timeUntilTributeMs = Math.max(0, tributeSchedule.nextTributeTime - now);
+  const tributeStatus: TributeStatus = {
+    timeUntilTributeMs,
+    isDueSoon: timeUntilTributeMs <= 2 * GAME_HOUR_MS,
+  };
+
+  const customerMemory = getNpcMemorySummary(merchantId, db);
+
+  const floodedItems: string[] = [];
+  const scarceItems: string[] = [];
+  for (const [itemKey, entries] of Object.entries(demandWindows)) {
+    if (!Array.isArray(entries)) continue;
+    let net = 0;
+    for (const e of entries) {
+      if (e.action === 'sell') net += e.quantity;
+      else if (e.action === 'buy') net -= e.quantity;
+    }
+    if (net >= 10) floodedItems.push(itemKey);
+    else if (net <= -10) scarceItems.push(itemKey);
+  }
+  const floodingSummary: DemandFloodingSummary = {
+    floodedItems,
+    scarceItems,
+  };
+
   const obs: AgentObservation = {
     merchantId: merchant.id,
     purse: merchant.balance,
@@ -184,10 +224,18 @@ export async function tickMerchantAgent(
     daysBroke: merchant.daysBroke,
     personality: config?.personality ?? 'A merchant in Sindr market square.',
     now,
+    customerMemory,
+    floodingSummary,
+    solvencyUrgency,
+    tributeStatus,
   };
 
   const decision = await decider.decide(obs);
   const { validActions, droppedActions } = validateActions(obs, decision.actions);
+
+  console.log(
+    `[MerchantAgent:${merchant.id}] Decision: "${decision.reasoning}" (valid: ${validActions.length}, dropped: ${droppedActions.length})`,
+  );
 
   for (const act of validActions) {
     if (act.type === 'restock') {
@@ -313,6 +361,7 @@ export function getMerchantMind(
 ): {
   merchantId: string;
   latestThought: string;
+  lastDecision: string;
   actions: Array<{ action: unknown; reasoning?: string; timestamp: number }>;
   purse: number;
   open: boolean;
@@ -327,10 +376,15 @@ export function getMerchantMind(
     history?.latestThought ??
     'Shelves are well apportioned and trade is steady across the square.';
   const actions = history?.actions ?? [];
+  const latestTickActions = history?.timestamp !== undefined
+    ? actions.filter((a) => a.timestamp === history.timestamp).map((a) => a.action)
+    : actions.slice(0, 1).map((a) => a.action);
+  const lastDecision = formatActionSummary(latestTickActions, merchant.nation);
 
   return {
     merchantId: merchant.id,
     latestThought,
+    lastDecision,
     actions,
     purse: merchant.balance,
     open: merchant.status === 'open',

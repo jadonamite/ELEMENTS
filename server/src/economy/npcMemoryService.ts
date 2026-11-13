@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { type NpcMemory, adjustNpcMemory } from '@elements/shared';
+import { type CustomerMemorySummary, type NpcMemory, adjustNpcMemory } from '@elements/shared';
 import { getDatabase } from '../db.js';
 
 interface RawNpcMemoryRow {
@@ -54,4 +54,33 @@ export function recordNpcInteraction(
   ).run(adjusted.npcId, adjusted.accountId, adjusted.score, adjusted.updatedAt);
 
   return adjusted;
+}
+
+export function getNpcMemorySummary(
+  npcId: string,
+  db: DatabaseSync = getDatabase(),
+): CustomerMemorySummary {
+  const row = (db
+    .prepare(
+      `SELECT
+         COUNT(*) as total,
+         SUM(CASE WHEN score >= 30 THEN 1 ELSE 0 END) as friendly,
+         SUM(CASE WHEN score <= -30 THEN 1 ELSE 0 END) as hostile,
+         SUM(CASE WHEN score > -30 AND score < 30 THEN 1 ELSE 0 END) as neutral
+       FROM npc_memories
+       WHERE npc_id = ?`,
+    )
+    .get(npcId) as unknown) as {
+    total?: number;
+    friendly?: number;
+    hostile?: number;
+    neutral?: number;
+  } | undefined;
+
+  return {
+    friendlyPatrons: Number(row?.friendly ?? 0),
+    hostileCustomers: Number(row?.hostile ?? 0),
+    neutralCustomers: Number(row?.neutral ?? 0),
+    recentInteractionsCount: Number(row?.total ?? 0),
+  };
 }
