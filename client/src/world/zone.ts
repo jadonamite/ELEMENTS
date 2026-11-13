@@ -52,6 +52,7 @@ import { createEmbers, createFires, createForgeMaterial, createLavaMaterial, cre
 import { createSky, surfaceAt, slopeBlend } from './landscape.js';
 import { createNationalForest } from './national-forest.js';
 import { createGroundCover } from './ground-cover.js';
+import { createLandAir } from './land-air.js';
 import { TerrainStream } from './terrain-stream.js';
 import { SettlementStream } from './settlements.js';
 import { NationalQuarryStream } from './national-quarry.js';
@@ -260,6 +261,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   scene.add(nationalForest.group);
   nationalForest.update(stream.near.cells, stream.mid.cells, SPAWN);
   const cover = createGroundCover({ ground, origin: ORIGIN, low }); scene.add(cover.mesh);
+  const landAir = createLandAir({ ground, origin: ORIGIN, low }); scene.add(landAir.points);
   const map = {
     ready: false, groundAt: ground,
     road: { lengthKm: MINE_LENGTH / 1000, pointAt(s: number) {
@@ -294,7 +296,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   };
   // Debug only: the frame is built from these three layers, so a review can show and hide each one.
   if (debug) Object.assign(win.elements!, { map, layers: { town: scene, far: national.group, near: stream.near.batch, mid: stream.mid.batch } });
-  if (debug) Object.assign(map, { nationalForest, cover });
+  if (debug) Object.assign(map, { nationalForest, cover, landAir });
 
   // The town.
   const builder = new WorldBuilder({ low });
@@ -392,6 +394,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       updateNationalRoads(stream.near.cells);
       nationalForest.update(stream.near.cells, stream.mid.cells, controller.position);
       cover.update(controller.position);
+      landAir.update(controller.position);
       return ready;
     },
     warm: warmUp,
@@ -430,7 +433,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       waterworks.dispose();
       for (const mesh of residentRoads.values()) mesh.geometry.dispose();
       residentRoads.clear(); nationalRoadGroup.removeFromParent();
-      landMap.dispose(); nationalForest.dispose(); cover.dispose(); stream.dispose(); national.dispose(); roadMaterial.dispose(); terrainMat.dispose();
+      landMap.dispose(); nationalForest.dispose(); cover.dispose(); landAir.dispose(); stream.dispose(); national.dispose(); roadMaterial.dispose(); terrainMat.dispose();
       pool.dispose();
       composer.dispose();
       lib.dispose();
