@@ -14,6 +14,7 @@ import {
   reportBrawlSeen,
   reportDeath,
   reportKill,
+  fetchMerchantMind,
 } from './api.js';
 import type { LootPile, Standing } from './api.js';
 import { CountingHouseWindow } from './counting-house-window.js';
@@ -23,7 +24,7 @@ import { NoticeBoardWindow } from './notice-board-window.js';
 import { SatchelWindow } from './satchel-window.js';
 import { ShopWindow } from './shop-window.js';
 import { TradeWindow } from './trade-window.js';
-import { placesFor, PLACE_REACH, TRADE_REACH } from '../../../shared/src/net/index.js';
+import { placesFor, PLACE_REACH, TRADE_REACH, SINDR_MERCHANTS } from '../../../shared/src/index.js';
 import { stallsShut } from '../../../shared/src/net/clock.js';
 import { WorldLoot } from './world-loot.js';
 
@@ -68,6 +69,7 @@ export class TownEconomy {
   private readonly tradeWindow: TradeWindow | null = null;
   private readonly satchelWindow: SatchelWindow | null = null;
   private nearStall: string | null = null;
+  private readonly lastBarkTimeByStall = new Map<string, number>();
   private stallAt: Vector3 | null = null;
   private nearHouse: string | null = null;
   private houseAt: Vector3 | null = null;
@@ -260,8 +262,12 @@ export class TownEconomy {
 
     const places = placesFor(this.zone);
     const stall = places.stalls.find((s) => Math.hypot(hero.x - s.x, hero.z - s.z) < PLACE_REACH);
+    const prevStall = this.nearStall;
     this.nearStall = stall?.id ?? null;
     this.stallAt = stall ? this.offerAt.set(stall.x, hero.y + 1.6, stall.z) : null;
+    if (stall && stall.id !== prevStall) {
+      void this.checkStallBark(stall.id);
+    }
 
     const house = places.countingHouses.find((h) => Math.hypot(hero.x - h.x, hero.z - h.z) < PLACE_REACH);
     this.nearHouse = house?.id ?? null;
@@ -279,6 +285,32 @@ export class TownEconomy {
     } else {
       this.nearPlayer = null;
       this.playerAt = null;
+    }
+  }
+
+  private async checkStallBark(merchantId: string): Promise<void> {
+    if (this.shuttered) return;
+    const now = Date.now();
+    const last = this.lastBarkTimeByStall.get(merchantId) ?? 0;
+    if (now - last < 30_000) return;
+
+    try {
+      const mind = await fetchMerchantMind(merchantId);
+      if (!mind) return;
+
+      const hasRestock = mind.actions?.some((a) => (a.action as any)?.type === 'restock') ?? false;
+      const hasTribute = mind.actions?.some((a) => (a.action as any)?.type === 'tribute') ?? false;
+      const decisionMentions = /restock|tribute|replenish|ship/i.test(mind.lastDecision ?? '');
+      if (!hasRestock && !hasTribute && !decisionMentions) {
+        return;
+      }
+
+      this.lastBarkTimeByStall.set(merchantId, now);
+      const config = SINDR_MERCHANTS.find((m) => m.id === merchantId);
+      const merchantName = config?.name ?? merchantId;
+      this.events.notice(`${merchantName}: "${mind.latestThought}"`);
+    } catch {
+      // Ignore network errors for ambient barks
     }
   }
 

@@ -3,12 +3,14 @@ import {
   EconomyError,
   buyShop,
   fetchMerchant,
+  fetchMerchantMind,
   fetchQuote,
   fetchShopOwnership,
   fetchShopsForSale,
   setShopPrices,
   withdrawShopProfit,
   type Merchant,
+  type MerchantMind,
   type Quote,
   type ShopForSale,
   type ShopOwnership,
@@ -113,6 +115,7 @@ export class ShopWindow {
     const sellQuotes = await Promise.all(carried.map(([itemId]) => fetchQuote(id, itemId, 'sell', 1).catch(() => null)));
 
     const ownership = await fetchShopOwnership(id).catch(() => null);
+    const mind = await fetchMerchantMind(id).catch(() => null);
     const forSale = merchant.status === 'closed' && !ownership
       ? await fetchShopsForSale().then((shops) => shops.find((s) => s.merchantId === id) ?? null).catch(() => null)
       : null;
@@ -152,8 +155,12 @@ export class ShopWindow {
           .join('')
       : '<p class="shop-empty">Nothing you carry is wanted at this stall.</p>';
 
+    const mindLine = mind?.latestThought
+      ? `<p class="shop-personality">${escape(mind.latestThought)}${mind.lastDecision ? ` &mdash; <em>${escape(mind.lastDecision)}</em>` : ''}</p>`
+      : (config ? `<p class="shop-personality">${escape(config.personality)}</p>` : '');
+
     const body = `
-      ${config ? `<p class="shop-personality">${escape(config.personality)}</p>` : ''}
+      ${mindLine}
       ${statusLine ? `<p class="shop-status">${escape(statusLine)}</p>` : ''}
       <section aria-label="For sale"><h3 class="shop-heading">For sale</h3>${buyRows}</section>
       <section aria-label="Sell to this stall"><h3 class="shop-heading">Sell what you carry</h3>${sellRows}</section>

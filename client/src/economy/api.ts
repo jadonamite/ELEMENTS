@@ -208,6 +208,20 @@ export async function fetchMerchant(merchantId: string): Promise<Merchant> {
   return data.merchant;
 }
 
+export interface MerchantMind {
+  merchantId: string;
+  latestThought: string;
+  lastDecision: string;
+  actions: Array<{ action: unknown; reasoning?: string; timestamp: number }>;
+  purse: number;
+  open: boolean;
+  status: string;
+}
+
+export async function fetchMerchantMind(merchantId: string): Promise<MerchantMind> {
+  return call<MerchantMind>(`/api/economy/merchants/${encodeURIComponent(merchantId)}/mind`);
+}
+
 export async function fetchQuote(
   merchantId: string,
   itemType: string,
