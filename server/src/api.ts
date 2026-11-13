@@ -1,6 +1,6 @@
 import express, { type Application, type Request, type Response } from 'express';
 import { verifyToken } from './auth.js';
-import { chainSettler } from './chain/index.js';
+import { chainSettler, itemsChainSettler } from './chain/index.js';
 import { createOrGetAccount, createOrGetRising, getRising, getControlProgress, saveControlProgress } from './db.js';
 import { isAccountAllowed, isIpAllowed } from './rate-limit.js';
 import { isOutsider } from './net/money.js';
@@ -30,6 +30,7 @@ import {
   stockShop,
   withdrawShopProfit,
   getSatchel,
+  removeItems,
   clientKillsAllowed,
   dropFromClientKill,
   createLootPileFromFight,
@@ -190,16 +191,22 @@ export function setupApi(app: Application): void {
 
   // Where CHROMA lives on NEAR: the contract, the last settled batch and how much is waiting.
   app.get('/api/chain', (_req: Request, res: Response) => {
-    const settler = chainSettler();
-    if (!settler) { res.json({ onChain: false }); return; }
-    res.json({ onChain: true, ...settler.status() });
+    const chroma = chainSettler();
+    const items = itemsChainSettler();
+    res.json({ onChain: Boolean(chroma || items), contracts: {
+      chroma: chroma ? { onChain: true, ...chroma.status() } : { onChain: false },
+      items: items ? { onChain: true, ...items.status() } : { onChain: false },
+    } });
   });
   app.get('/api/chain/me', async (req: Request, res: Response) => {
     const accountId = await requireAccount(req, res);
     if (!accountId) return;
-    const settler = chainSettler();
-    if (!settler) { res.json({ onChain: false }); return; }
-    res.json({ onChain: true, ...settler.status(accountId) });
+    const chroma = chainSettler();
+    const items = itemsChainSettler();
+    res.json({ onChain: Boolean(chroma || items), contracts: {
+      chroma: chroma ? { onChain: true, ...chroma.status(accountId) } : { onChain: false },
+      items: items ? { onChain: true, ...items.status(accountId) } : { onChain: false },
+    } });
   });
 
   // --- Economy endpoints (M5) ---
@@ -705,6 +712,19 @@ export function setupApi(app: Application): void {
   app.get('/api/economy/satchel', async (req: Request, res: Response) => {
     const accountId = await requireAccount(req, res);
     if (accountId) res.json({ accountId, items: getSatchel(accountId) });
+  });
+
+  app.post('/api/economy/items/use', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    const itemId = typeof req.body?.itemId === 'string' ? req.body.itemId : '';
+    if (itemId !== 'potion') { res.status(400).json({ error: 'This item cannot be consumed' }); return; }
+    try {
+      removeItems({ accountId, to: 'world', stacks: [{ itemId, quantity: 1 }], reason: 'item_use' });
+      res.json({ consumed: itemId, items: getSatchel(accountId) });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Item could not be consumed' });
+    }
   });
 
   app.post('/api/economy/shops/:merchantId/withdraw', async (req: Request, res: Response) => {

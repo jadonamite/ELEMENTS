@@ -11,6 +11,7 @@ import {
   TREASURY_ACCOUNT_ID,
   updateMerchantSolvency,
   validateActions,
+  shardItemId,
 } from '@elements/shared';
 import {
   getDatabase,
@@ -19,6 +20,7 @@ import {
   getActiveShopOwnership,
 } from '../../db.js';
 import { recordTransaction } from '../ledgerService.js';
+import { recordItemMove } from '../satchelService.js';
 import {
   getMerchant,
   getMerchantDemandWindow,
@@ -79,6 +81,13 @@ export function ensureSindrMerchants(
         },
         db,
       );
+      for (const [category, stock] of Object.entries(config.inventory)) {
+        if (stock.stock <= 0) continue;
+        recordItemMove(db, 'world', config.id, {
+          itemId: category === 'shard' ? shardItemId(config.nation) : category,
+          quantity: stock.stock,
+        }, 'opening_stock', `init:${config.id}`, now);
+      }
     }
   }
 }
@@ -198,6 +207,7 @@ export async function tickMerchantAgent(
             db,
           );
           invItem.stock += act.quantity;
+          recordItemMove(db, 'world', merchant.id, { itemId: act.itemType === 'shard' ? shardItemId(merchant.nation) : act.itemType, quantity: act.quantity }, 'merchant_restock', `${merchant.id}:${act.itemType}`, now);
           merchant.balance -= cost;
         }
       }
@@ -219,6 +229,7 @@ export async function tickMerchantAgent(
           );
         }
         invItem.stock -= act.quantity;
+        recordItemMove(db, merchant.id, 'world', { itemId: act.itemType === 'shard' ? shardItemId(merchant.nation) : act.itemType, quantity: act.quantity }, 'merchant_tribute', `${merchant.id}:${act.itemType}`, now);
         merchant.balance += payout;
       }
     }
