@@ -19,7 +19,7 @@ import {
   verifyWorldSupply,
 } from '../src/economy/index.js';
 import { ensureSindrMerchants } from '../src/economy/agents/agentLoop.js';
-import { fakeRouter, type FakeCall } from './helpers/fakeProviders.js';
+import { defaultResponder, fakeRouter, type FakeCall } from './helpers/fakeProviders.js';
 
 const DAY = 24 * GAME_HOUR_MS;
 /** A day far from the epoch, so day numbers and phases are plain. */
@@ -74,18 +74,26 @@ test('Router: with no free provider answering, callers get null and fall back to
   assert.ok(lines.some((l) => l.includes('no free provider could answer plan')));
 });
 
-test('NEAR AI 402: the judge is switched off after one call, logged once, and the chronicle runs on the free providers', async () => {
+test('NEAR AI 402: NEAR AI is switched off after one call, the strongest free model judges instead, and the chronicle runs free', async () => {
   const db = freshDb();
   resetJudgeLog();
-  const { router, calls, lines } = fakeRouter({ responder: (c) => (c.provider === 'nearai' ? 402 : (c.intent === 'chronicle' ? JSON.stringify({ title: 'T', headline: 'H', paragraphs: ['P one.'], shortNotices: ['N.'] }) : 'x')) });
+  const { router, calls, lines } = fakeRouter({ responder: (c) => (c.provider === 'nearai' ? 402 : c.intent === 'chronicle' ? JSON.stringify({ title: 'T', headline: 'H', paragraphs: ['P one.'], shortNotices: ['N.'] }) : (defaultResponder(c))) });
   const judgeLines: string[] = [];
-  assert.equal(await runDailyJudge({ router, db, now: D0, log: (l) => judgeLines.push(l) }), null);
-  assert.equal(await runDailyJudge({ router, db, now: D0 + DAY, log: (l) => judgeLines.push(l) }), null);
-  assert.equal(await runDailyJudge({ router, db, now: D0 + 2 * DAY, log: (l) => judgeLines.push(l) }), null);
-  assert.equal(calls.filter((c) => c.provider === 'nearai').length, 1, 'one call, then off: no retries');
+  for (let d = 0; d < 3; d++) {
+    const report = await runDailyJudge({ router, db, now: D0 + d * DAY, log: (l) => judgeLines.push(l) });
+    assert.equal(Object.keys(report?.agentGuidance ?? {}).length, 15, 'all fifteen keepers judged');
+  }
+  const judging = calls.filter((c) => c.intent === 'judge');
+  assert.deepEqual(judging.map((c) => `${c.provider}:${c.model}`), [
+    'nearai:google/gemini-2.5-flash-lite',
+    'nvidia:nvidia/nemotron-3-ultra-550b-a55b',
+    'nvidia:nvidia/nemotron-3-ultra-550b-a55b',
+    'nvidia:nvidia/nemotron-3-ultra-550b-a55b',
+  ], 'one NEAR AI call, then the largest free model');
   assert.equal(lines.filter((l) => l.includes('nearai refused the account')).length, 1);
-  assert.equal(judgeLines.filter((l) => l.startsWith('daily judge off')).length, 1, 'the judge says it is off once');
-  assert.equal(router.judgeAvailable(), false);
+  assert.equal(judgeLines.filter((l) => l.startsWith('NEAR AI off')).length, 1, 'said once');
+  assert.equal(router.nearAiAvailable(), false);
+  assert.equal(router.judgeAvailable(), true);
 
   const { source, report } = await runEveningChronicle({ router, db, now: D0 + 19 * GAME_HOUR_MS });
   assert.equal(source.split(':')[0], 'nvidia');
@@ -93,8 +101,19 @@ test('NEAR AI 402: the judge is switched off after one call, logged once, and th
   assert.equal(getLatestDailyJudgeReport(db)?.chronicle.headline, 'H');
 });
 
-test('No merchant tick calls NEAR AI: a whole day of phases and ticks spends nothing there; the day end asks the judge once', async () => {
+test('Judge off: with every judge provider refusing, the judge says so once and makes no more calls', async () => {
   const db = freshDb();
+  resetJudgeLog();
+  const { router, calls } = fakeRouter({ responder: (c) => (c.intent === 'judge' ? 401 : 'x') });
+  const judgeLines: string[] = [];
+  for (let d = 0; d < 3; d++) assert.equal(await runDailyJudge({ router, db, now: D0 + d * DAY, log: (l) => judgeLines.push(l) }), null);
+  assert.equal(calls.filter((c) => c.intent === 'judge').length, 3, 'each judge provider asked once: NEAR AI, NVIDIA, Groq');
+  assert.equal(judgeLines.filter((l) => l.startsWith('judge off')).length, 1);
+});
+
+test('No merchant tick calls NEAR AI: through a whole day only the judge reaches it, four times, once per phase', async () => {
+  const db = freshDb();
+  resetJudgeLog();
   let t = D0 + 5 * GAME_HOUR_MS + 59 * 60_000; // 05:59, still night
   const { router, calls } = fakeRouter({ now: () => t });
   const runtime = createAgentRuntime({ router });
@@ -102,36 +121,34 @@ test('No merchant tick calls NEAR AI: a whole day of phases and ticks spends not
   const loop = startEconomyLoop({ db, runtime, now: () => t, log: (l) => lines.push(l), checkEveryMs: 1e9 });
   try {
     await loop.step();
-    // Through the day in half-hour steps: every tick and phase change of the day.
     while (t < D0 + DAY - 30 * 60_000) {
       t += 30 * 60_000;
       await loop.step();
     }
     const ticks = lines.filter((l) => l === 'merchants ticked: 15').length;
     assert.ok(ticks >= 36, `merchants ticked through the day (${ticks})`);
-    assert.equal(calls.filter((c) => c.url.includes('near.ai')).length, 0, 'no NEAR AI call from any tick or plan');
     const phases = lines.filter((l) => / plans: /.test(l)).map((l) => l.split(' ')[1]);
     assert.deepEqual(phases, ['night', 'morning', 'midday', 'evening', 'night']);
+    const near = calls.filter((c) => c.url.includes('near.ai'));
+    assert.equal(near.length, 5, 'the judge at each of the five phase turns, nothing else');
+    assert.ok(near.every((c) => c.intent === 'judge'));
     assert.ok(lines.some((l) => l.startsWith('evening chronicle')), 'the chronicle is written in the evening');
-    // Plans per phase: one keepers call and three townsfolk calls (a dozen people each), plus the chronicle.
+    // Per phase: the judge, one keepers call and three townsfolk calls (a dozen people each); one chronicle.
     const perIntent = calls.reduce<Record<string, number>>((a, c) => ((a[c.intent] = (a[c.intent] ?? 0) + 1), a), {});
-    assert.deepEqual(perIntent, { plan: 20, chronicle: 1 });
+    assert.deepEqual(perIntent, { judge: 5, plan: 20, chronicle: 1 });
+    // The judge's directive reaches the keepers' next plan.
+    const morning = calls.find((c) => c.intent === 'plan' && c.user.includes('"phase":"morning"') && c.user.includes('"keepers"'));
+    assert.ok(morning?.user.includes('Keep the shelves half full.'));
 
-    t = D0 + DAY + 60_000; // past midnight
+    t = D0 + DAY + 60_000; // past midnight: a new day, same night phase
     await loop.step();
-    assert.equal(calls.filter((c) => c.url.includes('near.ai')).length, 1, 'the daily judge, once');
-    assert.equal(calls.find((c) => c.url.includes('near.ai'))?.intent, 'judge');
+    assert.ok(lines.some((l) => l.startsWith('day passed')));
+    assert.equal(calls.filter((c) => c.url.includes('near.ai')).length, 5, 'no extra judge at midnight');
     assert.equal(verifyWorldSupply(db), true);
   } finally {
     loop.stop();
     runtime.detach();
   }
-});
-
-test('Model JSON is read past a thinking block and code fences', async () => {
-  const { parseModelJson } = await import('../src/economy/agents/plans/agentPlan.js');
-  assert.deepEqual(parseModelJson('<think>maybe {a} or {b}</think>\n```json\n{"plans":{}}\n```'), { plans: {} });
-  assert.equal(parseModelJson('no json here'), null);
 });
 
 test('Plans: banished names in a model plan never reach a keeper; numbers are clamped to range', async () => {

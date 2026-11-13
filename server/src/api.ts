@@ -603,7 +603,7 @@ export function setupApi(app: Application): void {
       calls: router.getRecentTelemetry().slice(-200),
       pressure: router.governor.getPressureLevel(),
       usage: router.governor.getUsageStats(),
-      judge: router.judgeAvailable() ? 'on' : `off: ${router.offReason('nearai') ?? 'no key'}`,
+      judge: router.nearAiAvailable() ? 'NEAR AI' : router.judgeAvailable() ? `free models (NEAR AI: ${router.offReason('nearai') ?? 'no key'})` : 'off',
       events: queue.stats,
     });
   });

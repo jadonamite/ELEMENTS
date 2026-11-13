@@ -1464,6 +1464,7 @@
       },
       "router": {
         "order": ["nvidia", "cloudflare", "gemini", "groq", "openrouter"],
+        "judgeOrder": ["nearai", "nvidia", "groq"],
         "cooldowns": {
           "normalMs": 300000,
           "stretchedMs": 600000,
@@ -1477,12 +1478,14 @@
             "models": {
               "plan": "nvidia/nemotron-3.5-super-vl-120b-a12b",
               "event": "nvidia/nemotron-3.5-bolt-e4b",
-              "conversation": "nvidia/nemotron-3.5-bolt-e4b"
+              "conversation": "nvidia/nemotron-3.5-bolt-e4b",
+              "judge": "nvidia/nemotron-3-ultra-550b-a55b"
             },
             "rpm": 40,
             "rpd": 1000,
             "timeoutMs": 25000,
             "talkTimeoutMs": 4000,
+            "judgeTimeoutMs": 60000,
             "extraBody": {
               "chat_template_kwargs": {
                 "enable_thinking": false
@@ -1521,12 +1524,14 @@
             "models": {
               "plan": "openai/gpt-oss-20b",
               "event": "openai/gpt-oss-20b",
-              "conversation": "openai/gpt-oss-20b"
+              "conversation": "openai/gpt-oss-20b",
+              "judge": "openai/gpt-oss-120b"
             },
             "rpm": 30,
             "rpd": 1000,
             "timeoutMs": 25000,
-            "talkTimeoutMs": 4000
+            "talkTimeoutMs": 4000,
+            "judgeTimeoutMs": 60000
           },
           "openrouter": {
             "name": "OpenRouter",
@@ -1550,7 +1555,8 @@
             "rpm": 10,
             "rpd": 50,
             "timeoutMs": 25000,
-            "talkTimeoutMs": 4000
+            "talkTimeoutMs": 4000,
+            "judgeTimeoutMs": 60000
           }
         }
       }

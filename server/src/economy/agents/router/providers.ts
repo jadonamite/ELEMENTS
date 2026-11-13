@@ -13,6 +13,7 @@ const KEY_ENV: Record<ProviderKey, string> = {
 
 interface RouterBalance {
   order?: ProviderKey[];
+  judgeOrder?: ProviderKey[];
   cooldowns?: { normalMs?: number; stretchedMs?: number; batchFlushNormalMs?: number; batchFlushStretchedMs?: number };
   providers?: Partial<Record<ProviderKey, Omit<ProviderConfig, 'key' | 'apiKeyEnv'>>>;
 }
@@ -22,6 +23,11 @@ const routerBalance = (): RouterBalance => (AGENT_ROUTER_CONFIG ?? {}) as Router
 /** Free providers in the order the router tries them; NEAR AI is never in it (it judges only). */
 export function getProviderOrder(): ProviderKey[] {
   return (routerBalance().order ?? ['nvidia', 'cloudflare', 'gemini', 'groq', 'openrouter']).filter((k) => k !== 'nearai');
+}
+
+/** Who judges, in order: NEAR AI, then the strongest free models while NEAR AI cannot answer. */
+export function getJudgeOrder(): ProviderKey[] {
+  return routerBalance().judgeOrder ?? ['nearai'];
 }
 
 export function getRouterCooldowns(): Required<NonNullable<RouterBalance['cooldowns']>> {
@@ -74,7 +80,11 @@ export async function executeProviderCall(
   if (payload.responseFormat) requestBody.response_format = payload.responseFormat;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), payload.intent === 'conversation' ? (config.talkTimeoutMs ?? 4000) : config.timeoutMs);
+  const timeoutMs =
+    payload.intent === 'conversation' ? (config.talkTimeoutMs ?? 4000)
+    : payload.intent === 'judge' ? (config.judgeTimeoutMs ?? config.timeoutMs)
+    : config.timeoutMs;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startTime = Date.now();
 
   try {

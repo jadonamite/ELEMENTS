@@ -70,6 +70,8 @@ export function startEconomyLoop(options: EconomyLoopOptions = {}): EconomyLoop 
   let inflight: Promise<void> | null = null;
 
   const planPhase = async (phase: PlanPhase, at: number): Promise<void> => {
+    // The judge first, four times a day, so its directives reach the plans of the phase.
+    await runDailyJudge({ router, db, now: at, log });
     for (const place of mindPlaces()) {
       const contexts = keepersIn(place).map((k) => keeperContext(place, k.id)).filter((c): c is AgentPlanContext => c !== null);
       const news = contexts.flatMap((c) => c.events ?? []).slice(-8);
@@ -88,7 +90,6 @@ export function startEconomyLoop(options: EconomyLoopOptions = {}): EconomyLoop 
     const { closed } = tickMerchantAgentsDay(at, db);
     const shops = tickAllShopsDay(at, db);
     log(`day passed: closed ${closed.length}, forfeited ${shops.forfeited.length}, new merchants ${shops.bailoutReopened.length}`);
-    await runDailyJudge({ router, db, now: at, log });
   };
 
   const runStep = async (): Promise<void> => {

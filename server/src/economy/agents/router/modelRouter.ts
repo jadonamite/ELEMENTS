@@ -3,6 +3,7 @@ import { economyNow } from '../clock.js';
 import {
   executeProviderCall,
   getProviderConfigs,
+  getJudgeOrder,
   getProviderOrder,
   getRouterCooldowns,
   ProviderHttpError,
@@ -19,6 +20,8 @@ export interface ModelRouterOptions {
   governor?: BudgetGovernor;
   providerConfigs?: Partial<Record<ProviderKey, ProviderConfig>>;
   order?: ProviderKey[];
+  /** Who judges, in order; NEAR AI first. */
+  judgeOrder?: ProviderKey[];
   fetchFn?: typeof fetch;
   /** Reads a provider's key; the environment by default. */
   keyFor?: (env: string) => string | undefined;
@@ -36,13 +39,15 @@ const ACCOUNT_REFUSED = new Set([401, 402, 403]);
 /**
  * Every model call in the game goes through here. Plans, event flushes, conversations and the chronicle try the
  * free providers in order and get null when none can answer, so the caller falls back to its written lines.
- * The daily judge goes to NEAR AI only. A provider that refuses the account itself is switched off for the life
+ * The judge goes to NEAR AI, and while NEAR AI cannot answer, to the strongest free models (judgeOrder in
+ * balance.json), each with its own judge model. A provider that refuses the account itself is switched off for the life
  * of the process, with one log line.
  */
 export class ModelRouter {
   readonly governor: BudgetGovernor;
   private readonly providerConfigs: Partial<Record<ProviderKey, ProviderConfig>>;
   private readonly order: ProviderKey[];
+  private readonly judgeOrder: ProviderKey[];
   private readonly fetchFn: typeof fetch;
   private readonly keyFor: (env: string) => string | undefined;
   private readonly clock: () => number;
@@ -54,6 +59,7 @@ export class ModelRouter {
     this.providerConfigs = options.providerConfigs ?? getProviderConfigs();
     this.keyFor = options.keyFor ?? ((env) => process.env[env] || undefined);
     this.order = (options.order ?? getProviderOrder()).filter((k) => k !== 'nearai');
+    this.judgeOrder = (options.judgeOrder ?? getJudgeOrder()).filter((k) => k === 'nearai' || !!this.providerConfigs[k]?.models.judge);
     const cooldowns = getRouterCooldowns();
     this.governor =
       options.governor ??
@@ -75,8 +81,13 @@ export class ModelRouter {
     return !!cfg && !!this.keyFor(cfg.apiKeyEnv);
   }
 
-  /** True while the daily judge can be asked: NEAR AI has a key and has not refused the account. */
+  /** True while some judge can be asked: a provider in the judge order with a key that has not refused us. */
   judgeAvailable(): boolean {
+    return this.judgeOrder.some((k) => this.hasKey(k) && !this.switchedOff.has(k));
+  }
+
+  /** True while NEAR AI itself can judge. */
+  nearAiAvailable(): boolean {
     return this.hasKey('nearai') && !this.switchedOff.has('nearai');
   }
 
@@ -105,10 +116,13 @@ export class ModelRouter {
   }
 
   private async judge(payload: ModelCallPayload): Promise<ModelCallResult | null> {
-    if (!this.judgeAvailable()) return null;
     const now = this.clock();
-    if (!this.governor.hasBudget('nearai', now)) return null;
-    return this.attempt('nearai', payload, now);
+    for (const key of this.judgeOrder) {
+      if (this.switchedOff.has(key) || !this.hasKey(key) || !this.governor.hasBudget(key, now)) continue;
+      const result = await this.attempt(key, payload, now);
+      if (result) return result;
+    }
+    return null;
   }
 
   private async attempt(key: ProviderKey, payload: ModelCallPayload, now: number): Promise<ModelCallResult | null> {

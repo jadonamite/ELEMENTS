@@ -23,7 +23,7 @@ const HOSTS: Array<[string, ProviderKey]> = [
 export const providerOf = (url: string): string => HOSTS.find(([h]) => url.includes(h))?.[1] ?? 'unknown';
 
 function intentOf(system: string, user: string): FakeCall['intent'] {
-  if (system.includes('daily judge')) return 'judge';
+  if (system.includes('judge the shopkeepers')) return 'judge';
   if (system.includes('evening chronicle')) return 'chronicle';
   if (system.includes('Something significant has just happened')) return 'event';
   if (system.includes('You plan the day') || system.includes('townsfolk of')) return 'plan';

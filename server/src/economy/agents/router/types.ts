@@ -29,6 +29,8 @@ export interface ProviderConfig {
   timeoutMs: number;
   /** A face-to-face line may take this long before the next provider, or a written line, answers. */
   talkTimeoutMs?: number;
+  /** The judge reads every keeper at once and runs in the background, so it may take this long. */
+  judgeTimeoutMs?: number;
   extraHeaders?: Record<string, string>;
   extraBody?: Record<string, unknown>;
 }

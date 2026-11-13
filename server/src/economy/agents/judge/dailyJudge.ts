@@ -133,12 +133,14 @@ export async function runEveningChronicle(options: { router: ModelRouter; db?: D
   return { report, source: chronicle && result ? `${result.provider}:${result.model}` : 'written' };
 }
 
+let nearAiOffLogged = false;
 let judgeOffLogged = false;
 
 /**
- * The daily judge, on NEAR AI only: scores each keeper and leaves a directive for tomorrow's plans. When NEAR AI
- * has no key or has refused the account, the judge stays off: one log line, no calls, yesterday's directives
- * stand.
+ * The judge, four times a game day (at each phase): scores each keeper and leaves a directive for the next plans.
+ * It runs on NEAR AI, and while NEAR AI has no key or has refused the account, on the strongest free models
+ * (judgeOrder in balance.json); that is said once in the log. With no judge at all it stays off: one log line,
+ * no calls, the last directives stand.
  */
 export async function runDailyJudge(options: { router: ModelRouter; db?: DatabaseSync; now?: number; log?: (line: string) => void }): Promise<DailyJudgeReport | null> {
   const now = options.now ?? Date.now();
@@ -148,7 +150,7 @@ export async function runDailyJudge(options: { router: ModelRouter; db?: Databas
 
   if (!router.judgeAvailable()) {
     if (!judgeOffLogged) {
-      log(`daily judge off: ${router.offReason('nearai') ?? 'no NEAR_AI_API_KEY'}`);
+      log(`judge off: no judge provider can answer (NEAR AI: ${router.offReason('nearai') ?? 'no NEAR_AI_API_KEY'})`);
       judgeOffLogged = true;
     }
     return null;
@@ -163,7 +165,7 @@ export async function runDailyJudge(options: { router: ModelRouter; db?: Databas
       {
         role: 'system',
         content: [
-          'You are the daily judge of the shopkeepers of Sindr. Score each keeper 0 to 100 on prudent trade and staying in character, and give one short directive for tomorrow.',
+          'You judge the shopkeepers of Sindr, four times a day. Score each keeper 0 to 100 on prudent trade and staying in character, and give one short directive for the hours ahead.',
           'Directives guide plans only; they cannot change prices or rules.',
           'Reply with JSON only: { "agentGuidance": { "<id>": { "verdict": "", "score": 80, "directive": "" } } }',
         ].join(' '),
@@ -180,14 +182,12 @@ export async function runDailyJudge(options: { router: ModelRouter; db?: Databas
     responseFormat: { type: 'json_object' },
   });
 
-  const parsed = parseModelJson<{ agentGuidance?: Record<string, Partial<AgentGuidance>> }>(result?.content)?.agentGuidance;
-  if (!parsed) {
-    if (result === null && !router.judgeAvailable() && !judgeOffLogged) {
-      log(`daily judge off: ${router.offReason('nearai') ?? 'refused'}`);
-      judgeOffLogged = true;
-    }
-    return null;
+  if (!router.nearAiAvailable() && !nearAiOffLogged) {
+    log(`NEAR AI off (${router.offReason('nearai') ?? 'no NEAR_AI_API_KEY'}); judging on the free models until it is funded`);
+    nearAiOffLogged = true;
   }
+  const parsed = parseModelJson<{ agentGuidance?: Record<string, Partial<AgentGuidance>> }>(result?.content)?.agentGuidance;
+  if (!parsed) return null;
   const agentGuidance: Record<string, AgentGuidance> = {};
   for (const k of keepers) {
     const raw = parsed[k.id];
@@ -199,11 +199,12 @@ export async function runDailyJudge(options: { router: ModelRouter; db?: Databas
       directive: raw.directive.slice(0, 200),
     };
   }
-  log(`judged ${Object.keys(agentGuidance).length} keepers on ${result?.provider}/${result?.model}`);
+  log(`judged ${Object.keys(agentGuidance).length} keepers on ${result?.provider}:${result?.model}`);
   return saveMerged(dayNumber, now, db, { agentGuidance });
 }
 
-/** Lets the judge log its "off" line again (tests). */
+/** Lets the judge log its "off" lines again (tests). */
 export function resetJudgeLog(): void {
   judgeOffLogged = false;
+  nearAiOffLogged = false;
 }
