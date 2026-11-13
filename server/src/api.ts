@@ -1,5 +1,6 @@
 import express, { type Application, type Request, type Response } from 'express';
 import { verifyToken } from './auth.js';
+import { chainSettler } from './chain/index.js';
 import { createOrGetAccount, createOrGetRising, getRising, getControlProgress, saveControlProgress } from './db.js';
 import { isAccountAllowed, isIpAllowed } from './rate-limit.js';
 import { isOutsider } from './net/money.js';
@@ -185,6 +186,20 @@ export function setupApi(app: Application): void {
       res.status(400).json({ error: 'A control learning record is required' }); return;
     }
     res.json({ progress: saveControlProgress(accountId, req.body.progress) });
+  });
+
+  // Where CHROMA lives on NEAR: the contract, the last settled batch and how much is waiting.
+  app.get('/api/chain', (_req: Request, res: Response) => {
+    const settler = chainSettler();
+    if (!settler) { res.json({ onChain: false }); return; }
+    res.json({ onChain: true, ...settler.status() });
+  });
+  app.get('/api/chain/me', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    const settler = chainSettler();
+    if (!settler) { res.json({ onChain: false }); return; }
+    res.json({ onChain: true, ...settler.status(accountId) });
   });
 
   // --- Economy endpoints (M5) ---
