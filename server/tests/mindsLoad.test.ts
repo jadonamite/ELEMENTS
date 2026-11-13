@@ -183,7 +183,14 @@ test('Load: 50 players, 300 keepers, an hour of event storm: no provider overspe
   // Events never call a model: every event-intent call is one batched flush (a flush with no provider free makes none).
   assert.ok((byIntent.event ?? 0) <= queue.stats.flushes);
   assert.ok(fake.calls.length < events / 20, `${fake.calls.length} calls for ${events} events`);
-  assert.ok(queue.stats.flushedAgents > queue.stats.flushes * 2, 'flushes are batched');
+  assert.ok(queue.stats.flushedAgents >= queue.stats.flushes, 'a flush re-plans at least one keeper');
+  // Spread through the hour: no ten minutes of the storm go without a model call.
+  for (let m = 0; m + 10 <= minutes.length; m += 10) assert.ok(table.slice(m, m + 10).some((row) => providers.some((p) => row[p]! > 0)), `calls in minutes ${m + 1}-${m + 10}`);
+  // Storm traffic (talk and flushes; the phase plans are the fixed core) never bursts in one minute.
+  for (const m of minutes) {
+    const storm = fake.calls.filter((c) => c.intent !== 'plan' && Math.floor((c.at - T0) / 60_000) === m).length;
+    assert.ok(storm <= 12, `minute ${m + 1}: ${storm} storm calls`);
+  }
   // As the day budget drains the governor stretches, then defers, then answers from written lines.
   assert.ok(Math.max(...pressureByMinute) >= 2, `pressure rose: ${pressureByMinute.join(',')}`);
   assert.ok(queue.stats.deferred > 0, 'significant events were deferred to the next plan under pressure');

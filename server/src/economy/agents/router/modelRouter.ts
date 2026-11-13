@@ -116,7 +116,7 @@ export class ModelRouter {
     const apiKey = this.keyFor(config.apiKeyEnv)!;
     const started = Date.now();
     // A call counts against the budget whether or not it succeeds: the provider counted it.
-    this.governor.recordCall(key, now);
+    this.governor.recordCall(key, now, payload.intent !== 'plan');
     try {
       const result = await executeProviderCall(config, apiKey, payload, this.fetchFn);
       this.recordTelemetry({ timestamp: now, intent: payload.intent, provider: key, model: result.model, success: true, latencyMs: result.latencyMs });

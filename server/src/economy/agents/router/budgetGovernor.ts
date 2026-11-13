@@ -10,6 +10,10 @@ export interface GovernorOptions {
   batchFlushStretchedMs?: number;
 }
 
+const DAY_MS = 24 * 60 * 60_000;
+/** The window the pace is read over. */
+const PACE_WINDOW_MS = 10 * 60_000;
+
 export class BudgetGovernor {
   private readonly providers: Partial<Record<ProviderKey, ProviderConfig>>;
   private readonly pool: ProviderKey[];
@@ -34,7 +38,15 @@ export class BudgetGovernor {
     this.batchFlushStretchedMs = options.batchFlushStretchedMs ?? 12000;
   }
 
-  recordCall(provider: ProviderKey, now = Date.now()): void {
+  /** Calls that set the pace: everything but the phase plans, which are the fixed core of the budget. */
+  private readonly paceHistory: number[] = [];
+
+  /** Counts a call against the provider's limits; `paced` false keeps it out of the pace (phase plans). */
+  recordCall(provider: ProviderKey, now = Date.now(), paced = true): void {
+    if (paced && this.pool.includes(provider)) {
+      this.paceHistory.push(now);
+      while (this.paceHistory.length > 0 && this.paceHistory[0]! <= now - PACE_WINDOW_MS) this.paceHistory.shift();
+    }
     const minList = this.callHistoryMinute.get(provider) ?? [];
     minList.push(now);
     this.callHistoryMinute.set(provider, minList);
@@ -76,26 +88,29 @@ export class BudgetGovernor {
 
   /**
    * How hard the pool is pressed, 0 to 3. Two measures, the worse wins:
-   * - pace: calls in the last hour against an even share of the day's budget (the pool's daily total / 24).
-   *   Half a share stretches, a full share defers significant events, two shares sends talk to written lines.
+   * - pace: calls in the last ten minutes, phase plans aside, against an even ten-minute share of the day's
+   *   budget (the pool's daily total / 144). Half a share stretches, a full share defers significant events,
+   *   two shares sends talk to written lines. The same is read over the last minute (with half a share more), so a storm's calls are
+   *   spread through the hour instead of spent at once.
    * - the day: what is left of the pool's daily budget (under 40% stretches, 20% defers, 5% is the floor).
    * A minute when every provider is busy is not pressure: those calls just fall back on their own.
    */
   getPressureLevel(now = Date.now()): GovernorPressureLevel {
     let capDay = 0;
     let usedDay = 0;
-    let usedHour = 0;
+    const usedWindow = this.paceHistory.filter((t) => t > now - PACE_WINDOW_MS).length;
+    const usedMinute = this.paceHistory.filter((t) => t > now - 60_000).length;
     for (const key of this.pool) {
       const cfg = this.providers[key];
       if (!cfg) continue;
       capDay += cfg.rpd;
       const calls = (this.callHistoryDay.get(key) ?? []).filter((t) => t > now - 24 * 60 * 60_000);
       usedDay += calls.length;
-      usedHour += calls.filter((t) => t > now - 60 * 60_000).length;
     }
     if (capDay === 0) return 3;
 
-    const pace = usedHour / (capDay / 24);
+    // The minute's share is allowed half again, so a quiet town answers a burst of talk.
+    const pace = Math.max(usedWindow / (capDay * (PACE_WINDOW_MS / DAY_MS)), usedMinute / (1.5 * capDay * (60_000 / DAY_MS)));
     const fromPace: GovernorPressureLevel = pace >= 2 ? 3 : pace >= 1 ? 2 : pace >= 0.5 ? 1 : 0;
     const left = Math.max(0, 1 - usedDay / capDay);
     const fromDay: GovernorPressureLevel = left <= 0.05 ? 3 : left <= 0.2 ? 2 : left <= 0.4 ? 1 : 0;
