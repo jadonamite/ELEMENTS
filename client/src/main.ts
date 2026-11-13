@@ -188,7 +188,7 @@ async function main(): Promise<void> {
   applyDrawing(forcedElement || forcedHush ? getStoredDrawing() : lastFighter() ?? getStoredDrawing());
 
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
-  if (params.has('intro') && !params.has('skipIntro')) {
+  if (!params.has('skipIntro')) {
     const opening = new OpeningFlow((res) => {
       applyDrawing(forcedElement || forcedHush ? res : lastFighter() ?? res);
       if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });

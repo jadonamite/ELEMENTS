@@ -8,6 +8,7 @@ import {
 } from './creator/index.js';
 import {
   getStoredAuthToken,
+  hasGameServer,
   isOfflineMode,
   mountLoginIsland,
   postRising,
@@ -83,27 +84,25 @@ export class OpeningFlow {
   }
 
   private start(): void {
-    const saved = getStoredDrawing();
     const ageState = localStorage.getItem(STORAGE_AGE_KEY);
-
     if (ageState === 'under') {
       this.renderAgeBlocked();
       return;
     }
-
-    if (saved && ageState === 'over') {
-      this.close(saved);
-      return;
-    }
-
     if (ageState !== 'over') {
       this.renderAgeGate();
       return;
     }
+    this.afterAgeGate();
+  }
 
-    if (isOfflineMode()) {
+  /** With a game server every player is signed in; a Drawing saved in this browser never skips that. */
+  private afterAgeGate(): void {
+    if (isOfflineMode() || !hasGameServer()) {
       this.isOffline = true;
-      this.proceedAfterLogin();
+      const saved = getStoredDrawing();
+      if (saved) this.close(saved);
+      else this.proceedAfterLogin();
       return;
     }
 
@@ -172,12 +171,7 @@ export class OpeningFlow {
         this.renderAgeBlocked();
       } else {
         localStorage.setItem(STORAGE_AGE_KEY, 'over');
-        if (isOfflineMode()) {
-          this.isOffline = true;
-          this.proceedAfterLogin();
-        } else {
-          this.renderLoginStep();
-        }
+        this.afterAgeGate();
       }
     });
   }
