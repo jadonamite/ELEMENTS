@@ -1,4 +1,5 @@
 import { baseGround, riverAt } from './base-ground.js';
+import { nationalWaterAt } from './canals.js';
 import type { Point3 } from './coordinates.js';
 import { mineAt, MINE_ROAD, type RoadPoint } from './mine-road.js';
 import { ROUTE_LINES } from './route-lines.js';
@@ -45,7 +46,8 @@ function bedAt(x: number, z: number): number {
 function landAt(x: number, z: number): number {
   const mine = mineAt(x, z), river = riverAt(x, z);
   // Over the river the road rides a bridge deck, DECK_CLEARANCE above the water.
-  const land = river.distance < DECK_REACH ? Math.max(baseGround(x, z).height, river.water + DECK_CLEARANCE) : baseGround(x, z).height;
+  const canal = river.distance < DECK_REACH ? null : nationalWaterAt(x, z), ground = baseGround(x, z).height;
+  const land = river.distance < DECK_REACH ? Math.max(ground, river.water + DECK_CLEARANCE) : canal ? Math.max(ground, canal.surface + 3) : ground;
   if (mine.distance >= 14) return land;
   const t = Math.max(0, Math.min(1, (mine.distance - 6) / 8));
   return mine.height + (land - mine.height) * t * t * (3 - 2 * t);
@@ -129,17 +131,18 @@ export const NATIONAL_ROUTES: readonly NationalRoute[] = [
   ...ROUTE_PLANS.map(plan => route(plan.id, ROUTE_LINES[plan.id] ?? plan.waypoints, plan.source, plan.kind)),
 ];
 
-export interface RouteBridge { id: string; from: Point3; to: Point3; clear: number; river: true }
-/** One deck for every place a cart road crosses the river, from bank to bank at the road's own heights. */
+export interface RouteBridge { id: string; from: Point3; to: Point3; clear: number; river: boolean }
+/** One deck for every place a cart road crosses the river or a town channel, from bank to bank at the road's own heights. */
 export const ROUTE_BRIDGES: readonly RouteBridge[] = NATIONAL_ROUTES.flatMap(road => {
   if (road.id === 'mine' || road.kind !== 'cart') return [];
   const bridges: RouteBridge[] = [];
-  let from: RoadPoint | null = null;
+  let from: RoadPoint | null = null, river = false;
   for (let i = 0; i < road.points.length; i++) {
-    const p = road.points[i]!, over = riverAt(p.x, p.z).distance < DECK_REACH;
-    if (over && !from) from = road.points[Math.max(0, i - 1)]!;
+    const p = road.points[i]!, onRiver = riverAt(p.x, p.z).distance < DECK_REACH, over = onRiver || nationalWaterAt(p.x, p.z) !== null;
+    if (over && !from) { from = road.points[Math.max(0, i - 1)]!; river = false; }
+    if (onRiver) river = true;
     if (!over && from) {
-      bridges.push({ id: `bridge:${road.id}:${bridges.length}`, from: { x: from.x, y: from.y, z: from.z }, to: { x: p.x, y: p.y, z: p.z }, clear: road.width, river: true });
+      bridges.push({ id: `bridge:${road.id}:${bridges.length}`, from: { x: from.x, y: from.y, z: from.z }, to: { x: p.x, y: p.y, z: p.z }, clear: road.width, river });
       from = null;
     }
   }
