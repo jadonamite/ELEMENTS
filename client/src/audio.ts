@@ -137,7 +137,8 @@ export class SoundManager {
   private ambientGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
   private masterGain: GainNode | null = null;
-  private voiceSource: AudioBufferSourceNode | null = null;
+  /** Lines playing now, one per channel (a speaker); a new line on a channel replaces its old one. */
+  private readonly voices = new Map<string, AudioBufferSourceNode>();
   private voiceManifest: Promise<Record<string, Record<string, number>> | null> | null = null;
   private voiceOpus: boolean | null = null;
   private compressor: DynamicsCompressorNode | null = null;
@@ -774,17 +775,21 @@ export class SoundManager {
   }
 
   /**
-   * Speaks a recorded line in `voice`, from `position` when given, with music and ambience lowered under it.
-   * Resolves false when the line has no recording, so callers can fall back to a bark.
+   * Speaks a recorded line in `voice`, from `position` when given, with music and ambience lowered while any
+   * line plays. Each `channel` (a speaker) holds one line; a new one on the same channel cuts the old.
+   * `admit` is asked with the line's length in seconds just before it starts and may refuse it.
+   * Resolves false when the line has no recording or was refused, so callers can fall back to a bark.
    */
-  async speak(voice: string, text: string, position?: SoundPosition): Promise<boolean> {
+  async speak(voice: string, text: string, position?: SoundPosition,
+    { channel = 'main', admit }: { channel?: string; admit?: (seconds: number) => boolean } = {}): Promise<boolean> {
     if (!this.ctx || !this.sfxGain || this.muted) return false;
     const manifest = await this.voiceIndex();
     const key = lineKey(text);
     if (!manifest?.[voice]?.[key]) return false;
     const buffer = await this.voiceBuffer(`/assets/voice/${voice}/${key}`);
     if (!buffer || !this.ctx || !this.sfxGain) return false;
-    this.stopSpeech();
+    if (admit && !admit(buffer.duration)) return false;
+    this.stopSpeech(channel);
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     const gain = this.ctx.createGain();
@@ -792,20 +797,25 @@ export class SoundManager {
     source.connect(gain);
     const panner = position ? this.createPanner(position) : null;
     if (panner) { gain.connect(panner); panner.connect(this.sfxGain); } else gain.connect(this.sfxGain);
-    this.voiceSource = source;
+    this.voices.set(channel, source);
     this.duck(true);
-    source.onended = () => { if (this.voiceSource === source) { this.voiceSource = null; this.duck(false); } };
+    source.onended = () => {
+      if (this.voices.get(channel) !== source) return;
+      this.voices.delete(channel);
+      if (this.voices.size === 0) this.duck(false);
+    };
     source.start();
     return true;
   }
 
-  /** Cuts off the line being spoken, if any. */
-  stopSpeech(): void {
-    const source = this.voiceSource;
-    this.voiceSource = null;
-    if (!source) return;
-    try { source.stop(); } catch { /* already ended */ }
-    this.duck(false);
+  /** Cuts off the line on `channel`, or every line when none is named. */
+  stopSpeech(channel?: string): void {
+    for (const [name, source] of [...this.voices]) {
+      if (channel !== undefined && name !== channel) continue;
+      this.voices.delete(name);
+      try { source.stop(); } catch { /* already ended */ }
+    }
+    if (this.voices.size === 0) this.duck(false);
   }
 
   private duck(down: boolean): void {

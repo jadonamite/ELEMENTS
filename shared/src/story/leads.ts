@@ -82,6 +82,10 @@ export class LeadManager {
     }
   }
 
+  addLead(lead: Lead): void {
+    this.leads.set(lead.id, { ...lead });
+  }
+
   getAvailableLeads(): Lead[] {
     return Array.from(this.leads.values()).filter(l => !l.purchased && !l.completed);
   }

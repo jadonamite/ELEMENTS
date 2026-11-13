@@ -92,7 +92,6 @@ body.touch-input .control-lesson { top: max(4.5rem, env(safe-area-inset-top)); b
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { .touch-stick { background: var(--control-surface); } .touch-action { opacity: 1; } }
 #hero-hud[hidden] { display: none; }
 .home-menu-close, .home-nav-tab { min-height: var(--target-min-size); min-width: var(--target-min-size); }
-body:not(.touch-input) #home-hud-button { display: none; }
 body.touch-input .home-menu-hint { display: none; }
 @media (max-height: 500px) {
   .touch-more { bottom: max(var(--space-4), env(safe-area-inset-bottom)); right: calc(max(var(--space-4), env(safe-area-inset-right)) + 12.5rem); max-height: calc(100dvh - 6rem); }

@@ -2,6 +2,7 @@ import './ui/tokens.css';
 import './ui/loader.css';
 import './style.css';
 import './opening.css';
+import './story/nation-intro.css';
 import './threat-arrows.css';
 import balance from '../../shared/balance.json';
 import dialogueData from '../../shared/dialogue.json';
@@ -41,6 +42,7 @@ import { nightness } from './world/effects.js';
 import { NationalEncounterManager } from './world/national-encounters.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
+import { NationIntroFlow } from './story/nation-intro-flow.js';
 import { playerPerson } from './life/crowd.js';
 import { Group, Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -449,6 +451,7 @@ async function main(): Promise<void> {
       space,
       posts: zone.posts,
       browse: zone.browse,
+      subtitle: (name, line, seconds) => hudLine(`${name}: "${line}"`, seconds * 1000 + 600),
     });
     cleanup.push(() => lifeSystem?.dispose());
   }
@@ -653,9 +656,16 @@ async function main(): Promise<void> {
     hudLine(`Cutthroat: "${said.line}"`, 1500 + said.line.length * 60);
   };
   // Loot, the market stalls and death drops, held by the server. Sindr is an IGNIS town.
+  let knownFlags: number | null = null;
   townEconomy = zone ? new TownEconomy(scene, physics.world, 'sindr', 'IGNIS', {
     notice,
-    standingChanged: (s) => fightHud.setStanding(s.redFlags, s.hasBounty),
+    standingChanged: (s) => {
+      fightHud.setStanding(s.redFlags, s.hasBounty);
+      // A flag added in play, not the standing read on arrival, is called out by whoever saw it.
+      if (knownFlags !== null && s.redFlags > knownFlags) lifeSystem?.witness('red_flag_raised', controller.position);
+      knownFlags = s.redFlags;
+    },
+    lootDropped: (x, z) => lifeSystem?.witness('loot_dropped', new Vector3(x, controller.position.y, z)),
     wornChanged: (worn) => {
       void hero.switchOutfit(parseOutfit(worn.outfit));
       fight.setHeroArmour(worn.armour);
@@ -685,14 +695,46 @@ async function main(): Promise<void> {
 
   const homeMenu = new HomeMenu({
     inTown,
-    currentElement: kitElement,
-    isDim,
+    getCharacterState: () => ({ element: kitElement, isDim, tier: fight.tier }),
     onOpenPicker: () => picker?.open(true),
     onOpenCreator: () => picker?.open(true),
   });
   cleanup.push(() => homeMenu.dispose());
   input.onMenu = () => homeMenu.toggle();
   homeMenu.mountControls(controls!);
+
+  let nationIntro: NationIntroFlow | null = null;
+  const introStorageKey = 'elements_intro_v1_completed';
+  const isNewArrival = !localStorage.getItem(introStorageKey);
+  const shouldRunIntro = (params.has('intro') || isNewArrival) && !params.has('skipIntro');
+
+  if (shouldRunIntro && zone && lifeSystem) {
+    nationIntro = new NationIntroFlow({
+      scene,
+      nation: kitElement,
+      isDim,
+      controller,
+      shoulderCamera,
+      input,
+      combat,
+      fight,
+      sound,
+      leadManager: lifeSystem.leadManager,
+      waypointMarker: lifeSystem.waypointMarker,
+      applyTier,
+      onEquipStarterWeapon: () => {
+        applyKit();
+        setFightingStyle('weapon');
+        sword.draw(true);
+      },
+      onMissionComplete: (lead) => {
+        localStorage.setItem(introStorageKey, 'done');
+        if (townEconomy?.carried) townEconomy.carried.chroma += lead.rewardChroma;
+      },
+    });
+    cleanup.push(() => nationIntro?.dispose());
+    nationIntro.start();
+  }
   input.onTargetTap = (x, y) => {
     const point = new Vector3(); let target: Enemy | null = null, nearest = 48;
     for (const foe of fight.enemies) {
@@ -726,6 +768,7 @@ async function main(): Promise<void> {
     return allowed === 'any' || (Array.isArray(allowed) && allowed.includes(fight.kit.weapon));
   };
   const setBending = (on: boolean): void => {
+    if (fight.tier < 1) return;
     if (on && isDim) { notice('The Hush cannot bend'); return; }
     isLit = on;
     if (on) sound.playFireBurst(0.35);
@@ -735,7 +778,11 @@ async function main(): Promise<void> {
     notice(sheathed ? `Bending on, weapon away: ${kitElement} bends bare-handed` : on ? 'Bending on' : 'Bending off');
   };
   const setFightingStyle = (style: FightingStyle): void => {
-    if (style === 'bending') { setBending(!isLit); return; }
+    if (style === 'bending') {
+      if (fight.tier < 1) return;
+      setBending(!isLit);
+      return;
+    }
     armedWith = style === 'weapon' ? 'weapon' : style === 'legs' ? 'legs' : 'hands';
     const unlit = armedWith === 'weapon' && isLit && !bendsArmed();
     if (unlit) isLit = false;
@@ -759,7 +806,10 @@ async function main(): Promise<void> {
 
   input.onStanceToggle = () => setFightingStyle(armedWith === 'weapon' ? 'bare_hands' : 'weapon');
 
-  input.onBendingToggle = () => setBending(!isLit);
+  input.onBendingToggle = () => {
+    if (fight.tier < 1) return;
+    setBending(!isLit);
+  };
 
   let techniqueClipUntil = 0;
   let lightningBareUntil = 0;
@@ -1153,6 +1203,7 @@ async function main(): Promise<void> {
     shoulderCamera.lockTarget = remoteLock?.model.position ?? lockedEnemy?.controller.position ?? null;
 
     const alive = fight.heroAlive;
+    nationIntro?.update(rawDelta);
     townEconomy?.update(rawDelta, controller.position);
     for (const action of alive ? input.takeActions() : []) {
       if (action !== 'dodge') {
@@ -1485,6 +1536,7 @@ async function main(): Promise<void> {
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, baseSupply);
     fightHud.setPurse(zone ? (forcedCarry ?? townEconomy?.carried?.chroma ?? null) : null);
     shoulderCamera.update(drawn, delta, reducedMotion.matches);
+    nationIntro?.applyCamera(camera, delta, reducedMotion.matches);
     threatArrows.update(controller.position, fight.enemies, camera);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     lifeSystem?.update(delta);

@@ -360,6 +360,11 @@ test('meter: bending never needs it, an empty bar is weaker, heavy bending drain
 });
 
 test('tiers gate moves in order and strengthen bending at 6 and 7', () => {
+  assert.equal(combat.tierAllows('light_1', 0), true, 'Tier 0 permits starter light attack');
+  assert.equal(combat.tierAllows('heavy_1', 0), true, 'Tier 0 permits starter heavy attack');
+  assert.equal(combat.tierAllows('dodge', 0), true, 'Tier 0 permits starter dodge');
+  assert.equal(combat.tierAllows('bend_palm', 0), false, 'Tier 0 locks bending moves');
+  assert.equal(combat.tierAllows('shard_spark', 0), false, 'Tier 0 locks spark');
   assert.equal(combat.tierAllows('light_1', 1), true);
   assert.equal(combat.tierAllows('heavy_1', 1), false);
   assert.equal(combat.tierAllows('light_3', 3), false);
