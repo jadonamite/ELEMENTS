@@ -392,7 +392,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   // Build animation clips, including bare hands combos & bending moves
   const combatClips = markRest(await loader.loadAsync('/assets/characters/combat.glb'));
   calmRunBounce(markRest(heroGltf));
-  // Locomotion is the retargeted Mixamo pack: idle, walk, strafe and turn in place, jump.
+  // Locomotion is the retargeted Mixamo pack: idle, weapon-drawn idle, walk, strafe and turn in place, jump.
   const locomotionClips = markRest(await loader.loadAsync('/assets/characters/locomotion.glb'));
   // The mannequin's own relaxed idle, walk and jump are replaced by the pack; its start/land jump clips are unused.
   const REPLACED = new Set(['idle_relaxed', 'walk', 'jump', 'jump_start', 'jump_land']);

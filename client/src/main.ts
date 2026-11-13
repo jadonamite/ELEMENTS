@@ -1397,7 +1397,8 @@ async function main(): Promise<void> {
             turnReadyAt = now + 0.25;
           }
         } else {
-          let clip = pace === 'idle' && !sword.engaged ? 'idle_relaxed' : pace;
+          // Standing still: the guard with a weapon drawn, the relaxed stand otherwise.
+          let clip: string = pace === 'idle' ? (sword.engaged ? 'idle_armed' : 'idle_relaxed') : pace;
           let clipSpeed = controller.speed;
           if (locked && pace === 'walk') {
             // Track relative to the chest: a sidestep gets the strafe walk, a backpedal runs the walk backwards.
@@ -1412,7 +1413,7 @@ async function main(): Promise<void> {
             }
           }
           hero.anim.play(clip, balance.controller.animationFade);
-          if (clip !== 'idle' && clip !== 'idle_relaxed') {
+          if (pace !== 'idle') {
             const authored = (clipSpeeds as Record<string, number>)[clip] ?? 1;
             const scale = clipSpeed / authored;
             hero.anim.setSpeed(clip, Math.abs(scale) < 0.5 ? Math.sign(scale || 1) * 0.5 : scale);
