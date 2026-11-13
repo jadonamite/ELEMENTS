@@ -235,6 +235,14 @@ function portWorks(b: WorldBuilder): void {
   block(b, 'ashlar_stone_blocks', 272, -1.4, 0, 12, 3, 44);
   for (const z of [-18, -6, 6, 18]) block(b, 'raw_timber', 276.5, 0.5, z, 0.5, 1, 0.5);
   b.box('packed_dirt_road', 80, 0.035, 0, 60, 0.05, 6);
+  // Basalt columns stand in steps out of the beach north of the quay, tallest at the water.
+  const rand = seeded(77);
+  for (let i = 0; i < 9; i++) for (let j = 0; j < 14; j++) {
+    const cx = 168 + j * 6.2 + (i % 2) * 3.1, cz = -34 - i * 5.4, out = j / 13, back = i / 8;
+    const top = 1.5 + out * 9 * (0.45 + 0.55 * Math.sin(back * Math.PI)) + rand() * 2.2;
+    b.cylinder('cooled_lava_crust', cx, top / 2 - 3.5, cz, 3.4, 3.5, top + 7, 6);
+    b.solid(cx, top / 2 - 3.5, cz, 5.6, top + 7, 5.6);
+  }
   // Freight shed is open to the yard; fish-drying racks have a separate approach.
   shelter(b, 65, 48, 20, 24);
   for (const z of [-20, -4, 12]) {

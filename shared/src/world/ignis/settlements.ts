@@ -46,7 +46,7 @@ function precinct(name: typeof SETTLEMENTS[number]['name'], industry: Settlement
   }
   return { ...anchor, anchor: { x: anchor.x, z: anchor.z }, x, z, height,
     id: `ignis:settlement:${name.toLowerCase().replaceAll(' ', '-')}`, radius, shoulder,
-    contentReach: industry === 'fishing' ? 160 : industry === 'fort' ? 150 : 110, industry, houses: homes(count) };
+    contentReach: industry === 'fishing' ? 160 : industry === 'fort' ? 150 : industry === 'port' ? 290 : 110, industry, houses: homes(count) };
 }
 export const SETTLEMENT_PRECINCTS: readonly SettlementPrecinct[] = [
   precinct('Cinderpit', 'mine', 8), precinct('Pinewatch', 'forestry', 6),

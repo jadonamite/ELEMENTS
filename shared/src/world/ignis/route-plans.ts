@@ -24,5 +24,5 @@ export const ROUTE_PLANS: readonly RoutePlan[] = [
   plan('north', [arrival('Crown Lake'), [9200, 2500], [9500, 1000]]),
   plan('barrens', [[10500, 7200], [11000, 8500], [11300, 10000], [12400, 10600]]),
   // Summit access is a foot trail from the mine yard; no cart road is claimed to the crater.
-  plan('volcano-approach', [arrival('Cinderpit'), [10500, 6940], [11600, 5500], [12800, 4600], [12150, 3750]], 'derived', 'foot'),
+  plan('volcano-approach', [arrival('Cinderpit'), [10500, 6940], [11600, 5500], [12800, 4600], [12150, 3750], [12120, 3895]], 'derived', 'foot'),
 ];

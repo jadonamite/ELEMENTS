@@ -6,7 +6,8 @@ export const LAND_POLYGON: readonly (readonly [number, number])[] = [
   [16000, 10000], [15500, 14000], [11000, 18000], [7000, 17000], [4000, 14000], [2000, 11000],
 ];
 export const RIVER = [[8000, 2000, 1100], [8100, 3000, 920], [8000, 3500, 820], [8000, 4500, 820],
-  [7700, 5000, 710], [7400, 6000, 600], [7200, 7500, 470], [7000, 9000, 378],
+  // The lake's outlet runs to a lip and falls 70 m.
+  [7905, 4660, 815], [7890, 4685, 745], [7700, 5000, 710], [7400, 6000, 600], [7200, 7500, 470], [7000, 9000, 378],
   [8100, 10200, 330], [9000, 11000, 240], [10600, 12000, 170], [12000, 13000, 95],
   [13400, 14000, 35], [14350, 15000, 0]] as const;
 export const VOLCANO = { x: 12000, z: 4000, height: 1850 } as const;
@@ -66,6 +67,29 @@ export function riverAt(x: number, z: number): { distance: number; water: number
   }
   return { distance: Math.sqrt(d2), water };
 }
+/** The larger of two heights, with the crease between them rounded over `k` metres. */
+const smoothMax = (a: number, b: number, k: number): number => Math.max(a, b) + k / 4 * Math.max(0, 1 - Math.abs(a - b) / k) ** 2;
+export const CRATER = { x: 12120, z: 4000, radius: 110, floor: 1688 } as const;
+/** Where lava runs down the cone, 0..1: winding tongues from the crater. The land is channelled and painted from this one answer. */
+export function lavaFlow(x: number, z: number): number {
+  const r = Math.hypot(x - VOLCANO.x, z - VOLCANO.z), angle = Math.atan2(z - VOLCANO.z, x - VOLCANO.x);
+  return smooth(0.35, 0.8, Math.sin(angle * 5 + r / 420) * 0.5 + 0.5 + (landNoise(x, z, 90) - 0.5) * 0.3);
+}
+/** The volcano: a cone that steepens to the summit, ribbed by gullies the lava runs in, with a crater beside the peak. */
+function coneAt(x: number, z: number): number {
+  const r = Math.hypot(x - VOLCANO.x, z - VOLCANO.z);
+  if (r > 3600) return -1000;
+  let cone = VOLCANO.height - r * 0.58 - 90 * (1 - Math.exp(-r / 260));
+  const flank = smooth(60, 500, r);
+  cone -= flank * (22 * lavaFlow(x, z) + 46 * (landNoise(x, z, 330) - 0.5) + 16 * (landNoise(x + 71, z - 29, 110) - 0.5));
+  const crater = Math.hypot(x - CRATER.x, z - CRATER.z);
+  if (crater < CRATER.radius + 70) {
+    // A raised rim outside, a bowl inside.
+    cone += 14 * smooth(0, 60, r) * smooth(CRATER.radius + 70, CRATER.radius + 10, crater) * smooth(CRATER.radius - 30, CRATER.radius + 10, crater);
+    if (crater < CRATER.radius) cone = mix(CRATER.floor, cone, smooth(CRATER.radius * 0.35, CRATER.radius, crater));
+  }
+  return cone;
+}
 /** Height of one terrace step in metres. */
 export const TERRACE_STEP = 3;
 /** How much of a spot is terraced farmland, 0..1; its edge wanders so the fields do not end on a ruled circle. */
@@ -96,11 +120,7 @@ function relief(x: number, z: number): number {
   h += (landNoise(x, z, 520) - 0.5) * 16 + (landNoise(x + 311, z - 173, 170) - 0.5) * 7 + (landNoise(x - 97, z + 41, 48) - 0.5) * 2;
   const old = Math.hypot(x - 5600, z - 2500);
   h = Math.max(h, 1320 - old * 0.3);
-  const r = Math.hypot(x - VOLCANO.x, z - VOLCANO.z);
-  let cone = 1850 - r * 0.58;
-  const crater = Math.hypot(x - 12120, z - 4000);
-  if (crater < 85) cone = mix(1700, cone, smooth(25, 85, crater));
-  h = Math.max(h, cone);
+  h = smoothMax(h, coneAt(x, z), 80);
   // The river drains the land: within a kilometre the relief eases down (or up) to the water, so the river
   // runs in a broad valley instead of a slot canyon or on a dyke.
   const drain = riverAt(x, z);

@@ -1,5 +1,5 @@
 import { BatchedMesh, BufferAttribute, BufferGeometry, CircleGeometry, FogExp2, Frustum, Group, Matrix4, Mesh, MeshStandardMaterial, PlaneGeometry, Sphere, Vector3, Vector4, type Material, type Camera } from 'three';
-import { landCell, RIVER, LAKE, MINE_LENGTH, minePointAt, VOLCANO } from '../../../shared/src/world/ignis/ground.js';
+import { CRATER, landCell, RIVER, riverAt, LAKE, MINE_LENGTH, minePointAt } from '../../../shared/src/world/ignis/ground.js';
 import { LEGACY_SINDR_ORIGIN as O } from '../../../shared/src/world/ignis/coordinates.js';
 import { tileGeometry } from './terrain-stream.js';
 import { createSmoke } from './effects.js';
@@ -18,10 +18,9 @@ export function terrainAir(material: MeshStandardMaterial, fog: FogExp2): MeshSt
   m.onBeforeCompile = (shader, renderer) => {
     previous.call(material, shader, renderer);
     shader.uniforms.terrainFog = { value: fog.color };
-    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vGroundDistance;')
-      .replace('#include <fog_vertex>', '#include <fog_vertex>\nvGroundDistance = length(mvPosition.xyz);');
-    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 terrainFog; varying float vGroundDistance;')
-      .replace('#include <fog_fragment>', 'gl_FragColor.rgb = mix(gl_FragColor.rgb, terrainFog, 1.0 - exp(-vGroundDistance * 0.000045));');
+    // Distance is taken per pixel: a distance interpolated across a very large triangle (the sea) is wrong everywhere.
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 terrainFog;')
+      .replace('#include <fog_fragment>', 'gl_FragColor.rgb = mix(gl_FragColor.rgb, terrainFog, 1.0 - exp(-length(vViewPosition) * 0.000045));');
   };
   m.customProgramCacheKey = () => `${material.customProgramCacheKey()}-national-air`;
   return m;
@@ -90,7 +89,7 @@ export function nationalView(height: (x: number, z: number) => number, material:
   const batch = new BatchedMesh(42, vertices * 42, indices * 42, farMaterial);
   batch.name = 'national-far'; batch.frustumCulled = false; batch.sortObjects = false; group.add(batch);
   // Water and the crater take the terrain's light air, not the town's street haze, which would erase them by 2 km.
-  const waterMat = terrainAir(new MeshStandardMaterial({ color: 0x416775, roughness: 0.25 }), fog);
+  const waterMat = terrainAir(new MeshStandardMaterial({ color: 0x2f5563, roughness: 0.32 }), fog);
   const sea = new Mesh(new PlaneGeometry(42000, 42000).rotateX(-Math.PI / 2), waterMat);
   sea.position.set(8000 - O.x, -O.y - 0.02, 9000 - O.z); sea.name = 'sea'; group.add(sea);
   const lake = new Mesh(new CircleGeometry(1, 64).rotateX(-Math.PI / 2), waterMat);
@@ -104,9 +103,9 @@ export function nationalView(height: (x: number, z: number) => number, material:
   });
   const riverGeometry = new BufferGeometry(); riverGeometry.setAttribute('position', new BufferAttribute(new Float32Array(riverPos), 3)); riverGeometry.setIndex(riverIndices); riverGeometry.computeVertexNormals();
   const river = new Mesh(riverGeometry, waterMat); river.name = 'national-river'; group.add(river);
-  const crater = new Mesh(new CircleGeometry(85, 40).rotateX(-Math.PI / 2), terrainAir(new MeshStandardMaterial({ color: 0xbd471d, emissive: 0x6a1a08, roughness: 0.9 }), fog));
-  crater.position.set(VOLCANO.x + 120 - O.x, 1702 - O.y, VOLCANO.z - O.z); group.add(crater);
-  const plume = createSmoke(Array.from({ length: 6 }, (_, i) => new Vector3(VOLCANO.x + 120 - O.x + i * 8, 1730 - O.y, VOLCANO.z - O.z)), 8,
+  const crater = new Mesh(new CircleGeometry(CRATER.radius * 0.62, 40).rotateX(-Math.PI / 2), terrainAir(new MeshStandardMaterial({ color: 0xbd471d, emissive: 0x6a1a08, roughness: 0.9 }), fog));
+  crater.position.set(CRATER.x - O.x, CRATER.floor + 6 - O.y, CRATER.z - O.z); group.add(crater);
+  const plume = createSmoke(Array.from({ length: 6 }, (_, i) => new Vector3(CRATER.x - O.x + i * 8, CRATER.floor + 30 - O.y, CRATER.z - O.z)), 8,
     { rise: 420, drift: [200, 70], size: [45, 180], speed: 0.018, opacity: 0.45, color: 0x403b38, lit: 0x403b38 });
   plume.frustumCulled = false; plume.name = 'volcano-plume'; group.add(plume);
   const plumeMat = plume.material as Material;
@@ -124,12 +123,18 @@ export function nationalView(height: (x: number, z: number) => number, material:
       if (!landCell(ix, iz, 3072)) continue;
       const nearGate = Math.hypot(gx - 7100, gz - 9000) < 8000;
       const step = low || !nearGate ? 64 : 32, count = 3072 / step, heights = new Float32Array((count + 1) ** 2);
+      // A far tile's grid is coarser than the river, so it would bury the water; within one grid step of the river the
+      // far land is held under the surface and the river ribbon shows.
+      const far = (lx: number, lz: number): number => {
+        const river = riverAt(lx + O.x, lz + O.z), h = height(lx, lz);
+        return river.distance < step ? Math.min(h, river.water - O.y - 1.5) : h;
+      };
       for (let x = 0; x <= count; x++) {
-        for (let z = 0; z <= count; z++) heights[x * (count + 1) + z] = height(ix * 3072 + x * step - O.x, iz * 3072 + z * step - O.z);
+        for (let z = 0; z <= count; z++) heights[x * (count + 1) + z] = far(ix * 3072 + x * step - O.x, iz * 3072 + z * step - O.z);
         if (performance.now() - slice > 1.5) { await new Promise(resolve => setTimeout(resolve, 0)); slice = performance.now(); }
       }
       const field: Field = { width: 3072, depth: 3072, cx: gx - O.x, cz: gz - O.z, nx: count, nz: count, heights };
-      const geometry = tileGeometry(field, 32, height);
+      const geometry = tileGeometry(field, 32, far);
       const positions = geometry.getAttribute('position'), oldIndices = geometry.index!, kept: number[] = [];
       for (let i = 0; i < oldIndices.count; i += 3) {
         const a = oldIndices.getX(i), b = oldIndices.getX(i + 1), c = oldIndices.getX(i + 2);

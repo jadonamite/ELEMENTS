@@ -1,4 +1,4 @@
-import { LAKE, landDistance, landNoise, oceanBoundary, riverAt, smooth, TERRACE_STEP, terraceAt, VOLCANO } from './base-ground.js';
+import { CRATER, LAKE, landDistance, landNoise, lavaFlow, oceanBoundary, riverAt, smooth, TERRACE_STEP, terraceAt, VOLCANO } from './base-ground.js';
 export { landNoise } from './base-ground.js';
 import { SETTLEMENT_PRECINCTS, SETTLEMENTS } from './settlements.js';
 import { mineAt } from './mine-road.js';
@@ -73,9 +73,7 @@ export function landAt(x: number, z: number, height: number, slope: number, out:
   for (const [cx, cz, r] of SULPHUR_FLATS) put('sulphur', blob(wx, wz, cx, cz, r, 140));
   for (const [cx, cz, r] of MAPLE_GROVES) put('maple', blob(wx, wz, cx, cz, r - 60, 220) * (0.7 + fine * 0.3));
   // Lava runs down the cone in tongues from the crater.
-  const angle = Math.atan2(wz - VOLCANO.z, wx - VOLCANO.x);
-  const tongue = smooth(0.35, 0.8, Math.sin(angle * 5 + volcano / 420) * 0.5 + 0.5 + (fine - 0.5) * 0.3);
-  const lava = Math.max(tongue * (1 - smooth(1500, 2300, volcano)), 1 - smooth(120, 260, volcano));
+  const lava = Math.max(lavaFlow(x, z) * smooth(160, 420, volcano) * (1 - smooth(1500, 2300, volcano)), 1 - smooth(CRATER.radius * 0.5, CRATER.radius, Math.hypot(x - CRATER.x, z - CRATER.z)));
   // The cone itself is dark cinder; lava runs over it.
   put('black_sand', 1 - smooth(1500, 2300, volcano));
   put('lava', lava);
