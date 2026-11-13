@@ -1,4 +1,4 @@
-import { LAKE, landDistance, landNoise, oceanBoundary, riverAt, smooth, VOLCANO } from './base-ground.js';
+import { LAKE, landDistance, landNoise, oceanBoundary, riverAt, smooth, TERRACE_STEP, terraceAt, VOLCANO } from './base-ground.js';
 export { landNoise } from './base-ground.js';
 import { SETTLEMENT_PRECINCTS, SETTLEMENTS } from './settlements.js';
 
@@ -55,7 +55,7 @@ export function landAt(x: number, z: number, height: number, slope: number, out:
   put('pine', blob(wx, wz, 4500, 5500, 1500, 600));
   put('ginkgo', blob(wx, wz, 7000, 9000, 1500, 700) * (0.75 + fine * 0.25));
   put('ginkgo', blob(wx, wz, 8300, 8000, 500, 400) * 0.9);
-  put('terrace', blob(wx, wz, 9100, 10900, 800, 300));
+  put('terrace', terraceAt(x, z));
   // Lower river: green banks, reeds and standing water at the edge.
   const lower = smooth(8800, 10200, z);
   put('meadow', (1 - smooth(120, 320, river)) * lower);
@@ -110,12 +110,15 @@ export function landColour(weights: Float32Array, glow: number, x: number, z: nu
     const c = LAND_COLOUR[LAND_TYPES[i]!];
     r += c[0] * w; g += c[1] * w; b += c[2] * w;
   }
-  // Terraces read as steps: a dark flooded strip, then a gold one, every 8 m of height.
+  // Every other terrace field is flooded; the banks between fields stay dry earth.
   const terrace = weights[index.terrace]!;
   if (terrace > 0) {
-    const band = smooth(0.2, 0.8, Math.abs((height / 8) % 1 - 0.5) * 2);
-    const wet = terrace * (1 - band) * 0.55;
+    const step = height / TERRACE_STEP + 0.125, field = Math.floor(step), across = step - field;
+    const flat = 1 - smooth(0.2, 0.45, across);
+    const wet = terrace * flat * (field % 2 === 0 ? 0.7 : 0);
     r += (58 - r) * wet; g += (84 - g) * wet; b += (74 - b) * wet;
+    const bank = terrace * (1 - flat) * 0.6;
+    r += (112 - r) * bank; g += (92 - g) * bank; b += (72 - b) * bank;
   }
   // Sulphur flats hold turquoise pools.
   const sulphur = weights[index.sulphur]!;

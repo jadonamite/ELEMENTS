@@ -67,6 +67,19 @@ export function riverAt(x: number, z: number): { distance: number; water: number
   }
   return { distance: Math.sqrt(d2), water };
 }
+/** Height of one terrace step in metres. */
+export const TERRACE_STEP = 3;
+/** How much of a spot is terraced farmland, 0..1; its edge wanders so the fields do not end on a ruled circle. */
+export function terraceAt(x: number, z: number): number {
+  if (Math.abs(x - 9100) > 1400 || Math.abs(z - 10900) > 1400) return 0;
+  const wx = x + (landNoise(x, z, 700) - 0.5) * 440, wz = z + (landNoise(x + 913, z - 377, 700) - 0.5) * 440;
+  return 1 - smooth(800, 1100, Math.hypot(wx - 9100, wz - 10900));
+}
+/** A slope cut into level fields: flat for three quarters of each step, then a bank up to the next. */
+export const terraced = (h: number): number => {
+  const steps = h / TERRACE_STEP, whole = Math.floor(steps);
+  return (whole + smooth(0.75, 1, steps - whole)) * TERRACE_STEP;
+};
 export interface BaseGround { height: number; inland: boolean; river: number }
 /** Broad authored relief. Detail is in metres and never defines a town boundary. */
 function relief(x: number, z: number): number {
@@ -99,6 +112,9 @@ export function baseGround(x: number, z: number): BaseGround {
   let h = relief(x, z);
   // Ocean-facing edges taper to a beach; the other boundaries are mountain ridges.
   if (x > 11000 && z > 1800) h *= smooth(0, 1500, land);
+  // Farmed hillsides are cut into level fields before pads, rivers and roads shape them.
+  const fields = terraceAt(x, z);
+  if (fields > 0) h = mix(h, terraced(h), fields);
   // Broad settlement pads ease into relief before drainage and road shaping.
   // Authored dry working precincts restore their surveyed floors after the valley cut.
   for (const pad of SETTLEMENTS) {
