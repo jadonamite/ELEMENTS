@@ -130,6 +130,10 @@ export class OpeningFlow {
   private async attemptSessionResume(token: string): Promise<void> {
     try {
       const session = await postSession(token);
+      if (session.grantContracts?.length) {
+        this.renderLoginStep();
+        return;
+      }
       this.authToken = token;
       this.accountId = session.accountId;
       if (session.rising) {

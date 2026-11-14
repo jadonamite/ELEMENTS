@@ -5,6 +5,10 @@ import { TOTAL_CHROMA_SUPPLY } from '@elements/shared';
 import { migrateDatabase } from '../src/db.js';
 import { grantPlayerStartingPurse, recordTransaction } from '../src/economy/ledgerService.js';
 import { addItems, removeItems } from '../src/economy/satchelService.js';
+import { baseEncode } from 'near-api-js';
+import { createOrGetAccount } from '../src/db.js';
+import { type LiveGrant } from '../src/chain/grants.js';
+import type { SignedSessionGrant } from '@elements/shared';
 import { genesisArgs, playerImplicitAccount, worldAccount } from '../src/chain/accounts.js';
 import { Settler, type ChainClient, type ChainMove } from '../src/chain/settler.js';
 import type { ChainConfig } from '../src/chain/config.js';
@@ -21,8 +25,28 @@ const config: ChainConfig = {
   batchSize: 2,
 };
 
+function grantMethods() {
+  const grants = new Map<string, LiveGrant>();
+  return {
+    grants,
+    async sessionGrant(holder: string) { return grants.get(holder) ?? null; },
+    async submitGrant(signed: SignedSessionGrant) {
+      const terms = JSON.parse(signed.payload.message) as { holder_id: string; caps: Record<string,string>; expires_at: string };
+      grants.set(terms.holder_id, { ...terms, nonce: signed.payload.nonce });
+    },
+    async registerWorld() {},
+  };
+}
+function playerGrant(holder: string): LiveGrant {
+  return { caps: { CHROMA: '1000000', potion: '1000' }, expires_at: (BigInt(Date.now()+3_600_000)*1_000_000n).toString(), nonce: Array(32).fill(0) };
+}
+
 // A stand-in contract with the real one's rules: ordered batches, no overdraw.
 class FakeChain implements ChainClient {
+  grantsApi = grantMethods();
+  sessionGrant = this.grantsApi.sessionGrant;
+  submitGrant = this.grantsApi.submitGrant;
+  registerWorld = this.grantsApi.registerWorld;
   last = 0;
   balances = new Map<string, bigint>();
   failNextAfterApplying = false;
@@ -30,6 +54,7 @@ class FakeChain implements ChainClient {
   sent: number[] = [];
 
   constructor() {
+    for (const id of ['alice', 'bob']) this.grantsApi.grants.set(playerImplicitAccount(config.playerSecret,id), playerGrant(playerImplicitAccount(config.playerSecret,id)));
     for (const [account, amount] of genesisArgs(config.gameAccount).genesis) {
       this.balances.set(account, BigInt(amount));
     }
@@ -45,6 +70,10 @@ class FakeChain implements ChainClient {
     }
     if (batch !== this.last + 1) throw new Error('Batch out of order');
     for (const m of moves) {
+      const grant = await this.sessionGrant(m.from);
+      assert.ok(grant && BigInt(grant.expires_at) > BigInt(Date.now())*1_000_000n, 'No live grant');
+      assert.ok(BigInt(grant.caps.CHROMA ?? '0') >= BigInt(m.amount), 'Grant cap exceeded');
+      grant.caps.CHROMA = (BigInt(grant.caps.CHROMA!) - BigInt(m.amount)).toString();
       const from = this.balances.get(m.from) ?? 0n;
       if (from < BigInt(m.amount)) throw new Error('Insufficient balance');
       this.balances.set(m.from, from - BigInt(m.amount));
@@ -62,6 +91,11 @@ class FakeChain implements ChainClient {
 function freshDb() {
   const db = new DatabaseSync(':memory:');
   migrateDatabase(db);
+  for (const id of ['alice', 'bob']) {
+    createOrGetAccount(id,db);
+    const bytes = Buffer.from(playerImplicitAccount(config.playerSecret,id),'hex');
+    db.prepare('UPDATE accounts SET chain_public_key = ? WHERE id = ?').run(`ed25519:${baseEncode(bytes)}`,id);
+  }
   return db;
 }
 
@@ -156,7 +190,10 @@ test('the shared settler maps item world entries to mint and burn operations', a
   const balances = new Map<string, bigint>();
   const supplies = new Map<string, bigint>();
   let last = 0;
+  const methods = grantMethods();
+  methods.grants.set(playerImplicitAccount(config.playerSecret,'alice'),playerGrant(playerImplicitAccount(config.playerSecret,'alice')));
   const client: ChainClient = {
+    ...methods,
     async lastBatch() { return last; },
     async settle(batch, raw) {
       assert.equal(batch, last + 1);
@@ -199,6 +236,7 @@ test('the item settler halts on every contract refusal, including supply underfl
     const db = freshDb();
     addItems({ accountId: 'alice', from: 'world', stacks: [{ itemId: 'potion', quantity: 1 }], reason: 'grant' }, db);
     const client: ChainClient = {
+      ...grantMethods(),
       async lastBatch() { return 0; },
       async settle() { throw new Error(`Contract panicked: ${refusal}`); },
     };
@@ -207,4 +245,46 @@ test('the item settler halts on every contract refusal, including supply underfl
     assert.ok((settler.haltReason ?? '').toLowerCase().includes(refusal.toLowerCase()), refusal);
     assert.equal(await settler.tick(), null, 'a halted settler does not retry');
   }
+});
+
+
+test('a missing player grant holds the batch and reports the holder without sending', async () => {
+  const db=freshDb(); const chain=new FakeChain(); const settler=new Settler(config,chain,db);
+  play(db); await settler.tick();
+  chain.grantsApi.grants.delete(playerImplicitAccount(config.playerSecret,'alice'));
+  assert.equal(await settler.tick(),null);
+  assert.equal(chain.last,1);
+  assert.equal(chain.sent.length,1);
+  assert.match(settler.status().held ?? '',/No live grant/);
+});
+
+test('an expired grant holds until the next signed session renews it', async () => {
+  const db=freshDb(); const chain=new FakeChain(); const settler=new Settler(config,chain,db);
+  play(db); await settler.tick();
+  const holder=playerImplicitAccount(config.playerSecret,'alice');
+  chain.grantsApi.grants.set(holder,{ ...playerGrant(holder),expires_at:'1' });
+  assert.equal(await settler.tick(),null);
+  chain.grantsApi.grants.set(holder,playerGrant(holder));
+  await drain(settler);
+  assert.equal(chain.last,3);
+  assert.equal(settler.status().held,null);
+});
+
+test('caps are summed across every debit in the same batch', async () => {
+  const db=freshDb(); const chain=new FakeChain(); const settler=new Settler({...config,batchSize:80},chain,db);
+  play(db); await drain(settler);
+  const holder=playerImplicitAccount(config.playerSecret,'alice');
+  chain.grantsApi.grants.set(holder,{...playerGrant(holder),caps:{CHROMA:'15'}});
+  recordTransaction({from:'alice',to:'merchant_ignis',amount:10,reason:'sentry_fine'},db);
+  recordTransaction({from:'alice',to:'merchant_ignis',amount:10,reason:'sentry_fine'},db);
+  assert.equal(await settler.tick(),null);
+  assert.match(settler.status().held ?? '',/No live grant/);
+});
+
+test('a player without a browser key cannot receive into a server-derived account', async () => {
+  const db=freshDb(); const chain=new FakeChain(); const settler=new Settler(config,chain,db);
+  db.prepare('UPDATE accounts SET chain_public_key = NULL WHERE id = ?').run('alice');
+  play(db); assert.equal(await settler.tick(),null);
+  assert.equal(chain.sent.length,0);
+  assert.match(settler.status().held ?? '',/has no holder key/);
 });

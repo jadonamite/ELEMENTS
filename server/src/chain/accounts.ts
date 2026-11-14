@@ -1,10 +1,9 @@
 import { createHash, createHmac, createPrivateKey, createPublicKey } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { COUNTING_HOUSES, SINDR_MERCHANTS, createGenesisEntries } from '@elements/shared';
-import { baseEncode, type KeyPairString } from 'near-api-js';
+import { baseDecode, baseEncode, type KeyPairString } from 'near-api-js';
 
-// A NEAR implicit account is the hex of an ed25519 public key. Each player's key is derived
-// from the server's chain secret and their game id, so no per-player key is ever stored.
+// An implicit account is the hex of its ed25519 public key.
 const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
 
 export function playerSeed(secret: string, playerId: string): Buffer {
@@ -25,7 +24,7 @@ export function playerImplicitAccount(secret: string, playerId: string): string 
   return publicKeyBytes(playerSeed(secret, playerId)).toString('hex');
 }
 
-/** Each world holder's own key, derived the same way as a player's under its own prefix. */
+/** Each world holder signs with its own key under a separate derivation prefix. */
 export function worldKeyPair(secret: string, ledgerId: string): { secretKey: KeyPairString; publicKey: string } {
   const seed = createHmac('sha256', secret).update(`elements-world:${ledgerId}`).digest();
   const pub = publicKeyBytes(seed);
@@ -79,9 +78,12 @@ export interface ChainNames {
 }
 
 export function chainAccountFor(ledgerId: string, names: ChainNames, db: DatabaseSync): string {
-  return isPlayer(ledgerId, db)
-    ? playerImplicitAccount(names.playerSecret, ledgerId)
-    : worldAccount(ledgerId, names.gameAccount);
+  if (!isPlayer(ledgerId, db)) return worldAccount(ledgerId, names.gameAccount);
+  const row = db.prepare('SELECT chain_public_key FROM accounts WHERE id = ?').get(ledgerId) as { chain_public_key: string | null } | undefined;
+  if (!row?.chain_public_key) throw new Error(`Player ${ledgerId} has no holder key; sign in to grant a session`);
+  const key = baseDecode(row.chain_public_key.replace(/^ed25519:/, ''));
+  if (!row.chain_public_key.startsWith('ed25519:') || key.length !== 32) throw new Error('Invalid player holder key');
+  return Buffer.from(key).toString('hex');
 }
 
 /** The contract's `new` arguments: the server's own genesis split, on chain names. */

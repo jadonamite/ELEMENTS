@@ -1,8 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { Account, JsonRpcProvider, KeyPairSigner, type KeyPairString } from 'near-api-js';
+import { Account, JsonRpcProvider, KeyPairSigner, nearToYocto, type KeyPairString } from 'near-api-js';
 import { getDatabase } from '../db.js';
-import { chainAccountFor, playerImplicitAccount } from './accounts.js';
+import { chainAccountFor, isPlayer, worldKeyPair } from './accounts.js';
 import type { ChainConfig } from './config.js';
+import { signWorldGrant, type LiveGrant } from './grants.js';
+import type { SignedSessionGrant } from '@elements/shared';
 
 // Settles the server ledger to the CHROMA contract in numbered batches. A batch is written down
 // (rows and number) before it is sent, so after a crash or a timeout the same batch is checked
@@ -18,6 +20,9 @@ export interface ChainMove {
 export interface ChainClient {
   lastBatch(): Promise<number>;
   settle(batch: number, moves: unknown[]): Promise<string>;
+  sessionGrant(holder: string): Promise<LiveGrant | null>;
+  submitGrant(signed: SignedSessionGrant): Promise<void>;
+  registerWorld(ledgerId: string, holder: string): Promise<void>;
 }
 
 export type LedgerKind = 'coin' | 'items';
@@ -55,6 +60,30 @@ export function nearClient(config: ChainConfig, kind: LedgerKind = 'coin'): Chai
       });
       return Number(value ?? 0);
     },
+    async sessionGrant(holder) {
+      return await provider.callFunction({ contractId: config.contractId, method: 'session_grant', args: { holder_id: holder } }) as LiveGrant | null;
+    },
+    async submitGrant(signed) {
+      await account.callFunction({ contractId: config.contractId, methodName: 'grant', args: signed, gas: 50_000_000_000_000n });
+    },
+    async registerWorld(ledgerId, holder) {
+      const key = worldKeyPair(config.playerSecret, ledgerId);
+      let balance: bigint | null = null;
+      try { balance = BigInt((await provider.viewAccount({ accountId: holder })).amount); }
+      catch (error) { if (!/UNKNOWN_ACCOUNT|does not exist/.test(String(error))) throw error; }
+      if (balance === null || balance < nearToYocto('0.05')) {
+        if (!config.worldProvisionerKey) throw new Error(`World holder ${holder} needs provisioning; configure NEAR_WORLD_PROVISIONER_KEY`);
+        const provisioner = new Account(config.gameAccount, provider, KeyPairSigner.fromSecretKey(config.worldProvisionerKey as KeyPairString));
+        if (balance === null) await provisioner.createAccount({ newAccountId: holder, publicKey: key.publicKey, nearToTransfer: nearToYocto('0.1') });
+        else await provisioner.transfer({ receiverId: holder, amount: nearToYocto('0.1') });
+      }
+      const world = new Account(holder, provider, KeyPairSigner.fromSecretKey(key.secretKey));
+      try {
+        await world.callFunction({ contractId: config.contractId, methodName: 'register_key', args: { public_key: key.publicKey }, gas: 30_000_000_000_000n });
+      } catch (error) {
+        if (!/Key already registered/.test(String(error))) throw error;
+      }
+    },
     async settle(batch, moves) {
       const result = await account.callFunctionRaw({
         contractId: config.contractId,
@@ -91,6 +120,7 @@ interface LedgerRow {
 export class Settler {
   private busy = false;
   private halted: string | null = null;
+  private held: string | null = null;
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -169,16 +199,44 @@ export class Settler {
     }
   }
 
+  async submitGrant(signed: SignedSessionGrant): Promise<void> { await this.client.submitGrant(signed); }
+
+  get contractId(): string { return this.config.contractId; }
+
   private async send(batch: number, first: number, last: number): Promise<number | null> {
     const entries = this.kind === 'coin'
       ? this.db.prepare("SELECT rowid, id, sender, receiver, amount, reason FROM ledger_entries WHERE rowid BETWEEN ? AND ? AND reason != 'genesis' ORDER BY rowid").all(first,last) as unknown as LedgerRow[]
       : this.db.prepare('SELECT rowid,id,from_id,to_id,item_id,quantity,reason FROM item_ledger WHERE rowid BETWEEN ? AND ? ORDER BY rowid').all(first,last) as unknown as Array<{rowid:number;id:string;from_id:string;to_id:string;item_id:string;quantity:number;reason:string}>;
     const names = { gameAccount: this.config.gameAccount, playerSecret: this.config.playerSecret };
+    try {
     const moves = this.kind === 'coin'
       ? (entries as LedgerRow[]).map((e) => ({ from: chainAccountFor(e.sender,names,this.db), to: chainAccountFor(e.receiver,names,this.db), amount: String(e.amount), memo: `${e.reason} ${e.id}`.slice(0,120) }))
-      : (entries as Array<{id:string;from_id:string;to_id:string;item_id:string;quantity:number;reason:string}>).map((e) => ({ from: e.from_id === 'world' ? null : chainAccountFor(e.from_id,names,this.db), to: e.to_id === 'world' ? null : chainAccountFor(e.to_id,names,this.db), token_id:e.item_id, amount:String(e.quantity), memo:`${e.reason} ${e.id}`.slice(0,120) }));
+        : (entries as Array<{id:string;from_id:string;to_id:string;item_id:string;quantity:number;reason:string}>).map((e) => ({ from: e.from_id === 'world' ? null : chainAccountFor(e.from_id,names,this.db), to: e.to_id === 'world' ? null : chainAccountFor(e.to_id,names,this.db), token_id:e.item_id, amount:String(e.quantity), memo:`${e.reason} ${e.id}`.slice(0,120) }));
 
-    try {
+      const needed = new Map<string, { ledgerId: string; caps: Record<string, bigint> }>();
+      for (let i = 0; i < moves.length; i++) {
+        const move = moves[i]!;
+        if (!move.from) continue;
+        const entry = entries[i]!;
+        const ledgerId = 'sender' in entry ? entry.sender : entry.from_id;
+        const token = 'token_id' in move ? move.token_id : 'CHROMA';
+        const holder = needed.get(move.from) ?? { ledgerId, caps: {} };
+        holder.caps[token] = (holder.caps[token] ?? 0n) + BigInt(move.amount);
+        needed.set(move.from, holder);
+      }
+      for (const [holder, request] of needed) {
+        let grant = await this.client.sessionGrant(holder);
+        const covered = () => grant && BigInt(grant.expires_at) > BigInt(Date.now() + 30_000) * 1_000_000n
+          && Object.entries(request.caps).every(([token, amount]) => BigInt(grant!.caps[token] ?? '0') >= amount);
+        if (!covered() && !isPlayer(request.ledgerId, this.db)) {
+          if (!grant) await this.client.registerWorld(request.ledgerId, holder);
+          const caps = Object.fromEntries(Object.entries(request.caps).map(([token, amount]) => [token, (amount + 10_000_000n).toString()]));
+          await this.client.submitGrant(signWorldGrant(this.config.playerSecret, request.ledgerId, holder, this.config.contractId, caps));
+          grant = await this.client.sessionGrant(holder);
+        }
+        if (!covered()) throw new Error(`No live grant covering ${holder}; renew the session`);
+      }
+      this.held = null;
       const hash = await this.client.settle(batch, moves);
       this.markSettled(batch, hash);
       console.log(`[chain] batch ${batch}: ${moves.length} moves settled, tx ${hash}`);
@@ -186,6 +244,11 @@ export class Settler {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.db.prepare(`UPDATE ${this.batchTable} SET error = ? WHERE batch = ?`).run(message.slice(0, 500), batch);
+      if (/No live grant|Grant expired|Grant cap exceeded|Token not granted|has no holder key|needs provisioning/.test(message)) {
+        this.held = message;
+        console.warn(`[chain] batch ${batch} held: ${message}`);
+        return null;
+      }
       // A contract refusal means the books disagree; a network error is retried next tick.
       if (/Insufficient balance|Supply underflow|Amount must be positive|Operation has no source or destination|Sender and receiver cannot be the same|out of order|Only the game account|overflow|underflow/i.test(message)) {
         this.halt(`batch ${batch} refused by the contract: ${message}`);
@@ -220,7 +283,10 @@ export class Settler {
       .prepare(this.kind === 'coin' ? "SELECT COUNT(*) AS n FROM ledger_entries WHERE rowid > ? AND reason != 'genesis'" : 'SELECT COUNT(*) AS n FROM item_ledger WHERE rowid > ?')
       .get(settledTo.r) as { n: number };
     const explorer = this.config.explorerUrl;
-    const player = playerId ? playerImplicitAccount(this.config.playerSecret, playerId) : null;
+    let player: string | null = null;
+    if (playerId) {
+      try { player = chainAccountFor(playerId, this.config, this.db); } catch { /* A session has not bound a holder key yet. */ }
+    }
     return {
       network: this.config.network,
       contract: this.config.contractId,
@@ -230,6 +296,7 @@ export class Settler {
       lastSettledAt: last?.settled_at ?? null,
       waiting: waiting.n,
       halted: this.halted,
+      held: this.held,
       player: player ? { account: player, url: `${explorer}/address/${player}` } : null,
     };
   }

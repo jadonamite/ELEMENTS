@@ -1,3 +1,4 @@
+import { guestKey } from './guest-key.js';
 import type { DrawingResult } from '../opening.js';
 import { roll } from '../../../shared/src/rising/roll.js';
 
@@ -124,6 +125,8 @@ export function getServerUrl(): string {
 export interface SessionResponse {
   accountId: string;
   rising: DrawingResult | null;
+  grantContracts?: string[];
+  grantCaps?: Record<string, string>;
 }
 
 export async function postSession(token: string): Promise<SessionResponse> {
@@ -178,6 +181,7 @@ function toDrawing(item: { role: 'Shaper' | 'Hush'; element?: 'IGNIS' | 'AQUES' 
 
 /** The Drawing before sign-in: the server rolls and keeps it; this browser keeps only the ticket and what to show. */
 export async function postGuestRising(): Promise<DrawingResult> {
+  await guestKey();
   const response = await fetch(`${getServerUrl()}/api/rising/guest`, { method: 'POST' });
   if (!response.ok) throw new Error(`Guest rising request failed with status ${response.status}`);
   const data = (await response.json()) as { guestTicket: string; rising: RisingApiResponse['rising'] & object };
