@@ -18,6 +18,7 @@ export default defineConfig({
         kit: resolve(import.meta.dirname, 'kit.html'),
         people: resolve(import.meta.dirname, 'people.html'),
         hound: resolve(import.meta.dirname, 'hound.html'),
+        fastForward: resolve(import.meta.dirname, 'fast-forward.html'),
       },
     },
   },

@@ -1,5 +1,6 @@
 import express, { type Application, type Request, type Response } from 'express';
 import { verifyToken } from './auth.js';
+import { fastForwardWeek } from './economy/fastForwardRunner.js';
 import { chainSettler, itemsChainSettler, readChainConfig, worldAccount, worldHolders } from './chain/index.js';
 import { createGuestRising, createOrGetAccount, createOrGetRising, getRising, getControlProgress, saveControlProgress } from './db.js';
 import { isAccountAllowed, isIpAllowed } from './rate-limit.js';
@@ -258,6 +259,17 @@ export function setupApi(app: Application): void {
     const grant = grantPlayerStartingPurse(accountId);
     const balance = getAccountBalance(accountId);
     res.json({ accountId: accountId, granted: !!grant, balance, grant });
+  });
+
+  // A week of Sindr trading on a throwaway copy of the economy, for watching prices move. Never touches the live ledger.
+  app.get('/api/economy/fast-forward', async (req: Request, res: Response) => {
+    if (!isIpAllowed(req.ip ?? 'unknown')) { res.status(429).json({ error: 'Too many requests' }); return; }
+    const seed = Math.max(1, Math.min(9999, Math.floor(Number(req.query.seed) || 1)));
+    try {
+      res.json(await fastForwardWeek(seed));
+    } catch (err) {
+      res.status(503).json({ error: err instanceof Error ? err.message : 'Simulation failed' });
+    }
   });
 
   app.get('/api/economy/merchants', (_req: Request, res: Response) => {

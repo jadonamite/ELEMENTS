@@ -47,6 +47,17 @@ These steps take about ten minutes on the live site. Use a private window so you
 5. Press "Talk to" at a stall and say something. The keeper answers in character and remembers you.
 6. Within about a minute your trades settle on NEAR testnet. Open <https://elements-server-production.up.railway.app/api/chain> to see the last settled batch and its transaction, then follow the contract links below to see the same moves on the explorer.
 
+## Watch a week of trading in a minute
+
+Open <https://elements.namite.xyz/fast-forward.html>. The server runs seven game days of Sindr trading on a throwaway copy of the economy (`server/src/economy/fastForward.ts`, in its own worker thread), using the same merchant rules, keeper ticks and day ticks as the live game, with simulated players. It never touches the live ledger or NEAR. The page plays the week back over sixty seconds:
+
+- Day 2: players sell sacks of crimson shards. Watch the shard keepers' stock climb and the price they pay for crimson fall.
+- Day 3: one player sells the Whetstone Counter blades until its purse falls under 1,000 CHROMA. It stops buying.
+- Day 4: players crowd the potter before a fight. The potion price climbs as the shelf empties, then eases back as the keeper restocks.
+- Day 6: the Whetstone Counter has been broke for three days and shuts. A player buys it for 2,000 CHROMA.
+
+Hover or tap any price for the keeper's reason. "New week" runs another week with different player traffic. The same data is at `GET /api/economy/fast-forward?seed=1`.
+
 ## How the economy works
 
 There are two NEAR contracts, both deployed on testnet under `elements-dev.testnet`:
