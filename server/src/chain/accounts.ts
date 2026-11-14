@@ -1,6 +1,7 @@
 import { createHash, createHmac, createPrivateKey, createPublicKey } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { createGenesisEntries } from '@elements/shared';
+import { COUNTING_HOUSES, SINDR_MERCHANTS, createGenesisEntries } from '@elements/shared';
+import { baseEncode, type KeyPairString } from 'near-api-js';
 
 // A NEAR implicit account is the hex of an ed25519 public key. Each player's key is derived
 // from the server's chain secret and their game id, so no per-player key is ever stored.
@@ -10,15 +11,38 @@ export function playerSeed(secret: string, playerId: string): Buffer {
   return createHmac('sha256', secret).update(`elements-player:${playerId}`).digest();
 }
 
-export function playerImplicitAccount(secret: string, playerId: string): string {
-  const seed = playerSeed(secret, playerId);
+function publicKeyBytes(seed: Buffer): Buffer {
   const privateKey = createPrivateKey({
     key: Buffer.concat([PKCS8_ED25519_PREFIX, seed]),
     format: 'der',
     type: 'pkcs8',
   });
   const spki = createPublicKey(privateKey).export({ format: 'der', type: 'spki' });
-  return Buffer.from(spki.subarray(spki.length - 32)).toString('hex');
+  return Buffer.from(spki.subarray(spki.length - 32));
+}
+
+export function playerImplicitAccount(secret: string, playerId: string): string {
+  return publicKeyBytes(playerSeed(secret, playerId)).toString('hex');
+}
+
+/** Each world holder's own key, derived the same way as a player's under its own prefix. */
+export function worldKeyPair(secret: string, ledgerId: string): { secretKey: KeyPairString; publicKey: string } {
+  const seed = createHmac('sha256', secret).update(`elements-world:${ledgerId}`).digest();
+  const pub = publicKeyBytes(seed);
+  return {
+    secretKey: `ed25519:${baseEncode(Buffer.concat([seed, pub]))}`,
+    publicKey: `ed25519:${baseEncode(pub)}`,
+  };
+}
+
+/** World holders that get their own NEAR account: the genesis holders, every Sindr keeper and every counting house. */
+export function worldHolders(): string[] {
+  const ids = [
+    ...createGenesisEntries(0).map((e) => e.to),
+    ...SINDR_MERCHANTS.map((m) => m.id),
+    ...COUNTING_HOUSES.map((c) => c.id),
+  ];
+  return [...new Set(ids)];
 }
 
 // Places and townsfolk (treasury, merchants, masters, shops, loot piles, counting houses)

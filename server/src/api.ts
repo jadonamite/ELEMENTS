@@ -1,6 +1,6 @@
 import express, { type Application, type Request, type Response } from 'express';
 import { verifyToken } from './auth.js';
-import { chainSettler, itemsChainSettler } from './chain/index.js';
+import { chainSettler, itemsChainSettler, readChainConfig, worldAccount, worldHolders } from './chain/index.js';
 import { createGuestRising, createOrGetAccount, createOrGetRising, getRising, getControlProgress, saveControlProgress } from './db.js';
 import { isAccountAllowed, isIpAllowed } from './rate-limit.js';
 import { isOutsider } from './net/money.js';
@@ -208,6 +208,16 @@ export function setupApi(app: Application): void {
     res.json({ progress: saveControlProgress(accountId, req.body.progress) });
   });
 
+  // The treasury, keepers, masters and counting houses: each a NEAR account with its own key.
+  function worldAccountList() {
+    const config = readChainConfig();
+    if (!config) return [];
+    return worldHolders().map((ledgerId) => {
+      const account = worldAccount(ledgerId, config.gameAccount);
+      return { ledgerId, account, explorer: `${config.explorerUrl}/address/${account}` };
+    });
+  }
+
   // Where CHROMA lives on NEAR: the contract, the last settled batch and how much is waiting.
   app.get('/api/chain', (_req: Request, res: Response) => {
     const chroma = chainSettler();
@@ -215,7 +225,7 @@ export function setupApi(app: Application): void {
     res.json({ onChain: Boolean(chroma || items), contracts: {
       chroma: chroma ? { onChain: true, ...chroma.status() } : { onChain: false },
       items: items ? { onChain: true, ...items.status() } : { onChain: false },
-    } });
+    }, worldAccounts: worldAccountList() });
   });
   app.get('/api/chain/me', async (req: Request, res: Response) => {
     const accountId = await requireAccount(req, res);

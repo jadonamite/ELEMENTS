@@ -1,7 +1,7 @@
 import { readChainConfig, readItemsChainConfig } from './config.js';
 import { nearClient, Settler } from './settler.js';
 
-export { genesisArgs, playerImplicitAccount, worldAccount } from './accounts.js';
+export { genesisArgs, playerImplicitAccount, worldAccount, worldHolders, worldKeyPair } from './accounts.js';
 export { readChainConfig, readItemsChainConfig } from './config.js';
 export { Settler } from './settler.js';
 
