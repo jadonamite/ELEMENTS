@@ -1,6 +1,7 @@
 import { BEND_MOVE_IDS, ELEMENTS, MOVE_IDS, STARTER_MOVE_IDS, WEAPONS, WEAPON_MOVE_IDS } from './types.js';
 import type { ActionState, BendMoveId, CombatBalance, CombatSituation, Combatant, Element, Health, HitInput, HitResult, Kit, MoveDefinition, MoveId, MoveStartResult, Position, RejectionReason, Weapon, WeaponMoveId } from './types.js';
 export * from './types.js';
+export * from './stamina.js';
 
 // Mathematical identities, not adjustable combat tuning.
 const ZERO = 0;

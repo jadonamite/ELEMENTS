@@ -4,7 +4,7 @@ import balance from '../../../shared/balance.json';
 import { createCombatRules, LEGACY_SINDR_ORIGIN, regionFor, toGlobal, toLocal, type Point3, type Region, type CombatBalance, type Kit, type MoveId } from '../../../shared/src/index.js';
 import {
   enemyFromTuple, MOVE_HZ, playerFromTuple, ServerClock,
-  type ClockMsg, type EnemyDiedMsg, type EnemyHitMsg, type HitResultMsg, type HurtMsg, type MoveMsg, type PongMsg, type SnapMsg, type TrackDelay, type WelcomeMsg,
+  type ClockMsg, type EnemyDiedMsg, type EnemyHitMsg, type HitResultMsg, type HurtMsg, type MoveMsg, type StaminaMsg, type ActMsg, type PongMsg, type SnapMsg, type TrackDelay, type WelcomeMsg,
 } from '../../../shared/src/net/index.js';
 import type { Combat } from '../combat.js';
 import { parseOutfit, type OutfitId } from '../body.js';
@@ -46,6 +46,8 @@ export interface OnlineGame {
   onMyHit?: ((at: Vector3, damage: number, killed: boolean) => void) | undefined;
   /** An enemy the server moves struck us; hp is the server's figure. */
   onHurt?: ((hp: number, max: number, damage: number) => void) | undefined;
+  /** The server's count of our stamina. */
+  onStamina?: ((current: number, cap: number, windedFor: number) => void) | undefined;
   onStatus?: ((text: string) => void) | undefined;
   onNotice?: ((text: string) => void) | undefined;
   /** The server's fighting tier for this player, sent on joining. */
@@ -152,6 +154,10 @@ export class OnlineSession {
     this.on('hurt', (m) => {
       const h = m as HurtMsg;
       game.onHurt?.(h.hp, h.max, h.d);
+    });
+    this.on('stamina', (m) => {
+      const s = m as StaminaMsg;
+      if ([s.v, s.cap, s.w].every(n => typeof n === 'number' && Number.isFinite(n))) game.onStamina?.(s.v, s.cap, s.w);
     });
     this.on('correct', (m) => {
       if (this.region && finitePoint(m)) this.place(this.fromNetwork(m));
@@ -383,6 +389,15 @@ export class OnlineSession {
   /** The room connection, for the money messages. */
   get channel(): { on(type: string, h: (m: unknown) => void): void; send(type: string, m: unknown): void } {
     return { on: (type, h) => this.on(type, h), send: (type, m) => { if (!this.pending) this.link.send(type, m); } };
+  }
+
+  /** Tells the room a stamina action started: a costly move (with its swing number) or a jump. */
+  act(k: ActMsg['k'], move?: string, swing?: number): void {
+    if (!this.ready || this.pending) return;
+    const msg: ActMsg = { k, t: this.serverNow() };
+    if (move !== undefined) msg.m = move;
+    if (swing !== undefined) msg.sw = swing;
+    this.link.send('act', msg);
   }
 
   /** Server time now, as best this browser knows it. */

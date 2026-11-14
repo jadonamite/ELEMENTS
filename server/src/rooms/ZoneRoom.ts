@@ -249,6 +249,9 @@ export class ZoneRoom extends Room {
       this.pay(this.economy.join(client.sessionId));
     });
 
+    // Stamina: dodges, heavies and jumps the player started. The room keeps its own count from these.
+    this.onMessage('act', (client: Client, message: unknown) => { this.world.act(client.sessionId, message, this.now()); });
+
     this.onMessage('hit', (client: Client, message: unknown) => {
       this.deliver(this.world.hit(client.sessionId, message, this.now()));
     });

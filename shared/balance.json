@@ -718,6 +718,24 @@
         "ultimate": 0
       }
     },
+    "stamina": {
+      "max": 100,
+      "dodge": 25,
+      "heavyWeapon": 15,
+      "heavyBody": 12,
+      "runPerSecond": 12,
+      "runCalmScale": 0.5,
+      "jump": 8,
+      "superJump": 30,
+      "guardSoakScale": 0.5,
+      "parryRefund": 10,
+      "regenPerSecond": 18,
+      "regenDelay": 0.8,
+      "guardRegenScale": 0.5,
+      "windedSeconds": 1.5,
+      "guardBreakSeconds": 0.8,
+      "dodgeProtectSeconds": 0.45
+    },
     "parry": {
       "window": 0.15,
       "stagger": 0.8,

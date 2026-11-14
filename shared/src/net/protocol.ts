@@ -75,6 +75,10 @@ export interface HitResultMsg { e: string; sw: number; ok: boolean; reason?: str
 export interface EnemyHitMsg { e: string; d: number; hp: number; by: string }
 export interface EnemyDiedMsg { e: string; by: string; x: number; z: number }
 export interface HurtMsg { by: string; d: number; hp: number; max: number }
+/** Client to server: an action that costs stamina started. `sw` is the move's swing number, `t` the server time it began. */
+export interface ActMsg { k: 'move' | 'jump' | 'super_jump'; m?: string; sw?: number; t: number }
+/** Server to client: this player's stamina as the server counts it. `w` is seconds of being winded left. */
+export interface StaminaMsg { v: number; cap: number; w: number }
 
 export interface PlayerView {
   id: string;

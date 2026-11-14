@@ -103,6 +103,8 @@ export class Fight {
   heroArmour = 0;
   /** The hero's element and weapon; moves take their numbers from it. */
   kit: Kit = { element: 'IGNIS', weapon: 'sword' };
+  /** A blow on the raised guard: the hero's stamina soaks it, or the guard breaks and the blow lands. */
+  guardSoak: ((damage: number) => 'held' | 'broken') | null = null;
   /** The hero's fighting tier: moves above it are not ready, ever. Online the room sets it. */
   tier = 5;
 
@@ -630,9 +632,9 @@ export class Fight {
       this.events.heroParried?.(melee);
       return;
     }
-    if (guarded) { this.events.heroHit(true); return; }
-    if (element && this.isAttackCountered?.(element)) { this.events.elementBlocked?.(source); return; }
     const damage = rules.calculateDamage(rawDamage, this.heroArmour);
+    if (guarded && (this.guardSoak?.(damage) ?? 'held') === 'held') { this.events.heroHit(true); return; }
+    if (!guarded && element && this.isAttackCountered?.(element)) { this.events.elementBlocked?.(source); return; }
     this.heroHealth = rules.applyDamage(this.heroHealth, damage);
     if (damage >= 14) {
       // Heavy unblocked trauma leaves scars that water healing cannot close.

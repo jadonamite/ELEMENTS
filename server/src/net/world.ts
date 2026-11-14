@@ -1,10 +1,10 @@
 import { withinLocalBounds } from '@elements/shared';
 import type { ActionState, Element, Weapon } from '@elements/shared';
-import { armourOf, outfitOf, standClear } from '@elements/shared';
+import { armourOf, outfitOf, standClear, Stamina, actStaminaCost, moveStaminaCost, MOVE_IDS, type MoveId, type StaminaTuning } from '@elements/shared';
 import { armour, balance, rules } from './balance.js';
 import { ServerEnemy, type Strike } from './enemies.js';
 import { PoseHistory } from './history.js';
-import { judgeHit, parseHit, type Attacker } from './hit-check.js';
+import { judgeHit, parseHit, REWIND_LIMIT, type Attacker } from './hit-check.js';
 import { reportKill, type KillReport } from './kill-hook.js';
 import { layoutFor } from './zones.js';
 import { nationalRegion, regionContains, networkPosition, NATIONAL_SPAWN, SPAWN_REGION, type NationalRegion } from './coordinates.js';
@@ -13,6 +13,13 @@ import { nationalRegion, regionContains, networkPosition, NATIONAL_SPAWN, SPAWN_
 export const MAX_PLAYER_SPEED = 14;
 /** Extra distance allowed per report for jitter and lunges, metres. */
 const MOVE_SLACK = 1.5;
+
+const staminaTune = balance.combat.stamina as StaminaTuning;
+/** A move report older than this no longer counts as running, seconds. */
+const RUN_REPORT_SECONDS = 0.5;
+/** How often a player hears their own stamina when it changes, and at most how long between reports, seconds. */
+const STAMINA_REPORT_SECONDS = 0.25;
+const STAMINA_QUIET_SECONDS = 2;
 
 /** Who a connection is, settled at join by the login check. Never taken from a message. */
 export interface Identity {
@@ -67,6 +74,23 @@ export class ServerPlayer implements Attacker {
   lastSwing = -1;
   /** Move reports refused for covering too much ground. */
   refusedMoves = 0;
+  /** The server's own count of this player's stamina, from the actions it sees. */
+  readonly stamina = new Stamina(staminaTune);
+  /** Server time a paid dodge began; blows inside its window pass through. */
+  dodgeAt = -Infinity;
+  /** Server time the guard went up, for parries. */
+  guardSince = -Infinity;
+  /** A broken guard counts for nothing until this server time. */
+  guardBrokenUntil = -Infinity;
+  /** Whether the last move reports showed a run, and when that report came. */
+  running = false;
+  private ranAt = -Infinity;
+  /** Any enemy has this player as its target: running costs full price. */
+  inFight = false;
+  /** Swing numbers already charged, and whether they were paid. */
+  private readonly paid = new Map<number, boolean>();
+  /** Last stamina sent to the player, and seconds since. */
+  private staminaSent = { v: -1, w: false, quiet: Infinity, wait: 0 };
 
   constructor(id: string, who: Identity, spawn: { x: number; z: number }, now: number) {
     this.id = id;
@@ -115,15 +139,69 @@ export class ServerPlayer implements Attacker {
   /** Opens a short window in which the next report may land anywhere (spawn, respawn). */
   allowWarp(seconds = 3): void { if (!this.region) this.warpWindow = seconds; }
 
-  tick(dt: number): boolean {
+  tick(dt: number, now = Infinity): boolean {
     if (this.warpWindow !== Infinity) this.warpWindow = Math.max(0, this.warpWindow - dt);
     if (this.downFor > 0 && (this.downFor -= dt) <= 0) {
       this.downFor = 0;
       this.hp = this.maxHp;
+      this.stamina.fill();
       this.allowWarp();
       return true;
     }
+    if (this.alive) {
+      const running = this.running && now - this.ranAt <= RUN_REPORT_SECONDS;
+      this.stamina.tick(dt, { running, inFight: this.inFight, guarding: this.guard });
+    }
     return false;
+  }
+
+  /**
+   * Charges a move's stamina once per swing. Free moves always pass; a costly one the player cannot
+   * afford is recorded unpaid, so it neither protects (a dodge) nor lands (a heavy).
+   */
+  payFor(swing: number, move: string): boolean {
+    const cost = moveStaminaCost(move, staminaTune);
+    if (cost <= 0) return true;
+    const known = this.paid.get(swing);
+    if (known !== undefined) return known;
+    const ok = this.stamina.spend(cost);
+    this.paid.set(swing, ok);
+    for (const key of this.paid.keys()) if (key < swing - 16) this.paid.delete(key);
+    return ok;
+  }
+
+  /** An action that costs stamina started on the player's side. Returns false when it was not paid. */
+  act(raw: unknown, now: number): boolean {
+    if (!this.alive || !raw || typeof raw !== 'object') return false;
+    const m = raw as Record<string, unknown>;
+    if (typeof m.t !== 'number' || !Number.isFinite(m.t)) return false;
+    const at = Math.min(now, Math.max(now - REWIND_LIMIT, m.t));
+    if (m.k === 'jump' || m.k === 'super_jump') return this.stamina.spend(actStaminaCost(m.k, staminaTune));
+    if (m.k !== 'move' || typeof m.m !== 'string' || !(MOVE_IDS as readonly string[]).includes(m.m)) return false;
+    if (typeof m.sw !== 'number' || !Number.isInteger(m.sw) || m.sw < 0) return false;
+    if (m.m === 'dodge') {
+      if (this.paid.has(m.sw)) return this.paid.get(m.sw)!;
+      // The dodge's own cooldown, then its stamina; only a paid dodge protects.
+      const started = rules.startMove(this.action, 'dodge' as MoveId, at, false, { element: this.element, weapon: this.weapon, hush: this.hush });
+      if (!started.accepted) { this.paid.set(m.sw, false); return false; }
+      this.action = started.state;
+      if (!this.payFor(m.sw, 'dodge')) return false;
+      this.dodgeAt = at;
+      return true;
+    }
+    return this.payFor(m.sw, m.m);
+  }
+
+  /** The player's stamina, when it is worth telling them: on a change, or now and then. */
+  staminaReport(dt: number): { v: number; cap: number; w: number } | null {
+    const sent = this.staminaSent;
+    sent.quiet += dt;
+    if ((sent.wait -= dt) > 0) return null;
+    const v = Math.round(this.stamina.current * 10) / 10;
+    const w = this.stamina.winded;
+    if (Math.abs(v - sent.v) < 0.5 && w === sent.w && sent.quiet < STAMINA_QUIET_SECONDS) return null;
+    sent.v = v; sent.w = w; sent.quiet = 0; sent.wait = STAMINA_REPORT_SECONDS;
+    return { v, cap: this.stamina.cap, w: Math.round(this.stamina.windedFor * 100) / 100 };
   }
 
   /** Applies a movement report if it is possible; false when refused. */
@@ -154,7 +232,11 @@ export class ServerPlayer implements Attacker {
     this.facing = f!;
     this.clip = typeof m.a === 'string' ? m.a.slice(0, 32) : 'idle';
     this.rate = Math.min(4, Math.max(0, r!));
-    this.guard = m.g === true;
+    const guard = m.g === true;
+    if (guard && !this.guard) this.guardSince = now;
+    this.guard = guard;
+    this.running = Math.hypot(this.vx, this.vz) > balance.controller.runSpeedThreshold;
+    if (this.running) this.ranAt = now;
     // The sample time is the client's; it may not run ahead of the server or behind the last one.
     this.sampledAt = Math.min(now, Math.max(this.sampledAt, t!));
     this.movedAt = now;
@@ -162,13 +244,25 @@ export class ServerPlayer implements Attacker {
     return true;
   }
 
-  /** A blow from an enemy. A raised guard facing the blow takes the guard's share. */
-  takeStrike(s: Strike): number {
+  /**
+   * A blow from an enemy; null when a paid dodge let it pass. A raised guard facing the blow takes the guard's
+   * share and costs stamina; raised just in time it parries and gives stamina back; a winded guard breaks.
+   */
+  takeStrike(s: Strike, now: number): number | null {
     if (!this.alive) return 0;
+    if (now - this.dodgeAt <= staminaTune.dodgeProtectSeconds) return null;
     const toward = Math.atan2(s.fromX - this.x, s.fromZ - this.z);
     const facing = Math.abs(Math.atan2(Math.sin(toward - this.facing), Math.cos(toward - this.facing))) <= balance.hero.blockAngle;
+    let guarded = this.guard && facing && now >= this.guardBrokenUntil;
+    if (guarded) {
+      if (now - this.guardSince <= rules.parryWindow(this.hush)) this.stamina.refund();
+      else if (this.stamina.soak(rules.calculateDamage(s.damage, this.armour)) === 'broken') {
+        guarded = false;
+        this.guardBrokenUntil = now + staminaTune.guardBreakSeconds;
+      }
+    }
     // Worn armour takes its share of every blow that gets through the guard.
-    const raw = this.guard && facing ? s.damage * balance.hero.blockDamageScale : s.damage;
+    const raw = guarded ? s.damage * balance.hero.blockDamageScale : s.damage;
     const damage = rules.calculateDamage(raw, this.armour);
     this.hp = Math.max(0, this.hp - damage);
     if (this.hp === 0) this.downFor = balance.hero.respawnSeconds;
@@ -182,7 +276,8 @@ export type WorldEvent =
   | { type: 'enemy_died'; e: string; by: string; x: number; z: number }
   | { type: 'hurt'; to: string; by: string; d: number; hp: number; max: number }
   | { type: 'fell'; to: string; x: number; z: number }
-  | { type: 'revived'; to: string; x: number; z: number };
+  | { type: 'revived'; to: string; x: number; z: number }
+  | { type: 'stamina'; to: string; v: number; cap: number; w: number };
 
 /**
  * One zone's truth: who is where, every enemy's body and health, and every hit.
@@ -225,11 +320,21 @@ export class ZoneWorld {
     return this.players.get(id)?.move(raw, now) ?? false;
   }
 
+  /** A stamina action from the player's side; see ServerPlayer.act. */
+  act(id: string, raw: unknown, now: number): boolean {
+    const p = this.players.get(id);
+    return !!p && p.transferUntil <= now && p.act(raw, now);
+  }
+
   hit(id: string, raw: unknown, now: number): WorldEvent[] {
     const p = this.players.get(id);
     const claim = parseHit(raw);
     if (!p || p.transferUntil > now || !claim) return [{ type: 'hit_result', to: id, e: '', sw: -1, ok: false, reason: 'invalid_input' }];
     const enemy = this.enemies.get(claim.e);
+    // A heavy the player had no stamina for never lands.
+    if ((MOVE_IDS as readonly string[]).includes(claim.m) && !p.payFor(claim.sw, claim.m)) {
+      return [{ type: 'hit_result', to: id, e: claim.e, sw: claim.sw, ok: false, reason: 'winded' }];
+    }
     const verdict = judgeHit(p, enemy, claim, now);
     if (!verdict.ok || !enemy) {
       return [{ type: 'hit_result', to: id, e: claim.e, sw: claim.sw, ok: false, reason: verdict.ok ? 'target_missing' : verdict.reason }];
@@ -265,7 +370,11 @@ export class ZoneWorld {
   step(dt: number, now: number): WorldEvent[] {
     const events: WorldEvent[] = [];
     for (const p of this.players.values()) {
-      if (p.tick(dt)) events.push({ type: 'revived', to: p.id, x: p.region ? p.x : this.layout.respawn.x, z: p.region ? p.z : this.layout.respawn.z });
+      p.inFight = false;
+      for (const e of this.enemies.values()) if (e.alive && e.target === p.id) { p.inFight = true; break; }
+      if (p.tick(dt, now)) events.push({ type: 'revived', to: p.id, x: p.region ? p.x : this.layout.respawn.x, z: p.region ? p.z : this.layout.respawn.z });
+      const report = p.staminaReport(dt);
+      if (report) events.push({ type: 'stamina', to: p.id, ...report });
     }
     const quarry = [...this.players.values()].map(p => ({ id: p.id, x: p.x, z: p.z, alive: p.alive }));
     for (const e of this.enemies.values()) {
@@ -274,7 +383,8 @@ export class ZoneWorld {
         const p = this.players.get(s.target);
         if (!p) continue;
         const wasUp = p.alive;
-        const d = p.takeStrike(s);
+        const d = p.takeStrike(s, now);
+        if (d === null) continue;
         events.push({ type: 'hurt', to: p.id, by: e.id, d, hp: p.hp, max: p.maxHp });
         if (wasUp && !p.alive) events.push({ type: 'fell', to: p.id, x: p.x, z: p.z });
       }

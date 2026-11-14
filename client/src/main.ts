@@ -23,6 +23,7 @@ import { loadEnemyTemplate, villainLooks, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
 import { inFront } from './hits.js';
 import { FightHud, type RoundHudInfo } from './hud.js';
+import { Sustain } from './sustain.js';
 import { ThreatArrows } from './threat-arrows.js';
 import { SwordStance } from './sword.js';
 import { SoundManager } from './audio.js';
@@ -278,6 +279,9 @@ async function main(): Promise<void> {
   };
 
   const fightHud = new FightHud();
+  /** The hero's stamina; every move, jump, run and guarded blow asks it. */
+  const sustain = new Sustain();
+  sustain.onShort = () => sound.playBreath(1);
   fightHud.onSatchelClick = () => townEconomy?.toggleSatchel();
   const threatArrows = new ThreatArrows();
   cleanup.push(() => fightHud.dispose());
@@ -357,6 +361,7 @@ async function main(): Promise<void> {
       townEconomy?.heroDied(controller.position.clone());
     },
     heroParried() {
+      sustain.parried();
       controls?.used('parry');
       bend.gain('parry');
       shoulderCamera.shake(0.22);
@@ -414,6 +419,7 @@ async function main(): Promise<void> {
     },
   }, undefined, !zone);
   // Wind and water put out fire and turn aside earth while the hero is bending, guarding or riding the windskiff.
+  fight.guardSoak = (damage) => sustain.soak(damage);
   fight.isAttackCountered = (element) =>
     (element === 'IGNIS' || element === 'TERRA') && (heroElement === 'AURA' || heroElement === 'AQUES')
     && (isLit || combat.blocking || bend.windskiffActive);
@@ -482,12 +488,15 @@ async function main(): Promise<void> {
     if (!fight.heroAlive || combat.current || combat.blocking) return;
     const now = performance.now() / 1000;
     if (!controller.grounded) {
-      if (!superJumped && now - jumpedAt < balance.controller.superJumpTapSeconds) {
+      if (!superJumped && now - jumpedAt < balance.controller.superJumpTapSeconds && sustain.act('super_jump')) {
+        onlineSession?.act('super_jump');
         controller.launch(balance.controller.superJumpSpeed);
         superJumped = true;
       }
       return;
     }
+    if (!sustain.act('jump')) return;
+    onlineSession?.act('jump');
     controls?.used('jump');
     controller.launch(balance.controller.jumpSpeed);
     jumpedAt = now;
@@ -605,9 +614,10 @@ async function main(): Promise<void> {
   let chainPass: string | null = null;
   const combat = new Combat(
     hero.anim,
-    (move) => move === chainPass || fight.ready(move, isLit),
+    (move) => move === chainPass || (fight.ready(move, isLit) && sustain.canStartMove(move)),
     (move, swingAt) => {
       fight.startMove(move, swingAt, isLit);
+      if (sustain.startedMove(move)) onlineSession?.act('move', move, combat.swing);
       controls?.usedMove(move);
       if (move !== 'dodge' && move !== 'hit' && move !== 'death') {
         alignToTarget();
@@ -781,7 +791,7 @@ async function main(): Promise<void> {
     lockedEnemy = target === lockedEnemy ? null : target;
     return true;
   };
-  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges });
+  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges, sustain });
   /** Whether this element keeps its current weapon in hand while bending. */
   const bendsArmed = (): boolean => {
     const allowed = (balance.combat.bendWithWeapon as Record<string, string | string[]>)[kitElement];
@@ -1139,6 +1149,7 @@ async function main(): Promise<void> {
           if (!combat.current) combat.react('hit');
         }
       },
+      onStamina: (current, cap, windedFor) => sustain.correct(current, cap, windedFor),
       onStatus: status,
       onNotice: notice,
       onTier: applyTier,
@@ -1236,7 +1247,7 @@ async function main(): Promise<void> {
         }
         continue;
       }
-      if (!fight.ready('dodge', isLit) || !combat.press(action)) continue;
+      if (!combat.press(action)) continue;
       fight.recordDodge(isLit);
       sound.playDodge();
       const roll = movementVelocity(input.read(), shoulderCamera.yaw);
@@ -1247,7 +1258,7 @@ async function main(): Promise<void> {
     if (!alive) { input.takeActions(); pending = null; }
     if (pending && (sword.armed || fightingStyle !== 'weapon')) { attack(pending); pending = null; }
     if (alive && input.blocking && fightingStyle === 'weapon' && !sword.engaged) { sword.draw(true); heldCalm = false; }
-    combat.blocking = alive && input.blocking && (fightingStyle !== 'weapon' || sword.armed) && !combat.current;
+    combat.blocking = alive && input.blocking && (fightingStyle !== 'weapon' || sword.armed) && !combat.current && !sustain.guardBroken;
     if (combat.blocking) {
       controls?.used('block');
       const threat = lockedEnemy ?? fight.nearestInFront(controller.position, controller.facing, balance.hero.guardTurnRange, Math.PI);
@@ -1300,6 +1311,7 @@ async function main(): Promise<void> {
     if (reviveIn > 0 && (reviveIn -= delta) <= 0) {
       fight.reviveHero();
       combat.reset();
+      sustain.reset();
       fightHud.say('');
       if (zone) {
         controller.place(SPAWN.x, 0, SPAWN.z);
@@ -1370,6 +1382,9 @@ async function main(): Promise<void> {
     hero.getLimbWorldPosition('knee_l', kneeL);
     heroView.facing = controller.facing;
     const rooted = combat.current !== null || combat.blocking;
+    // Running needs stamina; out of it the hero walks.
+    const wish = rooted ? { forward: 0, right: 0, running: false } : input.read();
+    if (!sustain.canRun) wish.running = false;
     const speedMultiplier = (isLit ? 1.25 : 1.0) * (bend.windskiffActive ? 1.85 : 1.0);
     const groundReady = zone?.groundStep(controller) ?? true;
     // Locked on, the body keeps its chest to the target while the feet carry it any way.
@@ -1382,7 +1397,7 @@ async function main(): Promise<void> {
       const stopAt = fightingStyle === 'weapon' ? balance.combat.lungeStopDistance : balance.combat.bareLungeStopDistance;
       const stop = combat.current !== 'dodge' && fight.nearestDistance(controller.position) < stopAt;
       const lunge = stop ? 0 : combat.lunge;
-      if (groundReady && !onlineSession?.crossing) controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge, speedMultiplier,
+      if (groundReady && !onlineSession?.crossing) controller.step(wish, shoulderCamera.yaw, lunge, speedMultiplier,
         undefined, rooted ? undefined : facingLock);
       if (!picking) fight.step(heroView, combat, isLit);
       // Every body has moved for this tick; the world steps once.
@@ -1391,6 +1406,10 @@ async function main(): Promise<void> {
 
     if (bend.windskiffActive) {
       elementFx.updateWindskiff(controller.position, delta, controller.speed, controller.facing);
+    }
+    if (!picking) {
+      const running = wish.running && controller.grounded && controller.speed > balance.controller.runSpeedThreshold;
+      sustain.tick(delta, running, shoulderCamera.fight > 0, combat.blocking);
     }
 
     const animDelta = delta;
@@ -1552,6 +1571,7 @@ async function main(): Promise<void> {
       isDim,
       shoulderCamera.fight > 0,
     );
+    fightHud.setStamina(sustain.stamina.share, shoulderCamera.fight > 0, sustain.flashing, sustain.stamina.winded);
     const baseSupply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
       : kitElement === 'AQUES' ? `Waterskin ${bend.hasWaterEnvironment || bend.nearWater(controller.position) ? '∞ (reusable)' : `${bend.waterskin}/${balance.combat.waterskin.charges}`}${bend.healingQuality(controller.position) === 'wellspring' ? ' · Wellspring water Oasis' : bend.nearWater(controller.position) ? ' · Water source' : ''}${bend.isFullMoon ? ' · Full Moon (+50%)' : ''}` : null;
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, baseSupply);

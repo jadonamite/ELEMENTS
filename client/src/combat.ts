@@ -142,7 +142,7 @@ export class Combat {
     if (this.move === 'death') return false;
     // Dodge always answers at once: it cancels attacks, flinches and the guard.
     if (action === 'dodge') {
-      if (this.move === 'dodge') return false;
+      if (this.move === 'dodge' || !this.ready('dodge')) return false;
       this.blocking = false;
       this.start('dodge');
       return true;
