@@ -218,7 +218,7 @@ Elements have only a slight edge over each other, and not a fixed always-on cycl
 Each nation favours a weapon (IGNIS the sword, AQUES the spear or glaive, TERRA the hammer or axe, AURA the staff, Japanese-style war fans or an air glider), but the player's choice and the materials they craft from decide what they actually carry.
 
 **Weapons while bending (30 Oct):**
-- IGNIS bends bare-handed too: turning bending on puts the weapon away and the fire leaves the hand; drawing the weapon turns bending off. (Jadon, 14 Nov; replaces 30 Oct's "the blade carries the fire".)
+- IGNIS keeps any weapon in hand while bending; the blade carries the fire. Turning bending on never draws the weapon: with it on the back, you bend bare-handed. Lit hands burn, wrapped in their element. (Jadon, 14 Nov.)
 - AQUES and TERRA can't hold a weapon while bending. Turning bending on puts the weapon away and they bend bare-handed; drawing the weapon turns bending off.
 - AURA bends with a weapon only if it is a staff, war fans or a glider. Any other weapon goes away while bending, as for AQUES and TERRA.
 

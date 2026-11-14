@@ -30,7 +30,8 @@ import { STAFF_WEAPON, SWORD_WEAPON, heroWeaponFor, type WeaponSlotData } from '
 import { fetchWornArmour } from './economy/api.js';
 import { getStoredAuthToken, hasGameServer } from './auth/server-api.js';
 
-export type Limb = 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'knee_r' | 'knee_l';
+/** A fist is the middle of the hand, halfway from the wrist to the middle knuckle. */
+export type Limb = 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'knee_r' | 'knee_l' | 'fist_r' | 'fist_l';
 
 export interface HeroInstance {
   /** Root 3D container added to the scene. */
@@ -222,6 +223,10 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   if (!kneeR) throw new Error('Right calf bone (calf_r) not found in hero rig.');
   let kneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
   if (!kneeL) throw new Error('Left calf bone (calf_l) not found in hero rig.');
+  /** Middle knuckles, for the fists; a rig without fingers falls back to the wrist. */
+  let knuckleR = heroModel.getObjectByName('middle_02_r') as Bone | undefined;
+  let knuckleL = heroModel.getObjectByName('middle_02_l') as Bone | undefined;
+  const knuckleAt = new Vector3();
   let swordMesh: Object3D;
   try {
     const swordGltf = await loader.loadAsync(weaponSlot.assetPath);
@@ -382,6 +387,14 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   };
 
   const getLimbWorldPosition = (limb: Limb, out: Vector3): Vector3 => {
+    if (limb === 'fist_r' || limb === 'fist_l') {
+      const wrist = limb === 'fist_r' ? handBone : handL;
+      const knuckle = limb === 'fist_r' ? knuckleR : knuckleL;
+      if (!wrist) return out.copy(heroModel.position);
+      heroModel.updateMatrixWorld(true);
+      wrist.getWorldPosition(out);
+      return knuckle ? out.lerp(knuckle.getWorldPosition(knuckleAt), 0.5) : out;
+    }
     const bones = { hand_r: handBone, hand_l: handL, foot_r: footR, foot_l: footL, knee_r: kneeR, knee_l: kneeL };
     const bone = bones[limb];
     if (!bone) return out.copy(heroModel.position);
@@ -476,6 +489,8 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     if (nextKneeR) kneeR = nextKneeR;
     const nextKneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
     if (nextKneeL) kneeL = nextKneeL;
+    knuckleR = heroModel.getObjectByName('middle_02_r') as Bone | undefined;
+    knuckleL = heroModel.getObjectByName('middle_02_l') as Bone | undefined;
     const nextSpine = heroModel.getObjectByName(weaponSlot.sheatheBone);
     if (nextSpine) spine = nextSpine;
 

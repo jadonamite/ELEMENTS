@@ -695,19 +695,25 @@ async function main(): Promise<void> {
     nightness: () => nightness.value,
   }) : null;
   cleanup.push(() => townEconomy?.dispose());
+  /**
+   * Works out the fighting style from what the hero fights with and whether they bend. It never draws the
+   * weapon: only choosing it does (drawWeapon), and attacks or a close foe draw it as they always have.
+   */
   const applyStyle = (): void => {
     fightingStyle = armedWith === 'weapon' ? 'weapon' : armedWith === 'legs' ? 'legs' : (isLit ? 'bending' : 'bare_hands');
     combat.setStyle(fightingStyle);
     // Only a weapon in hand catches fire; hands and legs bend without lighting the sheathed blade.
     hero.setElemental(isLit && armedWith === 'weapon', heroElement);
-    if (armedWith === 'weapon') {
-      sword.draw(false);
-      heldCalm = false;
-      calmIn = balance.stance.calmAfterSeconds;
-    } else {
+    if (armedWith !== 'weapon') {
       sword.forceSheathe();
       heldCalm = true;
     }
+  };
+  /** The player chose the weapon: it comes out now. */
+  const drawWeapon = (): void => {
+    sword.draw(false);
+    heldCalm = false;
+    calmIn = balance.stance.calmAfterSeconds;
   };
   refreshStyle = (): void => { applyKit(); applyStyle(); };
   if (!forcedElement && !forcedHush) {
@@ -799,10 +805,13 @@ async function main(): Promise<void> {
     if (on && isDim) { notice('The Hush cannot bend'); return; }
     isLit = on;
     if (on) sound.playFireBurst(0.35);
-    const sheathed = on && armedWith === 'weapon' && !bendsArmed();
+    // Bending never draws the weapon: with it on the back the hero bends bare-handed, and an element
+    // that can't bend with the weapon in hand puts it away.
+    const inHand = armedWith === 'weapon' && sword.engaged;
+    const sheathed = on && armedWith === 'weapon' && (!inHand || !bendsArmed());
     if (sheathed) armedWith = 'hands';
     applyStyle();
-    notice(sheathed ? `Bending on, weapon away: ${kitElement} bends bare-handed` : on ? 'Bending on' : 'Bending off');
+    notice(sheathed && inHand ? `Bending on, weapon away: ${kitElement} bends bare-handed` : on ? 'Bending on' : 'Bending off');
   };
   const setFightingStyle = (style: FightingStyle): void => {
     if (style === 'bending') {
@@ -814,6 +823,7 @@ async function main(): Promise<void> {
     const unlit = armedWith === 'weapon' && isLit && !bendsArmed();
     if (unlit) isLit = false;
     applyStyle();
+    if (armedWith === 'weapon') drawWeapon();
     notice(unlit ? `Weapon drawn, bending off: ${kitElement} can't bend with it in hand` : armedWith === 'weapon' ? 'Weapon drawn' : armedWith === 'legs' ? 'Legs' : 'Bare hands');
   };
 
@@ -1083,6 +1093,10 @@ async function main(): Promise<void> {
   const footL = new Vector3();
   const kneeR = new Vector3();
   const kneeL = new Vector3();
+  /** The fists the bending fire wraps while lit. */
+  const fistR = new Vector3();
+  const fistL = new Vector3();
+  const litHands = { l: fistL, r: fistR };
   const heroView: HeroView = {
     position: controller.position,
     facing: 0,
@@ -1537,8 +1551,9 @@ async function main(): Promise<void> {
     hero.getLimbWorldPosition('foot_l', footL);
     hero.getLimbWorldPosition('knee_r', kneeR);
     hero.getLimbWorldPosition('knee_l', kneeL);
+    if (isLit) { hero.getLimbWorldPosition('fist_r', fistR); hero.getLimbWorldPosition('fist_l', fistL); }
     const bladeLit = fightingStyle === 'weapon' && performance.now() >= lightningBareUntil;
-    bending.setLit(isLit, heroElement, drawn, controller.facing, bladeLit ? bladeBase : undefined, bladeLit ? bladeTip : undefined);
+    bending.setLit(isLit, heroElement, drawn, controller.facing, bladeLit ? bladeBase : undefined, bladeLit ? bladeTip : undefined, litHands);
     bending.syncBurnPatches(fight.activeBurnPatches);
     bending.setBurningVillains(fight.burningVillains);
     bending.update(delta, drawn, camera);

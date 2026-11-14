@@ -390,10 +390,10 @@ test('staff is a weapon in shared rules and default nation weapon for AURA', () 
   assert.equal(staffMove.cooldownSeconds, balance.combat.weapons.staff.light_1.cooldownSeconds);
 });
 
-test('only AURA bends with a weapon in hand (a staff); IGNIS, AQUES and TERRA bend bare-handed', () => {
+test('AURA kit with a staff passes bendWithWeapon and with a sword does not', () => {
   assert.equal(combat.canBendWithWeapon({ element: 'AURA', weapon: 'staff' }), true);
   assert.equal(combat.canBendWithWeapon({ element: 'AURA', weapon: 'sword' }), false);
-  assert.equal(combat.canBendWithWeapon({ element: 'IGNIS', weapon: 'sword' }), false);
+  assert.equal(combat.canBendWithWeapon({ element: 'IGNIS', weapon: 'sword' }), true);
   assert.equal(combat.canBendWithWeapon({ element: 'AQUES', weapon: 'spear' }), false);
   assert.equal(combat.canBendWithWeapon({ element: 'TERRA', weapon: 'axe' }), false);
 });

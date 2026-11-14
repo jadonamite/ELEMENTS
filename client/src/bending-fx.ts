@@ -256,6 +256,12 @@ export class BendingEffects {
   private tipSpeed = 0;
   private lastTipAt = 0;
   private emberDebt = 0;
+  // Lit hands: where each hand is, and how it moved, so the flames lean off a punch.
+  private readonly hands = [new Vector3(), new Vector3()];
+  private readonly prevHands = [new Vector3(), new Vector3()];
+  private readonly handMotion = [new Vector3(), new Vector3()];
+  private hasHands = false;
+  private handEmberDebt = 0;
 
   // Slash capture: the trail records the blade while a slash is live.
   private slashTimer = 0;
@@ -545,10 +551,12 @@ export class BendingEffects {
     _facing = 0,
     bladeBase?: Vector3,
     bladeTip?: Vector3,
+    hands?: { l: Vector3; r: Vector3 },
   ): void {
     this.isLit = lit;
     this.currentElement = element;
     this.hasBlade = !!bladeBase && !!bladeTip;
+    this.trackHands(hands);
     if (!bladeBase || !bladeTip) return;
 
     // Speed on the wall clock, so slow motion still reads as a swing.
@@ -898,6 +906,7 @@ export class BendingEffects {
     this.updateFlash();
     this.updateSlash(delta);
     this.updateLitBlade(delta);
+    this.updateLitHands(delta);
     this.updateWaves(delta);
     this.updateFireballs(delta);
     this.updatePatches(delta);
@@ -1086,6 +1095,64 @@ export class BendingEffects {
       tmpVec.lerpVectors(this.bladeBase, this.bladeTip, 0.25 + Math.random() * 0.75);
       const vel = new Vector3((Math.random() - 0.5) * 0.4, 0.5 + Math.random() * 0.9, (Math.random() - 0.5) * 0.4);
       this.spawnParticle('spark', tmpVec, vel, 0.35 + Math.random() * 0.35, 0.035, 0.012, this.currentElement, 0.95);
+    }
+  }
+
+  /** Records the hands this frame and how fast each moved. */
+  private trackHands(hands?: { l: Vector3; r: Vector3 }): void {
+    if (!hands) { this.hasHands = false; return; }
+    const wall = this.lastDelta;
+    [hands.l, hands.r].forEach((hand, i) => {
+      const prev = this.prevHands[i]!;
+      const moved = prev.distanceTo(hand);
+      // A jump no hand can make (a respawn, a teleport) is not motion.
+      if (this.hasHands && moved < 1.2) this.handMotion[i]!.subVectors(hand, prev).divideScalar(wall);
+      else this.handMotion[i]!.set(0, 0, 0);
+      prev.copy(hand);
+      this.hands[i]!.copy(hand);
+    });
+    this.hasHands = true;
+  }
+
+  /**
+   * Lit hands burn: tongues of the element wrap each fist and lean away from where it moves, as the
+   * lit blade's do, with sparks shed faster on a punch. Drawn through the same flame field as the blade.
+   */
+  private updateLitHands(delta: number): void {
+    if (!this.isLit || !this.hasHands) return;
+    const mode = flameMode(this.currentElement);
+    const fire = mode <= FxMode.HUSH;
+    const nodes = this.lowQuality ? 4 : 7;
+    let speed = 0;
+    for (let i = 0; i < 2; i++) {
+      const hand = this.hands[i]!;
+      const motion = this.handMotion[i]!;
+      speed = Math.max(speed, motion.length());
+      for (let k = 0; k < nodes; k++) {
+        const seed = this.hash(i * 31 + k * 7.7);
+        const angle = (k / nodes) * Math.PI * 2 + this.auraClock * (1.5 + seed);
+        const flicker = 0.7 + 0.3 * Math.sin(this.auraClock * (10 + k * 3) + i * 4 + k * 2.1) + 0.12 * Math.sin(this.auraClock * 27 + k);
+        const h = (fire ? 0.2 + seed * 0.16 : 0.14 + seed * 0.1) * flicker * (mode === FxMode.WIND ? 1.5 : 1);
+        const r = 0.04 + seed * 0.05;
+        // Tongues start round the fist, from just under it, so the whole fist sits inside the fire.
+        this.field.draw(hand.x + Math.cos(angle) * r, hand.y - 0.07 - h * 0.15, hand.z + Math.sin(angle) * r,
+          h * 0.85, h, 0.32, seed, fire ? 0.85 : 0.7, mode, Math.sin(k * 4 + i) * 0.3, 0, -motion.x * 0.12, -motion.z * 0.12);
+      }
+    }
+    if (!fire) return;
+    this.handEmberDebt += delta * (5 + Math.min(40, speed * 6));
+    while (this.handEmberDebt >= 1) {
+      this.handEmberDebt -= 1;
+      const hand = this.hands[Math.random() < 0.5 ? 0 : 1]!;
+      const vel = new Vector3((Math.random() - 0.5) * 0.35, 0.5 + Math.random() * 0.7, (Math.random() - 0.5) * 0.35);
+      this.spawnParticle('spark', hand, vel, 0.3 + Math.random() * 0.3, 0.03, 0.01, this.currentElement, 0.9);
+    }
+    // Without a burning blade, the fists carry the firelight.
+    if (!this.hasBlade) {
+      const style = ELEMENT_STYLES[this.currentElement] ?? ELEMENT_STYLES.IGNIS;
+      this.bladeLight.position.addVectors(this.hands[0]!, this.hands[1]!).multiplyScalar(0.5);
+      this.bladeLight.color.setHex(style.lightHex);
+      this.bladeLight.intensity = 3.5 + Math.sin(this.auraClock * 24) * 0.8;
     }
   }
 
