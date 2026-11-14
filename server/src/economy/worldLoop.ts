@@ -14,6 +14,9 @@ import { RuleDecider } from './agents/ruleDecider.js';
 import { sweepExpiredPiles } from './lootService.js';
 import { getMerchant } from './merchantService.js';
 import { tickAllShopsDay } from './shopService.js';
+import { tickCaravans } from './caravanService.js';
+import { tickRivalClanTrade } from './rivalClanService.js';
+import { tickWorldDirector } from './worldDirectorService.js';
 
 const SWEEP_EVERY_MS = 30_000;
 const DAY_MS = 24 * GAME_HOUR_MS;
@@ -121,6 +124,22 @@ export function startEconomyLoop(options: EconomyLoopOptions = {}): EconomyLoop 
         lastTick = at;
         const results = await tickAllMerchantAgents({ now: at, decider, db });
         log(`merchants ticked: ${results.length}`);
+
+        const caravans = tickCaravans({ now: at }, db);
+        const dispatched = caravans.filter((c) => c.dispatched);
+        if (dispatched.length > 0) {
+          log(`caravans dispatched: ${dispatched.length}`);
+        }
+
+        const rivalTrade = tickRivalClanTrade({ now: at }, db);
+        if (rivalTrade.executed) {
+          log(`rival clan bought ${rivalTrade.quantity} ${rivalTrade.itemType} from ${rivalTrade.merchantId}`);
+        }
+
+        const { triggeredEvent } = tickWorldDirector({ now: at }, db);
+        if (triggeredEvent) {
+          log(`world director pushback: firestorm strikes ${triggeredEvent.nation}, route ${triggeredEvent.closedRoute} closed`);
+        }
       }
     } catch (err) {
       log(`economy step failed: ${err instanceof Error ? err.message : String(err)}`);

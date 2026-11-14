@@ -99,6 +99,18 @@ export function ensureSindrMerchants(
   }
 }
 
+export function getLastMerchantTributeTime(
+  merchantId: string,
+  db: DatabaseSync = getDatabase(),
+): number {
+  const row = db
+    .prepare(
+      "SELECT timestamp FROM ledger_entries WHERE (sender = ? OR receiver = ?) AND reason = 'merchant_tribute' ORDER BY timestamp DESC LIMIT 1",
+    )
+    .get(merchantId, merchantId) as { timestamp: number } | undefined;
+  return row?.timestamp ?? 0;
+}
+
 export function getRecentMerchantTrades(
   merchantId: string,
   now: number,
@@ -172,9 +184,13 @@ export async function tickMerchantAgent(
 
   const demandWindows = getMerchantDemandWindow(merchantId, now, db);
   const recentTrades = getRecentMerchantTrades(merchantId, now, db);
+  const intervalMs = (AGENT_CONFIG.tributeScheduleIntervalHours ?? 24) * GAME_HOUR_MS;
+  const lastTribute = getLastMerchantTributeTime(merchantId, db);
+  const defaultFirstTribute = 18 * GAME_HOUR_MS;
+  const nextTributeTime = lastTribute > 0 ? lastTribute + intervalMs : defaultFirstTribute;
   const tributeSchedule = {
-    nextTributeTime: now + 24 * GAME_HOUR_MS,
-    intervalMs: 24 * GAME_HOUR_MS,
+    nextTributeTime,
+    intervalMs,
   };
   const config = SINDR_MERCHANTS.find((s) => s.id === merchantId);
 
@@ -191,6 +207,7 @@ export async function tickMerchantAgent(
   const tributeStatus: TributeStatus = {
     timeUntilTributeMs,
     isDueSoon: timeUntilTributeMs <= 2 * GAME_HOUR_MS,
+    isDue: timeUntilTributeMs === 0,
   };
 
   const customerMemory = getNpcMemorySummary(merchantId, db);

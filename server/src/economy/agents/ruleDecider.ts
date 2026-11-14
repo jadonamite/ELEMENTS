@@ -56,7 +56,11 @@ export class RuleDecider implements AgentDecider {
       }
     }
 
-    // Rule 3: Ship tribute of items over 90% of max
+    // Rule 3: Ship tribute on schedule or when shelves are crowded
+    const isTributeDue = obs.tributeStatus?.isDue ?? (obs.tributeStatus?.timeUntilTributeMs === 0);
+    const scheduledShare = AGENT_CONFIG.tributeScheduledShare ?? 0.1;
+    const minReserve = AGENT_CONFIG.tributeMinStockReserve ?? 5;
+
     for (const [itemType, item] of Object.entries(obs.stock)) {
       if (item.maxStock <= 0) continue;
       const ratio = item.stock / item.maxStock;
@@ -70,6 +74,18 @@ export class RuleDecider implements AgentDecider {
             quantity: excess,
           });
           tributeItems.push({ item: itemType, quantity: excess });
+        }
+      } else if (isTributeDue && item.stock > minReserve) {
+        const available = item.stock - minReserve;
+        const targetQty = Math.max(1, Math.floor(available * scheduledShare));
+        const qty = Math.min(available, targetQty);
+        if (qty > 0) {
+          actions.push({
+            type: 'tribute',
+            itemType,
+            quantity: qty,
+          });
+          tributeItems.push({ item: itemType, quantity: qty });
         }
       }
     }

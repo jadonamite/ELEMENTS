@@ -16,12 +16,14 @@ import {
   getElementFromItemType,
   shardItemId,
   stockKeyForItem,
+  DIRECTOR_CONFIG,
 } from '@elements/shared';
 import { getDatabase, getActiveShopOwnership, insertShopSale } from '../db.js';
 import { recordTransaction } from './ledgerService.js';
 import { getNpcMemory } from './npcMemoryService.js';
 import { addItems, getLedgerItemBalance, recordItemMove, removeItems, withSavepoint } from './satchelService.js';
 import { reportMerchantTrade } from './agents/events/worldEvents.js';
+import { getActiveFirestorm } from './worldDirectorService.js';
 
 interface RawMerchantRow {
   id: string;
@@ -295,6 +297,9 @@ export function quoteMerchantTrade(
     ownership?.priceMultipliers?.[params.itemType] ??
     (params.itemType.startsWith('shard') ? ownership?.priceMultipliers?.['shard'] : undefined);
 
+  const firestorm = getActiveFirestorm(merchant.nation, now, db);
+  const firestormMultiplier = firestorm ? DIRECTOR_CONFIG.firestormPriceMultiplier : undefined;
+
   const quote = calculateQuote({
     itemType: params.itemType,
     action: params.action,
@@ -308,6 +313,7 @@ export function quoteMerchantTrade(
     now,
     nation: merchant.nation,
     ownerMultiplier,
+    firestormMultiplier,
   });
 
   if (!quote.canExecute) {
