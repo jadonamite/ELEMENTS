@@ -24,7 +24,7 @@ const SHADOWED = 6;
 const SLOW_ANIM_DISTANCE = 25;
 /** Eyes and brows are too small to see beyond this, metres; further off they are not drawn. */
 const FACE_DISTANCE = 14;
-const WALK_SPEED = 1.8;
+export const WALK_SPEED = 1.8;
 /** Townsfolk inside this distance of a fight run from it. */
 const FEAR_RADIUS = 14;
 const RUN_SPEED = 4.2;

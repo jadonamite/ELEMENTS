@@ -12,6 +12,8 @@ import type { Fight } from '../fight.js';
 import type { SoundManager } from '../audio.js';
 import type { LeadManager, Lead } from '../../../shared/src/story/leads.js';
 import type { WaypointMarker } from './waypoint-marker.js';
+import { voiceId } from '../../../shared/src/story/voice.js';
+import { WALK_SPEED } from '../life/town-manager.js';
 import {
   getNationIntroConfig,
   type NationIntroConfig,
@@ -65,6 +67,8 @@ export class NationIntroFlow {
   private masterAnim: AnimationPlayer | null = null;
   private masterClipNames: string[] = [];
   private masterPose = '';
+  /** Settles when the master's body has loaded or failed to; lines wait on it for a voice. */
+  private masterReady!: Promise<void>;
   private masterApproaching = false;
   private masterDispatched = false;
   private disposed = false;
@@ -140,25 +144,25 @@ export class NationIntroFlow {
   start(): void {
     this.startPosition.copy(this.opts.controller.position);
     const forward = new Vector3(Math.sin(this.opts.controller.facing), 0, Math.cos(this.opts.controller.facing));
-    this.masterPosition.copy(this.startPosition).addScaledVector(forward, 2.3);
+    const right = new Vector3(-forward.z, 0, forward.x);
+    // Ahead and off to one side: straight ahead, the hero's own body hides him from the camera behind.
+    this.masterPosition.copy(this.startPosition).addScaledVector(forward, 2.6).addScaledVector(right, 1.4);
     this.masterApproaching = true;
-    if (this.opts.scene) {
-      void this.loadMaster(forward).catch(error => {
+    this.masterReady = this.opts.scene
+      ? this.loadMaster(forward).catch(error => {
         if (!this.disposed) console.error('Nation Master failed to load:', error);
-      });
-    }
+      })
+      : Promise.resolve();
 
     // Begin approach
     this.setStep('approach');
     this.showDialogue(
       this.config.dialogue.greeting,
-      this.config.master.voice,
       () => {
         this.schedule(() => {
           this.setStep('greeting');
           this.showDialogue(
             this.config.dialogue.loreTeaser,
-            this.config.master.voice,
             () => {
               this.startTraining();
             },
@@ -232,22 +236,33 @@ export class NationIntroFlow {
     this.currentStep = step;
   }
 
-  private showDialogue(text: string, voice?: string, onDone?: () => void, timeoutMs = 4000): void {
+  private showDialogue(text: string, onDone?: () => void, timeoutMs = 4000): void {
     this.dialogueBox.style.display = 'block';
     this.dialogueLine.textContent = text;
     if (!this.masterApproaching && !this.masterDispatched) this.playMasterPose('talk', 'gesture', 'idle');
+    const shown = performance.now();
+    void this.speakLine(text).then(seconds => {
+      // The next beat waits for the line to be heard out, and never comes sooner than its reading time.
+      if (onDone && !this.disposed) this.schedule(onDone, Math.max(timeoutMs, seconds * 1000 + 500) - (performance.now() - shown));
+    });
+  }
 
-    if (voice) {
-      void this.opts.sound.speak(voice, text, {
-        x: this.masterPosition.x,
-        y: this.masterPosition.y + 1.7,
-        z: this.masterPosition.z,
-      });
-    }
-
-    if (onDone) {
-      this.schedule(onDone, timeoutMs);
-    }
+  /**
+   * The master says the line in their recorded voice: their dialogue group and the sex their body was built as.
+   * Until the body has loaded there is no voice to pick; the line waits for it and is spoken if still showing.
+   * Resolves with the recording's length in seconds, 0 when nothing was spoken.
+   */
+  private async speakLine(text: string): Promise<number> {
+    await this.masterReady;
+    const sex = this.masterModel?.userData.sex as 'male' | 'female' | undefined;
+    if (this.disposed || !this.masterModel || !sex || this.dialogueLine.textContent !== text) return 0;
+    const at = this.masterModel.position;
+    let seconds = 0;
+    await this.opts.sound.speak(voiceId(this.config.master.id, sex), text, { x: at.x, y: at.y + 1.7, z: at.z }, {
+      channel: this.config.master.id,
+      admit: (length) => { seconds = length; return true; },
+    });
+    return seconds;
   }
 
   /**
@@ -267,8 +282,14 @@ export class NationIntroFlow {
       const midZ = (heroPos.z + this.masterPosition.z) / 2;
       this.cinematicLookAt.set(midX, midY, midZ);
 
-      // Low three-quarter cinematic two-shot angle
-      this.cinematicPos.set(heroPos.x - 2.8, heroPos.y + 1.25, heroPos.z - 2.0);
+      // Two-shot from the side of the line between them, a little behind the hero: neither can stand in front of the other.
+      const ax = this.masterPosition.x - heroPos.x, az = this.masterPosition.z - heroPos.z;
+      const len = Math.hypot(ax, az) || 1;
+      const ux = ax / len, uz = az / len;
+      // The master stands off to one side of the hero's path; the camera takes the other side of the line.
+      const fx = Math.sin(this.opts.controller.facing), fz = Math.cos(this.opts.controller.facing);
+      const side = -fz * ax + fx * az >= 0 ? 1 : -1;
+      this.cinematicPos.set(midX - ux * 1.6 + side * uz * 3.4, heroPos.y + 1.5, midZ - uz * 1.6 - side * ux * 3.4);
       camera.position.copy(this.cinematicPos);
       camera.lookAt(this.cinematicLookAt);
 
@@ -311,7 +332,7 @@ export class NationIntroFlow {
     this.playMasterPose('fold_arms', 'idle');
     this.beginCameraBlend();
     this.setStep('step_move');
-    this.showDialogue(this.config.dialogue.stepFooting, this.config.master.voice);
+    this.showDialogue(this.config.dialogue.stepFooting);
     this.showStepPrompt(
       'Footing',
       '<span class="nation-intro-key">W</span> <span class="nation-intro-key">A</span> <span class="nation-intro-key">S</span> <span class="nation-intro-key">D</span> Move · Move mouse to look',
@@ -337,7 +358,7 @@ export class NationIntroFlow {
       if (this.masterApproaching) {
         const distance = this.masterModel.position.distanceTo(this.masterPosition);
         if (distance > 0.15) {
-          const step = Math.min(distance, delta * 1.35);
+          const step = Math.min(distance, delta * WALK_SPEED);
           this.masterModel.position.lerp(this.masterPosition, step / distance);
           this.masterModel.rotation.y = Math.atan2(this.masterPosition.x - this.masterModel.position.x, this.masterPosition.z - this.masterModel.position.z);
           this.playMasterPose('walk_sage', 'walk');
@@ -360,7 +381,7 @@ export class NationIntroFlow {
         if (movedDist >= 2.2) {
           this.hasMoved = true;
           this.setStep('step_sprint_jump');
-          this.showDialogue(this.config.dialogue.stepSprintJump, this.config.master.voice);
+          this.showDialogue(this.config.dialogue.stepSprintJump);
           this.showStepPrompt(
             'Mobility',
             '<span class="nation-intro-key">Shift</span> Sprint · <span class="nation-intro-key">Space</span> Jump',
@@ -376,7 +397,7 @@ export class NationIntroFlow {
         if (this.hasSprinted && this.hasJumped) {
           this.setStep('step_weapon');
           this.opts.onEquipStarterWeapon(this.config.starterWeapon);
-          this.showDialogue(this.config.dialogue.weaponHandoff, this.config.master.voice);
+          this.showDialogue(this.config.dialogue.weaponHandoff);
           this.showStepPrompt('Armament', '<span class="nation-intro-key">1</span> Draw Weapon');
         }
         break;
@@ -386,7 +407,7 @@ export class NationIntroFlow {
         if (this.opts.combat.fightingStyle === 'weapon') {
           this.hasEquippedWeapon = true;
           this.setStep('step_attacks');
-          this.showDialogue(this.config.dialogue.stepAttacks, this.config.master.voice);
+          this.showDialogue(this.config.dialogue.stepAttacks);
           this.showStepPrompt(
             'Striking',
             '<span class="nation-intro-key">Left Click</span> Light Attack · <span class="nation-intro-key">Right Click</span> Heavy Attack',
@@ -402,7 +423,7 @@ export class NationIntroFlow {
 
         if (this.hasLightAttacked && this.hasHeavyAttacked) {
           this.setStep('step_defense');
-          this.showDialogue(this.config.dialogue.stepDefense, this.config.master.voice);
+          this.showDialogue(this.config.dialogue.stepDefense);
           this.showStepPrompt(
             'Defense',
             '<span class="nation-intro-key">Hold R</span> Guard · <span class="nation-intro-key">Left Alt</span> Dodge',
@@ -433,7 +454,7 @@ export class NationIntroFlow {
             ? this.config.dialogue.hushRole
             : this.config.dialogue.shaperRole;
 
-          this.showDialogue(roleLine, this.config.master.voice, () => {
+          this.showDialogue(roleLine, () => {
             this.schedule(() => {
               this.dispatchFirstMission();
             }, 1000);
@@ -473,7 +494,6 @@ export class NationIntroFlow {
 
     this.showDialogue(
       this.config.dialogue.missionBrief,
-      this.config.master.voice,
       () => {
         this.schedule(() => {
           this.dialogueBox.style.display = 'none';

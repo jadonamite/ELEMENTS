@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { getNationIntroConfig, NATION_INTROS } from '../src/story/nation-intro.js';
+import { lineKey, voiceId } from '../src/story/voice.js';
 
 test('Nation intro configurations: all four nations defined and complete', () => {
   const nations = ['IGNIS', 'AQUES', 'TERRA', 'AURA'] as const;
@@ -17,7 +19,6 @@ test('Nation intro configurations: all four nations defined and complete', () =>
     assert.ok(config.master.name.length > 0);
     assert.ok(config.master.title.length > 0);
     assert.ok(config.master.greetingBark.length > 0);
-    assert.ok(config.master.voice.length > 0);
     assert.ok(config.master.look.length > 0);
 
     // Starter weapon
@@ -59,4 +60,16 @@ test('getNationIntroConfig: resolves case-insensitively and falls back to IGNIS'
 
   const fallback = getNationIntroConfig('UNKNOWN_NATION');
   assert.equal(fallback.nation, 'IGNIS');
+});
+
+test('Every intro line is recorded in its master\'s own voice, man and woman', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../../client/public/assets/voice/manifest.json', import.meta.url), 'utf8')) as Record<string, Record<string, number>>;
+  for (const config of Object.values(NATION_INTROS)) {
+    for (const sex of ['male', 'female'] as const) {
+      const voice = voiceId(config.master.id, sex);
+      for (const [step, line] of Object.entries(config.dialogue)) {
+        assert.ok(manifest[voice]?.[lineKey(line)], `${voice} has no recording of ${step}: ${line}`);
+      }
+    }
+  }
 });
