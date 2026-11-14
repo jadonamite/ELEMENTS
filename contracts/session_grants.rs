@@ -53,7 +53,7 @@ impl Grants {
     pub fn register(&mut self, public_key: PublicKey) {
         let holder = env::predecessor_account_id();
         require!(!is_implicit(&holder), "Implicit accounts use their own key");
-        require!(public_key.as_bytes().len() == 33, "Ed25519 key required");
+        require!(public_key.as_bytes().len() == 33 && public_key.as_bytes()[0] == 0, "Ed25519 key required");
         require!(self.keys.get(&holder).is_none(), "Key already registered");
         self.keys.insert(&holder, &public_key);
     }
@@ -67,7 +67,7 @@ impl Grants {
         require!(!terms.caps.is_empty(), "Empty grant");
         require!(!self.used.contains(&(terms.holder_id.clone(), payload.nonce)), "Grant nonce already used");
         let bytes = public_key.as_bytes();
-        require!(bytes.len() == 33, "Ed25519 key required");
+        require!(bytes.len() == 33 && bytes[0] == 0, "Ed25519 key required");
         let implicit: String = bytes[1..].iter().map(|v| format!("{v:02x}")).collect();
         require!(terms.holder_id.as_str() == implicit || (!is_implicit(&terms.holder_id) && self.keys.get(&terms.holder_id).as_ref() == Some(&public_key)), "Wrong holder key");
         let encoded = near_sdk::borsh::to_vec(&((1u32 << 31) + 413, &payload)).expect("Payload serializes");

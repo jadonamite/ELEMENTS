@@ -1,6 +1,6 @@
-// Deploys a checked testnet snapshot after every legacy holder has a reviewed key mapping.
+// Deploys checked balances to the same testnet holders and records the fixed legacy claim list.
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { Account, JsonRpcProvider, KeyPairSigner, KeyPair, actions, nearToYocto, type KeyPairString } from 'near-api-js';
 
@@ -10,14 +10,7 @@ const snapshot=JSON.parse(await readFile('workbench/signed/snapshot.json','utf8'
   network:string;legacyHolders:string[];coins:[string,string][];items:Array<{holder:string;token_id:string;amount:string}>;height:number;sourceBatches:{chroma:number;items:number};
 };
 assert.equal(snapshot.network,'testnet');
-const mappingFile=process.env.SIGNED_REVIEWED_MAPPING;
-const mapping: Record<string,string>=mappingFile?JSON.parse(await readFile(mappingFile,'utf8')):{};
-for (const holder of snapshot.legacyHolders) {
-  assert.ok(mapping[holder] && /^[a-f0-9]{64}$/.test(mapping[holder]!) && mapping[holder]!==holder,
-    `BLOCKED: legacy holder ${holder} needs an independently reviewed player key mapping; the old server key is not ownership proof`);
-}
-for (const holder of Object.keys(mapping)) assert.ok(snapshot.legacyHolders.includes(holder),`Unexpected mapping source ${holder}`);
-const remap=(holder:string)=>mapping[holder]??holder;
+const remap=(holder:string)=>holder;
 const provider=new JsonRpcProvider({url:'https://rpc.testnet.fastnear.com'});
 for (const [kind,source] of Object.entries({chroma:'chroma.elements-dev.testnet',items:'items-v3.elements-dev.testnet'})) {
   const batch=await provider.callFunction({contractId:source,method:'last_batch',args:{}});
@@ -33,6 +26,12 @@ for (const id of Object.values(targets)) {
   }
   assert.ok(missing,`Refusing to overwrite existing ${id}`);
 }
+const holders: Record<string,{coin:string;items:Record<string,string>}>={};
+for (const holder of snapshot.legacyHolders) {
+  holders[holder]={coin:snapshot.coins.find(([id])=>id===holder)?.[1]??'0',items:Object.fromEntries(snapshot.items.filter(item=>item.holder===holder).map(item=>[item.token_id,item.amount]))};
+}
+await mkdir('server/config',{recursive:true});
+await writeFile('server/config/legacy-claims.testnet.json',JSON.stringify({network:'testnet',height:snapshot.height,contracts:targets,holders},null,2)+'\n');
 if (!process.argv.includes('--deploy')) {
   console.log(JSON.stringify({result:'PREFLIGHT PASS',targets,height:snapshot.height,coinHolders:snapshot.coins.length,itemHoldings:snapshot.items.length}));
   process.exit(0);
@@ -49,7 +48,7 @@ const transactions:Record<string,string>={};
 for (const [kind,id] of Object.entries(targets)) {
   const pair=KeyPair.fromRandom('ed25519');
   await writeFile(`${credentials}/${id}.json`,JSON.stringify({account_id:id,public_key:pair.getPublicKey().toString(),private_key:pair.toString()}),{mode:0o600,flag:'wx'});
-  const created=await game.createAccount({newAccountId:id,publicKey:pair.getPublicKey().toString(),nearToTransfer:nearToYocto('3')});
+  const created=await game.createAccount({newAccountId:id,publicKey:pair.getPublicKey().toString(),nearToTransfer:nearToYocto(kind==='items'?'4':'3')});
   transactions[`${kind}_create`]=created.transaction.hash;
   const contract=new Account(id,provider,KeyPairSigner.fromSecretKey(pair.toString()));
   const wasm=kind==='chroma'?'contracts/chroma/target/near/chroma_token.wasm':'contracts/items/target/near/elements_items.wasm';

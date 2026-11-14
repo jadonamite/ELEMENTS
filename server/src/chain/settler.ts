@@ -1,3 +1,7 @@
+import { withSavepoint } from '../economy/satchelService.js';
+import { baseDecode } from 'near-api-js';
+import { legacyCaps, legacyGrant, migrateLegacyTables } from './legacy.js';
+import { playerImplicitAccount } from './keys.js';
 import type { DatabaseSync } from 'node:sqlite';
 import { Account, JsonRpcProvider, KeyPairSigner, nearToYocto, type KeyPairString } from 'near-api-js';
 import { getDatabase } from '../db.js';
@@ -45,6 +49,13 @@ export function migrateChainTables(db: DatabaseSync): void {
     batch INTEGER PRIMARY KEY, first_rowid INTEGER NOT NULL, last_rowid INTEGER NOT NULL, moves INTEGER NOT NULL,
     status TEXT NOT NULL, tx_hash TEXT, error TEXT, created_at INTEGER NOT NULL, settled_at INTEGER
   );`);
+  for (const table of ['chain_batches','items_chain_batches']) {
+    const columns=db.prepare(`PRAGMA table_info(${table})`).all() as Array<{name:string}>;
+    if (!columns.some(c=>c.name==='moves_json')) db.exec(`ALTER TABLE ${table} ADD COLUMN moves_json TEXT`);
+    if (!columns.some(c=>c.name==='legacy_holder')) db.exec(`ALTER TABLE ${table} ADD COLUMN legacy_holder TEXT`);
+  }
+  migrateLegacyTables(db);
+
 }
 
 export function nearClient(config: ChainConfig, kind: LedgerKind = 'coin'): ChainClient {
@@ -106,6 +117,7 @@ interface BatchRow {
   first_rowid: number;
   last_rowid: number;
   status: string;
+  legacy_holder?: string | null;
 }
 
 interface LedgerRow {
@@ -157,7 +169,7 @@ export class Settler {
     try {
       const table = this.batchTable;
       const pending = this.db
-        .prepare(`SELECT batch, first_rowid, last_rowid, status FROM ${table} WHERE status = 'sent' ORDER BY batch LIMIT 1`)
+        .prepare(`SELECT batch, first_rowid, last_rowid, status, legacy_holder FROM ${table} WHERE status = 'sent' ORDER BY batch LIMIT 1`)
         .get() as BatchRow | undefined;
       const onChain = await this.client.lastBatch();
 
@@ -166,6 +178,7 @@ export class Settler {
           this.markSettled(pending.batch, null);
           return pending.batch;
         }
+        if (pending.legacy_holder) return await this.sendLegacy(pending.batch,pending.legacy_holder);
         return await this.send(pending.batch, pending.first_rowid, pending.last_rowid);
       }
 
@@ -178,6 +191,16 @@ export class Settler {
       const settledTo = this.db
         .prepare(`SELECT COALESCE(MAX(last_rowid), 0) AS r FROM ${table} WHERE status = 'settled'`)
         .get() as { r: number };
+      const legacy = this.prepareLegacy();
+      if (legacy) {
+        const batch=localLast.b+1;
+        withSavepoint(this.db,()=>{
+        this.db.prepare(`INSERT INTO ${table} (batch,first_rowid,last_rowid,moves,status,created_at,legacy_holder) VALUES (?,?,?,?,'sent',?,?)`)
+          .run(batch,settledTo.r,settledTo.r,legacy.moves,Date.now(),legacy.holder);
+        this.db.prepare("UPDATE legacy_chain_claims SET batch=?,status='sent' WHERE contract=? AND holder=?").run(batch,this.config.contractId,legacy.holder);
+        });
+        return await this.sendLegacy(batch,legacy.holder);
+      }
       const rows = this.db
         .prepare(this.kind === 'coin'
           ? "SELECT rowid FROM ledger_entries WHERE rowid > ? AND reason != 'genesis' ORDER BY rowid LIMIT ?"
@@ -207,9 +230,12 @@ export class Settler {
     const entries = this.kind === 'coin'
       ? this.db.prepare("SELECT rowid, id, sender, receiver, amount, reason FROM ledger_entries WHERE rowid BETWEEN ? AND ? AND reason != 'genesis' ORDER BY rowid").all(first,last) as unknown as LedgerRow[]
       : this.db.prepare('SELECT rowid,id,from_id,to_id,item_id,quantity,reason FROM item_ledger WHERE rowid BETWEEN ? AND ? ORDER BY rowid').all(first,last) as unknown as Array<{rowid:number;id:string;from_id:string;to_id:string;item_id:string;quantity:number;reason:string}>;
-    const names = { gameAccount: this.config.gameAccount, playerSecret: this.config.playerSecret };
+    const assigned=this.db.prepare('SELECT holder,moves_json FROM legacy_chain_claims WHERE contract=? AND batch=?').get(this.config.contractId,batch) as {holder:string;moves_json:string}|undefined;
+    const claim=assigned?{holder:assigned.holder,moves:(JSON.parse(assigned.moves_json) as unknown[]).length}:this.prepareLegacy();
+    const names = {...this.config,...(claim?{claimHolder:claim.holder}:{})};
     try {
-    const moves = this.kind === 'coin'
+    const saved=this.db.prepare(`SELECT moves_json FROM ${this.batchTable} WHERE batch=?`).get(batch) as {moves_json:string|null};
+    const moves = saved.moves_json ? (JSON.parse(saved.moves_json) as Array<{from:string|null;to:string|null;token_id?:string;amount:string;memo:string}>).slice(claim?.moves??0) : this.kind === 'coin'
       ? (entries as LedgerRow[]).map((e) => ({ from: chainAccountFor(e.sender,names,this.db), to: chainAccountFor(e.receiver,names,this.db), amount: String(e.amount), memo: `${e.reason} ${e.id}`.slice(0,120) }))
         : (entries as Array<{id:string;from_id:string;to_id:string;item_id:string;quantity:number;reason:string}>).map((e) => ({ from: e.from_id === 'world' ? null : chainAccountFor(e.from_id,names,this.db), to: e.to_id === 'world' ? null : chainAccountFor(e.to_id,names,this.db), token_id:e.item_id, amount:String(e.quantity), memo:`${e.reason} ${e.id}`.slice(0,120) }));
 
@@ -219,7 +245,7 @@ export class Settler {
         if (!move.from) continue;
         const entry = entries[i]!;
         const ledgerId = 'sender' in entry ? entry.sender : entry.from_id;
-        const token = 'token_id' in move ? move.token_id : 'CHROMA';
+        const token = 'token_id' in move ? (move.token_id ?? 'CHROMA') : 'CHROMA';
         const holder = needed.get(move.from) ?? { ledgerId, caps: {} };
         holder.caps[token] = (holder.caps[token] ?? 0n) + BigInt(move.amount);
         needed.set(move.from, holder);
@@ -237,7 +263,17 @@ export class Settler {
         if (!covered()) throw new Error(`No live grant covering ${holder}; renew the session`);
       }
       this.held = null;
-      const hash = await this.client.settle(batch, moves);
+      let outgoing: unknown[]=moves;
+      if (claim) {
+        await this.ensureLegacyGrant(claim.holder);
+        const stored=this.db.prepare('SELECT moves_json FROM legacy_chain_claims WHERE contract=? AND holder=?').get(this.config.contractId,claim.holder) as {moves_json:string};
+        outgoing=[...(JSON.parse(stored.moves_json) as unknown[]),...moves];
+      }
+      withSavepoint(this.db,()=>{
+        this.db.prepare(`UPDATE ${this.batchTable} SET moves_json=?,moves=? WHERE batch=?`).run(JSON.stringify(outgoing),outgoing.length,batch);
+        if(claim) this.db.prepare("UPDATE legacy_chain_claims SET batch=?,status='sent' WHERE contract=? AND holder=?").run(batch,this.config.contractId,claim.holder);
+      });
+      const hash = await this.client.settle(batch, outgoing);
       this.markSettled(batch, hash);
       console.log(`[chain] batch ${batch}: ${moves.length} moves settled, tx ${hash}`);
       return batch;
@@ -259,10 +295,57 @@ export class Settler {
     }
   }
 
+  private prepareLegacy(): {holder:string;moves:number}|null {
+    const list=this.config.legacyClaims;
+    if (!list) return null;
+    const accounts=this.db.prepare('SELECT id,chain_public_key FROM accounts WHERE chain_public_key IS NOT NULL').all() as Array<{id:string;chain_public_key:string}>;
+    for (const account of accounts) {
+      const holder=playerImplicitAccount(this.config.playerSecret,account.id);
+      const caps=legacyCaps(list,this.config.contractId,holder);
+      if (!caps) continue;
+      const existing=this.db.prepare('SELECT status,moves_json FROM legacy_chain_claims WHERE contract=? AND holder=?').get(this.config.contractId,holder) as {status:string;moves_json:string}|undefined;
+      if (existing?.status==='settled') continue;
+      if (existing) return {holder,moves:(JSON.parse(existing.moves_json) as unknown[]).length};
+      const destination=Buffer.from(baseDecode(account.chain_public_key.replace(/^ed25519:/,''))).toString('hex');
+      if (destination===holder) throw new Error('Legacy claim destination must be a player-owned key');
+      const moves=Object.entries(caps).map(([token,amount])=>({from:holder,to:destination,amount,memo:'legacy claim',...(this.kind==='items'?{token_id:token}:{})}));
+      this.db.prepare("INSERT INTO legacy_chain_claims (contract,holder,destination,status,grant_json,moves_json) VALUES (?,?,?,'queued',?,?)")
+        .run(this.config.contractId,holder,destination,JSON.stringify(legacyGrant(this.config.playerSecret,account.id,this.config.contractId,list)),JSON.stringify(moves));
+      return {holder,moves:moves.length};
+    }
+    return null;
+  }
+
+  private async ensureLegacyGrant(holder:string):Promise<void> {
+    const row=this.db.prepare('SELECT grant_json FROM legacy_chain_claims WHERE contract=? AND holder=?').get(this.config.contractId,holder) as {grant_json:string};
+    const signed=JSON.parse(row.grant_json) as SignedSessionGrant;
+    const grant=await this.client.sessionGrant(holder);
+    if (!grant || JSON.stringify(grant.nonce)!==JSON.stringify(signed.payload.nonce)) await this.client.submitGrant(signed);
+  }
+
+  private async sendLegacy(batch:number,holder:string): Promise<number|null> {
+    const row=this.db.prepare('SELECT grant_json,moves_json FROM legacy_chain_claims WHERE contract=? AND holder=?').get(this.config.contractId,holder) as {grant_json:string;moves_json:string};
+    try {
+      await this.ensureLegacyGrant(holder);
+      const hash=await this.client.settle(batch,JSON.parse(row.moves_json) as unknown[]);
+      this.markSettled(batch,hash);
+      return batch;
+    } catch(error) {
+      const message=error instanceof Error?error.message:String(error);
+      this.db.prepare(`UPDATE ${this.batchTable} SET error=? WHERE batch=?`).run(message.slice(0,500),batch);
+      this.held=`Legacy claim ${holder}: ${message}`;
+      return null;
+    }
+  }
+
   private markSettled(batch: number, hash: string | null): void {
+    withSavepoint(this.db,()=>{
     this.db
       .prepare(`UPDATE ${this.batchTable} SET status = 'settled', tx_hash = COALESCE(?, tx_hash), settled_at = ?, error = NULL WHERE batch = ?`)
       .run(hash, Date.now(), batch);
+    this.db.prepare("UPDATE legacy_chain_claims SET status='settled',tx_hash=COALESCE(?,tx_hash) WHERE contract=? AND batch=?").run(hash,this.config.contractId,batch);
+    });
+    this.held=null;
   }
 
   private get batchTable(): string { return this.kind === 'coin' ? 'chain_batches' : 'items_chain_batches'; }

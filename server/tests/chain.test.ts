@@ -5,11 +5,13 @@ import { TOTAL_CHROMA_SUPPLY } from '@elements/shared';
 import { migrateDatabase } from '../src/db.js';
 import { grantPlayerStartingPurse, recordTransaction } from '../src/economy/ledgerService.js';
 import { addItems, removeItems } from '../src/economy/satchelService.js';
-import { baseEncode } from 'near-api-js';
+import { KeyPair, baseDecode, baseEncode } from 'near-api-js';
 import { createOrGetAccount } from '../src/db.js';
 import { type LiveGrant } from '../src/chain/grants.js';
 import type { SignedSessionGrant } from '@elements/shared';
 import { genesisArgs, playerImplicitAccount, worldAccount } from '../src/chain/accounts.js';
+import { chainAccountFor } from '../src/chain/accounts.js';
+import { legacyGrant } from '../src/chain/legacy.js';
 import { Settler, type ChainClient, type ChainMove } from '../src/chain/settler.js';
 import type { ChainConfig } from '../src/chain/config.js';
 
@@ -287,4 +289,45 @@ test('a player without a browser key cannot receive into a server-derived accoun
   play(db); assert.equal(await settler.tick(),null);
   assert.equal(chain.sent.length,0);
   assert.match(settler.status().held ?? '',/has no holder key/);
+});
+
+
+function legacyFixture() {
+  const db=freshDb();grantPlayerStartingPurse('alice',db);
+  const old=playerImplicitAccount(config.playerSecret,'alice');
+  const wallet=KeyPair.fromRandom('ed25519');const destination=Buffer.from(baseDecode(wallet.getPublicKey().toString().split(':')[1]!)).toString('hex');
+  db.prepare('UPDATE accounts SET chain_public_key=? WHERE id=?').run(wallet.getPublicKey().toString(),'alice');
+  const legacyClaims={network:'testnet' as const,height:1,contracts:{chroma:config.contractId,items:'items.game.testnet'},holders:{[old]:{coin:'100',items:{}}}};
+  const settings={...config,legacyClaims};const chain=new FakeChain();chain.balances.set(old,100n);chain.balances.set('treasury.game.testnet',chain.balances.get('treasury.game.testnet')!-100n);
+  chain.grantsApi.grants.set(destination,playerGrant(destination));
+  const settler=new Settler(settings,chain,db);
+  const cutoff=(db.prepare('SELECT MAX(rowid) AS n FROM ledger_entries').get() as {n:number}).n;
+  db.prepare("INSERT INTO chain_batches (batch,first_rowid,last_rowid,moves,status,created_at) VALUES (0,0,?,0,'settled',0)").run(cutoff);
+  return {db,old,destination,settings,chain,settler};
+}
+test('legacy genesis holdings move once without changing the game ledger balance',async()=>{
+  const f=legacyFixture();
+  assert.equal(chainAccountFor('alice',f.settings,f.db),f.old);
+  assert.equal(await f.settler.tick(),1);
+  assert.equal(f.chain.balances.get(f.old),0n);assert.equal(f.chain.balances.get(f.destination),100n);
+  assert.equal(chainAccountFor('alice',f.settings,f.db),f.destination);
+  assert.equal(await f.settler.tick(),null);assert.deepEqual(f.chain.sent,[1]);
+  assert.equal((f.db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE reason='player_starting_grant'").get() as {n:number}).n,1);
+  f.chain.balances.set(f.old,1n);assert.equal(await f.settler.tick(),null);assert.equal(f.chain.balances.get(f.old),1n);
+});
+test('a confirmed legacy claim survives a lost transaction response without replay',async()=>{
+  const f=legacyFixture();f.chain.failNextAfterApplying=true;
+  assert.equal(await f.settler.tick(),null);assert.equal(await f.settler.tick(),1);assert.equal(await f.settler.tick(),null);
+  assert.deepEqual(f.chain.sent,[1]);assert.equal(f.chain.balances.get(f.destination),100n);
+});
+test('a player signing in releases a held ordinary batch with its legacy claim first',async()=>{
+  const f=legacyFixture();f.db.prepare('UPDATE accounts SET chain_public_key=NULL WHERE id=?').run('alice');
+  recordTransaction({from:'alice',to:'merchant_ignis',amount:10,reason:'merchant_buy'},f.db);
+  assert.equal(await f.settler.tick(),null);assert.match(f.settler.status().held??'',/no holder key/);
+  f.db.prepare('UPDATE accounts SET chain_public_key=? WHERE id=?').run(`ed25519:${baseEncode(Buffer.from(f.destination,'hex'))}`,'alice');
+  assert.equal(await f.settler.tick(),1);assert.equal(f.chain.balances.get(f.destination),90n);assert.equal(f.chain.balances.get(f.old),0n);
+  assert.equal(await f.settler.tick(),null);
+});
+test('the legacy signer rejects players outside the fixed genesis list',()=>{
+  const f=legacyFixture();assert.throws(()=>legacyGrant(config.playerSecret,'bob',config.contractId,f.settings.legacyClaims),/not on the genesis/);
 });
