@@ -23,5 +23,6 @@
     "concurrently": "10.0.6",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
-  }
+  },
+  "license": "MIT OR Apache-2.0"
 }

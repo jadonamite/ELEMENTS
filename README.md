@@ -157,3 +157,7 @@ Textures, models and animations come from Poly Haven (CC0), Quaternius (CC0), Mi
 ## Legal
 
 Terms, privacy and cookie policy are in `client/public/legal/` and linked from the game.
+
+## License
+
+The code is licensed under either of [MIT](LICENSE-MIT) or [Apache License 2.0](LICENSE-APACHE), at your option. Art, models, textures and sounds from outside sources keep their own licenses, listed in [docs/ASSETS.md](docs/ASSETS.md).
