@@ -10,6 +10,8 @@ interface TerrainJob { tier: Tier; ix: number; iz: number; key: string }
 interface StreamOptions {
   workerFactory?: () => Worker;
   jobTimeoutMs?: number;
+  /** Allowance for a new worker's first answer, while it is still loading its code. */
+  bootTimeoutMs?: number;
   prepareTimeoutMs?: number;
   retryLimit?: number;
 }
@@ -58,7 +60,11 @@ export class TerrainStream {
   private completed: { data: TerrainResult; job: TerrainJob } | null = null;
   private pinned = new Map<string, RAPIER.Collider>();
   private active: TerrainJob | null = null;
-  private sentAt = 0;
+  /** Time the current job has been waited on while this thread was free to hear the answer. */
+  private waited = 0;
+  private lastTick = 0;
+  /** A new worker is still loading its code until its first answer, and gets a start-up allowance instead of the job limit. */
+  private warm = false;
   private patch: { x0: number; z0: number; nx: number; nz: number; heights: Float32Array } | null = null;
   private frontier = new Map<string, RAPIER.Collider>();
   private frontierDirty = true;
@@ -140,7 +146,13 @@ export class TerrainStream {
   tick(x: number, z: number): void {
     if (this.disposed) return;
     this.request(x, z); const start = performance.now();
-    if (this.busy && start - this.sentAt > (this.options.jobTimeoutMs ?? 2000)) this.workerFailed('Terrain worker timed out');
+    // A stall on this thread is not the worker's delay: its answer cannot be heard until the stall ends,
+    // so each tick counts at most 100 ms toward the timeout.
+    if (this.busy) this.waited += Math.min(100, start - this.lastTick);
+    this.lastTick = start;
+    // Each failure in a row doubles the limit (to 30 s at most), so a slow or busy machine is given longer instead of being cut off.
+    const limit = this.warm ? Math.min(30000, (this.options.jobTimeoutMs ?? 2000) * 2 ** this.status.failures) : this.options.bootTimeoutMs ?? 30000;
+    if (this.busy && this.waited > limit) this.workerFailed('Terrain worker timed out');
     if (this.completed) {
       const { data, job } = this.completed; this.completed = null;
       const n = SIZE / job.tier.step;
@@ -155,10 +167,11 @@ export class TerrainStream {
     if (!this.busy && this.worker) {
       const job = this.pending.shift();
       if (job) {
-        this.busy = true; this.active = job; this.sentAt = performance.now(); const generation = this.generation;
+        this.busy = true; this.active = job; this.waited = 0; const generation = this.generation;
         this.worker.onmessage = (event: MessageEvent<TerrainResult>) => {
           this.busy = false; this.active = null; this.status.failures = 0; this.status.error = null;
           this.timing.maxCellMs = Math.max(this.timing.maxCellMs, event.data.cpuMs);
+          this.warm = true;
           if (generation === this.generation) this.completed = { job, data: event.data };
         };
         try { this.worker.postMessage({ ix: job.ix, iz: job.iz, step: job.tier.step }); } catch (error) { this.workerFailed(String(error)); }
@@ -187,14 +200,14 @@ export class TerrainStream {
     } catch (error) { this.workerFailed(String(error)); }
   }
   private workerFailed(message: string): void {
-    this.worker?.terminate(); this.worker = null; this.busy = false;
+    this.worker?.terminate(); this.worker = null; this.busy = false; this.warm = false;
     this.status.failures++; this.status.error = message;
     if (this.active) {
       const job = this.active; this.active = null;
       const dx = Math.abs(job.ix - this.targetX), dz = Math.abs(job.iz - this.targetZ);
       if (dx <= 1 && dz <= 1 && !job.tier.cells.has(job.key)) this.pending.unshift(job);
     }
-    if (this.status.failures <= (this.options.retryLimit ?? 2)) this.openWorker();
+    if (this.status.failures <= (this.options.retryLimit ?? 6)) this.openWorker();
   }
 
   /** True when every wanted cell is resident: nothing queued, in flight or waiting to upload. */
@@ -219,7 +232,7 @@ export class TerrainStream {
       this.request(x, z);
       while (!this.lookaheadReady(x, z)) {
         if (this.disposed) throw new Error('Terrain stream was disposed during preparation');
-        if (performance.now() - start > (this.options.prepareTimeoutMs ?? 5000)) {
+        if (performance.now() - start > (this.options.prepareTimeoutMs ?? 20000)) {
           throw new Error(this.status.error ?? 'Terrain preparation timed out');
         }
         this.tick(x, z); await new Promise(resolve => setTimeout(resolve, 0));

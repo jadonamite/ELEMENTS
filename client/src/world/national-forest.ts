@@ -50,6 +50,8 @@ export interface NationalForest {
 const SIZE = IGNIS.cellSize;
 /** Distant tree cards are kept this many cells from the hero's cell. */
 const FAR_REACH = 7;
+/** Cells along one side of a block of distant tree cards. */
+const BLOCK = 4;
 const up = new Vector3(0, 1, 0);
 
 /**
@@ -327,34 +329,52 @@ export async function createNationalForest(options: NationalForestOptions): Prom
     return { group: owner, spots, tier, instances };
   };
   const COLLIDER: Partial<Record<ForestKind, [number, number]>> = { stump: [0.9, 0.4], snag: [8, 0.3], pine: [12, 0.3], ginkgo: [4, 0.3], maple: [3, 0.26] };
+  // Distant trees are painted cards. A cell of cards is too small to be worth its own draw, so cards are drawn in
+  // blocks of BLOCK x BLOCK cells: one draw per tree kind per block.
+  const farSpots = new Map<string, readonly ForestSpot[]>(), blocks = new Map<string, { signature: string; chunk: ForestChunk }>();
+  const farReach = low ? 4 : FAR_REACH;
   return {
     group, stats,
     update(near, mid = new Map(), localPosition) {
       if (disposed) return;
-      const wanted = new Map<string, { cell: ResidentCell; tier: Tier }>();
+      const wanted = new Map<string, { cell: ResidentCell; tier: Tier }>(), far = new Map<string, ResidentCell>();
       if (localPosition) {
         const hx = Math.floor((localPosition.x + origin.x) / SIZE), hz = Math.floor((localPosition.z + origin.z) / SIZE);
-        for (let dz = -FAR_REACH; dz <= FAR_REACH; dz++) for (let dx = -FAR_REACH; dx <= FAR_REACH; dx++)
-          wanted.set(`${hx + dx}:${hz + dz}`, { cell: { ix: hx + dx, iz: hz + dz }, tier: 'far' });
+        for (let dz = -farReach; dz <= farReach; dz++) for (let dx = -farReach; dx <= farReach; dx++)
+          far.set(`${hx + dx}:${hz + dz}`, { ix: hx + dx, iz: hz + dz });
       }
-      for (const [key, cell] of mid) wanted.set(key, { cell, tier: 'mid' });
-      for (const [key, cell] of near) wanted.set(key, { cell, tier: 'near' });
+      // On low quality only the cells round the hero hold modelled trees; the middle ring is cards too.
+      for (const [key, cell] of mid) if (low) far.set(key, cell); else { wanted.set(key, { cell, tier: 'mid' }); far.delete(key); }
+      for (const [key, cell] of near) { wanted.set(key, { cell, tier: 'near' }); far.delete(key); }
       for (const [key, chunk] of chunks) if (!wanted.has(key)) { destroyChunk(chunk); chunks.delete(key); }
-      // Distant cells are planted a few at a time; cells the hero stands in or beside are planted at once.
-      let budget = 3;
       for (const [key, entry] of wanted) {
         const old = chunks.get(key);
         if (old?.tier === entry.tier) continue;
-        if (!old && entry.tier === 'far' && budget-- <= 0) continue;
-        const spots = old?.spots ?? nationalForestCell(entry.cell.ix, entry.cell.iz);
+        const spots = old?.spots ?? farSpots.get(key) ?? nationalForestCell(entry.cell.ix, entry.cell.iz);
         if (old) destroyChunk(old);
         chunks.set(key, build(entry.cell.ix, entry.cell.iz, entry.tier, spots));
+      }
+      // Distant cells are planted a few at a time.
+      let budget = 3;
+      for (const key of farSpots.keys()) if (!far.has(key)) farSpots.delete(key);
+      const members = new Map<string, string[]>();
+      for (const [key, cell] of far) {
+        if (!farSpots.has(key)) { if (budget-- <= 0) continue; farSpots.set(key, chunks.get(key)?.spots ?? nationalForestCell(cell.ix, cell.iz)); }
+        const block = `${Math.floor(cell.ix / BLOCK)}:${Math.floor(cell.iz / BLOCK)}`, list = members.get(block);
+        if (list) list.push(key); else members.set(block, [key]);
+      }
+      for (const [key, block] of blocks) if (!members.has(key)) { destroyChunk(block.chunk); blocks.delete(key); }
+      for (const [key, cells] of members) {
+        const signature = cells.join(' '), old = blocks.get(key);
+        if (old?.signature === signature) continue;
+        if (old) destroyChunk(old.chunk);
+        const [bx, bz] = key.split(':').map(Number);
+        blocks.set(key, { signature, chunk: build((bx! + 0.5) * BLOCK - 0.5, (bz! + 0.5) * BLOCK - 0.5, 'far', cells.flatMap(cell => farSpots.get(cell)!)) });
       }
       stats.cells = 0; stats.stems = 0; stats.far = 0;
       for (const chunk of chunks.values()) {
         if (chunk.spots.length) stats.cells++;
         stats.stems += chunk.spots.length;
-        if (chunk.tier === 'far') { stats.far += chunk.spots.length; continue; }
         if (!world || chunk.tier !== 'near' || !localPosition) continue;
         for (const spot of chunk.spots) {
           const solid = COLLIDER[spot.kind];
@@ -368,12 +388,14 @@ export async function createNationalForest(options: NationalForestOptions): Prom
           } else if (old && !within) { world.removeCollider(old, false); colliders.delete(spot.id); }
         }
       }
+      for (const spots of farSpots.values()) { if (spots.length) stats.cells++; stats.stems += spots.length; stats.far += spots.length; }
       stats.colliders = colliders.size;
     },
     dispose() {
       if (disposed) return; disposed = true;
       for (const chunk of chunks.values()) destroyChunk(chunk);
-      chunks.clear(); group.removeFromParent(); disposeResources();
+      for (const block of blocks.values()) destroyChunk(block.chunk);
+      chunks.clear(); blocks.clear(); farSpots.clear(); group.removeFromParent(); disposeResources();
       stats.cells = 0; stats.stems = 0; stats.colliders = 0; stats.far = 0;
     },
   };

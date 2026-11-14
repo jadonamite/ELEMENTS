@@ -104,6 +104,7 @@ test('worker timeout increments failure count and re-queues the near job', async
   // A worker that accepts postMessage but never calls onmessage (simulates a hung worker).
   const stream = new TerrainStream(world, nationalSurface, new Scene(), material, false, {
     jobTimeoutMs: 0,  // any in-flight job times out on the very next tick
+    bootTimeoutMs: 0, // and a new worker gets no start-up allowance
     retryLimit: 0,    // no retries — one failure is enough to verify the path
     workerFactory: () => ({
       onmessage: null, onerror: null, onmessageerror: null,
