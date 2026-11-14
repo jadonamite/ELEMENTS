@@ -12,6 +12,7 @@ import {
   type Object3D,
 } from 'three';
 import { FootPlant } from './foot-plant.js';
+import { ForearmTwist } from './forearm-twist.js';
 
 export interface AnimationPlayerOptions {
   /** Default cross-fade transition time in seconds. Defaults to 0.25s. */
@@ -34,6 +35,7 @@ export class AnimationPlayer {
   private readonly defaultFadeDuration: number;
   private isDisposed = false;
   private plant: FootPlant | null = null;
+  private twist: ForearmTwist | null = null;
   private landedSince = 0;
   private readonly plantFeet: boolean;
 
@@ -45,6 +47,7 @@ export class AnimationPlayer {
     this.mixer = new AnimationMixer(root);
     this.plantFeet = options.plantFeet ?? false;
     this.plant = this.plantFeet ? FootPlant.for(root) : null;
+    this.twist = ForearmTwist.for(root);
     this.defaultFadeDuration = options.defaultFadeDuration ?? 0.25;
 
     for (const clip of clips) {
@@ -129,6 +132,7 @@ export class AnimationPlayer {
     if (this.isDisposed) return;
     this.updateWeights(deltaSeconds * this.mixer.timeScale);
     this.mixer.update(deltaSeconds);
+    this.twist?.apply();
     if (this.plant) {
       this.plant.apply();
       this.landedSince |= this.plant.landed;
@@ -198,6 +202,7 @@ export class AnimationPlayer {
 
     (this as { mixer: AnimationMixer }).mixer = new AnimationMixer(root);
     this.plant = this.plantFeet ? FootPlant.for(root) : null;
+    this.twist = ForearmTwist.for(root);
     for (const clip of clips) {
       const action = this.mixer.clipAction(clip);
       this.actions.set(clip.name, action);

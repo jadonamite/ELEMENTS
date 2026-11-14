@@ -1,6 +1,6 @@
 import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BodyKit, type OutfitId } from '../body.js';
+import { BodyKit, markRest, type OutfitId } from '../body.js';
 import { sanitizeCharacterConfig } from '../creator/creator-types.js';
 import { disposeObject } from '../scene.js';
 import { AnimationPlayer } from '../anim/player.js';
@@ -185,7 +185,7 @@ export class NationIntroFlow {
       const kit = new BodyKit(loader);
       model = await kit.build(config, 'hero', this.config.nation === 'AQUES' ? 0x667f86 : this.config.nation === 'TERRA' ? 0x77705e : this.config.nation === 'AURA' ? 0x9a8d9e : undefined, outfit);
       if (this.disposed) return;
-      const clips = await kit.fitClips(config.sex, townSets.flatMap(set => set.animations), 'townsfolk', outfit);
+      const clips = await kit.fitClips(config.sex, townSets.flatMap(markRest), 'townsfolk', outfit);
       if (this.disposed) return;
       model.name = `NationMaster-${this.config.nation}`;
       model.position.copy(this.masterPosition).addScaledVector(forward, 5.5);
