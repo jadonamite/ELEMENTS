@@ -63,9 +63,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 button:focus-visible, a:focus-visible, .ff-price:focus-visible { outline: 2px solid var(--ff-ember); outline-offset: 2px; }
 
 .ff-events ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
-.ff-events li { display: grid; grid-template-columns: 8.5em 1fr; gap: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--ff-surface); border-left: 3px solid var(--ff-ember); border-radius: var(--radius-sm); }
+.ff-events li { display: grid; grid-template-columns: 8.5em 1fr; gap: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--ff-surface); border-radius: var(--radius-md); }
 .ff-events li span:first-child { color: var(--ff-gold); white-space: nowrap; }
-.ff-events .ff-empty { border-left-color: var(--ff-line); color: var(--ff-muted); grid-template-columns: 1fr; }
+.ff-events .ff-empty { color: var(--ff-muted); grid-template-columns: 1fr; }
 
 .ff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-4); }
 .ff-card { padding: var(--space-4); background: var(--ff-surface); border: 1px solid var(--ff-line); border-radius: var(--radius-xl); transition: border-color var(--duration-normal) var(--ease-out); }
@@ -84,7 +84,7 @@ button:focus-visible, a:focus-visible, .ff-price:focus-visible { outline: 2px so
 .ff-goods th:not(:first-child), .ff-goods td:not(:first-child) { text-align: right; }
 .ff-goods td { padding: var(--space-1) 0; border-top: 1px solid var(--ff-line); vertical-align: middle; }
 .ff-stock { display: inline-block; width: 40px; height: 4px; margin-right: var(--space-2); vertical-align: middle; background: var(--ff-raised); border-radius: var(--radius-full); overflow: hidden; }
-.ff-stock i { display: block; height: 100%; background: var(--ff-gold); transition: width var(--duration-moderate) var(--ease-out); }
+.ff-stock i { display: block; width: 100%; height: 100%; background: var(--ff-gold); transform-origin: left; transition: transform var(--duration-moderate) var(--ease-out); }
 .ff-price { position: relative; display: inline-flex; align-items: center; justify-content: flex-end; min-height: var(--target-min-height); min-width: var(--target-min-width); padding: 0; background: none; border: 0; color: var(--ff-text); font: inherit; cursor: help; }
 .ff-price[data-trend='up'] { color: var(--ff-up); }
 .ff-price[data-trend='down'] { color: var(--ff-down); }

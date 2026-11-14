@@ -56,7 +56,7 @@ function render(): void {
       const s = start.goods.find((x) => x.item === g.item) ?? g;
       const reason = week!.reasons[g.reason] ?? '';
       const fill = Math.min(100, Math.round((g.stock / Math.max(1, g.maxStock)) * 100));
-      return `<tr><td>${escapeHtml(goodName(g.item))}</td><td><span class="ff-stock" aria-hidden="true"><i style="width:${fill}%"></i></span>${g.stock}</td><td>${price(`${k.id}:${g.item}:buy`, g.buy, s.buy, reason, false)}</td><td>${price(`${k.id}:${g.item}:sell`, g.sell, s.sell, reason, g.sell === 0)}</td></tr>`;
+      return `<tr><td>${escapeHtml(goodName(g.item))}</td><td><span class="ff-stock" aria-hidden="true"><i style="transform:scaleX(${fill / 100})"></i></span>${g.stock}</td><td>${price(`${k.id}:${g.item}:buy`, g.buy, s.buy, reason, false)}</td><td>${price(`${k.id}:${g.item}:sell`, g.sell, s.sell, reason, g.sell === 0)}</td></tr>`;
     }).join('');
     const lead = week!.reasons[k.goods[0]?.reason ?? -1] ?? '';
     return `<article class="ff-card" data-status="${k.status}"><div class="ff-card-head"><h3>${escapeHtml(k.name)}</h3><span class="ff-status">${status}</span></div><p class="ff-purse">Purse <strong>${k.purse.toLocaleString('en')}</strong> CHROMA</p><table class="ff-goods"><thead><tr><th scope="col">Good</th><th scope="col">Stock</th><th scope="col">Buy</th><th scope="col">Sell</th></tr></thead><tbody>${rows}</tbody></table><p class="ff-reason">${escapeHtml(lead)}</p></article>`;
