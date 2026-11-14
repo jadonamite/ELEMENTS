@@ -37,6 +37,7 @@ export interface SolvencyUrgency {
 export interface TributeStatus {
   timeUntilTributeMs: number;
   isDueSoon: boolean;
+  isDue?: boolean;
 }
 
 export type PlanPhase = 'morning' | 'midday' | 'evening' | 'night';

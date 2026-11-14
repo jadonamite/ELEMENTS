@@ -181,6 +181,9 @@ export const AGENT_CONFIG = {
   tributeStockRatio: economyBalance?.agents?.tributeStockRatio ?? 0.9,
   // Share of base price the Lord pays for goods shipped as tribute.
   tributePriceRatio: economyBalance?.agents?.tributePriceRatio ?? 0.25,
+  tributeScheduleIntervalHours: economyBalance?.agents?.tributeScheduleIntervalHours ?? 24,
+  tributeScheduledShare: economyBalance?.agents?.tributeScheduledShare ?? 0.1,
+  tributeMinStockReserve: economyBalance?.agents?.tributeMinStockReserve ?? 5,
   /** When something in the world wakes a mind (queued, never sent at once). */
   events: {
     /** A robbery or theft this close to a counter is news to its keeper, metres. */
@@ -211,5 +214,94 @@ export const SHOPS_CONFIG = {
   maxPriceMultiplier: economyBalance?.shops?.maxPriceMultiplier ?? 2.5,
   unpaidUpkeepDaysToForfeit: economyBalance?.shops?.unpaidUpkeepDaysToForfeit ?? 7,
 } as const;
+
+export interface CaravanRouteConfig {
+  id: string;
+  name: string;
+  fromMerchant: string;
+  toMerchant: string;
+  fromNation: string;
+  toNation: string;
+  itemType: string;
+  cargoQuantity: number;
+}
+
+export const CARAVANS_CONFIG = {
+  intervalHours: economyBalance?.caravans?.intervalHours ?? 12,
+  routes: (economyBalance?.caravans?.routes ?? [
+    {
+      id: 'route_sindr_chromara',
+      name: 'Sindr to Chromara High Road',
+      fromMerchant: 'sindr_shards',
+      toMerchant: 'merchant_chromara',
+      fromNation: 'IGNIS',
+      toNation: 'CHROMARA',
+      itemType: 'shard',
+      cargoQuantity: 5,
+    },
+    {
+      id: 'route_sindr_aques',
+      name: 'Sindr to Aques Waterway',
+      fromMerchant: 'sindr_arms',
+      toMerchant: 'merchant_aques',
+      fromNation: 'IGNIS',
+      toNation: 'AQUES',
+      itemType: 'item',
+      cargoQuantity: 2,
+    },
+    {
+      id: 'route_aques_terra',
+      name: 'Aques to Terra Canyon Route',
+      fromMerchant: 'merchant_aques',
+      toMerchant: 'merchant_terra',
+      fromNation: 'AQUES',
+      toNation: 'TERRA',
+      itemType: 'potion',
+      cargoQuantity: 5,
+    },
+    {
+      id: 'route_terra_aura',
+      name: 'Terra to Aura High Span',
+      fromMerchant: 'merchant_terra',
+      toMerchant: 'merchant_aura',
+      fromNation: 'TERRA',
+      toNation: 'AURA',
+      itemType: 'shard',
+      cargoQuantity: 5,
+    },
+    {
+      id: 'route_aura_ignis',
+      name: 'Aura to Ignis Caldera Trail',
+      fromMerchant: 'merchant_aura',
+      toMerchant: 'merchant_ignis',
+      fromNation: 'AURA',
+      toNation: 'IGNIS',
+      itemType: 'shard',
+      cargoQuantity: 5,
+    },
+  ]) as readonly CaravanRouteConfig[],
+} as const;
+
+export const MASTERS_CONFIG = {
+  baseTrainingFee: economyBalance?.masters?.baseTrainingFee ?? 50,
+  weeklyGrowthRate: economyBalance?.masters?.weeklyGrowthRate ?? 0.1,
+  minFee: economyBalance?.masters?.minFee ?? 20,
+  maxFee: economyBalance?.masters?.maxFee ?? 500,
+} as const;
+
+export const RIVAL_CLAN_CONFIG = {
+  tradeIntervalHours: economyBalance?.rivalClan?.tradeIntervalHours ?? 6,
+  maxTradeSpend: economyBalance?.rivalClan?.maxTradeSpend ?? 300,
+  preferredItems: (economyBalance?.rivalClan?.preferredItems ?? ['shard', 'potion', 'material']) as readonly string[],
+} as const;
+
+export const DIRECTOR_CONFIG = {
+  evaluationIntervalHours: economyBalance?.director?.evaluationIntervalHours ?? 24,
+  lookbackDays: economyBalance?.director?.lookbackDays ?? 3,
+  dominationThreshold: economyBalance?.director?.dominationThreshold ?? 0.35,
+  firestormDurationHours: economyBalance?.director?.firestormDurationHours ?? 24,
+  firestormPriceMultiplier: economyBalance?.director?.firestormPriceMultiplier ?? 1.25,
+} as const;
+
 
 

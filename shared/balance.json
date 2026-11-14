@@ -1470,6 +1470,9 @@
       "restockStockRatio": 0.3,
       "tributeStockRatio": 0.9,
       "tributePriceRatio": 0.25,
+      "tributeScheduleIntervalHours": 24,
+      "tributeScheduledShare": 0.1,
+      "tributeMinStockReserve": 5,
       "events": {
         "nearStallMetres": 15,
         "floodNet": 10,
@@ -1587,6 +1590,79 @@
       "minPriceMultiplier": 0.6,
       "maxPriceMultiplier": 2.5,
       "unpaidUpkeepDaysToForfeit": 7
+    },
+    "caravans": {
+      "intervalHours": 12,
+      "routes": [
+        {
+          "id": "route_sindr_chromara",
+          "name": "Sindr to Chromara High Road",
+          "fromMerchant": "sindr_shards",
+          "toMerchant": "merchant_chromara",
+          "fromNation": "IGNIS",
+          "toNation": "CHROMARA",
+          "itemType": "shard",
+          "cargoQuantity": 5
+        },
+        {
+          "id": "route_sindr_aques",
+          "name": "Sindr to Aques Waterway",
+          "fromMerchant": "sindr_arms",
+          "toMerchant": "merchant_aques",
+          "fromNation": "IGNIS",
+          "toNation": "AQUES",
+          "itemType": "item",
+          "cargoQuantity": 2
+        },
+        {
+          "id": "route_aques_terra",
+          "name": "Aques to Terra Canyon Route",
+          "fromMerchant": "merchant_aques",
+          "toMerchant": "merchant_terra",
+          "fromNation": "AQUES",
+          "toNation": "TERRA",
+          "itemType": "potion",
+          "cargoQuantity": 5
+        },
+        {
+          "id": "route_terra_aura",
+          "name": "Terra to Aura High Span",
+          "fromMerchant": "merchant_terra",
+          "toMerchant": "merchant_aura",
+          "fromNation": "TERRA",
+          "toNation": "AURA",
+          "itemType": "shard",
+          "cargoQuantity": 5
+        },
+        {
+          "id": "route_aura_ignis",
+          "name": "Aura to Ignis Caldera Trail",
+          "fromMerchant": "merchant_aura",
+          "toMerchant": "merchant_ignis",
+          "fromNation": "AURA",
+          "toNation": "IGNIS",
+          "itemType": "shard",
+          "cargoQuantity": 5
+        }
+      ]
+    },
+    "masters": {
+      "baseTrainingFee": 50,
+      "weeklyGrowthRate": 0.1,
+      "minFee": 20,
+      "maxFee": 500
+    },
+    "rivalClan": {
+      "tradeIntervalHours": 6,
+      "maxTradeSpend": 300,
+      "preferredItems": ["shard", "potion", "material"]
+    },
+    "director": {
+      "evaluationIntervalHours": 24,
+      "lookbackDays": 3,
+      "dominationThreshold": 0.35,
+      "firestormDurationHours": 24,
+      "firestormPriceMultiplier": 1.25
     }
   },
   "raids": {
