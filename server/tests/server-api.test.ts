@@ -465,3 +465,21 @@ test('Guest Drawing: one address gets a day\'s worth of draws, then none until t
   assert.ok(createGuestRising('9.9.9.9', undefined, db, now), 'other addresses are unaffected');
   assert.ok(createGuestRising('5.6.7.8', undefined, db, now + 24 * 60 * 60 * 1000 + 1));
 });
+
+test('Guest caps key on the address the proxy saw, not one the browser wrote first in X-Forwarded-For', async () => {
+  const ts = await startTestServer();
+  setDatabase(createDatabase(':memory:'));
+  resetRateLimits();
+  try {
+    const draw = (forwarded: string) =>
+      fetch(`${ts.baseUrl}/api/rising/guest`, { method: 'POST', headers: { 'X-Forwarded-For': forwarded } });
+    let refused = false;
+    for (let i = 0; i <= GUEST_RISINGS_PER_IP_PER_DAY && !refused; i++) {
+      refused = (await draw(`10.0.${i}.1, 7.7.7.7`)).status === 429;
+    }
+    assert.ok(refused, 'a new forged first address each time still hits the cap for 7.7.7.7');
+    assert.equal((await draw('7.7.7.7, 8.8.8.8')).status, 200, 'another real address is unaffected');
+  } finally {
+    await ts.close();
+  }
+});

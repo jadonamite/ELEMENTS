@@ -81,12 +81,8 @@ function heldByRoom(accountId: string, res: Response): boolean {
   return true;
 }
 
+/** The caller's address as the one proxy in front of the server saw it (see `trust proxy` in setupApi). */
 function extractIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first;
-  }
   return req.ip || req.socket.remoteAddress || '127.0.0.1';
 }
 
@@ -100,6 +96,8 @@ export function isOriginAllowed(origin: string, list = process.env.ALLOWED_ORIGI
 }
 
 export function setupApi(app: Application): void {
+  // One proxy (the host's edge) sits in front: req.ip is the address it saw, not one the browser wrote.
+  app.set('trust proxy', 1);
   app.use(express.json());
 
   app.use((req, res, next) => {
@@ -629,7 +627,7 @@ export function setupApi(app: Application): void {
   app.post('/api/economy/agents/:agentId/talk', async (req: Request, res: Response) => {
     const agentId = String(req.params.agentId ?? '').slice(0, 64);
     const token = extractToken(req);
-    let accountId = `guest:${req.ip ?? 'unknown'}`;
+    let accountId = `guest:${extractIp(req)}`;
     if (token) {
       const verified = await requireAccount(req, res);
       if (!verified) return;
