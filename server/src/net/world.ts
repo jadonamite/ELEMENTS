@@ -7,6 +7,7 @@ import { PoseHistory } from './history.js';
 import { judgeHit, parseHit, type Attacker } from './hit-check.js';
 import { reportKill, type KillReport } from './kill-hook.js';
 import { layoutFor } from './zones.js';
+import { nationalRegion, regionContains, networkPosition, NATIONAL_SPAWN, SPAWN_REGION, type NationalRegion } from './coordinates.js';
 
 /** Fastest a player can honestly cover ground, metres per second: a Lit sprint plus dash lunges. */
 export const MAX_PLAYER_SPEED = 14;
@@ -30,7 +31,7 @@ export interface Identity {
 export const OPEN_TIER = 5;
 
 export class ServerPlayer implements Attacker {
-  readonly id: string;
+  id: string;
   readonly accountId: string;
   readonly role: 'Shaper' | 'Hush';
   readonly element: Element;
@@ -58,6 +59,8 @@ export class ServerPlayer implements Attacker {
   private warpWindow = 0;
   /** Server time of the last accepted move report. */
   private movedAt: number;
+  transferUntil = 0;
+  region: NationalRegion | null = null;
   readonly history = new PoseHistory(1.5);
   action: ActionState = rules.createActionState();
   swings = new Map<number, { at: number; move: string; struck: Set<string> }>();
@@ -85,6 +88,20 @@ export class ServerPlayer implements Attacker {
     this.warpWindow = Infinity;
   }
 
+  /** Change the frame without granting movement or resetting combat state. */
+  enterRegion(region: NationalRegion, position: { x: number; y: number; z: number }, now: number): void {
+    this.region = region;
+    this.x = position.x;
+    this.y = position.y;
+    this.z = position.z;
+    this.movedAt = now;
+    this.sampledAt = now;
+    this.warpWindow = 0;
+    this.transferUntil = 0;
+    this.history.clear();
+    this.history.push(now, this.x, this.z, this.facing);
+  }
+
   get alive(): boolean { return this.hp > 0; }
 
   /** The outfit this fighter draws in, from the armour worn. */
@@ -96,7 +113,7 @@ export class ServerPlayer implements Attacker {
   setWorn(itemId: string | null): void { this.worn = itemId; }
 
   /** Opens a short window in which the next report may land anywhere (spawn, respawn). */
-  allowWarp(seconds = 3): void { this.warpWindow = seconds; }
+  allowWarp(seconds = 3): void { if (!this.region) this.warpWindow = seconds; }
 
   tick(dt: number): boolean {
     if (this.warpWindow !== Infinity) this.warpWindow = Math.max(0, this.warpWindow - dt);
@@ -111,14 +128,16 @@ export class ServerPlayer implements Attacker {
 
   /** Applies a movement report if it is possible; false when refused. */
   move(raw: unknown, now: number): boolean {
+    if (this.transferUntil > now) return false;
     if (!raw || typeof raw !== 'object') return false;
     const m = raw as Record<string, unknown>;
     const nums = [m.x, m.y, m.z, m.vx, m.vz, m.f, m.t, m.r];
     if (!nums.every(n => typeof n === 'number' && Number.isFinite(n))) return false;
     const [x, y, z, vx, vz, f, t, r] = nums as number[];
-    if (!withinLocalBounds({ x: x!, y: y!, z: z! })) return false;
+    const position = { x: x!, y: y!, z: z! };
+    if (this.region ? !regionContains(this.region, position) : !withinLocalBounds(position)) return false;
     const elapsed = Math.max(0, now - this.movedAt);
-    const moved = Math.hypot(x! - this.x, z! - this.z);
+    const moved = Math.hypot(x! - this.x, z! - this.z, this.region ? y! - this.y : 0);
     const warping = this.warpWindow > 0;
     if (!warping && moved > MAX_PLAYER_SPEED * elapsed + MOVE_SLACK) {
       this.refusedMoves++;
@@ -189,7 +208,10 @@ export class ZoneWorld {
   }
 
   join(id: string, who: Identity, now: number): ServerPlayer {
+    const region = nationalRegion(this.zone);
+    if (region && this.zone !== SPAWN_REGION) throw new Error('A crossing token is required');
     const p = new ServerPlayer(id, who, this.layout.respawn, now);
+    if (region) p.enterRegion(region, networkPosition(this.zone, NATIONAL_SPAWN), now);
     this.players.set(id, p);
     return p;
   }
@@ -206,7 +228,7 @@ export class ZoneWorld {
   hit(id: string, raw: unknown, now: number): WorldEvent[] {
     const p = this.players.get(id);
     const claim = parseHit(raw);
-    if (!p || !claim) return [{ type: 'hit_result', to: id, e: '', sw: -1, ok: false, reason: 'invalid_input' }];
+    if (!p || p.transferUntil > now || !claim) return [{ type: 'hit_result', to: id, e: '', sw: -1, ok: false, reason: 'invalid_input' }];
     const enemy = this.enemies.get(claim.e);
     const verdict = judgeHit(p, enemy, claim, now);
     if (!verdict.ok || !enemy) {
@@ -243,7 +265,7 @@ export class ZoneWorld {
   step(dt: number, now: number): WorldEvent[] {
     const events: WorldEvent[] = [];
     for (const p of this.players.values()) {
-      if (p.tick(dt)) events.push({ type: 'revived', to: p.id, x: this.layout.respawn.x, z: this.layout.respawn.z });
+      if (p.tick(dt)) events.push({ type: 'revived', to: p.id, x: p.region ? p.x : this.layout.respawn.x, z: p.region ? p.z : this.layout.respawn.z });
     }
     const quarry = [...this.players.values()].map(p => ({ id: p.id, x: p.x, z: p.z, alive: p.alive }));
     for (const e of this.enemies.values()) {

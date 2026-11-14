@@ -254,10 +254,20 @@ export class WorldBuilder {
     this.add(bucket, new CylinderGeometry(rTop, rBottom, h, sides, 1, open), new Matrix4().makeTranslation(x, y, z));
   }
 
+  private base = new Matrix4();
+
   /** Moves the frame to a placement; pieces and colliders after this are relative to it. */
   at(x: number, z: number, yaw: number, y = 0): this {
-    this.frame = new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(1, 1, 1));
+    this.frame = this.base.clone().multiply(new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(1, 1, 1)));
     return this;
+  }
+
+  /** Runs `build` with every placement measured from a root at (x, y, z) turned by yaw, so a whole site can stand anywhere. */
+  rooted(x: number, z: number, yaw: number, y: number, build: () => void): void {
+    const saved = this.base;
+    this.base = new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(1, 1, 1));
+    this.at(0, 0, 0); build();
+    this.base = saved; this.at(0, 0, 0);
   }
 
   world(x: number, y: number, z: number): Vector3 { return new Vector3(x, y, z).applyMatrix4(this.frame); }

@@ -8,10 +8,10 @@ import type { Field } from './landscape.js';
  */
 export const SAFETY_FLOOR = -20;
 
-/** Puts the town into a physics world: the safety floor, the near land as a heightfield, every built solid and roof. */
-export function addTownPhysics(world: RAPIER.World, near: Field, colliders: readonly Collider[], shells: readonly Shell[] = []): void {
+/** Puts the town into a physics world: the safety floor, the near land when it is a fixed field, every built solid and roof. */
+export function addTownPhysics(world: RAPIER.World, near: Field | null, colliders: readonly Collider[], shells: readonly Shell[] = []): void {
   world.createCollider(RAPIER.ColliderDesc.cuboid(2000, 0.05, 2000).setTranslation(0, SAFETY_FLOOR - 0.05, 0));
-  world.createCollider(RAPIER.ColliderDesc.heightfield(near.nz, near.nx, near.heights, { x: near.width, y: 1, z: near.depth })
+  if (near) world.createCollider(RAPIER.ColliderDesc.heightfield(near.nz, near.nx, near.heights, { x: near.width, y: 1, z: near.depth })
     .setTranslation(near.cx, 0, near.cz));
   for (const c of colliders) {
     world.createCollider(RAPIER.ColliderDesc.cuboid(c.hx, c.hy, c.hz).setTranslation(c.x, c.y, c.z)

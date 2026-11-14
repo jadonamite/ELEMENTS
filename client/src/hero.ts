@@ -20,7 +20,7 @@ import {
   type Bone,
 } from 'three';
 import balance from '../../shared/balance.json';
-import { BodyKit, parseOutfit, type OutfitId } from './body.js';
+import { BodyKit, markRest, parseOutfit, type OutfitId } from './body.js';
 import { getDefaultCharacterConfig, getStoredCharacter, type CharacterConfig } from './creator/creator-types.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -390,18 +390,18 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   };
 
   // Build animation clips, including bare hands combos & bending moves
-  const combatClips = (await loader.loadAsync('/assets/characters/combat.glb')).animations;
-  calmRunBounce(heroGltf.animations);
-  // Locomotion is the retargeted Mixamo pack: idle, walk, strafe and turn in place, jump.
-  const locomotionClips = (await loader.loadAsync('/assets/characters/locomotion.glb')).animations;
+  const combatClips = markRest(await loader.loadAsync('/assets/characters/combat.glb'));
+  calmRunBounce(markRest(heroGltf));
+  // Locomotion is the retargeted Mixamo pack: idle, weapon-drawn idle, walk, strafe and turn in place, jump.
+  const locomotionClips = markRest(await loader.loadAsync('/assets/characters/locomotion.glb'));
   // The mannequin's own relaxed idle, walk and jump are replaced by the pack; its start/land jump clips are unused.
   const REPLACED = new Set(['idle_relaxed', 'walk', 'jump', 'jump_start', 'jump_land']);
   const bodyClips = heroGltf.animations.filter(clip => !REPLACED.has(clip.name));
 
   // Unarmed fighting uses real punch and knee clips; the bare moves map onto them by name.
   const unarmed = [
-    ...(await loader.loadAsync('/assets/characters/unarmed_a.glb')).animations,
-    ...(await loader.loadAsync('/assets/characters/unarmed_b.glb')).animations,
+    ...markRest(await loader.loadAsync('/assets/characters/unarmed_a.glb')),
+    ...markRest(await loader.loadAsync('/assets/characters/unarmed_b.glb')),
   ];
   const rename: Record<string, string> = { punch_jab: 'bare_punch_1', punch_cross: 'bare_punch_2', knee: 'bare_kick', punch_hook: 'bare_heavy_1' };
   const subclips: AnimationClip[] = unarmed.map(clip => {
@@ -413,7 +413,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   });
 
   // Legs style kicks (Mixamo, retargeted), trimmed so the strike falls cleanly inside the active window.
-  const kickClips = (await loader.loadAsync('/assets/characters/kicks.glb')).animations;
+  const kickClips = markRest(await loader.loadAsync('/assets/characters/kicks.glb'));
   // Cuts start just before the foot leaves the floor and end once it is back down; the foot peaks near the middle.
   const kickCuts: Array<[string, string, number, number]> = [
     ['kick_front_double', 'leg_kick_1', 0.55, 1.25],

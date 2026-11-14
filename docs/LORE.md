@@ -268,8 +268,11 @@ Walk a town, talk to people and pick up a lead or a job, travel and get ambushed
 
 ### Fight rules
 - **Block and parry.** Holding block soaks most of the damage. Blocking just as a hit lands is a parry: the attacker staggers and is open.
-- **No stamina bar.** Dodges and heavy attacks are limited only by how long the moves take.
-- **Healing in a fight:** potions and crafted items (drinking leaves you open), and AQUES's own healing. Nothing else.
+- **Stamina.** Dodging, heavy attacks, running, jumping and blows soaked by the guard spend stamina; light attacks and bending do not, and a parry gives some back. At zero you are winded for a moment: no dodge, no run, and the next blow on your guard breaks it. (Jadon, 14 Nov.)
+- **Healing in a fight:** potions and crafted items (drinking leaves you open), and AQUES's own healing. Nothing else. Getting clear of every foe ends the fight, and health and stamina then come back on their own; recovering while fleeing is recovering after the fight. Foes chase, then give up and heal too. (Jadon, 14 Nov.)
+- **Hunger.** Fullness drains only while you play, never while you are away. Below well fed, the most health and stamina you can hold shrinks, down to a floor; hunger never kills. Food refills fullness; it does not heal. (Jadon, 14 Nov.)
+- **Lasting injuries.** Nearly dying in a fight, or falling, leaves an injury that lowers the most health you can hold. Injuries fade slowly with play, or are treated anywhere: a salve, a night at an inn, or a healer. (Jadon, 14 Nov.)
+- **Inns** sell meals and a bed; a night's rest treats an injury and leaves you rested. (Jadon, 14 Nov.)
 - **Aim assist on every device.** Attacks turn a little toward the nearest enemy and lock-on picks a target by itself; the player can switch the lock to another enemy. Because every device gets the same help, anyone can duel anyone.
 - **Phone layout** follows a common fighting-game pattern: a movement stick on the left, a cluster of round attack buttons on the right, special moves in a small diamond in the top corner. Exact buttons are settled with the phone pass.
 - **Parked until it becomes a concern (leaning yes on all three):** separate punch, kick and weapon buttons instead of switching style; a held direction changing the move; the element throw in the main button cluster with uppercut, slam, dash and ultimate in the corner diamond.
@@ -394,6 +397,7 @@ A player of a nation at war (IGNIS above all) may enter another nation but is no
 
 ### AQUES heals
 Gear wear and lasting injuries from hard fights are healed faster and cheaper in AQUES than anywhere else, so everyone has to visit.
+Injuries can be treated anywhere (a salve, an inn, a healer), but AQUES healers do it cheaper and faster; AQUES healers also work abroad, such as the healer's house in Sindr. (Jadon, 14 Nov.)
 
 ## 16. How the characters look
 

@@ -11,6 +11,11 @@ import { CombatSpace, chest } from './attacks/space.js';
 import { advance, launch, type Projectile } from './attacks/projectile.js';
 import { afflictionFor, bendArc } from './element-moves.js';
 import type { WeaponSlotData } from './weapon.js';
+import { EmberHound, HoundPack, type HoundTemplate } from './monsters/hound.js';
+import { SlagBull } from './monsters/slag-bull.js';
+
+type Monster = EmberHound | SlagBull;
+function isMonster(target: Enemy | Monster): target is Monster { return !(target instanceof Enemy); }
 
 const rules = createCombatRules(balance.combat as unknown as CombatBalance);
 const tuning = balance.enemy;
@@ -59,6 +64,7 @@ export interface FightEvents {
   projectileEnded?(p: Projectile): void;
   /** A hero attack connected; `killed` on the final blow, `elemental` when bending did it and not steel or a bare limb. */
   enemyHit(enemy: Enemy, killed: boolean, damage?: number, hitPos?: Vector3, isCrit?: boolean, elemental?: boolean): void;
+  monsterHit?(monster: Monster, killed: boolean, damage: number, at: Vector3, weakSpot: boolean, elemental: boolean): void;
   /** The hero blocked just as a hit landed: the attacker staggers. */
   heroParried?(enemy: Enemy): void;
   /** Triggered when a new round begins. */
@@ -121,6 +127,57 @@ export class Fight {
   isVictory = false;
   /** False in open zones: no rounds; enemies come from encounters instead. */
   waves = true;
+  private readonly packs: Array<{ pack: HoundPack; deadFor: number }> = [];
+  private readonly houndSwings = new WeakMap<Monster, number>();
+  private readonly houndBurns = new WeakMap<Monster, number>();
+
+  private readonly bulls: Array<{ bull: SlagBull; deadFor: number }> = [];
+
+  get monsters(): Monster[] { return [...this.hounds, ...this.bulls.map(entry => entry.bull)]; }
+
+  spawnSlagBull(point: { x: number; y: number; z: number }): SlagBull {
+    const bull = new SlagBull(this.world, point);
+    this.scene.add(bull.model);
+    this.bulls.push({ bull, deadFor: 0 });
+    return bull;
+  }
+
+  get hounds(): EmberHound[] { return this.packs.flatMap(entry => entry.pack.hounds); }
+
+  spawnHounds(template: HoundTemplate, point: { x: number; y: number; z: number }): void {
+    const pack = new HoundPack(template, this.world, point, false);
+    for (const hound of pack.hounds) {
+      const p = hound.controller.position;
+      const floor = this.space.floor(p.x, point.y + 4, p.z, 10) ?? point.y;
+      hound.controller.place(p.x, floor, p.z);
+      hound.model.position.copy(hound.controller.position);
+      this.scene.add(hound.model);
+    }
+    this.packs.push({ pack, deadFor: 0 });
+  }
+
+  private disposePack(pack: HoundPack): void {
+    for (const hound of pack.hounds) {
+      hound.anim.dispose();
+      hound.controller.dispose();
+      hound.materials.forEach(material => material.dispose());
+      hound.model.removeFromParent();
+    }
+  }
+
+  private clearPacks(): void {
+    this.packs.forEach(entry => this.disposePack(entry.pack));
+    this.packs.length = 0;
+    this.bulls.forEach(entry => entry.bull.dispose());
+    this.bulls.length = 0;
+  }
+
+  private targetBody(target: Enemy | Monster): { feet: Vector3; height: number; radius: number } {
+    if (target instanceof SlagBull) return { feet: target.position, height: target.height, radius: target.radius };
+    return target instanceof EmberHound
+      ? { feet: target.position, height: 1.05, radius: 0.6 }
+      : target.body;
+  }
 
   constructor(
     private readonly template: EnemyTemplate,
@@ -162,7 +219,7 @@ export class Fight {
   get villainsRemaining(): number { return Math.max(0, this.roundVillainTarget - this.killedInRound); }
   get villainsKilledInRound(): number { return this.killedInRound; }
   get intermissionRemaining(): number { return this.roundIntermission; }
-  get livingCount(): number { return this.enemies.filter(e => e.alive).length; }
+  get livingCount(): number { return this.enemies.filter(e => e.alive).length + this.monsters.filter(h => h.alive).length; }
 
   get activeBurnPatches(): readonly BurnPatch[] {
     return this.burnPatches.filter(p => p.active);
@@ -322,6 +379,7 @@ export class Fight {
   /** Jump directly to a round for testing or debug. */
   setRound(roundNumber: number): void {
     this.currentRoundIndex = Math.max(0, Math.min(VILLAIN_ROUNDS.length - 1, roundNumber - 1));
+    this.clearPacks();
     for (const enemy of this.enemies) enemy.dispose();
     this.enemies.length = 0;
     this.villainBurns.clear();
@@ -392,7 +450,7 @@ export class Fight {
 
   /** Distance to the closest living villain, for the stance. */
   nearestDistance(from: Vector3): number {
-    return this.enemies.reduce((d, e) => e.alive ? Math.min(d, e.controller.position.distanceTo(from)) : d, Infinity);
+    return [...this.enemies, ...this.monsters].reduce((d, e) => e.alive ? Math.min(d, e.controller.position.distanceTo(from)) : d, Infinity);
   }
 
   /** Find the next or nearest living lock target. Cycles through targets and toggles off when done. */
@@ -419,7 +477,7 @@ export class Fight {
 
   /** True when all spawned enemies are defeated. */
   get allDead(): boolean {
-    return this.enemies.length > 0 && this.enemies.every(e => !e.alive);
+    return this.enemies.length + this.monsters.length > 0 && this.livingCount === 0;
   }
 
   /** One physics step for every villain. Cooldowns advance at normal speed; perks come from rules. */
@@ -452,6 +510,37 @@ export class Fight {
         continue;
       }
       this.strikeHero(enemy.controller.position, enemy.attackDamage || tuning.attackDamage, enemy.element as Element | undefined, combat, hero, enemy);
+    }
+    for (const entry of this.packs) {
+      entry.pack.update(dt, {
+        position: hero.position, alive: this.heroAlive,
+        takeHit: (damage, source) => {
+          if (this.space.clear(chest(source), chest(hero.position), 0.15)) {
+            this.strikeHero(source, damage, undefined, combat, hero, null);
+          }
+        },
+      });
+      const far = entry.pack.hounds.every(hound => hound.position.distanceTo(hero.position) > 180);
+      if (!entry.pack.alive || far) entry.deadFor += dt;
+    }
+    for (let i = this.packs.length - 1; i >= 0; i--) {
+      if (this.packs[i]!.deadFor < 8) continue;
+      this.disposePack(this.packs[i]!.pack);
+      this.packs.splice(i, 1);
+    }
+    for (let i = this.bulls.length - 1; i >= 0; i--) {
+      const entry = this.bulls[i]!;
+      entry.bull.update(dt, {
+        position: hero.position, alive: this.heroAlive,
+        takeHit: (damage, source) => {
+          if (this.space.clear(chest(source), chest(hero.position), 0.15)) {
+            this.strikeHero(source, damage, undefined, combat, hero, null);
+          }
+        },
+      });
+      if (!entry.bull.alive || entry.bull.position.distanceTo(hero.position) > 180) entry.deadFor += dt;
+      else entry.deadFor = 0;
+      if (entry.deadFor >= 8) { entry.bull.dispose(); this.bulls.splice(i, 1); }
     }
     this.flyProjectiles(dt, hero, combat, isLit);
 
@@ -511,6 +600,19 @@ export class Fight {
       }
     }
 
+    for (const hound of this.monsters) {
+      if (!hound.alive) continue;
+      const fire = this.burnPatches.find(p => p.active
+        && Math.hypot(p.position.x - hound.position.x, p.position.z - hound.position.z) <= p.radius + this.targetBody(hound).radius
+        && this.space.clear(p.position.clone().setY(p.position.y + PATCH_PROBE_Y),
+          hound.position.clone().setY(hound.position.y + PATCH_PROBE_Y), 0.05));
+      if (!fire) { this.houndBurns.delete(hound); continue; }
+      const accumulated = (this.houndBurns.get(hound) ?? 0) + dt;
+      if (accumulated < burnConfig.tickSeconds) { this.houndBurns.set(hound, accumulated); continue; }
+      this.houndBurns.set(hound, accumulated - burnConfig.tickSeconds);
+      this.hitMonster(hound, burnConfig.damagePerSecond * burnConfig.tickSeconds,
+        hound.position.clone().setY(hound.position.y + 0.4), fire.position, fire.element);
+    }
     this.strike(hero, combat, isLit);
     // Catch deaths from any source that skipped the bookkeeping above.
     for (const enemy of this.enemies) if (!enemy.alive) this.handleEnemyDefeated(enemy);
@@ -547,8 +649,9 @@ export class Fight {
 
   /** Moves every projectile through the world; a body it reaches first takes the hit. */
   private flyProjectiles(dt: number, hero: HeroView, combat: Combat, isLit: boolean): void {
-    const heroTarget = [{ key: 'hero' as Enemy | 'hero', body: { feet: hero.position, height: balance.controller.height, radius: balance.controller.radius } }];
-    const enemyTargets = this.enemies.filter(e => e.hittable).map(e => ({ key: e as Enemy | 'hero', body: e.body }));
+    const heroTarget = [{ key: 'hero' as Enemy | Monster | 'hero', body: { feet: hero.position, height: balance.controller.height, radius: balance.controller.radius } }];
+    const enemyTargets = [...this.enemies.filter(e => e.hittable), ...this.monsters.filter(h => h.alive)]
+      .map(e => ({ key: e as Enemy | Monster | 'hero', body: this.targetBody(e) }));
     for (const p of this.projectiles) {
       const targets = p.side === 'villain' ? heroTarget : enemyTargets;
       const before = p.done;
@@ -598,9 +701,11 @@ export class Fight {
     }
 
     const heroChest = chest(hero.position, this.a);
-    for (const enemy of this.enemies) {
-      if (!enemy.hittable || enemy.lastSwing === combat.swing) continue;
-      const body = enemy.body;
+    for (const enemy of [...this.enemies, ...this.monsters]) {
+      const hound = isMonster(enemy);
+      if (hound ? !enemy.alive || this.houndSwings.get(enemy) === combat.swing
+        : !enemy.hittable || enemy.lastSwing === combat.swing) continue;
+      const body = this.targetBody(enemy);
       let connects = false;
       if (limb === 'hand_r' || limb === 'hand_l' || limb === 'foot_r' || limb === 'foot_l') {
         const path = sweeps[limb];
@@ -620,23 +725,34 @@ export class Fight {
       if (!connects) continue;
       // Nothing reaches through a wall, pillar or TERRA wall.
       if (!this.space.clear(heroChest, chest(enemy.controller.position, this.b), 0.12)) continue;
-      enemy.lastSwing = combat.swing;
-      this.landHeroMove(enemy, move, hero.position, isLit, Math.min(combat.swingAt, this.clock), this.bend.scale, this.bend.chained);
+      if (isMonster(enemy)) this.houndSwings.set(enemy, combat.swing);
+      else enemy.lastSwing = combat.swing;
+      const contact = limb === 'blade' ? hero.bladeTip : limb === 'hand_r' ? hero.handR : limb === 'hand_l' ? hero.handL
+        : limb === 'foot_r' ? hero.footR : limb === 'foot_l' ? hero.footL : undefined;
+      this.landHeroMove(enemy, move, hero.position, isLit, Math.min(combat.swingAt, this.clock), this.bend.scale, this.bend.chained,
+        contact instanceof Vector3 ? contact : undefined);
     }
   }
 
   /** The rules judge a hero move that reached a villain, then the villain takes it. */
-  private landHeroMove(enemy: Enemy, move: string, from: Vector3, isLit: boolean, swingAt: number,
+  private landHeroMove(enemy: Enemy | Monster, move: string, from: Vector3, isLit: boolean, swingAt: number,
     bendScale: number, chained: boolean, hitPos?: Vector3): void {
     const result = rules.checkHit({
       attacker: { ...this.combatant(this.kit.element, from, this.heroHealth, 0), weapon: this.kit.weapon },
-      target: this.combatant(tuning.element as Element, enemy.controller.position, enemy.health, tuning.armour),
+      target: this.combatant(tuning.element as Element, enemy.controller.position,
+        isMonster(enemy) ? { current: enemy.health, maximum: enemy.maxHealth } : enemy.health,
+        isMonster(enemy) ? 0 : tuning.armour),
       moveId: move, now: this.clock, state: this.heroState, swingAt,
       isLit, bendScale, chained, situation: { isFullMoon: this.isFullMoon },
     });
     if (!result.accepted) return;
     this.heroState = result.state;
     const elemental = isBendMove(move) || (isLit && (move.startsWith('leg_') || move.startsWith('bare_')));
+    if (isMonster(enemy)) {
+      this.hitMonster(enemy, Math.max(0, enemy.health - result.target.health.current),
+        hitPos ?? enemy.position.clone().setY(enemy.position.y + 0.5), from, elemental ? this.kit.element : undefined);
+      return;
+    }
     const effect = elemental
       ? afflictionFor(this.kit.element, move, from, enemy.controller.position, Math.min(1, bendScale))
       : null;
@@ -652,6 +768,11 @@ export class Fight {
       if (enemy === this.attacker) this.release();
       this.events.enemyHit(enemy, false, damageDealt, hitPos ?? enemy.controller.position, isCrit, elemental);
     }
+  }
+
+  private hitMonster(hound: Monster, damage: number, at: Vector3, from: Vector3, element?: Element): void {
+    const result = hound.hit(damage, at, from, element);
+    this.events.monsterHit?.(hound, !hound.alive, result.damage, at, result.isWeakSpot, element !== undefined);
   }
 
   /**
@@ -675,6 +796,15 @@ export class Fight {
       enemy.afflict({ stunSeconds });
       if (killed) this.handleEnemyDefeated(enemy);
       this.events.enemyHit(enemy, killed, damage, at, true, true);
+    }
+    for (const hound of this.monsters) {
+      if (!hound.alive) continue;
+      const body = this.targetBody(hound);
+      const at = hound.position.clone().setY(hound.position.y + body.height * 0.5);
+      const along = at.clone().sub(from).dot(forward);
+      if (along < 0 || along > stop + body.radius) continue;
+      if (at.clone().sub(from).addScaledVector(forward, -along).setY(0).length() > body.radius + 0.6) continue;
+      this.hitMonster(hound, damage, at, origin, this.kit.element);
     }
     return end;
   }
@@ -735,6 +865,7 @@ export class Fight {
     this.attacker = null;
 
     // Restart the current round attempt
+    this.clearPacks();
     for (const enemy of this.enemies) enemy.dispose();
     this.enemies.length = 0;
     this.villainBurns.clear();
@@ -755,6 +886,7 @@ export class Fight {
   }
 
   dispose(): void {
+    this.clearPacks();
     for (const enemy of this.enemies) enemy.dispose();
     this.enemies.length = 0;
     this.villainBurns.clear();

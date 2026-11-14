@@ -72,6 +72,11 @@ export function createPlants(spots: Array<{ kind: PlantKind; x: number; y: numbe
   return group;
 }
 
+/** Reuses the town kit for national stands and their generated distant image. */
+export function existingTree(kind: 'ginkgo' | 'maple', share: number): { wood: BufferGeometry | null; crown: BufferGeometry; leaves: Material } {
+  return { ...plantGeometry(FORMS[kind], share, kind === 'ginkgo' ? 3 : 5), leaves: leafMaterial() };
+}
+
 /** A plant's wood and crown; `share` is the fraction of the form's leaf cards drawn. */
 function plantGeometry(f: Form, share: number, seed: number): { wood: BufferGeometry | null; crown: BufferGeometry } {
   const rand = seeded(seed);
