@@ -121,7 +121,7 @@ The server reads these environment variables. All are optional for local play.
 | `CHAIN_SETTLE_MS`, `CHAIN_BATCH_SIZE` | Settlement interval (default 60000) and moves per batch (default 80). |
 | `NEAR_AI_API_KEY`, `NEAR_AI_BASE_URL`, `NEAR_AI_MODEL` | NEAR AI Cloud for the daily judge. |
 | `NVIDIA_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` | The free model providers for keeper plans and talk. |
-| `RAID_PORT`, `RAID_DB`, `RAID_DEV_AUTH` | The raid server. |
+| `RAID_PORT`, `RAID_DB`, `RAID_DEV_AUTH` | The local raid test server (`server/src/raids/dev-server.ts`). |
 
 ## Layout
 
