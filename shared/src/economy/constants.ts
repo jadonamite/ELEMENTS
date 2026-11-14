@@ -230,9 +230,9 @@ export const CARAVANS_CONFIG = {
   intervalHours: economyBalance?.caravans?.intervalHours ?? 12,
   routes: (economyBalance?.caravans?.routes ?? [
     {
-      id: 'route_sindr_chromara',
-      name: 'Sindr to Chromara High Road',
-      fromMerchant: 'sindr_shards',
+      id: 'route_ignis_chromara',
+      name: 'Ignis to Chromara High Road',
+      fromMerchant: 'merchant_ignis',
       toMerchant: 'merchant_chromara',
       fromNation: 'IGNIS',
       toNation: 'CHROMARA',
@@ -240,9 +240,9 @@ export const CARAVANS_CONFIG = {
       cargoQuantity: 5,
     },
     {
-      id: 'route_sindr_aques',
-      name: 'Sindr to Aques Waterway',
-      fromMerchant: 'sindr_arms',
+      id: 'route_ignis_aques',
+      name: 'Ignis to Aques Waterway',
+      fromMerchant: 'merchant_ignis',
       toMerchant: 'merchant_aques',
       fromNation: 'IGNIS',
       toNation: 'AQUES',
@@ -299,6 +299,7 @@ export const DIRECTOR_CONFIG = {
   evaluationIntervalHours: economyBalance?.director?.evaluationIntervalHours ?? 24,
   lookbackDays: economyBalance?.director?.lookbackDays ?? 3,
   dominationThreshold: economyBalance?.director?.dominationThreshold ?? 0.35,
+  minActivePlayers: economyBalance?.director?.minActivePlayers ?? 2,
   firestormDurationHours: economyBalance?.director?.firestormDurationHours ?? 24,
   firestormPriceMultiplier: economyBalance?.director?.firestormPriceMultiplier ?? 1.25,
 } as const;

@@ -14,9 +14,11 @@ export interface NationDominationReport {
   totalVolume: number;
   nationVolumes: Record<string, number>;
   nationShares: Record<string, number>;
+  nationPlayerCounts: Record<string, number>;
   dominantNation: string | null;
   dominantShare: number;
   threshold: number;
+  minActivePlayers: number;
 }
 
 export interface DirectorEvent {
@@ -29,19 +31,8 @@ export interface DirectorEvent {
   active: boolean;
 }
 
-export function ensureDirectorTables(db: DatabaseSync = getDatabase()): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS world_director_events (
-      id TEXT PRIMARY KEY,
-      nation TEXT NOT NULL,
-      event_type TEXT NOT NULL,
-      closed_route TEXT,
-      started_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL,
-      active INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_director_events ON world_director_events(nation, active, expires_at);
-  `);
+export function ensureDirectorTables(_db: DatabaseSync = getDatabase()): void {
+  // Table migration is handled in migrateDatabase in server/src/db.ts
 }
 
 /**
@@ -67,8 +58,11 @@ export function nationForAccount(id: string): string | null {
 }
 
 /**
- * Evaluates whether one nation dominates the world economy based on recent ledger transactions.
- * Uses trade volume over the lookback window specified in the rule file.
+ * Evaluates whether one nation dominates the world economy based on player CHROMA earnings.
+ * As stipulated in LORE 15 ("the world pushes back"): domination reflects a nation's people
+ * growing strong, not keeper shelves.
+ * Groups earnings by player's element (accounts.element / risings.element).
+ * Requires at least minActivePlayers to avoid a single lone player triggering pushback.
  */
 export function evaluateNationDomination(
   now: number,
@@ -79,15 +73,19 @@ export function evaluateNationDomination(
 
   const rows = db
     .prepare(
-      `SELECT sender, receiver, amount, reason
-       FROM ledger_entries
-       WHERE timestamp >= ? AND timestamp <= ? AND reason != 'genesis'`,
+      `SELECT
+         l.receiver AS account_id,
+         UPPER(COALESCE(a.element, r.element)) AS element,
+         l.amount
+       FROM ledger_entries l
+       LEFT JOIN accounts a ON a.id = l.receiver
+       LEFT JOIN risings r ON r.account_id = l.receiver
+       WHERE l.timestamp >= ? AND l.timestamp <= ? AND l.reason != 'genesis'`,
     )
     .all(cutoff, now) as Array<{
-    sender: string;
-    receiver: string;
+    account_id: string;
+    element: string | null;
     amount: number;
-    reason: string;
   }>;
 
   const nationVolumes: Record<string, number> = {
@@ -95,31 +93,40 @@ export function evaluateNationDomination(
     AQUES: 0,
     TERRA: 0,
     AURA: 0,
-    CHROMARA: 0,
+  };
+
+  const activePlayersByNation: Record<string, Set<string>> = {
+    IGNIS: new Set(),
+    AQUES: new Set(),
+    TERRA: new Set(),
+    AURA: new Set(),
   };
 
   let totalVolume = 0;
 
   for (const row of rows) {
-    const nationSender = nationForAccount(row.sender);
-    const nationReceiver = nationForAccount(row.receiver);
-
-    const nation = nationSender ?? nationReceiver;
+    const nation = row.element;
     if (nation && nationVolumes[nation] !== undefined) {
       nationVolumes[nation] += row.amount;
       totalVolume += row.amount;
+      activePlayersByNation[nation]?.add(row.account_id);
     }
   }
 
   const threshold = DIRECTOR_CONFIG.dominationThreshold;
+  const minActivePlayers = DIRECTOR_CONFIG.minActivePlayers;
   const nationShares: Record<string, number> = {};
+  const nationPlayerCounts: Record<string, number> = {};
   let dominantNation: string | null = null;
   let dominantShare = 0;
 
   for (const [nat, vol] of Object.entries(nationVolumes)) {
     const share = totalVolume > 0 ? vol / totalVolume : 0;
+    const activeCount = activePlayersByNation[nat]?.size ?? 0;
     nationShares[nat] = share;
-    if (share >= threshold && share > dominantShare) {
+    nationPlayerCounts[nat] = activeCount;
+
+    if (activeCount >= minActivePlayers && share >= threshold && share > dominantShare) {
       dominantNation = nat;
       dominantShare = share;
     }
@@ -131,9 +138,11 @@ export function evaluateNationDomination(
     totalVolume,
     nationVolumes,
     nationShares,
+    nationPlayerCounts,
     dominantNation,
     dominantShare,
     threshold,
+    minActivePlayers,
   };
 }
 
@@ -145,7 +154,6 @@ export function isRouteClosedByDirector(
   now: number,
   db: DatabaseSync = getDatabase(),
 ): boolean {
-  ensureDirectorTables(db);
   const row = db
     .prepare(
       'SELECT id FROM world_director_events WHERE active = 1 AND expires_at > ? AND (closed_route = ? OR closed_route = \'ALL\') LIMIT 1',
@@ -163,7 +171,6 @@ export function getActiveFirestorm(
   now: number,
   db: DatabaseSync = getDatabase(),
 ): DirectorEvent | null {
-  ensureDirectorTables(db);
   const row = db
     .prepare(
       "SELECT id, nation, event_type, closed_route, started_at, expires_at, active FROM world_director_events WHERE nation = ? AND event_type = 'firestorm' AND active = 1 AND expires_at > ? LIMIT 1",
@@ -205,7 +212,6 @@ export function triggerFirestormPushback(
   },
   db: DatabaseSync = getDatabase(),
 ): DirectorEvent {
-  ensureDirectorTables(db);
   const durationMs = DIRECTOR_CONFIG.firestormDurationHours * GAME_HOUR_MS;
   const expiresAt = params.now + durationMs;
 
@@ -215,7 +221,7 @@ export function triggerFirestormPushback(
     const route = CARAVANS_CONFIG.routes.find(
       (r) => r.fromNation === params.nation || r.toNation === params.nation,
     );
-    closedRoute = route ? route.id : 'route_sindr_chromara';
+    closedRoute = route ? route.id : 'route_ignis_chromara';
   }
 
   const event: DirectorEvent = {
@@ -251,7 +257,11 @@ export function tickWorldDirector(
   params: { now: number },
   db: DatabaseSync = getDatabase(),
 ): { report: NationDominationReport; triggeredEvent: DirectorEvent | null } {
-  ensureDirectorTables(db);
+  // Deactivate expired events first
+  db.prepare('UPDATE world_director_events SET active = 0 WHERE active = 1 AND expires_at <= ?').run(
+    params.now,
+  );
+
   const report = evaluateNationDomination(params.now, db);
 
   let triggeredEvent: DirectorEvent | null = null;
@@ -264,11 +274,6 @@ export function tickWorldDirector(
       );
     }
   }
-
-  // Deactivate expired events
-  db.prepare('UPDATE world_director_events SET active = 0 WHERE active = 1 AND expires_at <= ?').run(
-    params.now,
-  );
 
   return { report, triggeredEvent };
 }

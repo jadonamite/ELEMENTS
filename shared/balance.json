@@ -1595,9 +1595,9 @@
       "intervalHours": 12,
       "routes": [
         {
-          "id": "route_sindr_chromara",
-          "name": "Sindr to Chromara High Road",
-          "fromMerchant": "sindr_shards",
+          "id": "route_ignis_chromara",
+          "name": "Ignis to Chromara High Road",
+          "fromMerchant": "merchant_ignis",
           "toMerchant": "merchant_chromara",
           "fromNation": "IGNIS",
           "toNation": "CHROMARA",
@@ -1605,9 +1605,9 @@
           "cargoQuantity": 5
         },
         {
-          "id": "route_sindr_aques",
-          "name": "Sindr to Aques Waterway",
-          "fromMerchant": "sindr_arms",
+          "id": "route_ignis_aques",
+          "name": "Ignis to Aques Waterway",
+          "fromMerchant": "merchant_ignis",
           "toMerchant": "merchant_aques",
           "fromNation": "IGNIS",
           "toNation": "AQUES",
@@ -1661,6 +1661,7 @@
       "evaluationIntervalHours": 24,
       "lookbackDays": 3,
       "dominationThreshold": 0.35,
+      "minActivePlayers": 2,
       "firestormDurationHours": 24,
       "firestormPriceMultiplier": 1.25
     }

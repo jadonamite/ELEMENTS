@@ -27,14 +27,15 @@ export interface CaravanDispatchResult {
 
 /**
  * Checks when the last caravan was dispatched from ledger history.
+ * Returns the timestamp of the last caravan row, or null if no caravan has ever been dispatched.
  */
-export function getLastCaravanTime(db: DatabaseSync = getDatabase()): number {
+export function getLastCaravanTime(db: DatabaseSync = getDatabase()): number | null {
   const row = db
     .prepare(
       "SELECT timestamp FROM ledger_entries WHERE reason = 'trade_payment' AND ref_id LIKE 'caravan:%' ORDER BY timestamp DESC LIMIT 1",
     )
     .get() as { timestamp: number } | undefined;
-  return row?.timestamp ?? 0;
+  return row !== undefined ? row.timestamp : null;
 }
 
 /**
@@ -215,7 +216,7 @@ export function tickCaravans(
   const intervalMs = CARAVANS_CONFIG.intervalHours * GAME_HOUR_MS;
   const lastTime = getLastCaravanTime(db);
 
-  if (!params.force && lastTime > 0 && params.now - lastTime < intervalMs) {
+  if (!params.force && lastTime !== null && params.now - lastTime < intervalMs) {
     return [];
   }
 

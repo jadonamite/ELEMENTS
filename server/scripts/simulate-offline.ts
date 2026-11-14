@@ -71,6 +71,11 @@ async function main() {
     .get() as { count: number };
   console.log(`- Rival clan purchase rows: ${rivalRows.count}`);
 
+  const firestormRows = db
+    .prepare("SELECT count(*) as count FROM world_director_events WHERE event_type = 'firestorm'")
+    .get() as { count: number };
+  console.log(`- World director firestorm events: ${firestormRows.count}`);
+
   const sampleRows = db
     .prepare(
       `SELECT id, sender, receiver, amount, reason, ref_id, timestamp

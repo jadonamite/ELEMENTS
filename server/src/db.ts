@@ -283,6 +283,17 @@ export function migrateDatabase(database: DatabaseSync): void {
       item_id TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS world_director_events (
+      id TEXT PRIMARY KEY,
+      nation TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      closed_route TEXT,
+      started_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      active INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_director_events ON world_director_events(nation, active, expires_at);
   `);
 
   const ledgerCount = database

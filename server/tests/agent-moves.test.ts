@@ -24,7 +24,7 @@ import {
   DIRECTOR_CONFIG,
   AGENT_CONFIG,
 } from '@elements/shared';
-import { migrateDatabase, setDatabase } from '../src/db.js';
+import { migrateDatabase, setDatabase, saveAccount } from '../src/db.js';
 import {
   getAllAccountBalances,
   getAccountBalance,
@@ -102,55 +102,72 @@ test('Step 2.2: Caravans carry stock between keepers and nations with coin paid 
   const db = setupTestDb();
   assert.equal(verifyWorldSupply(db), true);
 
-  const route = CARAVANS_CONFIG.routes[0]!; // sindr_shards -> merchant_chromara
-  const now = 10 * GAME_HOUR_MS;
+  // Every route in CARAVANS_CONFIG connects two real merchants who stock the item
+  for (const route of CARAVANS_CONFIG.routes) {
+    const fromBalBefore = getAccountBalance(route.fromMerchant, db);
+    const toBalBefore = getAccountBalance(route.toMerchant, db);
 
-  const fromBalBefore = getAccountBalance(route.fromMerchant, db);
-  const toBalBefore = getAccountBalance(route.toMerchant, db);
+    const result = dispatchCaravanRoute(route, 10 * GAME_HOUR_MS, db);
+    assert.equal(result.dispatched, true, `Route ${route.id} must be able to dispatch with seeded inventories`);
+    assert.equal(result.routeId, route.id);
+    assert.ok(result.totalPrice > 0);
+    assert.ok(result.quantity > 0);
 
-  const result = dispatchCaravanRoute(route, now, db);
-  assert.equal(result.dispatched, true);
-  assert.equal(result.routeId, route.id);
-  assert.ok(result.totalPrice > 0);
-  assert.ok(result.quantity > 0);
+    // Check coin transfer: toMerchant paid fromMerchant
+    const fromBalAfter = getAccountBalance(route.fromMerchant, db);
+    const toBalAfter = getAccountBalance(route.toMerchant, db);
+    assert.equal(fromBalAfter, fromBalBefore + result.totalPrice);
+    assert.equal(toBalAfter, toBalBefore - result.totalPrice);
 
-  // Check coin transfer: toMerchant paid fromMerchant
-  const fromBalAfter = getAccountBalance(route.fromMerchant, db);
-  const toBalAfter = getAccountBalance(route.toMerchant, db);
-  assert.equal(fromBalAfter, fromBalBefore + result.totalPrice);
-  assert.equal(toBalAfter, toBalBefore - result.totalPrice);
+    // Check ledger entry
+    const entry = db
+      .prepare("SELECT sender, receiver, amount, reason, ref_id FROM ledger_entries WHERE ref_id LIKE ? ORDER BY timestamp DESC LIMIT 1")
+      .get(`caravan:${route.id}:%`) as {
+      sender: string;
+      receiver: string;
+      amount: number;
+      reason: string;
+      ref_id: string;
+    };
+    assert.ok(entry);
+    assert.equal(entry.sender, route.toMerchant);
+    assert.equal(entry.receiver, route.fromMerchant);
+    assert.equal(entry.reason, 'trade_payment');
 
-  // Check ledger entry
-  const entry = db
-    .prepare("SELECT sender, receiver, amount, reason, ref_id FROM ledger_entries WHERE ref_id LIKE ?")
-    .get(`caravan:${route.id}:%`) as {
-    sender: string;
-    receiver: string;
-    amount: number;
-    reason: string;
-    ref_id: string;
-  };
-  assert.ok(entry);
-  assert.equal(entry.sender, route.toMerchant);
-  assert.equal(entry.receiver, route.fromMerchant);
-  assert.equal(entry.reason, 'trade_payment');
-
-  // Check item move in item_ledger
-  const itemMove = db
-    .prepare("SELECT from_id, to_id, quantity, reason FROM item_ledger WHERE ref_id LIKE ?")
-    .get(`caravan:${route.id}:%`) as {
-    from_id: string;
-    to_id: string;
-    quantity: number;
-    reason: string;
-  };
-  assert.ok(itemMove);
-  assert.equal(itemMove.from_id, route.fromMerchant);
-  assert.equal(itemMove.to_id, route.toMerchant);
-  assert.equal(itemMove.quantity, result.quantity);
-  assert.equal(itemMove.reason, 'trade');
+    // Check item move in item_ledger
+    const itemMove = db
+      .prepare("SELECT from_id, to_id, quantity, reason FROM item_ledger WHERE ref_id LIKE ? ORDER BY timestamp DESC LIMIT 1")
+      .get(`caravan:${route.id}:%`) as {
+      from_id: string;
+      to_id: string;
+      quantity: number;
+      reason: string;
+    };
+    assert.ok(itemMove);
+    assert.equal(itemMove.from_id, route.fromMerchant);
+    assert.equal(itemMove.to_id, route.toMerchant);
+    assert.equal(itemMove.quantity, result.quantity);
+    assert.equal(itemMove.reason, 'trade');
+  }
 
   assert.equal(verifyWorldSupply(db), true);
+});
+
+test('Step 2.2b: tickCaravans respects caravan row at timestamp 0 and does not re-dispatch early', () => {
+  const db = setupTestDb();
+  const route = CARAVANS_CONFIG.routes[0]!;
+
+  // Dispatch first caravan at timestamp 0
+  const res0 = dispatchCaravanRoute(route, 0, db);
+  assert.equal(res0.dispatched, true);
+
+  // Advance to time 1000 (well within 12h interval)
+  const earlyDispatches = tickCaravans({ now: 1000 }, db);
+  assert.equal(earlyDispatches.length, 0, 'Caravan at timestamp 0 must prevent early re-dispatch');
+
+  // Advance past interval (12 hours + 1ms)
+  const laterDispatches = tickCaravans({ now: CARAVANS_CONFIG.intervalHours * GAME_HOUR_MS + 1 }, db);
+  assert.ok(laterDispatches.length > 0, 'Caravans dispatch once interval has passed');
 });
 
 test('Step 2.3: Masters collect training fees that rise with rising students (+10% a week)', () => {
@@ -243,35 +260,116 @@ test('Step 2.4: The rival clan trades with keepers on its own account', () => {
   assert.equal(verifyWorldSupply(db), true);
 });
 
-test('Step 2.5: World director detects dominating nation, fires firestorm closing route, and moves prices', () => {
+test('Step 2.5a: A seeded world where only Sindr keepers trade and players are spread over nations fires nothing', () => {
   const db = setupTestDb();
   const now = 24 * GAME_HOUR_MS;
 
-  // Seed heavy trade in IGNIS so IGNIS dominates (> 35% of volume)
+  // Create players spread across all 4 nations
+  saveAccount('player_ignis', 'Shaper', 'IGNIS', db);
+  saveAccount('player_aques', 'Shaper', 'AQUES', db);
+  saveAccount('player_terra', 'Shaper', 'TERRA', db);
+  saveAccount('player_aura', 'Shaper', 'AURA', db);
+
+  // Keepers trade among themselves and Lord treasury pays keeper tribute (no player earnings)
+  recordTransaction(
+    {
+      from: TREASURY_ACCOUNT_ID,
+      to: 'sindr_shards',
+      amount: 15_000,
+      reason: 'merchant_tribute',
+      timestamp: now - 5 * GAME_HOUR_MS,
+    },
+    db,
+  );
   recordTransaction(
     {
       from: 'rival_guild',
-      to: 'sindr_arms',
-      amount: 10_000,
+      to: 'sindr_supplies',
+      amount: 5_000,
       reason: 'merchant_buy',
+      timestamp: now - 3 * GAME_HOUR_MS,
+    },
+    db,
+  );
+
+  const report = evaluateNationDomination(now, db);
+  assert.equal(report.dominantNation, null, 'Keeper-only trade must never cause nation domination');
+  assert.equal(report.totalVolume, 0, 'Keeper volume is not player earnings');
+
+  const { triggeredEvent } = tickWorldDirector({ now }, db);
+  assert.equal(triggeredEvent, null, 'World director must fire nothing when only keepers trade');
+  assert.equal(getActiveFirestorm('IGNIS', now, db), null);
+});
+
+test('Step 2.5b: A lone player cannot trigger domination pushback (minActivePlayers requirement)', () => {
+  const db = setupTestDb();
+  const now = 24 * GAME_HOUR_MS;
+
+  // Single lone IGNIS player receives large payment
+  saveAccount('lone_ignis_player', 'Shaper', 'IGNIS', db);
+  recordTransaction(
+    {
+      from: 'merchant_ignis',
+      to: 'lone_ignis_player',
+      amount: 50_000,
+      reason: 'merchant_sell',
+      timestamp: now - 2 * GAME_HOUR_MS,
+    },
+    db,
+  );
+
+  const report = evaluateNationDomination(now, db);
+  assert.equal(report.nationPlayerCounts['IGNIS'], 1);
+  assert.equal(report.dominantNation, null, 'A lone player cannot trigger domination pushback');
+
+  const { triggeredEvent } = tickWorldDirector({ now }, db);
+  assert.equal(triggeredEvent, null);
+});
+
+test('Step 2.5c: IGNIS players earning over threshold fires firestorm closing route, moving prices, then expires', () => {
+  const db = setupTestDb();
+  const now = 24 * GAME_HOUR_MS;
+
+  // Two IGNIS players earn over the threshold (satisfies minActivePlayers = 2)
+  saveAccount('ignis_player_1', 'Shaper', 'IGNIS', db);
+  saveAccount('ignis_player_2', 'Shaper', 'IGNIS', db);
+  saveAccount('aques_player_1', 'Shaper', 'AQUES', db);
+
+  recordTransaction(
+    {
+      from: 'merchant_ignis',
+      to: 'ignis_player_1',
+      amount: 25_000,
+      reason: 'merchant_sell',
+      timestamp: now - 3 * GAME_HOUR_MS,
+    },
+    db,
+  );
+  recordTransaction(
+    {
+      from: 'merchant_ignis',
+      to: 'ignis_player_2',
+      amount: 25_000,
+      reason: 'merchant_sell',
       timestamp: now - 2 * GAME_HOUR_MS,
     },
     db,
   );
   recordTransaction(
     {
-      from: 'rival_guild',
-      to: 'sindr_shards',
+      from: 'merchant_aques',
+      to: 'aques_player_1',
       amount: 5_000,
-      reason: 'merchant_buy',
+      reason: 'merchant_sell',
       timestamp: now - 1 * GAME_HOUR_MS,
     },
     db,
   );
 
-  const domination = evaluateNationDomination(now, db);
-  assert.equal(domination.dominantNation, 'IGNIS');
-  assert.ok(domination.dominantShare >= DIRECTOR_CONFIG.dominationThreshold);
+  const report = evaluateNationDomination(now, db);
+  assert.equal(report.dominantNation, 'IGNIS');
+  assert.ok(report.dominantShare >= DIRECTOR_CONFIG.dominationThreshold);
+  assert.equal(report.nationPlayerCounts['IGNIS'], 2);
 
   // Check normal quote before firestorm
   const quoteBefore = quoteMerchantTrade(
@@ -298,6 +396,13 @@ test('Step 2.5: World director detects dominating nation, fires firestorm closin
   assert.equal(caravanAttempt.dispatched, false);
   assert.match(caravanAttempt.skippedReason ?? '', /blocked by an active firestorm/);
 
+  // Caravan route NOT touching IGNIS (e.g. Aques -> Terra) can still dispatch
+  const openRouteConfig = CARAVANS_CONFIG.routes.find(
+    (r) => r.fromNation !== 'IGNIS' && r.toNation !== 'IGNIS',
+  )!;
+  const openAttempt = dispatchCaravanRoute(openRouteConfig, now, db);
+  assert.equal(openAttempt.dispatched, true);
+
   // Prices in IGNIS move due to firestorm multiplier
   const quoteDuring = quoteMerchantTrade(
     {
@@ -315,9 +420,10 @@ test('Step 2.5: World director detects dominating nation, fires firestorm closin
   );
   assert.ok(quoteDuring.steps.some((s) => s.rule === 'world_director_firestorm'));
 
-  // Advance time past firestorm duration
+  // Advance time past firestorm duration: it expires
   const afterFirestorm = now + (DIRECTOR_CONFIG.firestormDurationHours + 1) * GAME_HOUR_MS;
   assert.equal(isRouteClosedByDirector(triggeredEvent.closedRoute, afterFirestorm, db), false);
+  assert.equal(getActiveFirestorm('IGNIS', afterFirestorm, db), null);
 
   const quoteAfter = quoteMerchantTrade(
     {
