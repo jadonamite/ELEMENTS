@@ -5,6 +5,7 @@ const STORAGE_SESSION_TOKEN_KEY = 'elements_session_token';
 const STORAGE_ACCOUNT_ID_KEY = 'elements_account_id';
 const STORAGE_DRAWING_KEY = 'elements_drawing_result';
 const STORAGE_LOCAL_PLAYER_KEY = 'elements_local_player';
+const STORAGE_GUEST_TICKET_KEY = 'elements_guest_ticket';
 
 export function hasGameServer(): boolean {
   return (import.meta as unknown as { env?: { VITE_NO_SERVER?: string } }).env?.VITE_NO_SERVER !== '1';
@@ -154,7 +155,43 @@ export interface RisingApiResponse {
   };
 }
 
-export async function postRising(token?: string): Promise<DrawingResult> {
+/** The ticket for a Drawing the server holds for this browser until its player signs in. */
+export function getGuestTicket(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_GUEST_TICKET_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function clearGuestTicket(): void {
+  try {
+    localStorage.removeItem(STORAGE_GUEST_TICKET_KEY);
+  } catch {
+    // Storage access may be restricted
+  }
+}
+
+function toDrawing(item: { role: 'Shaper' | 'Hush'; element?: 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA' | null }): DrawingResult {
+  return item.role === 'Shaper' && item.element ? { role: 'Shaper', element: item.element } : { role: 'Hush' };
+}
+
+/** The Drawing before sign-in: the server rolls and keeps it; this browser keeps only the ticket and what to show. */
+export async function postGuestRising(): Promise<DrawingResult> {
+  const response = await fetch(`${getServerUrl()}/api/rising/guest`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Guest rising request failed with status ${response.status}`);
+  const data = (await response.json()) as { guestTicket: string; rising: RisingApiResponse['rising'] & object };
+  const result = toDrawing(data.rising);
+  try {
+    localStorage.setItem(STORAGE_GUEST_TICKET_KEY, data.guestTicket);
+    localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(result));
+  } catch {
+    // Storage access may be restricted
+  }
+  return result;
+}
+
+export async function postRising(token?: string, guestTicket?: string | null): Promise<DrawingResult> {
   if (!hasGameServer()) {
     const result = localDrawing() ?? roll(() => crypto.getRandomValues(new Uint32Array(1))[0]! / 2 ** 32);
     localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(result));
@@ -171,7 +208,7 @@ export async function postRising(token?: string): Promise<DrawingResult> {
   const response = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ token: token ?? '' }),
+    body: JSON.stringify({ token: token ?? '', ...(guestTicket ? { guestTicket } : {}) }),
   });
 
   if (!response.ok) {
@@ -179,9 +216,5 @@ export async function postRising(token?: string): Promise<DrawingResult> {
   }
 
   const data = (await response.json()) as RisingApiResponse;
-  const item = data.rising ?? data;
-  if (item.role === 'Shaper' && item.element) {
-    return { role: 'Shaper', element: item.element };
-  }
-  return { role: 'Hush' };
+  return toDrawing(data.rising ?? data);
 }

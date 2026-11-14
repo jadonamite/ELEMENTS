@@ -7,10 +7,13 @@ import {
   SKIN_TONE_PRESETS,
 } from './creator/index.js';
 import {
+  clearGuestTicket,
+  getGuestTicket,
   getStoredAuthToken,
   hasGameServer,
   isOfflineMode,
   mountLoginIsland,
+  postGuestRising,
   postRising,
   postSession,
 } from './auth/index.js';
@@ -20,7 +23,8 @@ import { isTownMode } from './world-mode.js';
 /**
  * Opening sequence: Age verification gate, character creation studio,
  * fake storefront purchase, reality glitch, and the Drawing raffle ceremony
- * (85% Shaper across the four elements, 15% Hush).
+ * (85% Shaper across the four elements, 15% Hush). With a game server a new player plays as a
+ * guest: the server holds their Drawing, and they sign in at Sindr's gate (auth/save-progress.ts).
  */
 
 export type DrawingResult =
@@ -96,7 +100,10 @@ export class OpeningFlow {
     this.afterAgeGate();
   }
 
-  /** With a game server every player is signed in; a Drawing saved in this browser never skips that. */
+  /**
+   * A signed-in player resumes their account. A new player goes on as a guest and signs in at
+   * Sindr's gate; a guest who comes back resumes the Drawing the server holds for their ticket.
+   */
   private afterAgeGate(): void {
     if (isOfflineMode() || !hasGameServer()) {
       this.isOffline = true;
@@ -112,7 +119,12 @@ export class OpeningFlow {
       return;
     }
 
-    this.renderLoginStep();
+    const saved = getStoredDrawing();
+    if (saved && getGuestTicket()) {
+      this.close(saved);
+      return;
+    }
+    this.proceedAfterLogin();
   }
 
   private async attemptSessionResume(token: string): Promise<void> {
@@ -121,8 +133,17 @@ export class OpeningFlow {
       this.authToken = token;
       this.accountId = session.accountId;
       if (session.rising) {
+        clearGuestTicket();
         localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(session.rising));
         this.close(session.rising);
+        return;
+      }
+      const ticket = getGuestTicket();
+      if (ticket) {
+        const claimed = await postRising(token, ticket);
+        clearGuestTicket();
+        localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(claimed));
+        this.close(claimed);
         return;
       }
       this.proceedAfterLogin();
@@ -296,7 +317,8 @@ export class OpeningFlow {
     } else {
       try {
         const token = this.authToken ?? getStoredAuthToken();
-        result = await postRising(token ?? undefined);
+        result = token ? await postRising(token, getGuestTicket()) : await postGuestRising();
+        if (token) clearGuestTicket();
         isOfflineNotice = false;
       } catch {
         // Fallback when server cannot be reached

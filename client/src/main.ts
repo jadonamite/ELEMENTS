@@ -28,6 +28,7 @@ import { SwordStance } from './sword.js';
 import { SoundManager } from './audio.js';
 import { BendingEffects, type BendingType } from './bending-fx.js';
 import { OpeningFlow, getStoredDrawing, type DrawingResult } from './opening.js';
+import { saveProgressAtGate } from './auth/save-progress.js';
 import { ConsentBanner } from './consent.js';
 import type { Enemy } from './enemy.js';
 import { createCombatRules, ELEMENTS, isBendMove, NIGHT_FROM, sindrSentryDistance, sindrStreet, type BendMoveId, type CombatBalance, type Element, type Kit, type MoveId } from '../../shared/src/index.js';
@@ -702,7 +703,7 @@ async function main(): Promise<void> {
     nationIntro = new NationIntroFlow({
       scene,
       nation: kitElement,
-      isDim,
+      isDim: () => isDim,
       controller,
       shoulderCamera,
       input,
@@ -716,6 +717,14 @@ async function main(): Promise<void> {
         applyKit();
         setFightingStyle('weapon');
         sword.draw(true);
+      },
+      beforeUnlock: async () => {
+        const held = getStoredDrawing();
+        const account = await saveProgressAtGate();
+        if (account && !forcedElement && !forcedHush && (account.role !== held?.role || account.element !== held?.element)) {
+          applyDrawing(account);
+          notice(account.role === 'Hush' ? 'Welcome back. You are Hush.' : `Welcome back, Shaper of ${account.element}.`);
+        }
       },
       onMissionComplete: (lead) => {
         localStorage.setItem(introStorageKey, 'done');

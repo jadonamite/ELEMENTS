@@ -2,7 +2,7 @@ import { normalizeControlProgress, mergeControlProgress, type ControlProgress } 
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { reconcileItemLedger } from './economy/satchelService.js';
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import {
   roll,
   type Element,
@@ -79,6 +79,19 @@ export function migrateDatabase(database: DatabaseSync): void {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_risings_role ON risings(role);
+  `);
+  // A Drawing rolled before sign-in, held by the server and claimed by the account that signs in with its ticket.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS guest_risings (
+      ticket TEXT PRIMARY KEY,
+      role TEXT NOT NULL,
+      element TEXT,
+      ip TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      claimed_by TEXT,
+      claimed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_guest_risings_ip ON guest_risings(ip, created_at);
   `);
   const risingColumns = database.prepare('PRAGMA table_info(risings)').all() as Array<{ name: string }>;
   if (!risingColumns.some((c) => c.name === 'tier')) {
@@ -390,10 +403,47 @@ export function getRising(accountId: string, db: DatabaseSync = getDatabase()): 
 /** A uniform number in [0, 1) from the operating system's secure random source. */
 const secureRandom = (): number => randomInt(0, 2 ** 47) / 2 ** 47;
 
+/** Guest Drawings one address may roll in a day; replaying the opening by hand stays possible, scripted rerolls do not. */
+export const GUEST_RISINGS_PER_IP_PER_DAY = 30;
+
+export interface GuestRising {
+  ticket: string;
+  role: RisingRole;
+  element: Element | null;
+}
+
+/** Rolls a Drawing for a player who has not signed in yet. Null when the address has used its day's draws. */
+export function createGuestRising(
+  ip: string,
+  rand: () => number = secureRandom,
+  db: DatabaseSync = getDatabase(),
+  now = Date.now(),
+): GuestRising | null {
+  const used = db
+    .prepare('SELECT COUNT(*) AS n FROM guest_risings WHERE ip = ? AND created_at > ?')
+    .get(ip, now - 24 * 60 * 60 * 1000) as { n: number };
+  if (used.n >= GUEST_RISINGS_PER_IP_PER_DAY) return null;
+  const rolled = roll(rand);
+  const ticket = randomBytes(24).toString('base64url');
+  db.prepare('INSERT INTO guest_risings (ticket, role, element, ip, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    ticket,
+    rolled.role,
+    rolled.element ?? null,
+    ip,
+    now,
+  );
+  return { ticket, role: rolled.role, element: rolled.element ?? null };
+}
+
+/**
+ * The account's Drawing. An account that already rose keeps its result; otherwise an unclaimed guest
+ * ticket becomes its result; otherwise the server rolls one now.
+ */
 export function createOrGetRising(
   accountId: string,
   rand: () => number = secureRandom,
   db: DatabaseSync = getDatabase(),
+  guestTicket?: string,
 ): RisingRecord {
   const existing = getRising(accountId, db);
   if (existing) {
@@ -402,8 +452,13 @@ export function createOrGetRising(
 
   createOrGetAccount(accountId, db);
 
-  const rolled = roll(rand);
   const now = Date.now();
+  const claim = guestTicket
+    ? db
+        .prepare('UPDATE guest_risings SET claimed_by = ?, claimed_at = ? WHERE ticket = ? AND claimed_by IS NULL RETURNING role, element')
+        .get(accountId, now, guestTicket) as { role: RisingRole; element: Element | null } | undefined
+    : undefined;
+  const rolled: { role: RisingRole; element?: Element | null } = claim ?? roll(rand);
 
   try {
     db.prepare('INSERT INTO risings (account_id, role, element, created_at) VALUES (?, ?, ?, ?)').run(

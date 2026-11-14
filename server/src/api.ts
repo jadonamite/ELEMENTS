@@ -1,7 +1,7 @@
 import express, { type Application, type Request, type Response } from 'express';
 import { verifyToken } from './auth.js';
 import { chainSettler, itemsChainSettler } from './chain/index.js';
-import { createOrGetAccount, createOrGetRising, getRising, getControlProgress, saveControlProgress } from './db.js';
+import { createGuestRising, createOrGetAccount, createOrGetRising, getRising, getControlProgress, saveControlProgress } from './db.js';
 import { isAccountAllowed, isIpAllowed } from './rate-limit.js';
 import { isOutsider } from './net/money.js';
 import { isInRoom, isZoneOnline } from './net/presence.js';
@@ -146,6 +146,22 @@ export function setupApi(app: Application): void {
     });
   });
 
+  // The Drawing for a player who has not signed in: the server keeps the result behind a ticket, and
+  // signing in with that ticket makes it the account's. The browser never chooses its own result.
+  app.post('/api/rising/guest', (req: Request, res: Response) => {
+    const ip = extractIp(req);
+    if (!isIpAllowed(ip)) {
+      res.status(429).json({ error: 'Too many requests' });
+      return;
+    }
+    const guest = createGuestRising(ip);
+    if (!guest) {
+      res.status(429).json({ error: 'Too many Drawings from this address today' });
+      return;
+    }
+    res.json({ guestTicket: guest.ticket, rising: { role: guest.role, element: guest.element } });
+  });
+
   app.post('/api/rising', async (req: Request, res: Response) => {
     const ip = extractIp(req);
     if (!isIpAllowed(ip)) {
@@ -161,7 +177,8 @@ export function setupApi(app: Application): void {
       return;
     }
 
-    const rising = createOrGetRising(accountId);
+    const ticket = typeof req.body?.guestTicket === 'string' ? req.body.guestTicket : undefined;
+    const rising = createOrGetRising(accountId, undefined, undefined, ticket);
 
     res.json({
       accountId: accountId,

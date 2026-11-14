@@ -126,7 +126,7 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
 
     const intro = new NationIntroFlow({
       nation: 'IGNIS',
-      isDim: false,
+      isDim: () => false,
       controller: mockController,
       shoulderCamera: mockShoulderCamera,
       input: mockInput,
@@ -220,7 +220,7 @@ test('NationIntroFlow: modular across AURA and HUSH role', () => {
 
     const intro = new NationIntroFlow({
       nation: 'AURA',
-      isDim: true, // Hush role in Aura
+      isDim: () => true, // Hush role in Aura
       controller: mockController,
       shoulderCamera: mockShoulderCamera,
       input: mockInput,
@@ -265,6 +265,47 @@ test('NationIntroFlow: modular across AURA and HUSH role', () => {
     assert.equal(intro.step, 'completed');
     assert.equal(currentTier, 1, 'Hush promoted to Level 1 Wayfarer upon reaching goal');
 
+    intro.dispose();
+  } finally {
+    restoreDom();
+  }
+});
+
+test('NationIntroFlow: the gate sign-in runs before the level is granted, and the result decides the banner', async () => {
+  const restoreDom = setupDom();
+  try {
+    let currentTier = -1;
+    let dim = false;
+    let releaseSignIn = () => {};
+    const mockFight = { heroAlive: true, tier: 0 };
+    const mockWaypointMarker = { activeLead: null, setLead(lead) { this.activeLead = lead; } };
+    const intro = new NationIntroFlow({
+      nation: 'IGNIS',
+      isDim: () => dim,
+      controller: { position: new Vector3(8, 0, 0), facing: 0, grounded: true },
+      shoulderCamera: { yaw: 0, pitch: 0, distance: 3.5 },
+      input: { read: () => ({ forward: 0, right: 0, running: false }) },
+      combat: { current: null, fightingStyle: 'hands', blocking: false },
+      fight: mockFight,
+      sound: { speak: async () => true },
+      leadManager: new LeadManager([]),
+      waypointMarker: mockWaypointMarker,
+      applyTier: (t) => { currentTier = t; mockFight.tier = t; },
+      onEquipStarterWeapon: () => {},
+      beforeUnlock: () => new Promise((resolve) => { releaseSignIn = () => { dim = true; resolve(); }; }),
+    });
+    intro['dispatchFirstMission']();
+    const lead = mockWaypointMarker.activeLead;
+    intro['completeFirstMission'](lead);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(intro.step, 'completed');
+    assert.equal(currentTier, 0, 'no level while the sign-in is open');
+
+    releaseSignIn();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(currentTier, 1, 'the level is granted once the sign-in step ends');
+    const banner = document.body.children.filter((c) => c.className === 'nation-mission-banner').at(-1);
+    assert.match(banner?.innerHTML ?? '', /Rank Attained/, 'the banner follows the Drawing the account came back with');
     intro.dispose();
   } finally {
     restoreDom();

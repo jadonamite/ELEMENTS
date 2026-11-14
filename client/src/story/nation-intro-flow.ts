@@ -33,7 +33,8 @@ export type IntroStep =
 export interface NationIntroOptions {
   scene: import('three').Scene;
   nation: string;
-  isDim: boolean;
+  /** Read when needed: signing in at the gate can bring back an account's earlier Drawing. */
+  isDim: () => boolean;
   controller: HeroController;
   shoulderCamera: ShoulderCamera;
   input: GameInput;
@@ -45,6 +46,8 @@ export interface NationIntroOptions {
   applyTier: (tier: number) => void;
   onEquipStarterWeapon: (weapon: 'sword' | 'staff') => void;
   onMissionComplete?: (missionLead: Lead) => void;
+  /** Runs at the gate before the level is granted: the sign-in that keeps the player's progress. */
+  beforeUnlock?: () => Promise<void>;
 }
 
 export class NationIntroFlow {
@@ -429,7 +432,7 @@ export class NationIntroFlow {
           this.setStep('lore_and_mission');
           this.hideStepPrompt();
 
-          const roleLine = this.opts.isDim
+          const roleLine = this.opts.isDim()
             ? this.config.dialogue.hushRole
             : this.config.dialogue.shaperRole;
 
@@ -506,13 +509,19 @@ export class NationIntroFlow {
   private completeFirstMission(lead: Lead): void {
     this.setStep('completed');
     this.opts.waypointMarker.setLead(null);
+    const unlock = (): void => { if (!this.disposed) this.grantFirstLevel(lead); };
+    if (this.opts.beforeUnlock) void this.opts.beforeUnlock().catch(() => undefined).then(unlock);
+    else unlock();
+  }
 
+  private grantFirstLevel(lead: Lead): void {
     // Transfer user from Level 0 -> Level 1 (unlocks bending for Shapers)
     this.opts.applyTier(1);
 
-    const unlockKicker = this.opts.isDim ? 'Rank Attained' : 'Power Awakened';
-    const unlockTitle = this.opts.isDim ? 'Level 1 · Wayfarer' : 'Level 1 · Shaper Awoken';
-    const unlockDesc = this.opts.isDim
+    const isDim = this.opts.isDim();
+    const unlockKicker = isDim ? 'Rank Attained' : 'Power Awakened';
+    const unlockTitle = isDim ? 'Level 1 · Wayfarer' : 'Level 1 · Shaper Awoken';
+    const unlockDesc = isDim
       ? 'The roads of the nation are open. Crafting and town trade unlocked.'
       : 'Elemental bending is now available. Press B to channel your element.';
 
