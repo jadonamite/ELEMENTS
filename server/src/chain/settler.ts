@@ -75,7 +75,7 @@ export function nearClient(config: ChainConfig, kind: LedgerKind = 'coin'): Chai
       return await provider.callFunction({ contractId: config.contractId, method: 'session_grant', args: { holder_id: holder } }) as LiveGrant | null;
     },
     async submitGrant(signed) {
-      await account.callFunction({ contractId: config.contractId, methodName: 'grant', args: signed, gas: 50_000_000_000_000n });
+      await account.callFunction({ contractId: config.contractId, methodName: 'grant', args: signed, gas: 50_000_000_000_000n, waitUntil: 'FINAL' });
     },
     async registerWorld(ledgerId, holder) {
       const key = worldKeyPair(config.playerSecret, ledgerId);
@@ -90,7 +90,7 @@ export function nearClient(config: ChainConfig, kind: LedgerKind = 'coin'): Chai
       }
       const world = new Account(holder, provider, KeyPairSigner.fromSecretKey(key.secretKey));
       try {
-        await world.callFunction({ contractId: config.contractId, methodName: 'register_key', args: { public_key: key.publicKey }, gas: 30_000_000_000_000n });
+        await world.callFunction({ contractId: config.contractId, methodName: 'register_key', args: { public_key: key.publicKey }, gas: 30_000_000_000_000n, waitUntil: 'FINAL' });
       } catch (error) {
         if (!/Key already registered/.test(String(error))) throw error;
       }
@@ -101,7 +101,7 @@ export function nearClient(config: ChainConfig, kind: LedgerKind = 'coin'): Chai
         methodName: 'settle',
         args: kind === 'coin' ? { batch, moves } : { batch, ops: moves },
         gas: 300_000_000_000_000n,
-        waitUntil: 'EXECUTED_OPTIMISTIC',
+        waitUntil: 'FINAL',
       });
       const status = result.status as { Failure?: unknown } | string;
       if (typeof status === 'object' && status && 'Failure' in status) {
