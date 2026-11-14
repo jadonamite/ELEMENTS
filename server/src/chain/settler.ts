@@ -32,30 +32,20 @@ export interface ChainClient {
 export type LedgerKind = 'coin' | 'items';
 
 export function migrateChainTables(db: DatabaseSync): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS chain_batches (
-      batch INTEGER PRIMARY KEY,
-      first_rowid INTEGER NOT NULL,
-      last_rowid INTEGER NOT NULL,
-      moves INTEGER NOT NULL,
-      status TEXT NOT NULL,
-      tx_hash TEXT,
-      error TEXT,
-      created_at INTEGER NOT NULL,
-      settled_at INTEGER
-    );
-  `);
-  db.exec(`CREATE TABLE IF NOT EXISTS items_chain_batches (
+  for (const table of ['chain_batches', 'items_chain_batches']) createBatchTable(db, table);
+  db.exec('CREATE TABLE IF NOT EXISTS chain_contracts (kind TEXT PRIMARY KEY, contract TEXT NOT NULL)');
+  migrateLegacyTables(db);
+
+}
+
+function createBatchTable(db: DatabaseSync, table: string): void {
+  db.exec(`CREATE TABLE IF NOT EXISTS ${table} (
     batch INTEGER PRIMARY KEY, first_rowid INTEGER NOT NULL, last_rowid INTEGER NOT NULL, moves INTEGER NOT NULL,
     status TEXT NOT NULL, tx_hash TEXT, error TEXT, created_at INTEGER NOT NULL, settled_at INTEGER
   );`);
-  for (const table of ['chain_batches','items_chain_batches']) {
-    const columns=db.prepare(`PRAGMA table_info(${table})`).all() as Array<{name:string}>;
-    if (!columns.some(c=>c.name==='moves_json')) db.exec(`ALTER TABLE ${table} ADD COLUMN moves_json TEXT`);
-    if (!columns.some(c=>c.name==='legacy_holder')) db.exec(`ALTER TABLE ${table} ADD COLUMN legacy_holder TEXT`);
-  }
-  migrateLegacyTables(db);
-
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'moves_json')) db.exec(`ALTER TABLE ${table} ADD COLUMN moves_json TEXT`);
+  if (!columns.some((c) => c.name === 'legacy_holder')) db.exec(`ALTER TABLE ${table} ADD COLUMN legacy_holder TEXT`);
 }
 
 export function nearClient(config: ChainConfig, kind: LedgerKind = 'coin'): ChainClient {
@@ -134,6 +124,7 @@ export class Settler {
   private halted: string | null = null;
   private held: string | null = null;
   private timer: NodeJS.Timeout | null = null;
+  private adopted = false;
 
   constructor(
     private readonly config: ChainConfig,
@@ -168,10 +159,11 @@ export class Settler {
     this.busy = true;
     try {
       const table = this.batchTable;
+      const onChain = await this.client.lastBatch();
+      if (!this.adoptContract(onChain)) return null;
       const pending = this.db
         .prepare(`SELECT batch, first_rowid, last_rowid, status, legacy_holder FROM ${table} WHERE status = 'sent' ORDER BY batch LIMIT 1`)
         .get() as BatchRow | undefined;
-      const onChain = await this.client.lastBatch();
 
       if (pending) {
         if (onChain >= pending.batch) {
@@ -346,6 +338,49 @@ export class Settler {
     this.db.prepare("UPDATE legacy_chain_claims SET status='settled',tx_hash=COALESCE(?,tx_hash) WHERE contract=? AND batch=?").run(hash,this.config.contractId,batch);
     });
     this.held=null;
+  }
+
+  /**
+   * The batch table belongs to one contract. When the configured contract is new, its books start where its
+   * genesis copied the old contract: the old table is archived and a settled checkpoint row is written at the new
+   * contract's batch number, so ledger rows after that point settle to the new contract and none twice.
+   */
+  private adoptContract(onChain: number): boolean {
+    if (this.adopted) return true;
+    const table = this.batchTable;
+    const configured = this.config.contractId;
+    const from = this.config.genesisFrom;
+    const recordedRow = this.db.prepare('SELECT contract FROM chain_contracts WHERE kind = ?').get(this.kind) as { contract: string } | undefined;
+    let recorded = recordedRow?.contract;
+    if (!recorded) {
+      const hasRows = this.db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get();
+      recorded = hasRows && from ? from.contract : configured;
+      this.db.prepare('INSERT INTO chain_contracts (kind, contract) VALUES (?, ?)').run(this.kind, recorded);
+    }
+    if (recorded === configured) return (this.adopted = true);
+
+    const envName = this.kind === 'coin' ? 'CHROMA_GENESIS_FROM' : 'ITEMS_GENESIS_FROM';
+    if (!from || from.contract !== recorded) {
+      this.halt(`batch books belong to ${recorded}; set ${envName}=${recorded}@<last batch in ${configured}'s genesis> to switch`);
+      return false;
+    }
+    const source = this.db.prepare(`SELECT last_rowid, status FROM ${table} WHERE batch = ?`).get(from.batch) as { last_rowid: number; status: string } | undefined;
+    if (!source || source.status !== 'settled') {
+      this.halt(`${recorded} batch ${from.batch} is not settled in this server's books; cannot start ${configured} from it`);
+      return false;
+    }
+    const archive = `${table}_${recorded.replace(/[^a-z0-9]+/g, '_')}`;
+    const now = Date.now();
+    withSavepoint(this.db, () => {
+      this.db.exec(`ALTER TABLE ${table} RENAME TO ${archive}`);
+      createBatchTable(this.db, table);
+      this.db
+        .prepare(`INSERT INTO ${table} (batch, first_rowid, last_rowid, moves, status, created_at, settled_at) VALUES (?, ?, ?, 0, 'settled', ?, ?)`)
+        .run(onChain, source.last_rowid, source.last_rowid, now, now);
+      this.db.prepare('UPDATE chain_contracts SET contract = ? WHERE kind = ?').run(configured, this.kind);
+    });
+    console.log(`[chain] ${configured} starts at batch ${onChain} after ledger row ${source.last_rowid} (${recorded} batch ${from.batch}); old books in ${archive}`);
+    return (this.adopted = true);
   }
 
   private get batchTable(): string { return this.kind === 'coin' ? 'chain_batches' : 'items_chain_batches'; }

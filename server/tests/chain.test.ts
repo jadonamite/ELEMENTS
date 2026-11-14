@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { TOTAL_CHROMA_SUPPLY } from '@elements/shared';
 import { migrateDatabase } from '../src/db.js';
-import { grantPlayerStartingPurse, recordTransaction } from '../src/economy/ledgerService.js';
+import { getAccountBalance, grantPlayerStartingPurse, recordTransaction } from '../src/economy/ledgerService.js';
 import { addItems, removeItems } from '../src/economy/satchelService.js';
 import { KeyPair, baseDecode, baseEncode } from 'near-api-js';
 import { createOrGetAccount } from '../src/db.js';
@@ -367,4 +367,59 @@ test('legacy item claims preserve every listed token and keep the item-ledger cu
   assert.equal(await settler.tick(),1);assert.equal(await settler.tick(),null);
   assert.equal(balances.get(`${f.destination}:potion`),2n);assert.equal(balances.get(`${f.destination}:shard_ignis`),1n);
   assert.equal(balances.get(`${f.old}:potion`),0n);assert.equal(settler.status().waiting,0);
+});
+
+const v2 = { ...config, contractId: 'chroma-v2.game.testnet', genesisFrom: { contract: config.contractId, batch: 2 } };
+
+/** Old contract settled to batch 2, then a new contract whose genesis copied the chain at that point. */
+async function cutover() {
+  const db = freshDb();
+  const old = new FakeChain();
+  const oldSettler = new Settler(config, old, db);
+  play(db);
+  await oldSettler.tick();
+  await oldSettler.tick();
+  assert.equal(old.last, 2);
+  const fresh = new FakeChain();
+  fresh.balances = new Map(old.balances);
+  fresh.last = 4;
+  return { db, old, fresh };
+}
+
+test('a new contract starts after the old batch its genesis copied, and nothing settles twice', async () => {
+  const { db, fresh } = await cutover();
+  recordTransaction({ from: 'bob', to: 'merchant_ignis', amount: 5, reason: 'merchant_buy' }, db);
+  const settler = new Settler(v2, fresh, db);
+  await drain(settler);
+  assert.equal(settler.haltReason, null);
+  assert.deepEqual(fresh.sent, [5]);
+  assert.equal(fresh.balances.get(playerImplicitAccount(config.playerSecret, 'bob')), BigInt(getAccountBalance('bob', db)));
+  assert.equal(fresh.balances.get(playerImplicitAccount(config.playerSecret, 'alice')), BigInt(getAccountBalance('alice', db)));
+  const archived = db.prepare('SELECT COUNT(*) AS n FROM chain_batches_chroma_game_testnet').get() as { n: number };
+  assert.equal(archived.n, 2);
+});
+
+test('switching contract without a genesis checkpoint stops instead of replaying', async () => {
+  const { db, fresh } = await cutover();
+  const settler = new Settler({ ...v2, genesisFrom: undefined } as ChainConfig, fresh, db);
+  assert.equal(await settler.tick(), null);
+  assert.match(settler.haltReason ?? '', /CHROMA_GENESIS_FROM=chroma\.game\.testnet@/);
+  assert.deepEqual(fresh.sent, []);
+});
+
+test('a checkpoint naming a batch the server never settled stops', async () => {
+  const { db, fresh } = await cutover();
+  const settler = new Settler({ ...v2, genesisFrom: { contract: config.contractId, batch: 9 } }, fresh, db);
+  assert.equal(await settler.tick(), null);
+  assert.match(settler.haltReason ?? '', /batch 9 is not settled/);
+});
+
+test('after the switch a restart keeps the new books', async () => {
+  const { db, fresh } = await cutover();
+  await drain(new Settler(v2, fresh, db));
+  recordTransaction({ from: 'alice', to: 'merchant_ignis', amount: 4, reason: 'merchant_buy' }, db);
+  const again = new Settler(v2, fresh, db);
+  await drain(again);
+  assert.equal(again.haltReason, null);
+  assert.equal(fresh.last, 6);
 });
