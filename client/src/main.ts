@@ -1586,6 +1586,9 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((error: unknown) => {
-  console.error('Failed to start the game:', error);
-});
+/** Starts the game: the loader and the opening (age gate) appear at once. Called by the cover. */
+export function startGame(): void {
+  main().catch((error: unknown) => {
+    console.error('Failed to start the game:', error);
+  });
+}
