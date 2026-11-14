@@ -1,6 +1,7 @@
 export type AccountRole = 'treasury' | 'merchant' | 'master' | 'rival_guild' | 'player';
 
 export type LedgerReason =
+  | 'guest_claim'
   | 'genesis'
   | 'player_starting_grant'
   | 'bounty_payout'

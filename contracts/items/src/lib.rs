@@ -1,5 +1,11 @@
 //! NEP-245 multi-token balances for ELEMENTS item stacks.
 
+#[path = "../../session_grants.rs"]
+mod session_grants;
+use session_grants::{Grant, Grants, Payload};
+use near_sdk::json_types::Base64VecU8;
+use near_sdk::PublicKey;
+
 use near_sdk::borsh::BorshSerialize;
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
@@ -53,6 +59,7 @@ pub struct ItemsContract {
     balances: LookupMap<String, u128>,
     supplies: LookupMap<String, u128>,
     last_batch: u64,
+    grants: Grants,
 }
 
 fn key(account: &AccountId, token: &str) -> String { format!("{account}\0{token}") }
@@ -66,8 +73,16 @@ impl ItemsContract {
     #[init]
     pub fn new(owner_id: AccountId) -> Self {
         require!(!env::state_exists(), "Contract is already initialized");
-        Self { owner_id, balances: LookupMap::new(StorageKey::Balances), supplies: LookupMap::new(StorageKey::Supplies), last_batch: 0 }
+        Self { owner_id, balances: LookupMap::new(StorageKey::Balances), supplies: LookupMap::new(StorageKey::Supplies), last_batch: 0, grants: Grants::new() }
     }
+
+    pub fn register_key(&mut self, public_key: PublicKey) { self.grants.register(public_key); }
+
+    pub fn grant(&mut self, payload: Payload, public_key: PublicKey, signature: Base64VecU8) {
+        self.grants.grant(payload, public_key, signature);
+    }
+
+    pub fn session_grant(&self, holder_id: AccountId) -> Option<Grant> { self.grants.get(&holder_id) }
 
     pub fn owner(&self) -> AccountId { self.owner_id.clone() }
     pub fn last_batch(&self) -> u64 { self.last_batch }
@@ -80,6 +95,7 @@ impl ItemsContract {
             require!(op.amount.0 > 0, "Amount must be positive");
             let token = op.token_id;
             let amount = op.amount.0;
+            if let Some(ref from) = op.from { self.grants.debit(from, &token, amount); }
             match (op.from, op.to) {
                 (None, Some(to)) => {
                     let balance=self.balances.get(&key(&to,&token)).unwrap_or(0);
@@ -297,7 +313,7 @@ mod tests {
     use near_sdk::{testing_env, NearToken, PromiseResult};
     fn id(v:&str)->AccountId { v.parse().unwrap() }
     fn caller(v:&str, deposit:u128) { testing_env!(VMContextBuilder::new().current_account_id(id("items.testnet")).predecessor_account_id(id(v)).attached_deposit(NearToken::from_yoctonear(deposit)).build()); }
-    fn contract()->ItemsContract { caller("elements.testnet",0); ItemsContract::new(id("elements.testnet")) }
+    fn contract()->ItemsContract { caller("elements.testnet",0); { let mut c=ItemsContract::new(id("elements.testnet")); c.grants.fixture(id("world.elements.testnet"),"potion",100); c } }
     fn op(from:Option<&str>, to:Option<&str>, token:&str, amount:u128)->MtOp { MtOp{from:from.map(id),to:to.map(id),token_id:token.into(),amount:U128(amount),memo:None} }
     #[test] fn mint_transfer_burn_supply() {
         let mut c=contract();
@@ -365,4 +381,11 @@ mod tests {
         assert_eq!(c.mt_balance_of(id("alice.testnet"), "potion".into()).0, 10);
         assert_eq!(c.mt_balance_of(id("receiver.testnet"), "potion".into()).0, 0);
     }
+    #[test] #[should_panic(expected="No live grant")]
+    fn settle_refuses_unsigned_holder() {
+        let mut c=contract();
+        c.settle(1,vec![op(None,Some("alice.testnet"),"potion",10)]);
+        c.settle(2,vec![op(Some("alice.testnet"),None,"potion",1)]);
+    }
+
 }

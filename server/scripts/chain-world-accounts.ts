@@ -7,11 +7,15 @@ import { worldAccount, worldHolders, worldKeyPair } from '../src/chain/accounts.
 const gameAccount = process.env.NEAR_ACCOUNT_ID;
 const gameKey = process.env.NEAR_PRIVATE_KEY as KeyPairString | undefined;
 const secret = process.env.CHAIN_PLAYER_SECRET;
-const rpcUrl = process.env.NEAR_RPC_URL ?? 'https://test.rpc.fastnear.com';
+const rpcUrl = process.env.NEAR_RPC_URL ?? 'https://rpc.testnet.fastnear.com';
 const dryRun = process.argv.includes('--dry-run');
 if (!gameAccount || !gameKey || !secret) {
   console.error('NEAR_ACCOUNT_ID, NEAR_PRIVATE_KEY and CHAIN_PLAYER_SECRET are required');
   process.exit(1);
+}
+
+if (!gameAccount.endsWith('.testnet') || rpcUrl !== 'https://rpc.testnet.fastnear.com') {
+  throw new Error('World provisioning requires the approved testnet RPC and a testnet account');
 }
 
 const provider = new JsonRpcProvider({ url: rpcUrl });
@@ -37,7 +41,7 @@ for (const id of worldHolders()) {
     console.log(`would create ${accountId} ${publicKey}`);
     continue;
   }
-  const tx = await game.createAccount({ newAccountId: accountId, publicKey, nearToTransfer: nearToYocto('0.01') });
+  const tx = await game.createAccount({ newAccountId: accountId, publicKey, nearToTransfer: nearToYocto('0.1') });
   console.log(`created ${accountId} ${tx.transaction.hash}`);
   await new Promise((r) => setTimeout(r, 1000));
 }

@@ -1,4 +1,9 @@
+import { prepareGuestClaim } from './chain/guest-claim.js';
 import express, { type Application, type Request, type Response } from 'express';
+import { bindPlayerGrant } from './chain/grants.js';
+import { ARMOUR } from './economy/armourService.js';
+import { getDatabase } from './db.js';
+import type { SignedSessionGrant } from '@elements/shared';
 import { verifyToken } from './auth.js';
 import { fastForwardWeek } from './economy/fastForwardRunner.js';
 import { chainSettler, itemsChainSettler, readChainConfig, worldAccount, worldHolders } from './chain/index.js';
@@ -136,6 +141,13 @@ export function setupApi(app: Application): void {
 
     res.json({
       accountId: accountId,
+      grantCaps: { CHROMA: "100000", ...Object.fromEntries([...new Set([
+        ...Object.keys(getSatchel(accountId)), ...Object.keys(ARMOUR.pieces),
+        ...getAllMerchants().flatMap(m => Object.keys(m.inventory)),
+        'shard_ignis', 'shard_aques', 'shard_terra', 'shard_aura', 'material', 'material_linen',
+        ...(getDatabase().prepare('SELECT DISTINCT item_id FROM item_ledger').all() as Array<{item_id:string}>).map(row => row.item_id),
+      ])].map(itemId => [itemId, "1000"])) },
+      grantContracts: [chainSettler(), itemsChainSettler()].filter(s => s !== null).map(s => s.contractId),
       rising: stored
         ? {
             role: stored.role,
@@ -143,6 +155,48 @@ export function setupApi(app: Application): void {
           }
         : null,
     });
+  });
+
+  app.post('/api/chain/grant', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (!isAccountAllowed(accountId)) { res.status(429).json({ error: 'Too many requests' }); return; }
+    const settlers = [chainSettler(), itemsChainSettler()].filter(s => s !== null);
+    const signed = req.body as SignedSessionGrant;
+    try {
+      const settler = settlers.find(s => s.contractId === signed.payload?.recipient);
+      if (!settler) { res.status(409).json({ error: 'Contract is not enabled' }); return; }
+      bindPlayerGrant(getDatabase(), accountId, signed, settlers.map(s => s.contractId));
+      await settler.submitGrant(signed);
+      res.json({ accepted: true });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid session grant' });
+    }
+  });
+
+  app.post('/api/chain/claim-guest', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (!isAccountAllowed(accountId)) { res.status(429).json({ error: 'Too many requests' }); return; }
+    const grants = req.body?.grants as SignedSessionGrant[];
+    const proof = req.body?.proof as SignedSessionGrant;
+    if (!Array.isArray(grants) || grants.length > 2) { res.status(400).json({ error: 'Guest grants required' }); return; }
+    try {
+      const coin = chainSettler(); const items = itemsChainSettler();
+      // Validate all proofs before forwarding them; ledger rows are written only after grants land.
+      const db = getDatabase();
+      db.exec('SAVEPOINT guest_proof');
+      try {
+        prepareGuestClaim(db, accountId, grants, { ...(coin ? { coin: coin.contractId } : {}), ...(items ? { items: items.contractId } : {}) }, proof);
+      } finally { db.exec('ROLLBACK TO guest_proof'); db.exec('RELEASE guest_proof'); }
+      for (const grant of grants) {
+        const settler = [coin, items].find(s => s?.contractId === grant.payload.recipient);
+        if (!settler) throw new Error('Contract is not enabled');
+        await settler.submitGrant(grant);
+      }
+      const result = prepareGuestClaim(db, accountId, grants, { ...(coin ? { coin: coin.contractId } : {}), ...(items ? { items: items.contractId } : {}) }, proof);
+      res.json(result);
+    } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Guest claim failed' }); }
   });
 
   // The Drawing for a player who has not signed in: the server keeps the result behind a ticket, and

@@ -71,6 +71,9 @@ export function migrateDatabase(database: DatabaseSync): void {
     `);
   }
 
+  const accountColumns = database.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>;
+  if (!accountColumns.some(c => c.name === 'chain_public_key')) database.exec('ALTER TABLE accounts ADD COLUMN chain_public_key TEXT');
+
   database.exec(`
     CREATE TABLE IF NOT EXISTS risings (
       account_id TEXT PRIMARY KEY,

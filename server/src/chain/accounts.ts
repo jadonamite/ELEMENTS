@@ -1,39 +1,10 @@
-import { createHash, createHmac, createPrivateKey, createPublicKey } from 'node:crypto';
+import { playerImplicitAccount } from './keys.js';
+export { playerSeed, playerImplicitAccount, worldKeyPair } from './keys.js';
+import { legacyCaps, type LegacyClaims } from './legacy.js';
+import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { COUNTING_HOUSES, SINDR_MERCHANTS, createGenesisEntries } from '@elements/shared';
-import { baseEncode, type KeyPairString } from 'near-api-js';
-
-// A NEAR implicit account is the hex of an ed25519 public key. Each player's key is derived
-// from the server's chain secret and their game id, so no per-player key is ever stored.
-const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
-
-export function playerSeed(secret: string, playerId: string): Buffer {
-  return createHmac('sha256', secret).update(`elements-player:${playerId}`).digest();
-}
-
-function publicKeyBytes(seed: Buffer): Buffer {
-  const privateKey = createPrivateKey({
-    key: Buffer.concat([PKCS8_ED25519_PREFIX, seed]),
-    format: 'der',
-    type: 'pkcs8',
-  });
-  const spki = createPublicKey(privateKey).export({ format: 'der', type: 'spki' });
-  return Buffer.from(spki.subarray(spki.length - 32));
-}
-
-export function playerImplicitAccount(secret: string, playerId: string): string {
-  return publicKeyBytes(playerSeed(secret, playerId)).toString('hex');
-}
-
-/** Each world holder's own key, derived the same way as a player's under its own prefix. */
-export function worldKeyPair(secret: string, ledgerId: string): { secretKey: KeyPairString; publicKey: string } {
-  const seed = createHmac('sha256', secret).update(`elements-world:${ledgerId}`).digest();
-  const pub = publicKeyBytes(seed);
-  return {
-    secretKey: `ed25519:${baseEncode(Buffer.concat([seed, pub]))}`,
-    publicKey: `ed25519:${baseEncode(pub)}`,
-  };
-}
+import { baseDecode } from 'near-api-js';
 
 /** World holders that get their own NEAR account: the genesis holders, every Sindr keeper and every counting house. */
 export function worldHolders(): string[] {
@@ -76,12 +47,24 @@ export function isPlayer(ledgerId: string, db: DatabaseSync): boolean {
 export interface ChainNames {
   gameAccount: string;
   playerSecret: string;
+  contractId?: string;
+  claimHolder?: string;
+  legacyClaims?: LegacyClaims;
 }
 
 export function chainAccountFor(ledgerId: string, names: ChainNames, db: DatabaseSync): string {
-  return isPlayer(ledgerId, db)
-    ? playerImplicitAccount(names.playerSecret, ledgerId)
-    : worldAccount(ledgerId, names.gameAccount);
+  if (!isPlayer(ledgerId, db)) return worldAccount(ledgerId, names.gameAccount);
+  const row = db.prepare('SELECT chain_public_key FROM accounts WHERE id = ?').get(ledgerId) as { chain_public_key: string | null } | undefined;
+  if (!row?.chain_public_key) throw new Error(`Player ${ledgerId} has no holder key; sign in to grant a session`);
+  const key = baseDecode(row.chain_public_key.replace(/^ed25519:/, ''));
+  if (!row.chain_public_key.startsWith('ed25519:') || key.length !== 32) throw new Error('Invalid player holder key');
+  const destination = Buffer.from(key).toString('hex');
+  const source = playerImplicitAccount(names.playerSecret,ledgerId);
+  if (names.contractId && legacyCaps(names.legacyClaims,names.contractId,source)) {
+    const claim = db.prepare('SELECT status FROM legacy_chain_claims WHERE contract=? AND holder=?').get(names.contractId,source) as {status:string}|undefined;
+    if (claim?.status !== 'settled' && names.claimHolder !== source) return source;
+  }
+  return destination;
 }
 
 /** The contract's `new` arguments: the server's own genesis split, on chain names. */

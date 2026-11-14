@@ -1,6 +1,9 @@
 import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { getAccessToken, PrivyProvider, useLogin, usePrivy } from '@privy-io/react-auth';
+import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-chains';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+import { claimGuestSession, grantSession } from './session-grants.js';
 import type { DrawingResult } from '../opening.js';
 import {
   postSession,
@@ -26,6 +29,8 @@ export interface LoginIslandProps {
 function LoginCard({ onSuccess, onOffline, copy }: LoginIslandProps) {
   const { ready, authenticated, user } = usePrivy();
   const sessionStarted = useRef(false);
+  const { createWallet } = useCreateWallet();
+  const { signRawHash } = useSignRawHash();
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +48,15 @@ function LoginCard({ onSuccess, onOffline, copy }: LoginIslandProps) {
         return;
       }
       const session = hasGameServer() ? await postSession(token!) : localSession(user!.id);
+      if (session.grantContracts?.length) {
+        const linked = user?.linkedAccounts.find(a => a.type === 'wallet' && a.chainType === 'near');
+        const address = linked?.type === 'wallet' ? linked.address : (await createWallet({ chainType: 'near' })).wallet.address;
+        await grantSession(token!, address, session.grantContracts, session.grantCaps ?? { CHROMA: '100000' }, async hash => {
+          const { signature } = await signRawHash({ address, chainType: 'near', hash: `0x${bytesToHex(hash)}` });
+          return hexToBytes(signature.replace(/^0x/, ''));
+        });
+        await claimGuestSession(token!, address, session.grantContracts, session.grantCaps ?? { CHROMA: "100000" });
+      }
       setStoredAuthToken(token);
       setStoredAccountId(session.accountId);
       onSuccess({
@@ -57,7 +71,7 @@ function LoginCard({ onSuccess, onOffline, copy }: LoginIslandProps) {
         : 'Sign-in could not be completed. Try again or continue offline.');
       setIsVerifying(false);
     }
-  }, [onSuccess, user?.id]);
+  }, [onSuccess, user, createWallet, signRawHash]);
 
   const { login } = useLogin({
     onComplete: () => {
