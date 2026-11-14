@@ -5,7 +5,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Point3 } from '../../../shared/src/world/ignis/coordinates.js';
 import { mineAt, SETTLEMENTS, waterHeight } from '../../../shared/src/world/ignis/ground.js';
-import { LAND_COUNT, LAND_TYPES, landAt, type LandType } from '../../../shared/src/world/ignis/land.js';
+import { LAND_COUNT, landAt, landDraw, type LandType } from '../../../shared/src/world/ignis/land.js';
 import { nationalRoadAt } from '../../../shared/src/world/ignis/routes.js';
 import { SETTLEMENT_PRECINCTS } from '../../../shared/src/world/ignis/settlements.js';
 import { seeded } from './builder.js';
@@ -131,8 +131,7 @@ export function createGroundCover(options: { ground(x: number, z: number): numbe
     mesh.setMatrixAt(slot, none);
     const y = ground(x - origin.x, z - origin.z);
     landAt(x, z, y + origin.y, 0, weights);
-    let land: LandType | null = null, left = typeRoll;
-    for (let i = 0; i < LAND_COUNT; i++) { left -= weights[i]!; if (left < 0) { land = LAND_TYPES[i]!; break; } }
+    const land: LandType | null = landDraw(weights, typeRoll);
     const cover = land && COVER[land];
     if (!cover || chance > cover.density) return;
     if (nationalRoadAt(x, z) !== null || mineAt(x, z).distance < 6) return;

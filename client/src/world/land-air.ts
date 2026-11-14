@@ -13,11 +13,11 @@ interface Air { rgb: readonly [number, number, number]; alpha: number; rise: num
  */
 export const AIR: Partial<Record<LandType, Air>> = {
   sulphur: { rgb: [0.96, 0.96, 0.9], alpha: 0.42, rise: 16, speed: 0.11, size: 10, density: 0.7 },
-  lava: { rgb: [0.1, 0.08, 0.08], alpha: 0.5, rise: 34, speed: 0.07, size: 16, density: 0.6 },
+  lava: { rgb: [0.1, 0.08, 0.08], alpha: 0.7, rise: 34, speed: 0.07, size: 18, density: 0.9 },
   burn: { rgb: [0.3, 0.28, 0.27], alpha: 0.2, rise: 12, speed: 0.05, size: 14, density: 0.2 },
-  ash: { rgb: [0.66, 0.6, 0.52], alpha: 0.17, rise: 3, speed: 0.045, size: 22, density: 0.35 },
-  slag: { rgb: [0.3, 0.22, 0.18], alpha: 0.22, rise: 5, speed: 0.05, size: 20, density: 0.35 },
-  black_sand: { rgb: [0.25, 0.23, 0.22], alpha: 0.16, rise: 4, speed: 0.05, size: 20, density: 0.2 },
+  ash: { rgb: [0.66, 0.6, 0.52], alpha: 0.3, rise: 3, speed: 0.045, size: 24, density: 0.55 },
+  slag: { rgb: [0.3, 0.22, 0.18], alpha: 0.36, rise: 5, speed: 0.05, size: 22, density: 0.55 },
+  black_sand: { rgb: [0.25, 0.23, 0.22], alpha: 0.24, rise: 4, speed: 0.05, size: 20, density: 0.3 },
   marsh: { rgb: [0.9, 0.93, 0.95], alpha: 0.26, rise: 1.5, speed: 0.03, size: 28, density: 0.8 },
   meadow: { rgb: [0.9, 0.93, 0.95], alpha: 0.16, rise: 1.5, speed: 0.03, size: 28, density: 0.35 },
   terrace: { rgb: [0.9, 0.93, 0.95], alpha: 0.2, rise: 1.5, speed: 0.03, size: 28, density: 0.5 },

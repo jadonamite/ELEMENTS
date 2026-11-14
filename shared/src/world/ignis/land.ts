@@ -94,6 +94,18 @@ export function landAt(x: number, z: number, height: number, slope: number, out:
   return lava * (0.15 + 0.85 * cracks);
 }
 
+/**
+ * One land type for a spot, drawn by weight with `roll` in 0..1. The weights are squared first, so a type owns its
+ * ground until close to a border and only a narrow band mixes. Plants and trees both draw from this.
+ */
+export function landDraw(weights: Float32Array, roll: number): LandType {
+  let total = 0;
+  for (let i = 0; i < LAND_COUNT; i++) total += weights[i]! * weights[i]!;
+  let left = roll * total;
+  for (let i = 0; i < LAND_COUNT; i++) { left -= weights[i]! * weights[i]!; if (left < 0) return LAND_TYPES[i]!; }
+  return dominantLand(weights);
+}
+
 /** The strongest land type in a weight set. */
 export function dominantLand(weights: Float32Array): LandType {
   let best = 0;
@@ -123,7 +135,8 @@ export function landColour(weights: Float32Array, glow: number, x: number, z: nu
   // Sulphur flats hold turquoise pools.
   const sulphur = weights[index.sulphur]!;
   if (sulphur > 0) {
-    const pool = sulphur * smooth(0.62, 0.72, landNoise(x, z, 60));
+    // Separate small pools with pale crust between them.
+    const pool = sulphur * smooth(0.66, 0.74, landNoise(x, z, 26) * 0.7 + landNoise(x + 131, z - 67, 9) * 0.3);
     r += (64 - r) * pool; g += (168 - g) * pool; b += (160 - b) * pool;
   }
   // Roads are worn pale, lighter than the land they cross, so they read from far off.

@@ -7,7 +7,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { IGNIS, LEGACY_SINDR_ORIGIN, type Point3 } from '../../../shared/src/world/ignis/coordinates.js';
 import { groundHeight, landDistance, mineAt, riverAt, SETTLEMENTS, waterHeight } from '../../../shared/src/world/ignis/ground.js';
-import { LAND_COUNT, LAND_TYPES, landAt, type LandType } from '../../../shared/src/world/ignis/land.js';
+import { LAND_COUNT, landAt, landDraw, type LandType } from '../../../shared/src/world/ignis/land.js';
 import { nationalRoadAt } from '../../../shared/src/world/ignis/routes.js';
 import { SETTLEMENT_PRECINCTS } from '../../../shared/src/world/ignis/settlements.js';
 import { seeded, type Part } from './builder.js';
@@ -81,8 +81,7 @@ export function nationalForestCell(ix: number, iz: number): readonly ForestSpot[
     const height = groundHeight(x, z);
     landAt(x, z, height, 0, weights);
     // A spot belongs to one land type, drawn by weight, so woods thin out across a border instead of stopping.
-    let land: LandType | null = null, left = typeRoll;
-    for (let i = 0; i < LAND_COUNT; i++) { left -= weights[i]!; if (left < 0) { land = LAND_TYPES[i]!; break; } }
+    const land: LandType | null = landDraw(weights, typeRoll);
     const growth = land && GROWTH[land];
     if (!land || !growth || chance > growth.density) continue;
     // Keep crowns, roots and collision out of cart shoulders, building precincts and the river reserve.
