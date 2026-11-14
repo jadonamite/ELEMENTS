@@ -72,16 +72,29 @@ export const PEAKS: Peak[] = [
 ];
 
 /** Ground people walk on that is not built by the town itself: the shrine, the roads, the outer zones. */
-export const WALKABLE = new Levels([
+const BUILT_GROUND: Area[] = [
   circleArea('shrine', 0, 0, 22),
   rectArea('shrine-road', { x0: 10, x1: 60, z0: -8, z1: 8 }),
   rectArea('cinder-row', { x0: 48, x1: 228, z0: -STREET.half, z1: STREET.half }),
   rectArea('north-plots', { x0: 48, x1: 228, z0: -21, z1: -STREET.half }),
   rectArea('south-quarter', { x0: 48, x1: 228, z0: STREET.half, z1: 56 }),
+];
+
+/** Legacy walking fixture; it never supplies default national ground. */
+export const WALKABLE = new Levels([
+  ...BUILT_GROUND,
   rectArea('gorge-road', { x0: 224, x1: 450, z0: -9, z1: 9 }),
   rectArea('slag-barrens', { x0: 450, x1: 680, z0: -110, z1: 110 }),
   rectArea('east-fort', { x0: 680, x1: 765, z0: -35, z1: 35 }),
 ]);
+
+/** Built earth only. The national field supplies all ground beyond this envelope. */
+export function sindrGround(townAreas: Area[], legacyEast = false): Levels {
+  return new Levels([
+    ...(legacyEast ? WALKABLE.areas : BUILT_GROUND),
+    ...townAreas,
+  ]);
+}
 
 const EAST = Math.PI / 2, WEST = -Math.PI / 2;
 /** The lane from Cinder Row south to the Great Forge, between the west houses and the market's first shop. */

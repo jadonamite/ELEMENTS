@@ -4,10 +4,12 @@ import {
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
-  CircleGeometry,
   Color,
+  CircleGeometry,
+  DepthTexture,
   DirectionalLight,
   EdgesGeometry,
+  FloatType,
   FogExp2,
   Group,
   HalfFloatType,
@@ -26,6 +28,7 @@ import {
   Vector2,
   Vector3,
   WebGLRenderer,
+  WebGLRenderTarget,
   type Material,
   type MeshStandardMaterial,
 } from 'three';
@@ -46,14 +49,28 @@ import type { PhysicsWorld } from '../physics.js';
 import { cellLods, createAoMaterial, WorldBuilder, type Browse, type Bucket, type Part, type Post } from './builder.js';
 import { skyUniforms, WorldClock } from './clock.js';
 import { createEmbers, createFires, createForgeMaterial, createLavaMaterial, createPaperMaterial, createSmoke, createWaterMaterial, createWetMaterial, createWindowMaterial, LightPool, nightness, STEAM, worldTime } from './effects.js';
-import { createSky, fieldMesh, heightAt, sampleField, slopeBlend } from './landscape.js';
+import { createSky, surfaceAt, slopeBlend } from './landscape.js';
+import { createNationalForest } from './national-forest.js';
+import { createGroundCover } from './ground-cover.js';
+import { createLandAir } from './land-air.js';
+import { TerrainStream } from './terrain-stream.js';
+import { SettlementStream } from './settlements.js';
+import { NationalQuarryStream } from './national-quarry.js';
+import { NationalWaterworksStream } from './national-waterworks.js';
+import { nationalRoadChunks, nationalRoadMesh } from './national-roads.js';
+import { mineRoadMesh, nationalView, terrainAir } from './national-view.js';
+import { createLandMap } from './land-map.js';
+import { MINE_LENGTH, MINE_MAX_GRADE, minePointAt, VOLCANO, waterHeight } from '../../../shared/src/world/ignis/ground.js';
+import { LEGACY_SINDR_ORIGIN as ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
+import { waterAt } from '../../../shared/src/world/ignis/market-slice.js';
 import { LOOKS, SurfaceLibrary, worldUv, type Surface } from './materials.js';
-import { buildSindr, PEAKS, WALKABLE } from './sindr.js';
+import { buildSindr, sindrGround, SPAWN } from './sindr.js';
 import { createPlants } from './trees.js';
 import { addTownPhysics } from './town-physics.js';
 import { installHaze } from './haze.js';
 import { warm } from './warmup.js';
 import { buildGorge } from './gorge.js';
+import { buildWildLands } from './wild-lands.js';
 import { buildBarrens } from './barrens.js';
 import { buildFort } from './fort.js';
 import { buildRoofTestRow } from './roof-test.js';
@@ -82,6 +99,7 @@ export interface Zone {
   surfaceAt(x: number, y: number, z: number): Surface;
   /** The point the shadows and the nearest lights follow, usually the hero. */
   follow(point: Vector3): void;
+  groundStep(controller: { position: Vector3; place(x: number, y: number, z: number): void }): boolean;
   setSize(width: number, height: number): void;
   render(): void;
   dispose(): void;
@@ -114,7 +132,10 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const debug = params.has('debug');
   const clock = new WorldClock(params);
   installHaze();
-  const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  // One camera sees from the hero's feet to the far coast, so depth is reversed and stored as a float: precision then
+  // holds at 0.1 m and at 20 km alike. Without EXT_clip_control three keeps the standard buffer, whose precision is set
+  // by the near plane, not the far one, so the same 26 km camera still works, coarser at the horizon.
+  const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', reversedDepthBuffer: true });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.35;
@@ -127,11 +148,10 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const scene = new Scene();
   const fog = new FogExp2(0x2e2a32, 0.0042);
   scene.fog = fog;
-  const camera = new PerspectiveCamera(balance.camera.fov, 1, balance.camera.near, 2600);
+  const camera = new PerspectiveCamera(balance.camera.fov, 1, balance.camera.near, 26000);
 
   // Sky first: it also lights the town through a prefiltered environment map.
-  const sky = createSky();
-  scene.add(sky);
+
   const pmrem = new PMREMGenerator(renderer);
   const skyScene = new Scene();
   skyScene.add(createSky());
@@ -198,38 +218,93 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   // scratch build first, so the terrain is shaped to them before they are built.
   const townAreas = buildSindr(new WorldBuilder());
   const styleAreas = style ? buildStyleStreet(style, new WorldBuilder()) : [];
-  const walkable = WALKABLE.with([...townAreas, ...(terraceTest ? terraceTestAreas() : []), ...styleAreas]);
-  const ground = (x: number, z: number): number => heightAt(x, z, walkable, PEAKS);
-
-  // Near land: walkable flats, banks and hills, matched by a physics heightfield spanning the entire nation.
-  const near = sampleField(340, -10, 1020, 500, low ? 4 : 3, ground);
-  const terrainMat = slopeBlend(lib.get('ash_cinder_ground'), lib.get('basalt_rock_face'));
-  const terrain = fieldMesh(near, terrainMat);
-  terrain.name = 'terrain';
-  scene.add(terrain);
-
-  // Far ranges and the volcano, coarse and lost in the haze.
-  const volcano = { x: 380, z: -720, radius: 260, height: 330 };
-  const far = sampleField(340, -10, 3600, 3600, low ? 45 : 30, (x, z) => {
-    const inner = Math.max(Math.abs(x - 340) / 480, Math.abs(z + 10) / 230);
-    const edge = Math.min(1, Math.max(0, (inner - 1) / 0.6));
-    const range = edge * (60 + 120 * Math.pow(Math.max(0, Math.sin(x * 0.004 + 1.3) * Math.cos(z * 0.003)), 2))
-      * (0.5 + heightAt(x * 0.7 + 900, z * 0.7 + 900, { distance: () => 80 }, []) / 50);
-    const r = Math.hypot(x - volcano.x, z - volcano.z) / volcano.radius;
-    const cone = r < 1 ? volcano.height * (1 - Math.pow(r, 0.85)) - (r < 0.12 ? (0.12 - r) * 500 : 0) : 0;
-    return Math.max(range, cone, -5) - (inner < 1 ? 30 : 0);
+  const legacyEast = params.has('legacyEast');
+  const built = sindrGround([...townAreas, ...(terraceTest ? terraceTestAreas() : []), ...styleAreas], legacyEast);
+  const ground = (x: number, z: number): number => surfaceAt(x, z, built);
+  const landMap = createLandMap();
+  const terrainMat = terrainAir(slopeBlend(lib.get('ash_cinder_ground'), lib.get('basalt_rock_face'), landMap), fog);
+  const stream = new TerrainStream(world, ground, scene, terrainMat, low);
+  stream.initialize(SPAWN.x, SPAWN.z);
+  stream.startWorker({
+    x0: Math.min(...built.areas.map(a => a.bounds.x0)), x1: Math.max(...built.areas.map(a => a.bounds.x1)),
+    z0: Math.min(...built.areas.map(a => a.bounds.z0)), z1: Math.max(...built.areas.map(a => a.bounds.z1)),
   });
-  const farMesh = fieldMesh(far, terrainMat);
-  farMesh.castShadow = false;
-  farMesh.name = 'far';
-  scene.add(farMesh);
+  const national = nationalView(ground, terrainMat, low, fog);
+  scene.add(national.group);
+  const residentCells = [stream.near.cells, stream.mid.cells];
+  const roadMaterial = terrainAir(lib.get('packed_dirt_road'), fog);
+  // Road ribbons carry no vertex colours; reading the missing attribute draws them black.
+  roadMaterial.vertexColors = false;
+  scene.add(mineRoadMesh(roadMaterial));
+  const nationalRoadGroup = new Group(); nationalRoadGroup.name = 'ignis-national-roads'; scene.add(nationalRoadGroup);
+  const routeChunks = nationalRoadChunks();
+  const chunksByCell = new Map<string, typeof routeChunks[number][]>();
+  for (const chunk of routeChunks) for (const key of chunk.cells) {
+    const list = chunksByCell.get(key);
+    if (list) list.push(chunk); else chunksByCell.set(key, [chunk]);
+  }
+  const residentRoads = new Map<string, Mesh>();
+  const updateNationalRoads = (cells: ReadonlyMap<string, unknown>): void => {
+    const wanted = new Set<string>();
+    for (const key of cells.keys()) for (const chunk of chunksByCell.get(key) ?? []) wanted.add(chunk.id);
+    for (const id of wanted) if (!residentRoads.has(id)) {
+      const chunk = routeChunks.find(candidate => candidate.id === id);
+      if (!chunk) continue;
+      const mesh = nationalRoadMesh(chunk, roadMaterial, ORIGIN);
+      nationalRoadGroup.add(mesh); residentRoads.set(id, mesh);
+    }
+    for (const [id, mesh] of residentRoads) if (!wanted.has(id)) {
+      nationalRoadGroup.remove(mesh); mesh.geometry.dispose(); residentRoads.delete(id);
+    }
+  };
+  updateNationalRoads(stream.near.cells);
+  const turning = new Mesh(new CircleGeometry(22, 40).rotateX(-Math.PI / 2), roadMaterial);
+  turning.position.set(10500 - ORIGIN.x, 740 - ORIGIN.y + 0.08, 7000 - ORIGIN.z); turning.name = 'cinderpit-turning-area'; scene.add(turning);
+  const nationalForest = await createNationalForest({ renderer, bark: lib.get('charred_timber_beams'), low, fog, world, origin: ORIGIN });
+  scene.add(nationalForest.group);
+  nationalForest.update(stream.near.cells, stream.mid.cells, SPAWN);
+  const cover = createGroundCover({ ground, origin: ORIGIN, low }); scene.add(cover.mesh);
+  const landAir = createLandAir({ ground, origin: ORIGIN, low }); scene.add(landAir.points);
+  const map = {
+    ready: false, groundAt: ground,
+    road: { lengthKm: MINE_LENGTH / 1000, pointAt(s: number) {
+      const p = minePointAt(s); return { x: p.x - ORIGIN.x, y: p.y - ORIGIN.y, z: p.z - ORIGIN.z };
+    } },
+    maxGrade: MINE_MAX_GRADE,
+    forest: { get count() { return nationalForest.stats.stems; } },
+    get cells() { return { near: stream.near.cells.size, mid: stream.mid.cells.size, far: national.visible }; },
+    get streamIdle() { return stream.idle; },
+    far: national.stats, timing: stream.timing, streamStatus: stream.status,
+    prepare: (x: number, z: number) => stream.prepare(x, z),
+    waterAt(x: number, z: number) {
+      return waterAt(x, z)?.surface ?? ((waterHeight(x + ORIGIN.x, z + ORIGIN.z) ?? NaN) - ORIGIN.y);
+    },
+    probeClear(x: number, y: number, z: number, dx: number, dz: number, distance: number): boolean {
+      const length = Math.hypot(dx, dz); if (!length) return false;
+      dx /= length; dz /= length;
+      // The fixed physics query includes terrain and town geometry, never character bodies.
+      const hit = world.castRay(new RAPIER.Ray({ x, y, z }, { x: dx, y: 0, z: dz }), distance, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+      if (hit) return false;
+      for (let d = 0; d <= distance; d += 0.5) if (ground(x + dx * d, z + dz * d) >= y) return false;
+      return true;
+    },
+    sightClear(x: number, y: number, z: number, tx: number, ty: number, tz: number): boolean {
+      const dx = tx - x, dy = ty - y, dz = tz - z, length = Math.hypot(dx, dy, dz);
+      const hit = world.castRay(new RAPIER.Ray({ x, y, z }, { x: dx / length, y: dy / length, z: dz / length }), length - 5, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+      if (hit) return false;
+      for (let t = 0.002; t < 0.998; t += 0.002) if (ground(x + dx * t, z + dz * t) > y + dy * t) return false;
+      return true;
+    },
+    volcano: { x: VOLCANO.x - ORIGIN.x, y: VOLCANO.height - ORIGIN.y, z: VOLCANO.z - ORIGIN.z },
+  };
+  // Debug only: the frame is built from these three layers, so a review can show and hide each one.
+  if (debug) Object.assign(win.elements!, { map, layers: { town: scene, far: national.group, near: stream.near.batch, mid: stream.mid.batch } });
+  if (debug) Object.assign(map, { nationalForest, cover, landAir });
 
   // The town.
   const builder = new WorldBuilder({ low });
   buildSindr(builder);
-  buildGorge(builder);
-  buildBarrens(builder);
-  buildFort(builder);
+  if (legacyEast) { buildGorge(builder); buildBarrens(builder); buildFort(builder); } else buildWildLands(builder);
   if (new URLSearchParams(window.location.search).has('roofTest')) {
     buildRoofTestRow(builder);
   }
@@ -239,48 +314,63 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     window: createWindowMaterial(), forge: createForgeMaterial(), lava: createLavaMaterial(), ao: createAoMaterial(),
     wet: createWetMaterial(), water: createWaterMaterial(), fresh_water: createWaterMaterial('fresh'), paper: createPaperMaterial(),
   };
+  const settlements = new SettlementStream(world, bucket => glows[bucket] ?? lib.get(bucket as Surface), low);
+  scene.add(settlements.group);
+  settlements.update(stream.near.cells);
+  if (debug) Object.assign(map, { settlements });
+  const quarry = new NationalQuarryStream({ world, material: bucket => glows[bucket] ?? lib.get(bucket as Surface), low, origin: ORIGIN, height: ground });
+  scene.add(quarry.group);
+  quarry.update(stream.near.cells);
+  if (debug) Object.assign(map, { quarry });
+  const waterworks = new NationalWaterworksStream(world, bucket => glows[bucket] ?? lib.get(bucket as Surface), low);
+  scene.add(waterworks.group);
+  waterworks.update(stream.near.cells);
+  if (debug) Object.assign(map, { waterworks });
   const town = builder.build((bucket: Bucket) => glows[bucket] ?? lib.get(bucket as Surface));
   scene.add(town);
-  addTownPhysics(world, near, builder.colliders, builder.shells);
+  addTownPhysics(world, null, builder.colliders, builder.shells);
   if (params.has('debug') && params.has('showColliders')) scene.add(colliderLines(builder.colliders));
   world.step();
 
-  // The volcano's crater glow and plume.
-  const crater = new Mesh(new CircleGeometry(30, 24).rotateX(-Math.PI / 2), glows.lava);
-  crater.position.set(volcano.x, volcano.height - 50, volcano.z);
-  scene.add(crater);
-
   const fires = createFires(builder.fires);
-  const smokeSources = [...builder.chimneys, new Vector3(volcano.x, volcano.height - 40, volcano.z)];
-  const smoke = createSmoke(smokeSources, low ? 6 : 10);
+  const smoke = createSmoke(builder.chimneys, low ? 6 : 10);
   const embers = createEmbers(builder.embers, low ? 6 : 14);
   const steam = createSmoke(builder.steam, low ? 4 : 7, STEAM);
   scene.add(fires, smoke, embers, steam);
   scene.add(createPlants(builder.plants, lib.get('charred_timber_beams'), low));
-  const plume = createSmoke(Array.from({ length: 8 }, (_, i) => new Vector3(volcano.x + (i - 4) * 12, volcano.height - 60, volcano.z)), 8);
-  plume.scale.setScalar(1);
-  (plume.material as unknown as { uniforms: Record<string, { value: unknown }> }).uniforms.uColor!.value = new Color(0x1a1614);
-  scene.add(plume);
 
   const pool = new LightPool(scene, builder.emitters, low ? 2 : 3);
 
   // Kit models placed as instances, one draw call per model part.
   // Entry waits for every level and surface before warming the completed scene.
   const props = new Group();
-  const ready = Promise.all([loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron')), lib.ready()])
-    .then(() => { scene.add(props); });
+  const ready = Promise.all([loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron')), lib.ready(), national.ready, landMap.ready])
+    .then(() => { scene.add(props); map.ready = true; });
 
-  // Post: sanitize first (stops NaN black frames), bloom for fire and slag, grade, then anti-aliasing.
-  const composer = new EffectComposer(renderer);
-  composer.renderTarget1.texture.type = HalfFloatType;
-  composer.renderTarget2.texture.type = HalfFloatType;
+  // Post: sanitize first (stops NaN black frames), bloom only for what is brighter than sunlit ground (fire, lava, slag), grade, then anti-aliasing.
+  // One pass draws the town, the streamed cells and the national view with one camera into a float depth buffer.
+  const depthTexture = new DepthTexture(1, 1, FloatType);
+  const composer = new EffectComposer(renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthTexture }));
   composer.addPass(new RenderPass(scene, camera));
   /** Readies an object to draw the way the scene pass draws it, before it first shows. */
-  const warmUp = (object: Object3D, onProgress?: (fraction: number) => void): Promise<void> =>
-    warm(renderer, scene, camera, object, composer.renderTarget1, onProgress);
+  // Lazy model detail warms against matching lights without redrawing the live town for each arriving model.
+  const warmUp = (object: Object3D, onProgress?: (fraction: number) => void): Promise<void> => {
+    if (object === scene) return warm(renderer, scene, camera, scene, composer.renderTarget1, onProgress);
+    const modelWarmScene = new Scene(); modelWarmScene.fog = fog;
+    modelWarmScene.environment = scene.environment; modelWarmScene.environmentIntensity = scene.environmentIntensity;
+    for (const child of scene.children) if ('isLight' in child) modelWarmScene.add(child.clone());
+    return warm(renderer, modelWarmScene, camera, object, composer.renderTarget1, onProgress).finally(() => {
+      for (const light of modelWarmScene.children) {
+        const shadow = (light as DirectionalLight).shadow;
+        shadow?.map?.dispose(); shadow?.mapPass?.dispose();
+      }
+      modelWarmScene.clear();
+    });
+  };
   composer.addPass(new ShaderPass(SANITIZE_SHADER));
-  const bloom = new UnrealBloomPass(new Vector2(640, 360), 0.55, 0.6, 0.85);
+  const bloom = new UnrealBloomPass(new Vector2(640, 360), 0.55, 0.6, 1.05);
   composer.addPass(bloom);
+  if (debug) Object.assign(win.elements!, { post: { bloom }, terrainMat });
   composer.addPass(new ShaderPass(GRADE_SHADER));
   composer.addPass(new OutputPass());
   const aa = low ? new FXAAPass() : new SMAAPass();
@@ -292,13 +382,24 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   return {
     scene, camera, renderer, clock, ready, posts: builder.posts, browse: builder.browse,
-    surfaceAt: (x, y, z) => builder.treads.at(x, y, z) ?? 'ash_cinder_ground',
+    surfaceAt: (x, y, z) => waterworks.surfaceAt(x, y, z) ?? quarry.surfaceAt(x, y, z) ?? settlements.surfaceAt(x, y, z) ?? builder.treads.at(x, y, z) ?? 'ash_cinder_ground',
     sounds: {
       market: [...builder.browse, ...builder.posts.filter(post => post.kind === 'keeper')].map(spot => new Vector3(spot.x, spot.y, spot.z)),
       forge: builder.posts.filter(post => post.kind === 'smith').map(post => new Vector3(post.x, post.y, post.z)),
     },
     physics: { world, step: () => world.step(), dispose: () => world.free() },
     follow(point) { followed = point; },
+    groundStep(controller) {
+      const ready = stream.guard(controller);
+      settlements.update(stream.near.cells);
+      quarry.update(stream.near.cells);
+      waterworks.update(stream.near.cells);
+      updateNationalRoads(stream.near.cells);
+      nationalForest.update(stream.near.cells, stream.mid.cells, controller.position);
+      cover.update(controller.position);
+      landAir.update(controller.position);
+      return ready;
+    },
     warm: warmUp,
     setSize(w, h) {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
@@ -325,10 +426,17 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       // Debug only: a fixed photographer's camera for comparison shots (window.elementsShotCam = [px, py, pz, tx, ty, tz]).
       const shot = debug ? (window as unknown as { elementsShotCam?: number[] }).elementsShotCam : undefined;
       if (shot && shot.length === 6) { camera.position.set(shot[0]!, shot[1]!, shot[2]!); camera.lookAt(shot[3]!, shot[4]!, shot[5]!); }
-      sky.position.copy(camera.position);
+      camera.updateMatrixWorld(); national.update(camera, residentCells);
+      national.sky.position.copy(camera.position);
       composer.render();
     },
     dispose() {
+      settlements.dispose();
+      quarry.dispose();
+      waterworks.dispose();
+      for (const mesh of residentRoads.values()) mesh.geometry.dispose();
+      residentRoads.clear(); nationalRoadGroup.removeFromParent();
+      landMap.dispose(); nationalForest.dispose(); cover.dispose(); landAir.dispose(); stream.dispose(); national.dispose(); roadMaterial.dispose(); terrainMat.dispose();
       pool.dispose();
       composer.dispose();
       lib.dispose();

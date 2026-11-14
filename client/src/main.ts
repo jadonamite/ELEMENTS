@@ -40,6 +40,7 @@ import { talkToAgent } from './economy/api.js';
 import { ContextAction } from './ui/context-action.js';
 import { StreetChallenges } from './life/street-challenges.js';
 import { nightness } from './world/effects.js';
+import { NationalEncounterManager } from './world/national-encounters.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
 import { NationIntroFlow } from './story/nation-intro-flow.js';
@@ -53,6 +54,7 @@ import type { Quarry } from './enemy.js';
 import { CombatSpace } from './attacks/space.js';
 import { hasGameServer } from './auth/server-api.js';
 import type { OnlineSession } from './net/online.js';
+import { LEGACY_SINDR_ORIGIN, regionFor, SINDR_SPAWN, toGlobal } from '../../shared/src/index.js';
 import type { NetEnemy } from './net/puppets.js';
 import { isTownMode } from './world-mode.js';
 import './controls/controls.css';
@@ -201,7 +203,7 @@ async function main(): Promise<void> {
   let lifeSystem: SindrLifeSystem | null = null;
   let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, surfaceAt: zone?.surfaceAt, sounds: zone?.sounds, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; }, locomotion: { get turnInPlace() { return turnInPlace; }, set turnInPlace(v: boolean) { turnInPlace = v; } } } });
+  if (fps) Object.assign(window, { elements: { ...(window as unknown as { elements?: object }).elements, hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, surfaceAt: zone?.surfaceAt, sounds: zone?.sounds, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; }, locomotion: { get turnInPlace() { return turnInPlace; }, set turnInPlace(v: boolean) { turnInPlace = v; } } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -380,6 +382,19 @@ async function main(): Promise<void> {
         shoulderCamera.killCloseUp();
       }
     },
+    monsterHit(hound, killed, damage, at, weakSpot, elemental) {
+      bend.gain('hit');
+      hitStop = killed ? 0.12 : 0.06;
+      shoulderCamera.shake(killed ? 0.35 : 0.14);
+      sound.playImpact(killed, false);
+      if (elemental) bending.spawnHitBurst(at, heroElement);
+      else bending.spawnImpact(at, sword.armed);
+      fightHud.showDamage(at, damage, weakSpot);
+      if (killed) {
+        townEconomy?.enemyKilled('kind' in hound ? hound.kind : 'ember_hound', hound.position.clone(), 'IGNIS');
+        markKill(fight.allDead);
+      }
+    },
     roundStarted(roundNumber, villainCount) {
       fightHud.say(`Round ${roundNumber} — ${villainCount} ${villainCount === 1 ? 'Villain' : 'Villains'}`);
       setTimeout(() => {
@@ -405,6 +420,10 @@ async function main(): Promise<void> {
   const startRound = Number(new URLSearchParams(window.location.search).get('round'));
   if (startRound > 1) fight.setRound(startRound);
   if (zone) { fight.stopWaves(); fightHud.say(''); }
+  const nationalEncounters = zone && !playingOnline && !params.has('legacyEast')
+    ? new NationalEncounterManager(fight, physics.world, renderer, true, params.get('ambush'), (msg) => notice(msg))
+    : null;
+  cleanup.push(() => nationalEncounters?.dispose());
   let yardSpawned = false;
   if (zone) {
     loader.setProgress(0.70, 'Waking the crowd');
@@ -536,6 +555,7 @@ async function main(): Promise<void> {
       });
       robberGang.bindWorld(scene, physics.world, template);
 
+      if (params.has('legacyEast')) {
       deserterBand = new ClientDeserterBand({
         onAlert: (msg) => notice(msg),
         onSpawnEnemy: (enemy) => fight.add(enemy),
@@ -545,6 +565,7 @@ async function main(): Promise<void> {
         },
       });
       deserterBand.bindWorld(scene, physics.world, template);
+      }
     }).catch(console.error);
   }
   /** Auto-realigns hero facing toward target and glides closer to prevent whiffs on combos and openers. */
@@ -1069,6 +1090,15 @@ async function main(): Promise<void> {
     const lagMs = Number(new URLSearchParams(window.location.search).get('lag')) || 0;
     online.OnlineSession.connect({
       scene, camera, world: physics.world, controller, hero, combat,
+      networkOrigin: LEGACY_SINDR_ORIGIN,
+      onPosition(position) {
+        const delta = new Vector3(position.x, position.y, position.z).sub(controller.position);
+        controller.place(position.x, position.y, position.z);
+        hero.model.position.copy(controller.position);
+        camera.position.add(delta);
+        shoulderCamera.target.add(delta);
+      },
+      onRegion(region) { canvas.dataset.networkRegion = region.id; },
       kit: () => fight.kit,
       alive: () => fight.heroAlive,
       isLit: () => isLit,
@@ -1106,7 +1136,11 @@ async function main(): Promise<void> {
       onOutfit: (outfit) => { void hero.switchOutfit(parseOutfit(outfit)); },
       clock: zone?.clock,
     }, {
-      server: getServerUrl(), zone: inTown ? 'sindr' : 'arena', token: getStoredAuthToken(),
+      server: getServerUrl(),
+      zone: inTown && !params.has('legacyEast')
+        ? regionFor(toGlobal({ x: SINDR_SPAWN.x, y: 0, z: SINDR_SPAWN.z }, LEGACY_SINDR_ORIGIN)).id
+        : inTown ? 'sindr' : 'arena',
+      token: getStoredAuthToken(),
       element: kitElement, role: isDim ? 'Hush' : 'Shaper', lag: lagMs / 1000,
       forcedCarry: forcedCarry ?? undefined,
       night: params.has('night') ? Number(params.get('night')) : undefined,
@@ -1264,6 +1298,7 @@ async function main(): Promise<void> {
         shoulderCamera.yaw = SPAWN.facing + Math.PI;
       }
     }
+    if (!picking) nationalEncounters?.update(delta, controller.position, nightness.value);
     if (zone) {
       const yardDist = Math.hypot(controller.position.x - 124, controller.position.z - -36);
       if (!playingOnline && yardDist < 12 && !yardSpawned && fight.enemies.filter(e => e.alive).length === 0) {
@@ -1327,6 +1362,7 @@ async function main(): Promise<void> {
     heroView.facing = controller.facing;
     const rooted = combat.current !== null || combat.blocking;
     const speedMultiplier = (isLit ? 1.25 : 1.0) * (bend.windskiffActive ? 1.85 : 1.0);
+    const groundReady = zone?.groundStep(controller) ?? true;
     // Locked on, the body keeps its chest to the target while the feet carry it any way.
     const lockAt = shoulderCamera.lockTarget;
     const facingLock = lockAt
@@ -1337,7 +1373,7 @@ async function main(): Promise<void> {
       const stopAt = fightingStyle === 'weapon' ? balance.combat.lungeStopDistance : balance.combat.bareLungeStopDistance;
       const stop = combat.current !== 'dodge' && fight.nearestDistance(controller.position) < stopAt;
       const lunge = stop ? 0 : combat.lunge;
-      controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge, speedMultiplier,
+      if (groundReady && !onlineSession?.crossing) controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge, speedMultiplier,
         undefined, rooted ? undefined : facingLock);
       if (!picking) fight.step(heroView, combat, isLit);
       // Every body has moved for this tick; the world steps once.

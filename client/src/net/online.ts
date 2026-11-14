@@ -1,7 +1,7 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { type Camera, type Scene, Vector3 } from 'three';
 import balance from '../../../shared/balance.json';
-import { createCombatRules, type CombatBalance, type Kit, type MoveId } from '../../../shared/src/index.js';
+import { createCombatRules, LEGACY_SINDR_ORIGIN, regionFor, toGlobal, toLocal, type Point3, type Region, type CombatBalance, type Kit, type MoveId } from '../../../shared/src/index.js';
 import {
   enemyFromTuple, MOVE_HZ, playerFromTuple, ServerClock,
   type ClockMsg, type EnemyDiedMsg, type EnemyHitMsg, type HitResultMsg, type HurtMsg, type MoveMsg, type PongMsg, type SnapMsg, type TrackDelay, type WelcomeMsg,
@@ -13,6 +13,7 @@ import type { HeroInstance } from '../hero.js';
 import type { HoundTemplate } from '../monsters/hound.js';
 import { NetEnemy, RemotePlayer, type PuppetTemplate } from './puppets.js';
 import { RoomLink } from './wire.js';
+import { adjacentNetworkRegions, finitePoint, networkRegion } from './regions.js';
 
 const rules = createCombatRules(balance.combat as unknown as CombatBalance);
 /** Moves that land all round the fighter rather than in front. */
@@ -22,6 +23,12 @@ const ARC = 1.4;
 
 /** What the game hands the online session. All of it is read, never replaced. */
 export interface OnlineGame {
+  /** National metres represented by scene coordinate zero. Fixed for this session. */
+  networkOrigin?: Point3;
+  /** Place the local controller, interpolation history, hero and camera after authority corrections. */
+  onPosition?: (position: Point3) => void;
+  /** Room ownership changed; this does not shift the scene origin. */
+  onRegion?: (region: Region) => void;
   scene: Scene;
   camera: Camera;
   world: RAPIER.World;
@@ -73,6 +80,20 @@ export class OnlineSession {
   readonly notices: string[] = [];
   /** Hit verdicts from the server, newest last, for tests and the debug view. */
   readonly verdicts: HitResultMsg[] = [];
+  private region: Region | null = null;
+  private ready = false;
+  private sourceAttached = true;
+  private disposed = false;
+  private pending: { zone: string; until: number; joining: boolean } | null = null;
+  private readonly usedTokens = new Set<string>();
+  private readonly handlers = new Map<string, Array<(message: unknown) => void>>();
+  private readonly origin: Point3;
+  private authoritative: Point3 | null = null;
+  private readonly timers = new Set<ReturnType<typeof setTimeout>>();
+  private targetLink: RoomLink | null = null;
+  /** Movement pauses while the server freezes the source player for transfer. */
+  get crossing(): boolean { return this.pending !== null || (!!this.region && !this.ready); }
+  get zone(): string { return this.region?.id ?? this.options.zone; }
   private sendIn = 0;
   private lastLocal = performance.now() / 1000;
   private lastFrame = -1;
@@ -86,39 +107,36 @@ export class OnlineSession {
   private readonly restoreRender: Scene['onBeforeRender'];
   private readonly hudRoot: HTMLElement;
 
-  private constructor(private readonly link: RoomLink, private readonly game: OnlineGame) {
+  private constructor(private link: RoomLink, private readonly game: OnlineGame, private readonly options: OnlineOptions) {
+    this.origin = { ...(game.networkOrigin ?? LEGACY_SINDR_ORIGIN) };
+    this.bindClose(link);
     this.hudRoot = document.getElementById('fight-hud') ?? document.body;
-    link.on('welcome', (m) => {
-      const w = m as WelcomeMsg;
-      this.you = w.you;
-      if (typeof w.tier === 'number') game.onTier?.(w.tier);
-      if (typeof w.outfit === 'string') game.onOutfit?.(w.outfit);
-    });
-    link.on('pong', (m) => {
+    this.on('welcome', (m) => this.welcome(m));
+    this.on('pong', (m) => {
       const p = m as PongMsg;
       this.clock.sample(p.c, performance.now() / 1000, p.t);
     });
-    link.on('snap', (m) => this.applySnapshot(m as SnapMsg));
-    link.on('left', (m) => this.dropPlayer((m as { id: string }).id));
-    link.on('notice', (m) => {
+    this.on('snap', (m) => this.applySnapshot(m as SnapMsg));
+    this.on('left', (m) => this.dropPlayer((m as { id: string }).id));
+    this.on('notice', (m) => {
       const text = (m as { text?: unknown }).text;
       if (typeof text === 'string') {
         this.notices.push(text);
         this.game.onNotice?.(text) ?? this.game.onStatus?.(text);
       }
     });
-    link.on('clock', (m) => {
+    this.on('clock', (m) => {
       const c = m as ClockMsg;
       if (typeof c.minute === 'number') {
         this.game.clock?.setMinute?.(c.minute, c.speed);
       }
     });
-    link.on('hit_result', (m) => {
+    this.on('hit_result', (m) => {
       const r = m as HitResultMsg;
       this.verdicts.push(r);
       if (this.verdicts.length > 50) this.verdicts.shift();
     });
-    link.on('enemy_hit', (m) => {
+    this.on('enemy_hit', (m) => {
       const h = m as EnemyHitMsg;
       const e = this.enemies.get(h.e);
       if (!e) return;
@@ -126,16 +144,25 @@ export class OnlineSession {
       e.struck();
       if (h.by === this.you) game.onMyHit?.(e.model.position.clone().setY(e.model.position.y + 1), h.d, h.hp <= 0);
     });
-    link.on('enemy_died', (m) => {
+    this.on('enemy_died', (m) => {
       const d = m as EnemyDiedMsg;
       const e = this.enemies.get(d.e);
       if (e) e.view = { ...e.view, hp: 0, state: 'dead' };
     });
-    link.on('hurt', (m) => {
+    this.on('hurt', (m) => {
       const h = m as HurtMsg;
       game.onHurt?.(h.hp, h.max, h.d);
     });
-    link.onClose = () => game.onStatus?.('Disconnected from the world server');
+    this.on('correct', (m) => {
+      if (this.region && finitePoint(m)) this.place(this.fromNetwork(m));
+    });
+    this.on('region_handoff', (m) => { void this.handoff(m); });
+    this.on('region_refused', () => {
+      if (this.pending?.joining) return;
+      this.pending = null;
+      if (this.authoritative) this.place(this.authoritative);
+      game.onStatus?.('Crossing refused. You remain in the source region.');
+    });
     // Draw remote bodies just before each render, after the hero has moved this frame.
     this.restoreRender = game.scene.onBeforeRender;
     const previous = game.scene.onBeforeRender;
@@ -153,11 +180,14 @@ export class OnlineSession {
 
   /** Joins the zone's room. Throws when the server can't be reached or refuses. */
   static async connect(game: OnlineGame, opts: OnlineOptions): Promise<OnlineSession> {
-    const link = await RoomLink.join(
+    if (opts.zone.startsWith('ignis:') && (!networkRegion(opts.zone) || !opts.token || !game.onPosition)) {
+      throw new Error('National travel requires sign-in, a valid region and controller placement');
+    }
+    const join = (zone: string): Promise<RoomLink> => RoomLink.join(
       opts.server,
       'zone',
       {
-        zone: opts.zone,
+        zone,
         element: opts.element,
         role: opts.role,
         forcedCarry: opts.forcedCarry,
@@ -167,15 +197,192 @@ export class OnlineSession {
       opts.token,
       { delay: opts.lag ?? 0 },
     );
-    const session = new OnlineSession(link, game);
+    let link: RoomLink;
+    try {
+      link = await join(opts.zone);
+    } catch (error: unknown) {
+      const resume = error instanceof Error ? /^Resume in (ignis:region:[0-9]+:[0-9]+:-?[0-9]+)$/.exec(error.message)?.[1] : undefined;
+      if (!opts.token || !networkRegion(opts.zone) || !resume || !networkRegion(resume) || resume === opts.zone) throw error;
+      // The authenticated server selects the remembered room; its welcome owns the position.
+      link = await join(resume);
+    }
+    const session = new OnlineSession(link, game, opts);
     if (opts.trackDelay !== undefined) session.trackDelay = opts.trackDelay;
-    for (let i = 0; i < 5; i++) setTimeout(() => session.ping(), i * 120);
+    for (let i = 0; i < 5; i++) session.later(() => session.ping(), i * 120);
     return session;
+  }
+
+  private later(fn: () => void, milliseconds: number): void {
+    const timer = setTimeout(() => { this.timers.delete(timer); if (!this.disposed) fn(); }, milliseconds);
+    this.timers.add(timer);
+  }
+
+  private bindClose(link: RoomLink): void {
+    link.onClose = () => {
+      if (!this.disposed && this.link === link) {
+        this.ready = false;
+        this.game.onStatus?.('Disconnected from the world server');
+      }
+    };
+  }
+
+  private on(type: string, handler: (message: unknown) => void): void {
+    const list = this.handlers.get(type) ?? [];
+    list.push(handler);
+    this.handlers.set(type, list);
+    this.listen(this.link, type, handler);
+  }
+
+  private listen(link: RoomLink, type: string, handler: (message: unknown) => void): void {
+    link.on(type, (message) => {
+      if (!this.disposed && this.link === link) handler(this.channelMessage(type, message));
+    });
+  }
+
+  private channelMessage(type: string, raw: unknown): unknown {
+    if (!this.region || !raw || typeof raw !== 'object') return raw;
+    const body = raw as Record<string, unknown>;
+    const pile = (value: unknown): unknown => {
+      if (!value || typeof value !== 'object') return value;
+      const p = value as Record<string, unknown>;
+      if (typeof p.x !== 'number' || typeof p.z !== 'number') return value;
+      const position = this.fromNetwork({ x: p.x, y: 0, z: p.z });
+      return { ...p, x: position.x, z: position.z };
+    };
+    if (type === 'loot' && Array.isArray(body.piles)) return { ...body, piles: body.piles.map(pile) };
+    if (type === 'loot_new') return { ...body, pile: pile(body.pile) };
+    return raw;
+  }
+
+  private fromNetwork(position: Point3): Point3 {
+    return this.region ? toLocal(toGlobal(position, this.region.origin), this.origin) : { x: position.x, y: position.y, z: position.z };
+  }
+
+  private toNetwork(position: Point3): Point3 {
+    return this.region ? toLocal(toGlobal(position, this.origin), this.region.origin) : { x: position.x, y: position.y, z: position.z };
+  }
+
+  private place(position: Point3): void {
+    this.authoritative = { ...position };
+    this.game.onPosition?.(position);
+    this.lastSent.copy(this.game.controller.position);
+    this.sendIn = 0;
+  }
+
+  private welcome(raw: unknown): void {
+    const w = raw as WelcomeMsg & { origin?: Point3; position?: Point3; overlap?: number };
+    const region = networkRegion(w.zone);
+    if (region) {
+      if (!finitePoint(w.origin) || !finitePoint(w.position)
+        || w.origin.x !== region.origin.x || w.origin.y !== region.origin.y || w.origin.z !== region.origin.z) {
+        this.ready = false;
+        this.link.close();
+        this.game.onStatus?.('The server sent an invalid region frame');
+        return;
+      }
+      this.region = region;
+      this.place(this.fromNetwork(w.position));
+      this.game.onRegion?.(region);
+    }
+    this.you = w.you;
+    this.sourceAttached = true;
+    this.ready = true;
+    if (typeof w.tier === 'number') this.game.onTier?.(w.tier);
+    if (typeof w.outfit === 'string') this.game.onOutfit?.(w.outfit);
+  }
+
+  private async handoff(raw: unknown): Promise<void> {
+    const pending = this.pending;
+    if (!pending || pending.joining || !this.region || !raw || typeof raw !== 'object') return;
+    const m = raw as { zone?: unknown; token?: unknown; expiresAt?: unknown };
+    const target = typeof m.zone === 'string' ? networkRegion(m.zone) : null;
+    if (!target || target.id !== pending.zone || !adjacentNetworkRegions(this.region, target)
+      || typeof m.token !== 'string' || !/^[a-f0-9]{64}$/.test(m.token) || this.usedTokens.has(m.token)
+      || typeof m.expiresAt !== 'number' || !Number.isFinite(m.expiresAt)
+      || m.expiresAt <= this.serverNow() || m.expiresAt > this.serverNow() + 6) return;
+    pending.joining = true;
+    pending.until = m.expiresAt;
+    this.usedTokens.add(m.token);
+    const source = this.link;
+    let candidate = null as RoomLink | null;
+    let finished = false;
+    try {
+      const welcome = await new Promise<{ link: RoomLink; message: unknown }>((resolve, reject) => {
+        const refuse = (error: Error): void => {
+          if (finished) return;
+          finished = true;
+          candidate?.close();
+          reject(error);
+        };
+        // Allow an already committed response to arrive after the token admission deadline.
+        this.later(() => refuse(new Error('Crossing timed out')),
+          Math.max(1, (m.expiresAt as number - this.serverNow()) * 1000) + 1000 + (this.options.lag ?? 0) * 2000);
+        void RoomLink.join(this.options.server, 'zone', { zone: target.id, handoff: m.token },
+          this.options.token, { delay: this.options.lag ?? 0 }).then((link) => {
+          candidate = link;
+          if (finished || this.disposed) { link.close(); return; }
+          this.targetLink = link;
+          link.onClose = () => refuse(new Error('Target region closed the connection'));
+          link.on('region_refused', () => refuse(new Error('Target region refused confirmation')));
+          let validated: (WelcomeMsg & { origin: Point3; position: Point3 }) | null = null;
+          link.on('welcome', (rawWelcome) => {
+            if (finished || validated) return;
+            if (!rawWelcome || typeof rawWelcome !== 'object') {
+              refuse(new Error('Target region sent an invalid welcome'));
+              return;
+            }
+            const message = rawWelcome as WelcomeMsg & { origin: Point3; position: Point3 };
+            if (message.zone !== target.id || message.you !== link.sessionId
+              || !finitePoint(message.origin) || !finitePoint(message.position)
+              || message.origin.x !== target.origin.x || message.origin.y !== target.origin.y || message.origin.z !== target.origin.z
+              || this.serverNow() >= (m.expiresAt as number)) {
+              refuse(new Error('Target region sent an invalid or expired welcome'));
+              return;
+            }
+            validated = message;
+            link.send('region_ready', {});
+          });
+          link.on('region_committed', (rawCommit) => {
+            if (finished || !validated) return;
+            if (!rawCommit || typeof rawCommit !== 'object' || (rawCommit as { zone?: unknown }).zone !== target.id) {
+              refuse(new Error('Target region sent an invalid confirmation'));
+              return;
+            }
+            finished = true;
+            resolve({ link, message: validated });
+          });
+        }, (error: unknown) => refuse(error instanceof Error ? error : new Error('Target region refused admission')));
+      });
+      if (this.disposed || this.link !== source || this.pending !== pending) { welcome.link.close(); return; }
+      const message = welcome.message as WelcomeMsg & { origin: Point3; position: Point3 };
+      this.link = welcome.link;
+      this.targetLink = null;
+      for (const [type, handlers] of this.handlers) for (const handler of handlers) this.listen(this.link, type, handler);
+      this.bindClose(this.link);
+      for (const id of [...this.players.keys()]) this.dropPlayer(id);
+      for (const enemy of this.enemies.values()) enemy.dispose();
+      this.enemies.clear();
+      this.pending = null;
+      this.welcome(message);
+      source.close();
+      this.link.send('econ_sync', {});
+      this.ping();
+    } catch {
+      candidate?.close();
+      this.targetLink = null;
+      if (this.disposed || this.pending !== pending) return;
+      // Refused provisional admission leaves authority with the source.
+      pending.joining = false;
+      pending.zone = '';
+      pending.until = Math.max(pending.until, this.serverNow()) + 0.2;
+      if (this.authoritative) this.place(this.authoritative);
+      this.game.onStatus?.('Crossing failed. Waiting for the source region to resume.');
+    }
   }
 
   /** The room connection, for the money messages. */
   get channel(): { on(type: string, h: (m: unknown) => void): void; send(type: string, m: unknown): void } {
-    return { on: (type, h) => this.link.on(type, h), send: (type, m) => this.link.send(type, m) };
+    return { on: (type, h) => this.on(type, h), send: (type, m) => { if (!this.pending) this.link.send(type, m); } };
   }
 
   /** Server time now, as best this browser knows it. */
@@ -194,11 +401,14 @@ export class OnlineSession {
   }
 
   private applySnapshot(s: SnapMsg): void {
+    if (this.region) this.sourceAttached = s.p.some(tuple => tuple[0] === this.you);
     const arrived = this.serverNow();
     const seen = new Set<string>();
     for (const tuple of s.p) {
       const v = playerFromTuple(tuple);
-      if (v.id === this.you) continue;
+      const position = this.fromNetwork(v);
+      v.x = position.x; v.y = position.y; v.z = position.z;
+      if (v.id === this.you) { this.authoritative = position; continue; }
       seen.add(v.id);
       let rp = this.players.get(v.id);
       if (!rp) {
@@ -211,6 +421,8 @@ export class OnlineSession {
     const seenEnemies = new Set<string>();
     for (const tuple of s.e) {
       const v = enemyFromTuple(tuple);
+      const position = this.fromNetwork({ x: v.x, y: 0, z: v.z });
+      v.x = position.x; v.z = position.z;
       seenEnemies.add(v.id);
       let e = this.enemies.get(v.id);
       if (!e) {
@@ -245,6 +457,15 @@ export class OnlineSession {
     this.pingTimer += dt;
     if (this.pingTimer > 2) { this.pingTimer = 0; this.ping(); }
 
+    if (this.pending && !this.pending.joining && now >= this.pending.until) {
+      this.pending = null;
+      if (this.sourceAttached) {
+        if (this.authoritative) this.place(this.authoritative);
+      } else {
+        this.ready = false;
+        this.game.onStatus?.('Region transfer lost its connection. Reconnect to continue.');
+      }
+    }
     this.sendIn -= dt;
     if (this.sendIn <= 0) {
       const interval = 1 / MOVE_HZ;
@@ -261,15 +482,17 @@ export class OnlineSession {
   }
 
   private report(elapsed: number): void {
+    if (!this.ready || this.pending || (this.region && !this.clock.synced)) return;
     const c = this.game.controller;
     const p = c.position;
     const fresh = Number.isNaN(this.lastSent.x);
     const vx = fresh ? 0 : (p.x - this.lastSent.x) / elapsed;
     const vz = fresh ? 0 : (p.z - this.lastSent.z) / elapsed;
     this.lastSent.copy(p);
+    const wire = this.toNetwork(p);
     const msg: MoveMsg & { g: boolean } = {
       t: this.serverNow(),
-      x: p.x, y: p.y, z: p.z,
+      x: wire.x, y: wire.y, z: wire.z,
       vx, vz,
       f: c.facing,
       a: this.game.hero.anim.getCurrentClip() ?? 'idle',
@@ -277,10 +500,18 @@ export class OnlineSession {
       g: this.game.combat.blocking,
     };
     this.link.send('move', msg);
+    if (this.region && this.game.alive()) {
+      const target = networkRegion(regionFor(toGlobal(p, this.origin)).id);
+      if (target && adjacentNetworkRegions(this.region, target)) {
+        this.pending = { zone: target.id, until: this.serverNow() + 6, joining: false };
+        this.link.send('region_cross', { zone: target.id });
+      }
+    }
   }
 
   /** While our swing is live, report each server enemy it reaches, once per swing. */
   private strike(now: number): void {
+    if (!this.ready || this.pending) return;
     const combat = this.game.combat;
     if (combat.swing !== this.seenSwing) {
       this.seenSwing = combat.swing;
@@ -308,6 +539,10 @@ export class OnlineSession {
   }
 
   dispose(): void {
+    this.disposed = true;
+    for (const timer of this.timers) clearTimeout(timer);
+    this.timers.clear();
+    this.targetLink?.close();
     this.game.scene.onBeforeRender = this.restoreRender;
     for (const id of [...this.players.keys()]) this.dropPlayer(id);
     for (const e of this.enemies.values()) e.dispose();

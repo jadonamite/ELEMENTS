@@ -18,6 +18,7 @@ import {
   processJailSentence,
 } from '../economy/index.js';
 import type { KillReport } from './kill-hook.js';
+import { persistentPosition } from './coordinates.js';
 
 /**
  * The money rules only the server may set off. Nothing here has a public address: the zone
@@ -63,9 +64,10 @@ export function isOutsider(accountId: string, merchantNation: string, db: Databa
 export function dropForKill(kill: KillReport, rng: () => number = Math.random, db: DatabaseSync = getDatabase()): LootPile | null {
   if (isGuest(kill.killerAccountId)) return null;
   const nation = ZONE_NATION[kill.zone] ?? 'IGNIS';
+  const position = persistentPosition(kill.zone, { x: kill.x, y: 0, z: kill.z });
   if (kill.kind === 'hound') {
     return createLootPileFromFight(
-      { x: kill.x, z: kill.z, zone: kill.zone, source: 'monster', nation, zoneKind: 'nation', winnerId: kill.killerAccountId, rng },
+      { x: position.x, z: position.z, zone: kill.zone, source: 'monster', nation, zoneKind: 'nation', winnerId: kill.killerAccountId, rng },
       db,
     );
   }
@@ -74,7 +76,7 @@ export function dropForKill(kill: KillReport, rng: () => number = Math.random, d
   // A defeated foe may be carrying armour: it is won, not given.
   const gear = rollArmourDrop(armour, rng);
   return createLootPileFromFight(
-    { x: kill.x, z: kill.z, zone: kill.zone, source: 'villain', nation, carried: { chroma: odds.chroma, shards, gear }, winnerId: kill.killerAccountId, rng },
+    { x: position.x, z: position.z, zone: kill.zone, source: 'villain', nation, carried: { chroma: odds.chroma, shards, gear }, winnerId: kill.killerAccountId, rng },
     db,
   );
 }
@@ -84,7 +86,8 @@ export function dropForDeath(accountId: string, zone: string, x: number, z: numb
   if (isGuest(accountId)) return null;
   const rising = getRising(accountId, db);
   const nation = rising?.element ?? ZONE_NATION[zone] ?? 'IGNIS';
-  return createLootPileFromFight({ x, z, zone, source: 'player_death', sourceAccountId: accountId, nation }, db);
+  const position = persistentPosition(zone, { x, y: 0, z });
+  return createLootPileFromFight({ x: position.x, z: position.z, zone, source: 'player_death', sourceAccountId: accountId, nation }, db);
 }
 
 /** A red flag the room's own rules saw earned (a banished name in chat, a robbery). */

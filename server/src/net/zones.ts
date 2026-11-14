@@ -1,4 +1,5 @@
 import { SINDR_SPAWN } from '@elements/shared';
+import { nationalRegion } from './coordinates.js';
 
 export type EnemyKind = 'hound' | 'brawler' | 'armed' | 'robber';
 
@@ -33,4 +34,9 @@ export const ZONES: Record<string, ZoneLayout> = {
   },
 };
 
-export const layoutFor = (zone: string): ZoneLayout => ZONES[zone] ?? ZONES.arena!;
+export function layoutFor(zone: string): ZoneLayout {
+  const local = Object.hasOwn(ZONES, zone) ? ZONES[zone] : undefined;
+  if (local) return local;
+  if (nationalRegion(zone)) return { respawn: { x: 0, z: 0 }, enemies: [] };
+  throw new Error('Unknown zone');
+}
