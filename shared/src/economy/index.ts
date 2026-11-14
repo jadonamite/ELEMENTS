@@ -15,3 +15,4 @@ export * from './shopOwnership.js';
 export { updateMerchantSolvency, applyMerchantBailout, type QuoteParams } from './pricing.js';
 export * from './satchel.js';
 export * from './armour.js';
+export * from './itemNames.js';

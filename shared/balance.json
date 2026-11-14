@@ -1483,7 +1483,7 @@
             },
             "rpm": 40,
             "rpd": 1000,
-            "timeoutMs": 25000,
+            "timeoutMs": 60000,
             "talkTimeoutMs": 4000,
             "judgeTimeoutMs": 60000,
             "extraBody": {

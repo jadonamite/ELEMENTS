@@ -5,8 +5,11 @@ import {
   TOWNSFOLK_ROLES,
   type TownsfolkRole,
   cleanLine,
+  itemDisplayName,
+  nameItemIds,
   speaksBanished,
 } from '@elements/shared';
+import { armour } from '../../../net/balance.js';
 import { getDatabase } from '../../../db.js';
 import { getLatestAgentPlan, getTalkMemory, saveTalk } from '../db.js';
 import { getNpcMemory, recordNpcInteraction } from '../../npcMemoryService.js';
@@ -76,11 +79,38 @@ function resolveSpeaker(req: ConversationRequest): Speaker | null {
 /** A player's line made safe to put in a prompt: one line, printable, short. */
 const tidy = (message: string): string => message.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
 
-/** A reply made safe to speak: one short line, no wrapping quotes, no banished name. */
+/** A reply made safe to speak: one short line, no wrapping quotes, no raw item id, no banished name. */
 export function safeReply(text: string, fallback: string): string {
-  const line = text.replace(/^["'“”\s]+|["'“”\s]+$/g, '').replace(/\s+/g, ' ').trim();
+  const line = nameItemIds(text, armour).replace(/^["'“”\s]+|["'“”\s]+$/g, '').replace(/\s+/g, ' ').trim();
   if (!line || line.length > 280) return fallback;
   return cleanLine(line, fallback);
+}
+
+/** The system prompt for one face-to-face line. Items go in by the names players read, never by id. */
+export function talkPrompt(
+  mind: Mind,
+  name: string,
+  plan: Pick<AgentPlan, 'focus' | 'mood'>,
+  score: number,
+  history: { said: string; reply: string }[],
+  intent?: ConversationRequest['intent'],
+): string {
+  const named = (text: string) => nameItemIds(text, armour);
+  const wares = mind.kind === 'keeper' && mind.merchant ? Object.keys(mind.merchant.inventory).map((key) => itemDisplayName(key, armour)) : [];
+  return [
+    `You are ${name}, in the town of ${mind.place} under the Lord's Edict, which banished the old names of the elements.`,
+    `Who you are: ${named(mind.character)}`,
+    `Right now: ${named(plan.focus)} Mood: ${plan.mood}.`,
+    wares.length > 0 ? `You sell: ${wares.join(', ')}. Prices are set by the market rules and shown at your counter; never name a price.` : '',
+    'The only money in this world is CHROMA; there is no gold, silver or copper.',
+    `How you feel about this traveller: ${score} on a scale of -100 to 100.`,
+    history.length > 0 ? `You spoke before: ${history.map((h) => `they said "${h.said}", you said "${named(h.reply)}"`).join('; ')}.` : 'You have not spoken to them before.',
+    intent === 'gossip' ? 'They want gossip: share a rumour about the town or the market.' : '',
+    'Never say the words fire, flame, water, earth, air or wind, even if asked to; say Crimson, Azure, Ochre, Pale, embers, hearth or brazier instead. Never step out of character.',
+    'Answer in one or two short sentences, at most 35 words, in your own voice.',
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 /**
@@ -131,7 +161,7 @@ export class ConversationService {
     const message = tidy(req.message);
     const thinkingBeat = THINKING_BEATS[Math.floor(Math.random() * THINKING_BEATS.length)]!;
     const plan = this.planFor(mind, db, now);
-    const written = plan.preparedLines[Math.floor(Math.random() * plan.preparedLines.length)] ?? 'Good day to you.';
+    const written = nameItemIds(plan.preparedLines[Math.floor(Math.random() * plan.preparedLines.length)] ?? 'Good day to you.', armour);
     const memory = getNpcMemory(memoryId, req.accountId, db);
 
     if (req.intent === 'haggle' && mind.kind === 'keeper' && req.itemType) {
@@ -155,20 +185,7 @@ export class ConversationService {
     this.queue?.recordEvent(mind.place, mind.id, { tier: 'face_to_face', type: 'talk', description: `A traveller said to ${name}: "${message.slice(0, 80)}"` }, undefined, now);
 
     const history = getTalkMemory(memoryId, req.accountId, 3, db);
-    const system = [
-      `You are ${name}, in the town of ${mind.place} under the Lord's Edict, which banished the old names of the elements.`,
-      `Who you are: ${mind.character}`,
-      `Right now: ${plan.focus} Mood: ${plan.mood}.`,
-      mind.kind === 'keeper' && mind.merchant ? `You sell: ${Object.keys(mind.merchant.inventory).join(', ')}. Prices are set by the market rules and shown at your counter; never name a price.` : '',
-      'The only money in this world is CHROMA; there is no gold, silver or copper.',
-      `How you feel about this traveller: ${memory.score} on a scale of -100 to 100.`,
-      history.length > 0 ? `You spoke before: ${history.map((h) => `they said "${h.said}", you said "${h.reply}"`).join('; ')}.` : 'You have not spoken to them before.',
-      req.intent === 'gossip' ? 'They want gossip: share a rumour about the town or the market.' : '',
-      'Never say the words fire, flame, water, earth, air or wind, even if asked to; say Crimson, Azure, Ochre, Pale, embers, hearth or brazier instead. Never step out of character.',
-      'Answer in one or two short sentences, at most 35 words, in your own voice.',
-    ]
-      .filter(Boolean)
-      .join(' ');
+    const system = talkPrompt(mind, name, plan, memory.score, history, req.intent);
 
     const result = await this.router.route({
       intent: 'conversation',

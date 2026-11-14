@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { type AgentPlan, type PlanPhase, cleanLine, speaksBanished } from '@elements/shared';
+import { type AgentPlan, type PlanPhase, cleanLine, itemDisplayName, nameItemIds, speaksBanished } from '@elements/shared';
+import { armour } from '../../../net/balance.js';
 import { getDatabase } from '../../../db.js';
 import { saveAgentPlan } from '../db.js';
 import type { ModelRouter } from '../router/modelRouter.js';
@@ -104,13 +105,14 @@ function acceptPlan(raw: Partial<AgentPlan> | undefined, agent: AgentPlanContext
   const written = createDeterministicPlan(agent, phase, now);
   const lines = raw.preparedLines
     .filter((l): l is string => typeof l === 'string' && l.trim().length > 0 && l.length <= 200 && !speaksBanished(l))
+    .map((l) => nameItemIds(l, armour))
     .slice(0, 3);
   const targets: Record<string, number> = {};
   const rawTargets = (raw.targetStockRatio ?? {}) as Record<string, unknown>;
   for (const key of Object.keys(written.targetStockRatio)) targets[key] = clamp01(rawTargets[key], written.targetStockRatio[key]!);
   return {
     phase,
-    focus: cleanLine(raw.focus.slice(0, 200), written.focus),
+    focus: cleanLine(nameItemIds(raw.focus.slice(0, 200), armour), written.focus),
     mood: cleanLine(raw.mood.slice(0, 40), written.mood),
     targetStockRatio: targets,
     bargainWillingness: clamp01(raw.bargainWillingness, written.bargainWillingness),
@@ -149,6 +151,7 @@ export async function generateBatchPlans(params: {
     `You plan the day for shopkeepers in the town of ${placeId}, in a world where the old names of the elements are banished by the Lord's Edict.`,
     `Phase: ${phase}.${intent === 'event' ? ' Something significant has just happened to each of them; read their events and react.' : ''}`,
     'For each keeper give: focus (one sentence), mood (one or two words), targetStockRatio per stock key (0.1 to 1.0, how full to keep each shelf), bargainWillingness (0 to 1), and 2 short spoken lines in their own voice.',
+    'Each stock key comes with the name players know it by; in focus and spoken lines say that name, never the key.',
     'Prices are set by the market rules; keepers cannot set prices. Never use the words fire, flame, water, earth, air or wind: say Crimson, Azure, Ochre, Pale, embers, hearth or brazier.',
     'Reply with JSON only: { "plans": { "<id>": { "focus": "", "mood": "", "targetStockRatio": { "<stock key>": 0.7 }, "bargainWillingness": 0.5, "preparedLines": ["", ""] } } }',
   ].join(' ');
@@ -167,9 +170,9 @@ export async function generateBatchPlans(params: {
             name: a.name,
             character: a.character,
             purse: a.purse,
-            stock: a.stock,
-            guidance: a.guidance,
-            events: a.events?.slice(-6),
+            stock: a.stock && Object.fromEntries(Object.entries(a.stock).map(([key, s]) => [key, { ...s, name: itemDisplayName(key, armour) }])),
+            guidance: a.guidance && nameItemIds(a.guidance, armour),
+            events: a.events?.slice(-6).map((e) => nameItemIds(e, armour)),
           })),
         }),
       },
