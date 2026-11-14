@@ -31,9 +31,6 @@ export interface DirectorEvent {
   active: boolean;
 }
 
-export function ensureDirectorTables(_db: DatabaseSync = getDatabase()): void {
-  // Table migration is handled in migrateDatabase in server/src/db.ts
-}
 
 /**
  * Maps any merchant or account to its world nation.
@@ -80,7 +77,7 @@ export function evaluateNationDomination(
        FROM ledger_entries l
        LEFT JOIN accounts a ON a.id = l.receiver
        LEFT JOIN risings r ON r.account_id = l.receiver
-       WHERE l.timestamp >= ? AND l.timestamp <= ? AND l.reason != 'genesis'`,
+       WHERE l.timestamp >= ? AND l.timestamp <= ? AND l.reason NOT IN ('genesis', 'player_starting_grant')`,
     )
     .all(cutoff, now) as Array<{
     account_id: string;
