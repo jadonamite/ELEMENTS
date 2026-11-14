@@ -102,6 +102,11 @@ export class Combat {
     return (this.clip && this.limbOf(this.clip)) || 'hand_r';
   }
 
+  /** The hand a thrown move leaves from: the one the clip throws with, the right by default. */
+  get castingHand(): 'hand_r' | 'hand_l' {
+    return this.clip && this.limbOf(this.clip) === 'hand_l' ? 'hand_l' : 'hand_r';
+  }
+
   /** The move playing now, or null while the hero is free to walk. */
   get current(): string | null { return this.move; }
 

@@ -500,7 +500,7 @@
       "TERRA": "axe",
       "AURA": "staff"
     },
-    "bendWithWeapon": { "IGNIS": "any", "AQUES": [], "TERRA": [], "AURA": ["staff", "war_fans", "glider"] },
+    "bendWithWeapon": { "IGNIS": [], "AQUES": [], "TERRA": [], "AURA": ["staff", "war_fans", "glider"] },
     "elements": {
       "IGNIS": {
         "bend_palm": {

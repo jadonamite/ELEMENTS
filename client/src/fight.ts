@@ -695,7 +695,9 @@ export class Fight {
       let reach = 8;
       try { reach = rules.moveFor(move as MoveId, this.kit).reach; } catch { /* not a rules move */ }
       const forward = new Vector3(Math.sin(hero.facing), 0, Math.cos(hero.facing));
-      const origin = chest(hero.position).addScaledVector(forward, 0.7);
+      // Bending leaves from the throwing hand; without a hand to read, from in front of the chest.
+      const hand = combat.castingHand === 'hand_l' ? hero.handL : hero.handR;
+      const origin = hand ? hand.clone().addScaledVector(forward, 0.15) : chest(hero.position).addScaledVector(forward, 0.7);
       this.throw(launch({ side: 'hero', element: this.kit.element, move, damage: 0, origin, direction: forward,
         speed: 16, radius: 0.35, range: reach, swingAt: Math.min(combat.swingAt, this.clock),
         scale: this.bend.scale, chained: this.bend.chained, lit: isLit }));

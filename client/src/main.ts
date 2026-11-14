@@ -793,10 +793,7 @@ async function main(): Promise<void> {
   };
   if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges, sustain });
   /** Whether this element keeps its current weapon in hand while bending. */
-  const bendsArmed = (): boolean => {
-    const allowed = (balance.combat.bendWithWeapon as Record<string, string | string[]>)[kitElement];
-    return allowed === 'any' || (Array.isArray(allowed) && allowed.includes(fight.kit.weapon));
-  };
+  const bendsArmed = (): boolean => rules.canBendWithWeapon(fight.kit);
   const setBending = (on: boolean): void => {
     if (fight.tier < 1) return;
     if (on && isDim) { notice('The Hush cannot bend'); return; }
