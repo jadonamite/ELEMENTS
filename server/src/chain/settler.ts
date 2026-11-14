@@ -35,6 +35,11 @@ export function migrateChainTables(db: DatabaseSync): void {
   for (const table of ['chain_batches', 'items_chain_batches']) createBatchTable(db, table);
   db.exec('CREATE TABLE IF NOT EXISTS chain_contracts (kind TEXT PRIMARY KEY, contract TEXT NOT NULL)');
   migrateLegacyTables(db);
+  for (const ledger of ['ledger_entries', 'item_ledger']) {
+    const columns = db.prepare(`PRAGMA table_info(${ledger})`).all() as Array<{ name: string }>;
+    if (!columns.some(c => c.name === 'chain_route')) db.exec(`ALTER TABLE ${ledger} ADD COLUMN chain_route TEXT NOT NULL DEFAULT 'settle'`);
+    if (!columns.some(c => c.name === 'chain_tx')) db.exec(`ALTER TABLE ${ledger} ADD COLUMN chain_tx TEXT`);
+  }
 
 }
 
@@ -195,8 +200,8 @@ export class Settler {
       }
       const rows = this.db
         .prepare(this.kind === 'coin'
-          ? "SELECT rowid FROM ledger_entries WHERE rowid > ? AND reason != 'genesis' ORDER BY rowid LIMIT ?"
-          : 'SELECT rowid FROM item_ledger WHERE rowid > ? ORDER BY rowid LIMIT ?')
+          ? "SELECT rowid FROM ledger_entries WHERE rowid > ? AND reason != 'genesis' AND chain_route = 'settle' ORDER BY rowid LIMIT ?"
+          : "SELECT rowid FROM item_ledger WHERE rowid > ? AND chain_route = 'settle' ORDER BY rowid LIMIT ?")
         .all(settledTo.r, this.config.batchSize) as Array<{ rowid: number }>;
       if (rows.length === 0) return null;
 
@@ -220,8 +225,8 @@ export class Settler {
 
   private async send(batch: number, first: number, last: number): Promise<number | null> {
     const entries = this.kind === 'coin'
-      ? this.db.prepare("SELECT rowid, id, sender, receiver, amount, reason FROM ledger_entries WHERE rowid BETWEEN ? AND ? AND reason != 'genesis' ORDER BY rowid").all(first,last) as unknown as LedgerRow[]
-      : this.db.prepare('SELECT rowid,id,from_id,to_id,item_id,quantity,reason FROM item_ledger WHERE rowid BETWEEN ? AND ? ORDER BY rowid').all(first,last) as unknown as Array<{rowid:number;id:string;from_id:string;to_id:string;item_id:string;quantity:number;reason:string}>;
+      ? this.db.prepare("SELECT rowid, id, sender, receiver, amount, reason FROM ledger_entries WHERE rowid BETWEEN ? AND ? AND reason != 'genesis' AND chain_route = 'settle' ORDER BY rowid").all(first,last) as unknown as LedgerRow[]
+      : this.db.prepare("SELECT rowid,id,from_id,to_id,item_id,quantity,reason FROM item_ledger WHERE rowid BETWEEN ? AND ? AND chain_route = 'settle' ORDER BY rowid").all(first,last) as unknown as Array<{rowid:number;id:string;from_id:string;to_id:string;item_id:string;quantity:number;reason:string}>;
     const saved=this.db.prepare(`SELECT moves_json FROM ${this.batchTable} WHERE batch=?`).get(batch) as {moves_json:string|null};
     const assigned=this.db.prepare('SELECT holder,moves_json FROM legacy_chain_claims WHERE contract=? AND batch=?').get(this.config.contractId,batch) as {holder:string;moves_json:string}|undefined;
     const claim=assigned?{holder:assigned.holder,moves:(JSON.parse(assigned.moves_json) as unknown[]).length}:saved.moves_json?null:this.prepareLegacy();
@@ -398,7 +403,7 @@ export class Settler {
       .prepare(`SELECT COALESCE(MAX(last_rowid), 0) AS r FROM ${this.batchTable} WHERE status = 'settled'`)
       .get() as { r: number };
     const waiting = this.db
-      .prepare(this.kind === 'coin' ? "SELECT COUNT(*) AS n FROM ledger_entries WHERE rowid > ? AND reason != 'genesis'" : 'SELECT COUNT(*) AS n FROM item_ledger WHERE rowid > ?')
+      .prepare(this.kind === 'coin' ? "SELECT COUNT(*) AS n FROM ledger_entries WHERE rowid > ? AND reason != 'genesis' AND chain_route = 'settle'" : "SELECT COUNT(*) AS n FROM item_ledger WHERE rowid > ? AND chain_route = 'settle'")
       .get(settledTo.r) as { n: number };
     const explorer = this.config.explorerUrl;
     let player: string | null = null;

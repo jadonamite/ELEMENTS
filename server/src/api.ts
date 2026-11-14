@@ -1,3 +1,4 @@
+import { marketBoard } from './chain/market.js';
 import { prepareGuestClaim } from './chain/guest-claim.js';
 import express, { type Application, type Request, type Response } from 'express';
 import { bindPlayerGrant } from './chain/grants.js';
@@ -155,6 +156,26 @@ export function setupApi(app: Application): void {
           }
         : null,
     });
+  });
+
+  app.post('/api/market/:action', async (req: Request, res: Response) => {
+    const board = marketBoard();
+    if (!board) { res.status(503).json({ error: 'The Chromara board is not open yet' }); return; }
+    const owner = await requireAccount(req,res);
+    if (!owner) return;
+    if (!isAccountAllowed(owner)) { res.status(429).json({error:'Too many requests'}); return; }
+    try {
+      const body = req.body;
+      switch (req.params.action) {
+        case 'view': res.json(await board.view(owner)); break;
+        case 'deposit-quote': res.json(await board.depositQuote(owner,body.token,body.amount)); break;
+        case 'deposit': res.json(await board.deposit(owner,body.id,body.signature)); break;
+        case 'offer-quote': res.json(board.offerTerms(owner,body.offer)); break;
+        case 'offer': res.json({id:board.postOffer(owner,body.offer,body.signed)}); break;
+        case 'return': res.json(await board.returnGoods(owner,body.token,body.amount,body.signed)); break;
+        default: res.status(404).json({error:'Unknown board action'});
+      }
+    } catch (error) { res.status(400).json({error:error instanceof Error ? error.message : 'The board could not complete that action'}); }
   });
 
   app.post('/api/chain/grant', async (req: Request, res: Response) => {

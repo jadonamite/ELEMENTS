@@ -1,3 +1,4 @@
+import { startMarketBoard } from './market.js';
 import { readChainConfig, readItemsChainConfig } from './config.js';
 import { nearClient, Settler } from './settler.js';
 
@@ -25,6 +26,7 @@ export function startChainSettlement(): Settler | null {
   } else {
     console.log('[chain] item contract settings missing; items stay on the server ledger only.');
   }
+  startMarketBoard();
   return active;
 }
 
