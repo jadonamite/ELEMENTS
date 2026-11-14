@@ -31,4 +31,3 @@ export function worldKeyPair(secret: string, ledgerId: string): { secretKey: Key
     publicKey: `ed25519:${baseEncode(pub)}`,
   };
 }
-

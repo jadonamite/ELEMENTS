@@ -331,3 +331,40 @@ test('a player signing in releases a held ordinary batch with its legacy claim f
 test('the legacy signer rejects players outside the fixed genesis list',()=>{
   const f=legacyFixture();assert.throws(()=>legacyGrant(config.playerSecret,'bob',config.contractId,f.settings.legacyClaims),/not on the genesis/);
 });
+
+
+test('binding a legacy key cannot change an ordinary batch already sent before a timeout',async()=>{
+  const f=legacyFixture();f.db.prepare('UPDATE accounts SET chain_public_key=NULL WHERE id=?').run('alice');
+  recordTransaction({from:'treasury',to:'pile_1',amount:20,reason:'loot_drop'},f.db);
+  f.chain.failNextBeforeApplying=true;assert.equal(await f.settler.tick(),null);
+  f.db.prepare('UPDATE accounts SET chain_public_key=? WHERE id=?').run(`ed25519:${baseEncode(Buffer.from(f.destination,'hex'))}`,'alice');
+  await drain(f.settler);
+  assert.deepEqual(f.chain.sent,[1,1,2]);assert.equal(f.chain.balances.get('pile_1.game.testnet'),20n);
+  assert.equal(f.chain.balances.get(f.destination),100n);assert.equal(f.chain.balances.get(f.old),0n);
+});
+
+test('legacy item claims preserve every listed token and keep the item-ledger cursor',async()=>{
+  const f=legacyFixture();
+  addItems({accountId:'alice',from:'world',stacks:[{itemId:'potion',quantity:2},{itemId:'shard_ignis',quantity:1}],reason:'loot_claim'},f.db);
+  const contractId=f.settings.legacyClaims.contracts.items;
+  f.settings.legacyClaims.holders[f.old]!.items={potion:'2',shard_ignis:'1'};
+  const grants=grantMethods();let last=0;
+  const balances=new Map([[`${f.old}:potion`,2n],[`${f.old}:shard_ignis`,1n]]);
+  const client:ChainClient={...grants,async lastBatch(){return last;},async settle(batch,raw){
+    assert.equal(batch,last+1);
+    for(const move of raw as Array<{from:string;to:string;token_id:string;amount:string}>) {
+      const grant=await grants.sessionGrant(move.from);assert.ok(grant);const amount=BigInt(move.amount);
+      assert.ok(BigInt(grant.caps[move.token_id]??'0')>=amount);
+      const from=`${move.from}:${move.token_id}`;const to=`${move.to}:${move.token_id}`;
+      assert.ok((balances.get(from)??0n)>=amount);balances.set(from,balances.get(from)!-amount);balances.set(to,(balances.get(to)??0n)+amount);
+      grant.caps[move.token_id]=(BigInt(grant.caps[move.token_id]!)-amount).toString();
+    }
+    last=batch;return 'items-claim';
+  }};
+  const settler=new Settler({...f.settings,contractId},client,f.db,'items');
+  const cutoff=(f.db.prepare('SELECT MAX(rowid) AS n FROM item_ledger').get() as {n:number}).n;
+  f.db.prepare("INSERT INTO items_chain_batches (batch,first_rowid,last_rowid,moves,status,created_at) VALUES (0,0,?,0,'settled',0)").run(cutoff);
+  assert.equal(await settler.tick(),1);assert.equal(await settler.tick(),null);
+  assert.equal(balances.get(`${f.destination}:potion`),2n);assert.equal(balances.get(`${f.destination}:shard_ignis`),1n);
+  assert.equal(balances.get(`${f.old}:potion`),0n);assert.equal(settler.status().waiting,0);
+});

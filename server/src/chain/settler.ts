@@ -230,11 +230,11 @@ export class Settler {
     const entries = this.kind === 'coin'
       ? this.db.prepare("SELECT rowid, id, sender, receiver, amount, reason FROM ledger_entries WHERE rowid BETWEEN ? AND ? AND reason != 'genesis' ORDER BY rowid").all(first,last) as unknown as LedgerRow[]
       : this.db.prepare('SELECT rowid,id,from_id,to_id,item_id,quantity,reason FROM item_ledger WHERE rowid BETWEEN ? AND ? ORDER BY rowid').all(first,last) as unknown as Array<{rowid:number;id:string;from_id:string;to_id:string;item_id:string;quantity:number;reason:string}>;
+    const saved=this.db.prepare(`SELECT moves_json FROM ${this.batchTable} WHERE batch=?`).get(batch) as {moves_json:string|null};
     const assigned=this.db.prepare('SELECT holder,moves_json FROM legacy_chain_claims WHERE contract=? AND batch=?').get(this.config.contractId,batch) as {holder:string;moves_json:string}|undefined;
-    const claim=assigned?{holder:assigned.holder,moves:(JSON.parse(assigned.moves_json) as unknown[]).length}:this.prepareLegacy();
+    const claim=assigned?{holder:assigned.holder,moves:(JSON.parse(assigned.moves_json) as unknown[]).length}:saved.moves_json?null:this.prepareLegacy();
     const names = {...this.config,...(claim?{claimHolder:claim.holder}:{})};
     try {
-    const saved=this.db.prepare(`SELECT moves_json FROM ${this.batchTable} WHERE batch=?`).get(batch) as {moves_json:string|null};
     const moves = saved.moves_json ? (JSON.parse(saved.moves_json) as Array<{from:string|null;to:string|null;token_id?:string;amount:string;memo:string}>).slice(claim?.moves??0) : this.kind === 'coin'
       ? (entries as LedgerRow[]).map((e) => ({ from: chainAccountFor(e.sender,names,this.db), to: chainAccountFor(e.receiver,names,this.db), amount: String(e.amount), memo: `${e.reason} ${e.id}`.slice(0,120) }))
         : (entries as Array<{id:string;from_id:string;to_id:string;item_id:string;quantity:number;reason:string}>).map((e) => ({ from: e.from_id === 'world' ? null : chainAccountFor(e.from_id,names,this.db), to: e.to_id === 'world' ? null : chainAccountFor(e.to_id,names,this.db), token_id:e.item_id, amount:String(e.quantity), memo:`${e.reason} ${e.id}`.slice(0,120) }));
