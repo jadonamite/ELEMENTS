@@ -1249,6 +1249,8 @@ async function main(): Promise<void> {
     }
     if (disposed) return;
     await bending.useFullAtlases((texture) => renderer.initTexture(texture));
+    if (disposed) return;
+    await zone.sharpen();
   }
 
   renderer.setAnimationLoop(() => {

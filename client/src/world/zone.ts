@@ -87,8 +87,10 @@ export interface Zone {
   clock: WorldClock;
   /** Readies something that will appear during play (a villain, an effect) so its first frame does not stall. */
   warm(object: Object3D, onProgress?: (fraction: number) => void): Promise<void>;
-  /** Resolves when the town surfaces and every prop LOD have loaded. */
+  /** Resolves when the town surfaces (at 1K) and every prop LOD have loaded. */
   ready: Promise<void>;
+  /** Brings the surfaces' colour and packed maps up to full size after play has started. */
+  sharpen(): Promise<void>;
   /** Where people belong, as the town was built: counters, anvils, doors. */
   posts: readonly Post[];
   /** Where passers-by stop to look at goods: stalls, tables, counters. */
@@ -401,6 +403,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       return ready;
     },
     warm: warmUp,
+    sharpen: () => lib.sharpen((texture) => renderer.initTexture(texture)),
     setSize(w, h) {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
       renderer.setSize(w, h, false);
