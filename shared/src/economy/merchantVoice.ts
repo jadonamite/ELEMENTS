@@ -156,3 +156,31 @@ export function voiceNpcMemory(params: {
   }
   return 'Business is business between us.';
 }
+
+export function formatActionSummary(
+  actions: unknown[] | null | undefined,
+  nation = 'IGNIS',
+): string {
+  if (!actions || !Array.isArray(actions) || actions.length === 0) {
+    return 'Held stock steady';
+  }
+
+  const parts: string[] = [];
+  for (const raw of actions) {
+    if (!raw || typeof raw !== 'object') continue;
+    const a = raw as Record<string, unknown>;
+    if (a.type === 'restock' && typeof a.itemType === 'string' && typeof a.quantity === 'number') {
+      const item = formatItemDisplay(a.itemType, nation);
+      parts.push(`Restocked ${a.quantity} ${item}`);
+    } else if (a.type === 'tribute' && typeof a.itemType === 'string' && typeof a.quantity === 'number') {
+      const item = formatItemDisplay(a.itemType, nation);
+      parts.push(`Shipped ${a.quantity} ${item} tribute`);
+    } else if (a.type === 'set_hours' && typeof a.openHour === 'number' && typeof a.closeHour === 'number') {
+      parts.push(`Set hours ${a.openHour}:00-${a.closeHour}:00`);
+    } else if (a.type === 'say' && typeof a.line === 'string') {
+      parts.push('Spoke with patrons');
+    }
+  }
+
+  return parts.length > 0 ? parts.join(', ') : 'Held stock steady';
+}

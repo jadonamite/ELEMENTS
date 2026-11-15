@@ -23,11 +23,13 @@ import { loadEnemyTemplate, villainLooks, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
 import { inFront } from './hits.js';
 import { FightHud, type RoundHudInfo } from './hud.js';
+import { Sustain } from './sustain.js';
 import { ThreatArrows } from './threat-arrows.js';
 import { SwordStance } from './sword.js';
 import { SoundManager } from './audio.js';
 import { BendingEffects, type BendingType } from './bending-fx.js';
 import { OpeningFlow, getStoredDrawing, type DrawingResult } from './opening.js';
+import { saveProgressAtGate } from './auth/save-progress.js';
 import { ConsentBanner } from './consent.js';
 import type { Enemy } from './enemy.js';
 import { createCombatRules, ELEMENTS, isBendMove, NIGHT_FROM, sindrSentryDistance, sindrStreet, type BendMoveId, type CombatBalance, type Element, type Kit, type MoveId } from '../../shared/src/index.js';
@@ -36,9 +38,11 @@ import { ElementEffects } from './fx/elements.js';
 import { FighterSelect, lastFighter } from './ui/fighter-select.js';
 import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
 import { TownEconomy } from './economy/town-economy.js';
+import { talkToAgent } from './economy/api.js';
 import { ContextAction } from './ui/context-action.js';
 import { StreetChallenges } from './life/street-challenges.js';
 import { nightness } from './world/effects.js';
+import { NationalEncounterManager } from './world/national-encounters.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
 import { NationIntroFlow } from './story/nation-intro-flow.js';
@@ -52,6 +56,7 @@ import type { Quarry } from './enemy.js';
 import { CombatSpace } from './attacks/space.js';
 import { hasGameServer } from './auth/server-api.js';
 import type { OnlineSession } from './net/online.js';
+import { LEGACY_SINDR_ORIGIN, regionFor, SINDR_SPAWN, toGlobal } from '../../shared/src/index.js';
 import type { NetEnemy } from './net/puppets.js';
 import { isTownMode } from './world-mode.js';
 import './controls/controls.css';
@@ -188,7 +193,7 @@ async function main(): Promise<void> {
   applyDrawing(forcedElement || forcedHush ? getStoredDrawing() : lastFighter() ?? getStoredDrawing());
 
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
-  if (params.has('intro') && !params.has('skipIntro')) {
+  if (!params.has('skipIntro')) {
     const opening = new OpeningFlow((res) => {
       applyDrawing(forcedElement || forcedHush ? res : lastFighter() ?? res);
       if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });
@@ -200,7 +205,7 @@ async function main(): Promise<void> {
   let lifeSystem: SindrLifeSystem | null = null;
   let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
-  if (fps) Object.assign(window, { elements: { hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, surfaceAt: zone?.surfaceAt, sounds: zone?.sounds, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; }, locomotion: { get turnInPlace() { return turnInPlace; }, set turnInPlace(v: boolean) { turnInPlace = v; } } } });
+  if (fps) Object.assign(window, { elements: { ...(window as unknown as { elements?: object }).elements, hero, controller, camera, renderer, shoulderCamera, input, get economy() { return townEconomy; }, clock: zone?.clock, surfaceAt: zone?.surfaceAt, sounds: zone?.sounds, get life() { return lifeSystem; }, get hud() { return fightHud; }, get slowMotion() { return slowMotion; }, get fight() { return fight; }, get combat() { return combat; }, get sword() { return sword; }, get bending() { return bending; }, get setFightingStyle() { return setFightingStyle; }, locomotion: { get turnInPlace() { return turnInPlace; }, set turnInPlace(v: boolean) { turnInPlace = v; } } } });
   if (fps) cleanup.push(() => fps.dispose());
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -274,6 +279,9 @@ async function main(): Promise<void> {
   };
 
   const fightHud = new FightHud();
+  /** The hero's stamina; every move, jump, run and guarded blow asks it. */
+  const sustain = new Sustain();
+  sustain.onShort = () => sound.playBreath(1);
   fightHud.onSatchelClick = () => townEconomy?.toggleSatchel();
   const threatArrows = new ThreatArrows();
   cleanup.push(() => fightHud.dispose());
@@ -353,6 +361,7 @@ async function main(): Promise<void> {
       townEconomy?.heroDied(controller.position.clone());
     },
     heroParried() {
+      sustain.parried();
       controls?.used('parry');
       bend.gain('parry');
       shoulderCamera.shake(0.22);
@@ -379,6 +388,19 @@ async function main(): Promise<void> {
         shoulderCamera.killCloseUp();
       }
     },
+    monsterHit(hound, killed, damage, at, weakSpot, elemental) {
+      bend.gain('hit');
+      hitStop = killed ? 0.12 : 0.06;
+      shoulderCamera.shake(killed ? 0.35 : 0.14);
+      sound.playImpact(killed, false);
+      if (elemental) bending.spawnHitBurst(at, heroElement);
+      else bending.spawnImpact(at, sword.armed);
+      fightHud.showDamage(at, damage, weakSpot);
+      if (killed) {
+        townEconomy?.enemyKilled('kind' in hound ? hound.kind : 'ember_hound', hound.position.clone(), 'IGNIS');
+        markKill(fight.allDead);
+      }
+    },
     roundStarted(roundNumber, villainCount) {
       fightHud.say(`Round ${roundNumber} — ${villainCount} ${villainCount === 1 ? 'Villain' : 'Villains'}`);
       setTimeout(() => {
@@ -397,6 +419,7 @@ async function main(): Promise<void> {
     },
   }, undefined, !zone);
   // Wind and water put out fire and turn aside earth while the hero is bending, guarding or riding the windskiff.
+  fight.guardSoak = (damage) => sustain.soak(damage);
   fight.isAttackCountered = (element) =>
     (element === 'IGNIS' || element === 'TERRA') && (heroElement === 'AURA' || heroElement === 'AQUES')
     && (isLit || combat.blocking || bend.windskiffActive);
@@ -404,6 +427,10 @@ async function main(): Promise<void> {
   const startRound = Number(new URLSearchParams(window.location.search).get('round'));
   if (startRound > 1) fight.setRound(startRound);
   if (zone) { fight.stopWaves(); fightHud.say(''); }
+  const nationalEncounters = zone && !playingOnline && !params.has('legacyEast')
+    ? new NationalEncounterManager(fight, physics.world, renderer, true, params.get('ambush'), (msg) => notice(msg))
+    : null;
+  cleanup.push(() => nationalEncounters?.dispose());
   let yardSpawned = false;
   if (zone) {
     loader.setProgress(0.70, 'Waking the crowd');
@@ -433,6 +460,15 @@ async function main(): Promise<void> {
       posts: zone.posts,
       browse: zone.browse,
       subtitle: (name, line, seconds) => hudLine(`${name}: "${line}"`, seconds * 1000 + 600),
+      mind: {
+        // Named people and keepers by their id; someone from the crowd by their trade, name and zone.
+        talk: async (npc, message, intent) => {
+          const crowd = /^(crowd|post)_\d+$/.test(npc.data.id) ? { role: npc.data.role, name: npc.data.name, place: 'sindr' } : undefined;
+          const res = await talkToAgent(npc.data.id, message, { intent, ...(crowd ? { crowd } : {}) });
+          return res.reply;
+        },
+        trade: (merchantId) => townEconomy?.openShop(merchantId),
+      },
     });
     cleanup.push(() => lifeSystem?.dispose());
   }
@@ -452,12 +488,15 @@ async function main(): Promise<void> {
     if (!fight.heroAlive || combat.current || combat.blocking) return;
     const now = performance.now() / 1000;
     if (!controller.grounded) {
-      if (!superJumped && now - jumpedAt < balance.controller.superJumpTapSeconds) {
+      if (!superJumped && now - jumpedAt < balance.controller.superJumpTapSeconds && sustain.act('super_jump')) {
+        onlineSession?.act('super_jump');
         controller.launch(balance.controller.superJumpSpeed);
         superJumped = true;
       }
       return;
     }
+    if (!sustain.act('jump')) return;
+    onlineSession?.act('jump');
     controls?.used('jump');
     controller.launch(balance.controller.jumpSpeed);
     jumpedAt = now;
@@ -526,6 +565,7 @@ async function main(): Promise<void> {
       });
       robberGang.bindWorld(scene, physics.world, template);
 
+      if (params.has('legacyEast')) {
       deserterBand = new ClientDeserterBand({
         onAlert: (msg) => notice(msg),
         onSpawnEnemy: (enemy) => fight.add(enemy),
@@ -535,6 +575,7 @@ async function main(): Promise<void> {
         },
       });
       deserterBand.bindWorld(scene, physics.world, template);
+      }
     }).catch(console.error);
   }
   /** Auto-realigns hero facing toward target and glides closer to prevent whiffs on combos and openers. */
@@ -573,9 +614,10 @@ async function main(): Promise<void> {
   let chainPass: string | null = null;
   const combat = new Combat(
     hero.anim,
-    (move) => move === chainPass || fight.ready(move, isLit),
+    (move) => move === chainPass || (fight.ready(move, isLit) && sustain.canStartMove(move)),
     (move, swingAt) => {
       fight.startMove(move, swingAt, isLit);
+      if (sustain.startedMove(move)) onlineSession?.act('move', move, combat.swing);
       controls?.usedMove(move);
       if (move !== 'dodge' && move !== 'hit' && move !== 'death') {
         alignToTarget();
@@ -645,6 +687,7 @@ async function main(): Promise<void> {
       knownFlags = s.redFlags;
     },
     lootDropped: (x, z) => lifeSystem?.witness('loot_dropped', new Vector3(x, controller.position.y, z)),
+    talkToKeeper: (merchantId) => { lifeSystem?.talkToKeeper(merchantId); },
     wornChanged: (worn) => {
       void hero.switchOutfit(parseOutfit(worn.outfit));
       fight.setHeroArmour(worn.armour);
@@ -652,19 +695,25 @@ async function main(): Promise<void> {
     nightness: () => nightness.value,
   }) : null;
   cleanup.push(() => townEconomy?.dispose());
+  /**
+   * Works out the fighting style from what the hero fights with and whether they bend. It never draws the
+   * weapon: only choosing it does (drawWeapon), and attacks or a close foe draw it as they always have.
+   */
   const applyStyle = (): void => {
     fightingStyle = armedWith === 'weapon' ? 'weapon' : armedWith === 'legs' ? 'legs' : (isLit ? 'bending' : 'bare_hands');
     combat.setStyle(fightingStyle);
     // Only a weapon in hand catches fire; hands and legs bend without lighting the sheathed blade.
     hero.setElemental(isLit && armedWith === 'weapon', heroElement);
-    if (armedWith === 'weapon') {
-      sword.draw(false);
-      heldCalm = false;
-      calmIn = balance.stance.calmAfterSeconds;
-    } else {
+    if (armedWith !== 'weapon') {
       sword.forceSheathe();
       heldCalm = true;
     }
+  };
+  /** The player chose the weapon: it comes out now. */
+  const drawWeapon = (): void => {
+    sword.draw(false);
+    heldCalm = false;
+    calmIn = balance.stance.calmAfterSeconds;
   };
   refreshStyle = (): void => { applyKit(); applyStyle(); };
   if (!forcedElement && !forcedHush) {
@@ -691,7 +740,7 @@ async function main(): Promise<void> {
     nationIntro = new NationIntroFlow({
       scene,
       nation: kitElement,
-      isDim,
+      isDim: () => isDim,
       controller,
       shoulderCamera,
       input,
@@ -705,6 +754,14 @@ async function main(): Promise<void> {
         applyKit();
         setFightingStyle('weapon');
         sword.draw(true);
+      },
+      beforeUnlock: async () => {
+        const held = getStoredDrawing();
+        const account = await saveProgressAtGate();
+        if (account && !forcedElement && !forcedHush && (account.role !== held?.role || account.element !== held?.element)) {
+          applyDrawing(account);
+          notice(account.role === 'Hush' ? 'Welcome back. You are Hush.' : `Welcome back, Shaper of ${account.element}.`);
+        }
       },
       onMissionComplete: (lead) => {
         localStorage.setItem(introStorageKey, 'done');
@@ -740,21 +797,21 @@ async function main(): Promise<void> {
     lockedEnemy = target === lockedEnemy ? null : target;
     return true;
   };
-  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges });
+  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges, sustain });
   /** Whether this element keeps its current weapon in hand while bending. */
-  const bendsArmed = (): boolean => {
-    const allowed = (balance.combat.bendWithWeapon as Record<string, string | string[]>)[kitElement];
-    return allowed === 'any' || (Array.isArray(allowed) && allowed.includes(fight.kit.weapon));
-  };
+  const bendsArmed = (): boolean => rules.canBendWithWeapon(fight.kit);
   const setBending = (on: boolean): void => {
     if (fight.tier < 1) return;
     if (on && isDim) { notice('The Hush cannot bend'); return; }
     isLit = on;
     if (on) sound.playFireBurst(0.35);
-    const sheathed = on && armedWith === 'weapon' && !bendsArmed();
+    // Bending never draws the weapon: with it on the back the hero bends bare-handed, and an element
+    // that can't bend with the weapon in hand puts it away.
+    const inHand = armedWith === 'weapon' && sword.engaged;
+    const sheathed = on && armedWith === 'weapon' && (!inHand || !bendsArmed());
     if (sheathed) armedWith = 'hands';
     applyStyle();
-    notice(sheathed ? `Bending on, weapon away: ${kitElement} bends bare-handed` : on ? 'Bending on' : 'Bending off');
+    notice(sheathed && inHand ? `Bending on, weapon away: ${kitElement} bends bare-handed` : on ? 'Bending on' : 'Bending off');
   };
   const setFightingStyle = (style: FightingStyle): void => {
     if (style === 'bending') {
@@ -766,6 +823,7 @@ async function main(): Promise<void> {
     const unlit = armedWith === 'weapon' && isLit && !bendsArmed();
     if (unlit) isLit = false;
     applyStyle();
+    if (armedWith === 'weapon') drawWeapon();
     notice(unlit ? `Weapon drawn, bending off: ${kitElement} can't bend with it in hand` : armedWith === 'weapon' ? 'Weapon drawn' : armedWith === 'legs' ? 'Legs' : 'Bare hands');
   };
 
@@ -1035,6 +1093,10 @@ async function main(): Promise<void> {
   const footL = new Vector3();
   const kneeR = new Vector3();
   const kneeL = new Vector3();
+  /** The fists the bending fire wraps while lit. */
+  const fistR = new Vector3();
+  const fistL = new Vector3();
+  const litHands = { l: fistL, r: fistR };
   const heroView: HeroView = {
     position: controller.position,
     facing: 0,
@@ -1058,6 +1120,15 @@ async function main(): Promise<void> {
     const lagMs = Number(new URLSearchParams(window.location.search).get('lag')) || 0;
     online.OnlineSession.connect({
       scene, camera, world: physics.world, controller, hero, combat,
+      networkOrigin: LEGACY_SINDR_ORIGIN,
+      onPosition(position) {
+        const delta = new Vector3(position.x, position.y, position.z).sub(controller.position);
+        controller.place(position.x, position.y, position.z);
+        hero.model.position.copy(controller.position);
+        camera.position.add(delta);
+        shoulderCamera.target.add(delta);
+      },
+      onRegion(region) { canvas.dataset.networkRegion = region.id; },
       kit: () => fight.kit,
       alive: () => fight.heroAlive,
       isLit: () => isLit,
@@ -1089,13 +1160,18 @@ async function main(): Promise<void> {
           if (!combat.current) combat.react('hit');
         }
       },
+      onStamina: (current, cap, windedFor) => sustain.correct(current, cap, windedFor),
       onStatus: status,
       onNotice: notice,
       onTier: applyTier,
       onOutfit: (outfit) => { void hero.switchOutfit(parseOutfit(outfit)); },
       clock: zone?.clock,
     }, {
-      server: getServerUrl(), zone: inTown ? 'sindr' : 'arena', token: getStoredAuthToken(),
+      server: getServerUrl(),
+      zone: inTown && !params.has('legacyEast')
+        ? regionFor(toGlobal({ x: SINDR_SPAWN.x, y: 0, z: SINDR_SPAWN.z }, LEGACY_SINDR_ORIGIN)).id
+        : inTown ? 'sindr' : 'arena',
+      token: getStoredAuthToken(),
       element: kitElement, role: isDim ? 'Hush' : 'Shaper', lag: lagMs / 1000,
       forcedCarry: forcedCarry ?? undefined,
       night: params.has('night') ? Number(params.get('night')) : undefined,
@@ -1182,7 +1258,7 @@ async function main(): Promise<void> {
         }
         continue;
       }
-      if (!fight.ready('dodge', isLit) || !combat.press(action)) continue;
+      if (!combat.press(action)) continue;
       fight.recordDodge(isLit);
       sound.playDodge();
       const roll = movementVelocity(input.read(), shoulderCamera.yaw);
@@ -1193,7 +1269,7 @@ async function main(): Promise<void> {
     if (!alive) { input.takeActions(); pending = null; }
     if (pending && (sword.armed || fightingStyle !== 'weapon')) { attack(pending); pending = null; }
     if (alive && input.blocking && fightingStyle === 'weapon' && !sword.engaged) { sword.draw(true); heldCalm = false; }
-    combat.blocking = alive && input.blocking && (fightingStyle !== 'weapon' || sword.armed) && !combat.current;
+    combat.blocking = alive && input.blocking && (fightingStyle !== 'weapon' || sword.armed) && !combat.current && !sustain.guardBroken;
     if (combat.blocking) {
       controls?.used('block');
       const threat = lockedEnemy ?? fight.nearestInFront(controller.position, controller.facing, balance.hero.guardTurnRange, Math.PI);
@@ -1246,6 +1322,7 @@ async function main(): Promise<void> {
     if (reviveIn > 0 && (reviveIn -= delta) <= 0) {
       fight.reviveHero();
       combat.reset();
+      sustain.reset();
       fightHud.say('');
       if (zone) {
         controller.place(SPAWN.x, 0, SPAWN.z);
@@ -1253,6 +1330,7 @@ async function main(): Promise<void> {
         shoulderCamera.yaw = SPAWN.facing + Math.PI;
       }
     }
+    if (!picking) nationalEncounters?.update(delta, controller.position, nightness.value);
     if (zone) {
       const yardDist = Math.hypot(controller.position.x - 124, controller.position.z - -36);
       if (!playingOnline && yardDist < 12 && !yardSpawned && fight.enemies.filter(e => e.alive).length === 0) {
@@ -1315,7 +1393,11 @@ async function main(): Promise<void> {
     hero.getLimbWorldPosition('knee_l', kneeL);
     heroView.facing = controller.facing;
     const rooted = combat.current !== null || combat.blocking;
+    // Running needs stamina; out of it the hero walks.
+    const wish = rooted ? { forward: 0, right: 0, running: false } : input.read();
+    if (!sustain.canRun) wish.running = false;
     const speedMultiplier = (isLit ? 1.25 : 1.0) * (bend.windskiffActive ? 1.85 : 1.0);
+    const groundReady = zone?.groundStep(controller) ?? true;
     // Locked on, the body keeps its chest to the target while the feet carry it any way.
     const lockAt = shoulderCamera.lockTarget;
     const facingLock = lockAt
@@ -1326,7 +1408,7 @@ async function main(): Promise<void> {
       const stopAt = fightingStyle === 'weapon' ? balance.combat.lungeStopDistance : balance.combat.bareLungeStopDistance;
       const stop = combat.current !== 'dodge' && fight.nearestDistance(controller.position) < stopAt;
       const lunge = stop ? 0 : combat.lunge;
-      controller.step(rooted ? { forward: 0, right: 0, running: false } : input.read(), shoulderCamera.yaw, lunge, speedMultiplier,
+      if (groundReady && !onlineSession?.crossing) controller.step(wish, shoulderCamera.yaw, lunge, speedMultiplier,
         undefined, rooted ? undefined : facingLock);
       if (!picking) fight.step(heroView, combat, isLit);
       // Every body has moved for this tick; the world steps once.
@@ -1335,6 +1417,10 @@ async function main(): Promise<void> {
 
     if (bend.windskiffActive) {
       elementFx.updateWindskiff(controller.position, delta, controller.speed, controller.facing);
+    }
+    if (!picking) {
+      const running = wish.running && controller.grounded && controller.speed > balance.controller.runSpeedThreshold;
+      sustain.tick(delta, running, shoulderCamera.fight > 0, combat.blocking);
     }
 
     const animDelta = delta;
@@ -1397,7 +1483,8 @@ async function main(): Promise<void> {
             turnReadyAt = now + 0.25;
           }
         } else {
-          let clip = pace === 'idle' && !sword.engaged ? 'idle_relaxed' : pace;
+          // Standing still: the guard with a weapon drawn, the relaxed stand otherwise.
+          let clip: string = pace === 'idle' ? (sword.engaged ? 'idle_armed' : 'idle_relaxed') : pace;
           let clipSpeed = controller.speed;
           if (locked && pace === 'walk') {
             // Track relative to the chest: a sidestep gets the strafe walk, a backpedal runs the walk backwards.
@@ -1412,7 +1499,7 @@ async function main(): Promise<void> {
             }
           }
           hero.anim.play(clip, balance.controller.animationFade);
-          if (clip !== 'idle' && clip !== 'idle_relaxed') {
+          if (pace !== 'idle') {
             const authored = (clipSpeeds as Record<string, number>)[clip] ?? 1;
             const scale = clipSpeed / authored;
             hero.anim.setSpeed(clip, Math.abs(scale) < 0.5 ? Math.sign(scale || 1) * 0.5 : scale);
@@ -1464,8 +1551,9 @@ async function main(): Promise<void> {
     hero.getLimbWorldPosition('foot_l', footL);
     hero.getLimbWorldPosition('knee_r', kneeR);
     hero.getLimbWorldPosition('knee_l', kneeL);
+    if (isLit) { hero.getLimbWorldPosition('fist_r', fistR); hero.getLimbWorldPosition('fist_l', fistL); }
     const bladeLit = fightingStyle === 'weapon' && performance.now() >= lightningBareUntil;
-    bending.setLit(isLit, heroElement, drawn, controller.facing, bladeLit ? bladeBase : undefined, bladeLit ? bladeTip : undefined);
+    bending.setLit(isLit, heroElement, drawn, controller.facing, bladeLit ? bladeBase : undefined, bladeLit ? bladeTip : undefined, litHands);
     bending.syncBurnPatches(fight.activeBurnPatches);
     bending.setBurningVillains(fight.burningVillains);
     bending.update(delta, drawn, camera);
@@ -1495,6 +1583,7 @@ async function main(): Promise<void> {
       isDim,
       shoulderCamera.fight > 0,
     );
+    fightHud.setStamina(sustain.stamina.share, shoulderCamera.fight > 0, sustain.flashing, sustain.stamina.winded);
     const baseSupply = isDim ? `${bend.shards} ${kitElement.toLowerCase()} shards`
       : kitElement === 'AQUES' ? `Waterskin ${bend.hasWaterEnvironment || bend.nearWater(controller.position) ? '∞ (reusable)' : `${bend.waterskin}/${balance.combat.waterskin.charges}`}${bend.healingQuality(controller.position) === 'wellspring' ? ' · Wellspring water Oasis' : bend.nearWater(controller.position) ? ' · Water source' : ''}${bend.isFullMoon ? ' · Full Moon (+50%)' : ''}` : null;
     fightHud.setBending(bend.meter, bend.max, bend.weakBelow, baseSupply);
@@ -1529,6 +1618,9 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((error: unknown) => {
-  console.error('Failed to start the game:', error);
-});
+/** Starts the game: the loader and the opening (age gate) appear at once. Called by the cover. */
+export function startGame(): void {
+  main().catch((error: unknown) => {
+    console.error('Failed to start the game:', error);
+  });
+}

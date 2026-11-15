@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" href="data:," />
+  <title>Sindr Market Week</title>
+  <meta name="description" content="A week of trading in Sindr, played back in a minute: the game's real merchant rules on a throwaway copy of the economy." />
+  <link rel="stylesheet" href="/src/fast-forward.css" />
+</head>
+<body>
+  <main class="ff">
+    <header class="ff-head">
+      <p class="ff-kicker"><a href="/">ELEMENTS</a></p>
+      <h1>A week in Sindr, in a minute</h1>
+      <p class="ff-lede">The server runs seven game days of trading through the same merchant rules the live game uses, on a throwaway copy of the economy, with simulated players. Nothing here touches the live ledger or NEAR. Watch prices follow stock, a flooded shard colour get cheap, and a keeper go broke, shut, and get bought by a player.</p>
+    </header>
+
+    <section class="ff-bar" aria-label="Playback">
+      <div class="ff-clock">
+        <span class="ff-day" id="ff-label" aria-live="polite">Loading the week</span>
+        <progress id="ff-progress" max="168" value="0"></progress>
+      </div>
+      <div class="ff-controls">
+        <button type="button" id="ff-play" disabled>Pause</button>
+        <button type="button" id="ff-restart" disabled>Restart</button>
+        <button type="button" id="ff-new" disabled>New week</button>
+      </div>
+    </section>
+
+    <section class="ff-events" aria-label="What happened">
+      <h2>What happened</h2>
+      <ol id="ff-events"></ol>
+    </section>
+
+    <section aria-label="Keepers">
+      <h2>The fifteen keepers</h2>
+      <p class="ff-note">Buy is what a player pays. Sell is what the keeper pays a player. Hover or tap a price for the keeper's reason. The pricing rules are in <code>shared/src/economy/merchantRules.ts</code>.</p>
+      <div class="ff-grid" id="ff-grid"></div>
+    </section>
+
+    <footer class="ff-foot">
+      <p id="ff-meta"></p>
+      <p><a href="/legal/terms.html">Terms</a> <a href="/legal/privacy.html">Privacy</a> <a href="/legal/cookies.html">Cookies</a></p>
+    </footer>
+  </main>
+  <script type="module" src="/src/fast-forward.ts"></script>
+</body>
+</html>

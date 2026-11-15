@@ -126,8 +126,8 @@ test('Armour: the room draws the wearer in the worn outfit and takes its share o
   const strike = { enemy: 'e1', target: 's1', damage: 12, fromX: 0, fromZ: 1 };
   const bare = world.join('s2', { accountId: 'acct_b', role: 'Shaper', element: 'IGNIS' }, 0);
   assert.equal(bare.armour, 0);
-  const armoured = p.takeStrike(strike);
-  const unarmoured = bare.takeStrike(strike);
+  const armoured = p.takeStrike(strike, 1)!;
+  const unarmoured = bare.takeStrike(strike, 1)!;
   assert.ok(armoured < unarmoured, `${armoured} is not less than ${unarmoured}`);
   assert.equal(armoured, 12 / (1 + balance.economy.armour.pieces[PIECE].armour / balance.combat.rules.armourScale));
 });

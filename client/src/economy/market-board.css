@@ -1,0 +1,23 @@
+/* The board uses the game's self-hosted display and body fonts and a 4px spacing scale.
+   Controls have 44px hit regions. Content is opaque; motion is limited to focus feedback. */
+.market-dialog { --board-bg:#191b20; --board-label:#f5eee0; --board-secondary:#c8c0b4; --board-line:#80786e; --board-accent:#efca84; color-scheme:dark; color:var(--board-label); background:var(--board-bg); border:1px solid var(--board-line); border-radius:var(--radius-lg,8px); box-shadow:0 16px 48px #0008; width:min(44rem,calc(100% - 2rem)); max-height:calc(100dvh - 2rem); padding:0; }
+.market-dialog::backdrop {background:#000b;}
+.market-board {padding:1.5rem; font:1rem/1.5 var(--font-family-body,system-ui);}
+.market-board header {display:flex; gap:1rem; align-items:start; justify-content:space-between;}
+.market-board h2 {font:600 1.75rem/1.2 var(--font-family-display,serif); margin:0;}
+.market-board h3,.market-board legend {font-size:1.1875rem; font-weight:600;}
+.market-board p {max-width:65ch; color:var(--board-secondary); overflow-wrap:anywhere;}
+.market-board fieldset {border:1px solid var(--board-line); padding:1rem; margin:1.5rem 0; min-width:0;}
+.market-board label {display:grid; gap:.5rem; margin-bottom:1rem;}
+.market-board button,.market-board input,.market-board select {font:inherit; min-height:44px; min-width:44px; padding:.5rem .75rem; border-radius:var(--radius-sm,4px); border:1px solid var(--board-line); color:var(--board-label); background:var(--board-bg); max-width:100%; box-sizing:border-box;}
+.market-board button {cursor:pointer; border-color:var(--board-accent);}
+.market-board button:hover {background:color-mix(in srgb,var(--board-accent) 16%,var(--board-bg));}
+.market-board :focus-visible {outline:3px solid var(--board-accent); outline-offset:4px;}
+.market-board button:disabled,.market-board fieldset:disabled {opacity:.6; cursor:wait;}
+.market-actions,.market-board footer {display:flex; flex-wrap:wrap; gap:.5rem;}
+.market-board a {color:var(--board-accent); display:inline-flex; align-items:center; min-height:44px; padding:.5rem;}
+.market-offers {padding:0; list-style:none;}
+.market-offers li {border-top:1px solid var(--board-line); padding:1rem 0;}
+@media(prefers-color-scheme:light) {.market-dialog {--board-bg:#f6f1e7;--board-label:#231f1b;--board-secondary:#554b40;--board-line:#877965;--board-accent:#70501c;color-scheme:light;}}
+@media(prefers-reduced-motion:reduce) {.market-dialog * {animation:none!important;transition:none!important;scroll-behavior:auto!important;}}
+@media(prefers-contrast:more) {.market-dialog {--board-line:var(--board-label);}}

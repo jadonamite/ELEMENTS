@@ -3,18 +3,21 @@ import {
   EconomyError,
   buyShop,
   fetchMerchant,
+  fetchMerchantMind,
   fetchQuote,
   fetchShopOwnership,
   fetchShopsForSale,
   setShopPrices,
   withdrawShopProfit,
   type Merchant,
+  type MerchantMind,
   type Quote,
   type ShopForSale,
   type ShopOwnership,
 } from './api.js';
 import type { StallResult } from './door.js';
 import { itemName, shelfName } from './items.js';
+import { SINDR_TOWNSFOLK } from '../life/townsfolk.js';
 import './shop-window.css';
 
 // The window a player sees at a market stall: the merchant's purse, what's on each shelf and its price,
@@ -29,11 +32,16 @@ interface MerchantConfig {
 
 const MERCHANTS = (balance as unknown as { economy: { merchants: { sindr: MerchantConfig[] } } }).economy.merchants.sindr;
 
+/** Who keeps each shop, from the shared people list. */
+const KEEPERS = new Map(SINDR_TOWNSFOLK.filter((p) => p.keeps).map((p) => [p.keeps!, p.name]));
+
 export interface ShopWindowEvents {
   satchel(): Record<string, number>;
   coin(): number;
   changed(): Promise<void>;
   trade(action: 'buy' | 'sell', merchantId: string, item: string): Promise<StallResult>;
+  /** Opens a talk with the stall's keeper; the window closes for it. */
+  talk?(merchantId: string): void;
 }
 
 function escape(text: string): string {
@@ -113,6 +121,7 @@ export class ShopWindow {
     const sellQuotes = await Promise.all(carried.map(([itemId]) => fetchQuote(id, itemId, 'sell', 1).catch(() => null)));
 
     const ownership = await fetchShopOwnership(id).catch(() => null);
+    const mind = await fetchMerchantMind(id).catch(() => null);
     const forSale = merchant.status === 'closed' && !ownership
       ? await fetchShopsForSale().then((shops) => shops.find((s) => s.merchantId === id) ?? null).catch(() => null)
       : null;
@@ -152,8 +161,12 @@ export class ShopWindow {
           .join('')
       : '<p class="shop-empty">Nothing you carry is wanted at this stall.</p>';
 
+    const mindLine = mind?.latestThought
+      ? `<p class="shop-personality">${escape(mind.latestThought)}${mind.lastDecision ? ` &mdash; <em>${escape(mind.lastDecision)}</em>` : ''}</p>`
+      : (config ? `<p class="shop-personality">${escape(config.personality)}</p>` : '');
+
     const body = `
-      ${config ? `<p class="shop-personality">${escape(config.personality)}</p>` : ''}
+      ${mindLine}
       ${statusLine ? `<p class="shop-status">${escape(statusLine)}</p>` : ''}
       <section aria-label="For sale"><h3 class="shop-heading">For sale</h3>${buyRows}</section>
       <section aria-label="Sell to this stall"><h3 class="shop-heading">Sell what you carry</h3>${sellRows}</section>
@@ -276,7 +289,10 @@ export class ShopWindow {
       <div class="shop-panel">
         <header class="shop-header">
           <div><h2 class="shop-title">${escape(title)}</h2><div class="shop-money">${purse}</div></div>
-          <button type="button" class="shop-close" aria-label="Leave the stall">Leave</button>
+          <div class="shop-header-acts">
+            ${this.events.talk && this.merchantId && KEEPERS.has(this.merchantId) ? `<button type="button" class="shop-close shop-talk">Talk to ${escape(KEEPERS.get(this.merchantId)!.split(' ')[0]!)}</button>` : ''}
+            <button type="button" class="shop-close" aria-label="Leave the stall">Leave</button>
+          </div>
         </header>
         <div class="shop-body">${body}</div>
         <footer class="shop-footer">Hover or focus a price to hear why. Esc to leave.</footer>
@@ -314,7 +330,12 @@ export class ShopWindow {
   }
 
   private bindClose(): void {
-    this.el.querySelector('.shop-close')?.addEventListener('click', () => this.close());
+    this.el.querySelector('.shop-close:not(.shop-talk)')?.addEventListener('click', () => this.close());
+    this.el.querySelector('.shop-talk')?.addEventListener('click', () => {
+      const id = this.merchantId;
+      this.close();
+      if (id) this.events.talk?.(id);
+    });
   }
 
   private async act(action: 'buy' | 'sell', item: string): Promise<void> {

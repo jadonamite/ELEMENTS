@@ -718,6 +718,24 @@
         "ultimate": 0
       }
     },
+    "stamina": {
+      "max": 100,
+      "dodge": 25,
+      "heavyWeapon": 15,
+      "heavyBody": 12,
+      "runPerSecond": 12,
+      "runCalmScale": 0.5,
+      "jump": 8,
+      "superJump": 30,
+      "guardSoakScale": 0.5,
+      "parryRefund": 10,
+      "regenPerSecond": 18,
+      "regenDelay": 0.8,
+      "guardRegenScale": 0.5,
+      "windedSeconds": 1.5,
+      "guardBreakSeconds": 0.8,
+      "dodgeProtectSeconds": 0.45
+    },
     "parry": {
       "window": 0.15,
       "stagger": 0.8,
@@ -1236,6 +1254,209 @@
               "basePrice": 60
             }
           }
+        },
+        {
+          "id": "sindr_whetstone",
+          "name": "Whetstone Counter",
+          "nation": "IGNIS",
+          "personality": "A blade-honer who sells sound gear and lets the steel talk.",
+          "startingPurse": 8000,
+          "inventory": {
+            "item": {
+              "stock": 10,
+              "maxStock": 20,
+              "basePrice": 150
+            }
+          }
+        },
+        {
+          "id": "sindr_loom",
+          "name": "Loom Stall on the Rise",
+          "nation": "IGNIS",
+          "personality": "A patient loom-keeper selling cloth and thread by the exact measure.",
+          "startingPurse": 8000,
+          "inventory": {
+            "material": {
+              "stock": 30,
+              "maxStock": 60,
+              "basePrice": 15
+            }
+          }
+        },
+        {
+          "id": "sindr_packs",
+          "name": "Packs and Baskets",
+          "nation": "IGNIS",
+          "personality": "A basket-maker selling packs and road supplies to anyone heading out.",
+          "startingPurse": 8000,
+          "inventory": {
+            "supplies": {
+              "stock": 25,
+              "maxStock": 50,
+              "basePrice": 25
+            }
+          }
+        },
+        {
+          "id": "sindr_potter",
+          "name": "Potter's Flasks",
+          "nation": "IGNIS",
+          "personality": "A potter who fills her own flasks with tonics and prices a good glaze high.",
+          "startingPurse": 8000,
+          "inventory": {
+            "potion": {
+              "stock": 25,
+              "maxStock": 50,
+              "basePrice": 20
+            }
+          }
+        },
+        {
+          "id": "sindr_crimson",
+          "name": "Red-Cloak Rarities",
+          "nation": "IGNIS",
+          "personality": "A Lit veteran selling rare Crimson shards at a veteran's price.",
+          "startingPurse": 8000,
+          "inventory": {
+            "shard": {
+              "stock": 40,
+              "maxStock": 80,
+              "basePrice": 10
+            }
+          }
+        },
+        {
+          "id": "sindr_anvil",
+          "name": "Hearth-Shaper's Anvil",
+          "nation": "IGNIS",
+          "personality": "A Lit master smith selling commissioned blades and Shaper armour.",
+          "startingPurse": 8000,
+          "inventory": {
+            "item": {
+              "stock": 10,
+              "maxStock": 20,
+              "basePrice": 150
+            },
+            "armour_shaper_ignis": {
+              "stock": 10,
+              "maxStock": 20,
+              "basePrice": 60
+            }
+          }
+        },
+        {
+          "id": "sindr_coal",
+          "name": "Coal-Biter's Shop",
+          "nation": "IGNIS",
+          "personality": "A coal-dusted smith selling worked materials and plain gear by the east gate.",
+          "startingPurse": 8000,
+          "inventory": {
+            "material": {
+              "stock": 30,
+              "maxStock": 60,
+              "basePrice": 15
+            },
+            "item": {
+              "stock": 8,
+              "maxStock": 16,
+              "basePrice": 150
+            }
+          }
+        },
+        {
+          "id": "sindr_scales",
+          "name": "Salt-Scale Counter",
+          "nation": "IGNIS",
+          "personality": "A shard-weigher on the terrace with a brass scale she swears is honest.",
+          "startingPurse": 8000,
+          "inventory": {
+            "shard": {
+              "stock": 40,
+              "maxStock": 80,
+              "basePrice": 10
+            },
+            "material": {
+              "stock": 20,
+              "maxStock": 40,
+              "basePrice": 15
+            }
+          }
+        },
+        {
+          "id": "sindr_cork",
+          "name": "Cork-Tooth Tonics",
+          "nation": "IGNIS",
+          "personality": "A loud tonic-seller on the terrace, generous with talk and careless with change.",
+          "startingPurse": 8000,
+          "inventory": {
+            "potion": {
+              "stock": 25,
+              "maxStock": 50,
+              "basePrice": 20
+            },
+            "supplies": {
+              "stock": 15,
+              "maxStock": 30,
+              "basePrice": 25
+            }
+          }
+        },
+        {
+          "id": "sindr_tally",
+          "name": "Tallyman's Salvage",
+          "nation": "IGNIS",
+          "personality": "A slow-counting buyer of road salvage by the west gate who pays fairly for materials and gear.",
+          "startingPurse": 8000,
+          "inventory": {
+            "material": {
+              "stock": 20,
+              "maxStock": 60,
+              "basePrice": 15
+            },
+            "item": {
+              "stock": 5,
+              "maxStock": 20,
+              "basePrice": 150
+            }
+          }
+        },
+        {
+          "id": "sindr_wick",
+          "name": "Wick and Road Supplies",
+          "nation": "IGNIS",
+          "personality": "A neat supplier to the guild houses: wicks, packs and tonics.",
+          "startingPurse": 8000,
+          "inventory": {
+            "supplies": {
+              "stock": 20,
+              "maxStock": 40,
+              "basePrice": 25
+            },
+            "potion": {
+              "stock": 15,
+              "maxStock": 30,
+              "basePrice": 20
+            }
+          }
+        },
+        {
+          "id": "sindr_bright",
+          "name": "Brightcoin Exchange",
+          "nation": "IGNIS",
+          "personality": "A Lit guild trader dealing in rare shards and fine armour.",
+          "startingPurse": 8000,
+          "inventory": {
+            "shard": {
+              "stock": 30,
+              "maxStock": 60,
+              "basePrice": 10
+            },
+            "armour_shaper_ignis": {
+              "stock": 8,
+              "maxStock": 16,
+              "basePrice": 60
+            }
+          }
         }
       ]
     },
@@ -1247,7 +1468,118 @@
       "maxCloseHour": 22,
       "restockStockRatio": 0.3,
       "tributeStockRatio": 0.9,
-      "tributePriceRatio": 0.25
+      "tributePriceRatio": 0.25,
+      "tributeScheduleIntervalHours": 24,
+      "tributeScheduledShare": 0.1,
+      "tributeMinStockReserve": 5,
+      "events": {
+        "nearStallMetres": 15,
+        "floodNet": 10,
+        "brokeWarnRatio": 1.5,
+        "priceSwing": 0.15
+      },
+      "talk": {
+        "linesPerPlayerMinute": 5,
+        "linesPerAgentMinute": 12
+      },
+      "router": {
+        "order": ["nvidia", "cloudflare", "gemini", "groq", "openrouter"],
+        "judgeOrder": ["nearai", "nvidia", "groq"],
+        "cooldowns": {
+          "normalMs": 300000,
+          "stretchedMs": 600000,
+          "batchFlushNormalMs": 180000,
+          "batchFlushStretchedMs": 360000
+        },
+        "providers": {
+          "nvidia": {
+            "name": "NVIDIA NIM",
+            "baseUrl": "https://integrate.api.nvidia.com/v1",
+            "models": {
+              "plan": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+              "event": "nvidia/nemotron-3.5-bolt-e4b",
+              "conversation": "nvidia/nemotron-3.5-bolt-e4b",
+              "judge": "nvidia/nemotron-3-ultra-550b-a55b"
+            },
+            "rpm": 40,
+            "rpd": 1000,
+            "timeoutMs": 60000,
+            "talkTimeoutMs": 4000,
+            "judgeTimeoutMs": 60000,
+            "extraBody": {
+              "chat_template_kwargs": {
+                "enable_thinking": false
+              }
+            }
+          },
+          "cloudflare": {
+            "name": "Cloudflare Workers AI",
+            "baseUrl": "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1",
+            "models": {
+              "plan": "@cf/qwen/qwen3-30b-a3b-fp8",
+              "event": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+              "conversation": "@cf/qwen/qwen3-30b-a3b-fp8"
+            },
+            "rpm": 30,
+            "rpd": 520,
+            "timeoutMs": 25000,
+            "talkTimeoutMs": 4000
+          },
+          "gemini": {
+            "name": "Google Gemini",
+            "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "models": {
+              "plan": "gemini-flash-lite-latest",
+              "event": "gemini-flash-lite-latest",
+              "conversation": "gemini-flash-lite-latest"
+            },
+            "rpm": 15,
+            "rpd": 500,
+            "timeoutMs": 25000,
+            "talkTimeoutMs": 4000
+          },
+          "groq": {
+            "name": "Groq",
+            "baseUrl": "https://api.groq.com/openai/v1",
+            "models": {
+              "plan": "openai/gpt-oss-20b",
+              "event": "openai/gpt-oss-20b",
+              "conversation": "openai/gpt-oss-20b",
+              "judge": "openai/gpt-oss-120b"
+            },
+            "rpm": 30,
+            "rpd": 1000,
+            "timeoutMs": 25000,
+            "talkTimeoutMs": 4000,
+            "judgeTimeoutMs": 60000
+          },
+          "openrouter": {
+            "name": "OpenRouter",
+            "baseUrl": "https://openrouter.ai/api/v1",
+            "models": {
+              "plan": "nvidia/nemotron-3.5-lightning:free",
+              "event": "nvidia/nemotron-3.5-lightning:free",
+              "conversation": "nvidia/nemotron-3.5-lightning:free"
+            },
+            "rpm": 20,
+            "rpd": 50,
+            "timeoutMs": 25000,
+            "talkTimeoutMs": 4000
+          },
+          "nearai": {
+            "name": "NEAR AI Cloud (Daily Judge)",
+            "baseUrl": "https://cloud-api.near.ai/v1",
+            "models": {
+              "judge": "google/gemini-2.5-flash-lite"
+            },
+            "rpm": 10,
+            "rpd": 50,
+            "timeoutMs": 25000,
+            "talkTimeoutMs": 4000,
+            "judgeTimeoutMs": 60000
+          }
+        }
+      }
     },
     "shops": {
       "salePrice": 2000,
@@ -1257,6 +1589,80 @@
       "minPriceMultiplier": 0.6,
       "maxPriceMultiplier": 2.5,
       "unpaidUpkeepDaysToForfeit": 7
+    },
+    "caravans": {
+      "intervalHours": 12,
+      "routes": [
+        {
+          "id": "route_ignis_chromara",
+          "name": "Ignis to Chromara High Road",
+          "fromMerchant": "merchant_ignis",
+          "toMerchant": "merchant_chromara",
+          "fromNation": "IGNIS",
+          "toNation": "CHROMARA",
+          "itemType": "shard",
+          "cargoQuantity": 5
+        },
+        {
+          "id": "route_ignis_aques",
+          "name": "Ignis to Aques Waterway",
+          "fromMerchant": "merchant_ignis",
+          "toMerchant": "merchant_aques",
+          "fromNation": "IGNIS",
+          "toNation": "AQUES",
+          "itemType": "item",
+          "cargoQuantity": 2
+        },
+        {
+          "id": "route_aques_terra",
+          "name": "Aques to Terra Canyon Route",
+          "fromMerchant": "merchant_aques",
+          "toMerchant": "merchant_terra",
+          "fromNation": "AQUES",
+          "toNation": "TERRA",
+          "itemType": "potion",
+          "cargoQuantity": 5
+        },
+        {
+          "id": "route_terra_aura",
+          "name": "Terra to Aura High Span",
+          "fromMerchant": "merchant_terra",
+          "toMerchant": "merchant_aura",
+          "fromNation": "TERRA",
+          "toNation": "AURA",
+          "itemType": "shard",
+          "cargoQuantity": 5
+        },
+        {
+          "id": "route_aura_ignis",
+          "name": "Aura to Ignis Caldera Trail",
+          "fromMerchant": "merchant_aura",
+          "toMerchant": "merchant_ignis",
+          "fromNation": "AURA",
+          "toNation": "IGNIS",
+          "itemType": "shard",
+          "cargoQuantity": 5
+        }
+      ]
+    },
+    "masters": {
+      "baseTrainingFee": 50,
+      "weeklyGrowthRate": 0.1,
+      "minFee": 20,
+      "maxFee": 500
+    },
+    "rivalClan": {
+      "tradeIntervalHours": 6,
+      "maxTradeSpend": 300,
+      "preferredItems": ["shard", "potion", "material"]
+    },
+    "director": {
+      "restHoursBetweenStorms": 24,
+      "lookbackDays": 3,
+      "dominationThreshold": 0.35,
+      "minActivePlayers": 2,
+      "firestormDurationHours": 24,
+      "firestormPriceMultiplier": 1.25
     }
   },
   "raids": {

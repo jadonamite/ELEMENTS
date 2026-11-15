@@ -3,14 +3,20 @@ import {
   type AgentAction,
   type AgentObservation,
   type AgentTradeRecord,
+  type CustomerMemorySummary,
+  type DemandFloodingSummary,
   type MerchantStatus,
+  type SolvencyUrgency,
+  type TributeStatus,
   AGENT_CONFIG,
   GAME_HOUR_MS,
   MERCHANT_CONFIG,
   SINDR_MERCHANTS,
   TREASURY_ACCOUNT_ID,
+  formatActionSummary,
   updateMerchantSolvency,
   validateActions,
+  shardItemId,
 } from '@elements/shared';
 import {
   getDatabase,
@@ -18,12 +24,15 @@ import {
   saveMerchantMindEntry,
   getActiveShopOwnership,
 } from '../../db.js';
+import { getLatestAgentPlan, getLatestDailyJudgeReport } from './db.js';
 import { recordTransaction } from '../ledgerService.js';
+import { recordItemMove } from '../satchelService.js';
 import {
   getMerchant,
   getMerchantDemandWindow,
   saveMerchant,
 } from '../merchantService.js';
+import { getNpcMemorySummary } from '../npcMemoryService.js';
 import type { AgentDecider } from './types.js';
 import { RuleDecider } from './ruleDecider.js';
 
@@ -79,8 +88,27 @@ export function ensureSindrMerchants(
         },
         db,
       );
+      for (const [category, stock] of Object.entries(config.inventory)) {
+        if (stock.stock <= 0) continue;
+        recordItemMove(db, 'world', config.id, {
+          itemId: category === 'shard' ? shardItemId(config.nation) : category,
+          quantity: stock.stock,
+        }, 'opening_stock', `init:${config.id}`, now);
+      }
     }
   }
+}
+
+export function getLastMerchantTributeTime(
+  merchantId: string,
+  db: DatabaseSync = getDatabase(),
+): number {
+  const row = db
+    .prepare(
+      "SELECT timestamp FROM ledger_entries WHERE (sender = ? OR receiver = ?) AND reason = 'merchant_tribute' ORDER BY timestamp DESC LIMIT 1",
+    )
+    .get(merchantId, merchantId) as { timestamp: number } | undefined;
+  return row?.timestamp ?? 0;
 }
 
 export function getRecentMerchantTrades(
@@ -156,11 +184,50 @@ export async function tickMerchantAgent(
 
   const demandWindows = getMerchantDemandWindow(merchantId, now, db);
   const recentTrades = getRecentMerchantTrades(merchantId, now, db);
+  const intervalMs = (AGENT_CONFIG.tributeScheduleIntervalHours ?? 24) * GAME_HOUR_MS;
+  const lastTribute = getLastMerchantTributeTime(merchantId, db);
+  const defaultFirstTribute = 18 * GAME_HOUR_MS;
+  const nextTributeTime = lastTribute > 0 ? lastTribute + intervalMs : defaultFirstTribute;
   const tributeSchedule = {
-    nextTributeTime: now + 24 * GAME_HOUR_MS,
-    intervalMs: 24 * GAME_HOUR_MS,
+    nextTributeTime,
+    intervalMs,
   };
   const config = SINDR_MERCHANTS.find((s) => s.id === merchantId);
+
+  const brokeThreshold = MERCHANT_CONFIG.brokeThreshold;
+  const distanceToBroke = merchant.balance - brokeThreshold;
+  const solvencyUrgency: SolvencyUrgency = {
+    distanceToBroke,
+    isWarning: merchant.balance < 1500,
+    isBroke: merchant.balance < brokeThreshold,
+    daysBroke: merchant.daysBroke ?? 0,
+  };
+
+  const timeUntilTributeMs = Math.max(0, tributeSchedule.nextTributeTime - now);
+  const tributeStatus: TributeStatus = {
+    timeUntilTributeMs,
+    isDueSoon: timeUntilTributeMs <= 2 * GAME_HOUR_MS,
+    isDue: timeUntilTributeMs === 0,
+  };
+
+  const customerMemory = getNpcMemorySummary(merchantId, db);
+
+  const floodedItems: string[] = [];
+  const scarceItems: string[] = [];
+  for (const [itemKey, entries] of Object.entries(demandWindows)) {
+    if (!Array.isArray(entries)) continue;
+    let net = 0;
+    for (const e of entries) {
+      if (e.action === 'sell') net += e.quantity;
+      else if (e.action === 'buy') net -= e.quantity;
+    }
+    if (net >= 10) floodedItems.push(itemKey);
+    else if (net <= -10) scarceItems.push(itemKey);
+  }
+  const floodingSummary: DemandFloodingSummary = {
+    floodedItems,
+    scarceItems,
+  };
 
   const obs: AgentObservation = {
     merchantId: merchant.id,
@@ -175,10 +242,20 @@ export async function tickMerchantAgent(
     daysBroke: merchant.daysBroke,
     personality: config?.personality ?? 'A merchant in Sindr market square.',
     now,
+    customerMemory,
+    floodingSummary,
+    solvencyUrgency,
+    tributeStatus,
+    currentPlan: getLatestAgentPlan(merchant.id, db) ?? undefined,
+    guidance: getLatestDailyJudgeReport(db)?.agentGuidance?.[merchant.id]?.directive ?? undefined,
   };
 
   const decision = await decider.decide(obs);
   const { validActions, droppedActions } = validateActions(obs, decision.actions);
+
+  console.log(
+    `[MerchantAgent:${merchant.id}] Decision: "${decision.reasoning}" (valid: ${validActions.length}, dropped: ${droppedActions.length})`,
+  );
 
   for (const act of validActions) {
     if (act.type === 'restock') {
@@ -198,6 +275,7 @@ export async function tickMerchantAgent(
             db,
           );
           invItem.stock += act.quantity;
+          recordItemMove(db, 'world', merchant.id, { itemId: act.itemType === 'shard' ? shardItemId(merchant.nation) : act.itemType, quantity: act.quantity }, 'merchant_restock', `${merchant.id}:${act.itemType}`, now);
           merchant.balance -= cost;
         }
       }
@@ -219,6 +297,7 @@ export async function tickMerchantAgent(
           );
         }
         invItem.stock -= act.quantity;
+        recordItemMove(db, merchant.id, 'world', { itemId: act.itemType === 'shard' ? shardItemId(merchant.nation) : act.itemType, quantity: act.quantity }, 'merchant_tribute', `${merchant.id}:${act.itemType}`, now);
         merchant.balance += payout;
       }
     }
@@ -302,6 +381,7 @@ export function getMerchantMind(
 ): {
   merchantId: string;
   latestThought: string;
+  lastDecision: string;
   actions: Array<{ action: unknown; reasoning?: string; timestamp: number }>;
   purse: number;
   open: boolean;
@@ -316,10 +396,15 @@ export function getMerchantMind(
     history?.latestThought ??
     'Shelves are well apportioned and trade is steady across the square.';
   const actions = history?.actions ?? [];
+  const latestTickActions = history?.timestamp !== undefined
+    ? actions.filter((a) => a.timestamp === history.timestamp).map((a) => a.action)
+    : actions.slice(0, 1).map((a) => a.action);
+  const lastDecision = formatActionSummary(latestTickActions, merchant.nation);
 
   return {
     merchantId: merchant.id,
     latestThought,
+    lastDecision,
     actions,
     purse: merchant.balance,
     open: merchant.status === 'open',

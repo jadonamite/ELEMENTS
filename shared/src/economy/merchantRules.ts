@@ -370,6 +370,7 @@ export interface QuoteEvaluationParams {
   now?: number;
   nation?: string;
   ownerMultiplier?: number | undefined;
+  firestormMultiplier?: number | undefined;
 }
 
 export function evaluateMerchantQuote(params: QuoteEvaluationParams): Quote {
@@ -499,12 +500,24 @@ export function evaluateMerchantQuote(params: QuoteEvaluationParams): Quote {
     });
   }
 
+  // Rule 6: World director firestorm (when routes close, prices move)
+  if (typeof params.firestormMultiplier === 'number' && params.firestormMultiplier !== 1.0) {
+    const fireMult = params.firestormMultiplier;
+    runningPrice = Math.round(runningPrice * fireMult);
+    const fireWords = 'A raging firestorm blocks the mountain passes; scarcity and danger drive prices up.';
+    steps.push({
+      rule: 'world_director_firestorm',
+      effect: fireMult - 1,
+      words: fireWords,
+    });
+  }
+
   // Clamping: prices never go below 1 or above 3.9 x base after all rules
   const minPrice = MERCHANT_CONFIG.minPrice;
   const maxPrice = Math.round(basePrice * MERCHANT_CONFIG.maxPriceMultiplier);
   let finalPrice = Math.max(minPrice, Math.min(maxPrice, runningPrice));
 
-  // Rule 6: Owner multiplier (applied last on top of the rule price)
+  // Rule 7: Owner multiplier (applied last on top of the rule price)
   if (typeof params.ownerMultiplier === 'number') {
     const ownerMult = params.ownerMultiplier;
     finalPrice = Math.max(1, Math.round(finalPrice * ownerMult));

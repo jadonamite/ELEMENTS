@@ -71,6 +71,8 @@
   cursor: pointer;
 }
 
+.shop-header-acts { display: flex; gap: var(--space-2); flex: none; align-items: flex-start; }
+
 .shop-close {
   background: transparent;
   border: 1px solid var(--color-border-default);

@@ -1,11 +1,22 @@
+//! CHROMA, the coin of ELEMENTS, as a NEP-141 token.
+//!
+//! The whole supply is split at creation exactly as the game server's genesis splits it.
+//! After that the game account settles the server's ledger in numbered batches: each batch
+//! carries the ledger's moves in order, so chain balances always match the server's books.
+//! Every move is logged as a standard NEP-141 transfer event.
+
+#[path = "../../session_grants.rs"]
+mod session_grants;
+use session_grants::{Grant, Grants, Payload};
+use near_sdk::json_types::Base64VecU8;
+use near_sdk::PublicKey;
+
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
-use near_sdk::{
-    env, near, require, AccountId, BorshStorageKey, PanicOnDefault,
-};
-
 use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::serde_json::json;
+use near_sdk::{assert_one_yocto, env, near, require, AccountId, BorshStorageKey, Gas, NearToken, Promise, PanicOnDefault};
 
 #[derive(BorshSerialize, BorshStorageKey)]
 #[borsh(crate = "near_sdk::borsh")]
@@ -27,6 +38,25 @@ pub struct FungibleTokenMetadata {
     pub decimals: u8,
 }
 
+/// One ledger move. `memo` carries the server's ledger reason and entry id.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Move {
+    pub from: AccountId,
+    pub to: AccountId,
+    pub amount: U128,
+    pub memo: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct StorageBalance {
+    pub total: U128,
+    pub available: U128,
+}
+
+const ICON: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23b8862b'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23f3d27a' stroke-width='2'/%3E%3Cpath d='M16 7l3 9-3 9-3-9z' fill='%23f3d27a'/%3E%3C/svg%3E";
+
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct ChromaContract {
@@ -34,23 +64,49 @@ pub struct ChromaContract {
     pub total_supply: u128,
     pub accounts: LookupMap<AccountId, u128>,
     pub metadata: LazyOption<FungibleTokenMetadata>,
+    pub last_batch: u64,
+    grants: Grants,
+}
+
+fn transfer_event(from: &AccountId, to: &AccountId, amount: u128, memo: &Option<String>) {
+    let mut data = json!({
+        "old_owner_id": from,
+        "new_owner_id": to,
+        "amount": amount.to_string(),
+    });
+    if let Some(m) = memo {
+        data["memo"] = json!(m);
+    }
+    let event = json!({ "standard": "nep141", "version": "1.0.0", "event": "ft_transfer", "data": [data] });
+    env::log_str(&format!("EVENT_JSON:{}", event));
 }
 
 #[near]
 impl ChromaContract {
+    /// `genesis` is the server's opening split; the total supply is its sum.
     #[init]
-    pub fn new(owner_id: AccountId) -> Self {
+    pub fn new(owner_id: AccountId, genesis: Vec<(AccountId, U128)>) -> Self {
         require!(!env::state_exists(), "Contract is already initialized");
+        require!(!genesis.is_empty(), "Genesis split is empty");
 
-        let total_supply: u128 = 10_000_000;
         let mut accounts = LookupMap::new(StorageKey::Accounts);
-        accounts.insert(&owner_id, &total_supply);
+        let mut total_supply: u128 = 0;
+        let mut minted = Vec::new();
+        for (account, amount) in genesis {
+            require!(amount.0 > 0, "Genesis amounts must be positive");
+            require!(accounts.get(&account).is_none(), "Genesis account listed twice");
+            accounts.insert(&account, &amount.0);
+            total_supply = total_supply.checked_add(amount.0).expect("Supply overflow");
+            minted.push(json!({ "owner_id": account, "amount": amount.0.to_string(), "memo": "genesis" }));
+        }
+        let event = json!({ "standard": "nep141", "version": "1.0.0", "event": "ft_mint", "data": minted });
+        env::log_str(&format!("EVENT_JSON:{}", event));
 
         let metadata = FungibleTokenMetadata {
             spec: "ft-1.0.0".to_string(),
             name: "CHROMA".to_string(),
             symbol: "CHROMA".to_string(),
-            icon: None,
+            icon: Some(ICON.to_string()),
             reference: None,
             reference_hash: None,
             decimals: 0,
@@ -61,7 +117,37 @@ impl ChromaContract {
             total_supply,
             accounts,
             metadata: LazyOption::new(StorageKey::Metadata, Some(&metadata)),
+            last_batch: 0,
+            grants: Grants::new(),
         }
+    }
+
+    /// Applies one batch of the server ledger. Batches must arrive in order, so a batch
+    /// that was already applied is refused rather than counted twice.
+    pub fn settle(&mut self, batch: u64, moves: Vec<Move>) {
+        require!(env::predecessor_account_id() == self.owner_id, "Only the game account settles");
+        require!(batch == self.last_batch + 1, "Batch out of order");
+        for m in moves.iter() {
+            self.grants.debit(&m.from, "CHROMA", m.amount.0);
+            self.internal_transfer(&m.from, &m.to, m.amount.0, &m.memo);
+        }
+        self.last_batch = batch;
+    }
+
+    pub fn last_batch(&self) -> u64 {
+        self.last_batch
+    }
+
+    pub fn register_key(&mut self, public_key: PublicKey) { self.grants.register(public_key); }
+
+    pub fn grant(&mut self, payload: Payload, public_key: PublicKey, signature: Base64VecU8) {
+        self.grants.grant(payload, public_key, signature);
+    }
+
+    pub fn session_grant(&self, holder_id: AccountId) -> Option<Grant> { self.grants.get(&holder_id) }
+
+    pub fn owner(&self) -> AccountId {
+        self.owner_id.clone()
     }
 
     pub fn ft_total_supply(&self) -> U128 {
@@ -74,25 +160,41 @@ impl ChromaContract {
 
     #[payable]
     pub fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>) {
+        assert_one_yocto();
         let sender_id = env::predecessor_account_id();
-        let amount_raw = amount.0;
-        require!(amount_raw > 0, "Transfer amount must be positive");
-        require!(sender_id != receiver_id, "Sender and receiver cannot be the same");
+        self.internal_transfer(&sender_id, &receiver_id, amount.0, &memo);
+    }
 
-        let sender_balance = self.accounts.get(&sender_id).unwrap_or(0);
-        require!(sender_balance >= amount_raw, "Insufficient balance");
+    #[payable]
+    pub fn ft_transfer_call(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>, msg: String) -> Promise {
+        assert_one_yocto();
+        let sender_id = env::predecessor_account_id();
+        self.internal_transfer(&sender_id, &receiver_id, amount.0, &memo);
+        Promise::new(receiver_id.clone()).function_call(
+            "ft_on_transfer",
+            near_sdk::serde_json::to_vec(&json!({"sender_id":sender_id,"amount":amount,"msg":msg})).unwrap(),
+            NearToken::from_yoctonear(0), Gas::from_tgas(30),
+        ).then(Promise::new(env::current_account_id()).function_call(
+            "ft_resolve_transfer",
+            near_sdk::serde_json::to_vec(&json!({"sender_id":sender_id,"receiver_id":receiver_id,"amount":amount})).unwrap(),
+            NearToken::from_yoctonear(0), Gas::from_tgas(15),
+        ))
+    }
 
-        self.accounts.insert(&sender_id, &(sender_balance - amount_raw));
-        let receiver_balance = self.accounts.get(&receiver_id).unwrap_or(0);
-        self.accounts.insert(&receiver_id, &(receiver_balance + amount_raw));
+    #[private]
+    pub fn ft_resolve_transfer(&mut self, sender_id: AccountId, receiver_id: AccountId, amount: U128) -> U128 {
+        let unused = env::promise_result_checked(0, 128).ok()
+            .and_then(|bytes| near_sdk::serde_json::from_slice::<U128>(&bytes).ok()).unwrap_or(amount);
+        let balance = self.accounts.get(&receiver_id).unwrap_or(0);
+        let refund = unused.0.min(amount.0).min(balance);
+        if refund > 0 { self.internal_transfer(&receiver_id, &sender_id, refund, &Some("refund".into())); }
+        U128(amount.0 - refund)
+    }
 
-        env::log_str(&format!(
-            "Transfer {} CHROMA from {} to {}{}",
-            amount_raw,
-            sender_id,
-            receiver_id,
-            memo.map(|m| format!(" ({})", m)).unwrap_or_default()
-        ));
+    /// Storage is paid by the game account, so every account counts as registered.
+    pub fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
+        let _ = account_id;
+        Some(StorageBalance { total: U128(0), available: U128(0) })
     }
 
     pub fn ft_metadata(&self) -> FungibleTokenMetadata {
@@ -100,71 +202,143 @@ impl ChromaContract {
     }
 }
 
+impl ChromaContract {
+    fn internal_transfer(&mut self, from: &AccountId, to: &AccountId, amount: u128, memo: &Option<String>) {
+        require!(amount > 0, "Transfer amount must be positive");
+        require!(from != to, "Sender and receiver cannot be the same");
+        let from_balance = self.accounts.get(from).unwrap_or(0);
+        require!(from_balance >= amount, "Insufficient balance");
+        self.accounts.insert(from, &(from_balance - amount));
+        let to_balance = self.accounts.get(to).unwrap_or(0);
+        self.accounts.insert(to, &(to_balance + amount));
+        transfer_event(from, to, amount, memo);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::testing_env;
+    use near_sdk::test_utils::{get_logs, VMContextBuilder};
+    use near_sdk::{testing_env, NearToken};
 
+    fn game() -> AccountId {
+        "game.testnet".parse().unwrap()
+    }
     fn treasury() -> AccountId {
-        "treasury.elements.near".parse().unwrap()
+        "treasury.game.testnet".parse().unwrap()
+    }
+    fn merchant() -> AccountId {
+        "merchant_ignis.game.testnet".parse().unwrap()
+    }
+    fn player() -> AccountId {
+        "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90".parse().unwrap()
     }
 
-    fn alice() -> AccountId {
-        "alice.near".parse().unwrap()
+    fn as_caller(id: AccountId, deposit: u128) {
+        let mut b = VMContextBuilder::new();
+        b.predecessor_account_id(id).attached_deposit(NearToken::from_yoctonear(deposit));
+        testing_env!(b.build());
     }
 
-    fn bob() -> AccountId {
-        "bob.near".parse().unwrap()
+    fn fresh() -> ChromaContract {
+        as_caller(game(), 0);
+        let mut c = ChromaContract::new(game(), vec![(treasury(), U128(7_000)), (merchant(), U128(3_000))]);
+        for holder in [treasury(), merchant(), player()] { c.grants.fixture(holder, "CHROMA", 10_000); }
+        c
+    }
+
+    fn mv(from: AccountId, to: AccountId, amount: u128, memo: &str) -> Move {
+        Move { from, to, amount: U128(amount), memo: Some(memo.to_string()) }
     }
 
     #[test]
-    fn test_initialization() {
-        let mut builder = VMContextBuilder::new();
-        builder.predecessor_account_id(treasury());
-        testing_env!(builder.build());
-
-        let contract = ChromaContract::new(treasury());
-        assert_eq!(contract.ft_total_supply().0, 10_000_000);
-        assert_eq!(contract.ft_balance_of(treasury()).0, 10_000_000);
-        assert_eq!(contract.ft_balance_of(alice()).0, 0);
-
-        let meta = contract.ft_metadata();
-        assert_eq!(meta.symbol, "CHROMA");
-        assert_eq!(meta.decimals, 0);
+    fn genesis_matches_split() {
+        let c = fresh();
+        assert_eq!(c.ft_total_supply().0, 10_000);
+        assert_eq!(c.ft_balance_of(treasury()).0, 7_000);
+        assert_eq!(c.ft_balance_of(merchant()).0, 3_000);
+        assert_eq!(c.ft_metadata().decimals, 0);
+        assert!(get_logs()[0].contains("\"event\":\"ft_mint\""));
     }
 
     #[test]
-    fn test_transfer_success() {
-        let mut builder = VMContextBuilder::new();
-        builder.predecessor_account_id(treasury());
-        testing_env!(builder.build());
+    fn settle_applies_moves_in_order() {
+        let mut c = fresh();
+        c.settle(1, vec![
+            mv(treasury(), player(), 100, "player_starting_grant tx_1"),
+            mv(player(), merchant(), 30, "merchant_buy tx_2"),
+        ]);
+        assert_eq!(c.ft_balance_of(player()).0, 70);
+        assert_eq!(c.ft_balance_of(merchant()).0, 3_030);
+        assert_eq!(c.ft_balance_of(treasury()).0, 6_900);
+        assert_eq!(c.ft_total_supply().0, 10_000);
+        assert_eq!(c.last_batch(), 1);
+        assert_eq!(get_logs().len(), 3);
+    }
 
-        let mut contract = ChromaContract::new(treasury());
+    #[test]
+    #[should_panic(expected = "Batch out of order")]
+    fn replayed_batch_is_refused() {
+        let mut c = fresh();
+        c.settle(1, vec![mv(treasury(), player(), 1, "a")]);
+        c.settle(1, vec![mv(treasury(), player(), 1, "a")]);
+    }
 
-        contract.ft_transfer(alice(), U128(100), Some("Player starting grant".to_string()));
-        assert_eq!(contract.ft_balance_of(treasury()).0, 9_999_900);
-        assert_eq!(contract.ft_balance_of(alice()).0, 100);
-        assert_eq!(contract.ft_total_supply().0, 10_000_000);
-
-        // Alice transfers to Bob
-        builder.predecessor_account_id(alice());
-        testing_env!(builder.build());
-
-        contract.ft_transfer(bob(), U128(40), Some("Trade payment".to_string()));
-        assert_eq!(contract.ft_balance_of(alice()).0, 60);
-        assert_eq!(contract.ft_balance_of(bob()).0, 40);
-        assert_eq!(contract.ft_total_supply().0, 10_000_000);
+    #[test]
+    #[should_panic(expected = "Only the game account settles")]
+    fn only_owner_settles() {
+        let mut c = fresh();
+        as_caller(player(), 0);
+        c.settle(1, vec![mv(treasury(), player(), 1, "a")]);
     }
 
     #[test]
     #[should_panic(expected = "Insufficient balance")]
-    fn test_transfer_insufficient_balance() {
-        let mut builder = VMContextBuilder::new();
-        builder.predecessor_account_id(alice());
-        testing_env!(builder.build());
-
-        let mut contract = ChromaContract::new(treasury());
-        contract.ft_transfer(bob(), U128(500), None);
+    fn settle_cannot_overdraw() {
+        let mut c = fresh();
+        c.settle(1, vec![mv(player(), merchant(), 1, "a")]);
     }
+
+    #[test]
+    fn holder_can_transfer_with_one_yocto() {
+        let mut c = fresh();
+        c.settle(1, vec![mv(treasury(), player(), 50, "a")]);
+        as_caller(player(), 1);
+        c.ft_transfer(merchant(), U128(20), None);
+        assert_eq!(c.ft_balance_of(player()).0, 30);
+    }
+    #[test] #[should_panic(expected="No live grant")]
+    fn settle_refuses_unsigned_holder() {
+        let mut c = fresh();
+        c.accounts.insert(&"unsigned.testnet".parse().unwrap(), &100);
+        c.settle(1, vec![mv("unsigned.testnet".parse().unwrap(), merchant(), 1, "fine")]);
+    }
+
+    fn receiver_result(result: near_sdk::PromiseResult) -> ChromaContract {
+        let mut c=fresh();
+        as_caller(treasury(),1);
+        let _promise=c.ft_transfer_call("receiver.testnet".parse().unwrap(),U128(10),None,"deposit".into());
+        let ctx=VMContextBuilder::new().current_account_id(game()).predecessor_account_id(game()).build();
+        testing_env!(ctx, near_sdk::test_vm_config(), near_sdk::RuntimeFeesConfig::test(), Default::default(), vec![result]);
+        c
+    }
+    #[test]
+    fn ft_transfer_call_happy_path() {
+        let mut c=receiver_result(near_sdk::PromiseResult::Successful(b"\"0\"".to_vec()));
+        assert_eq!(c.ft_resolve_transfer(treasury(),"receiver.testnet".parse().unwrap(),U128(10)).0,10);
+        assert_eq!(c.ft_balance_of(treasury()).0,6990);
+    }
+    #[test]
+    fn ft_transfer_call_partial_refund() {
+        let mut c=receiver_result(near_sdk::PromiseResult::Successful(b"\"6\"".to_vec()));
+        assert_eq!(c.ft_resolve_transfer(treasury(),"receiver.testnet".parse().unwrap(),U128(10)).0,4);
+        assert_eq!(c.ft_balance_of(treasury()).0,6996);
+    }
+    #[test]
+    fn ft_transfer_call_failed_receiver_refunds() {
+        let mut c=receiver_result(near_sdk::PromiseResult::Failed);
+        assert_eq!(c.ft_resolve_transfer(treasury(),"receiver.testnet".parse().unwrap(),U128(10)).0,0);
+        assert_eq!(c.ft_balance_of(treasury()).0,7000);
+    }
+
 }

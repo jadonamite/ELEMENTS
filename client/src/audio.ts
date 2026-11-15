@@ -911,6 +911,36 @@ export class SoundManager {
     this.playSample('sheathe', 0.85, 1.0, this.sfxGain);
   }
 
+  /**
+   * A hard breath out, made from filtered noise: the hero is out of stamina, or hungry.
+   * `strength` 0 to 1 scales loudness and length.
+   */
+  playBreath(strength = 1): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.sfxGain) return;
+    const length = 0.35 + 0.25 * strength;
+    const frames = Math.floor(ctx.sampleRate * length);
+    const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 0.9;
+    const t = ctx.currentTime;
+    band.frequency.setValueAtTime(1300, t);
+    band.frequency.linearRampToValueAtTime(700, t + length);
+    const gain = ctx.createGain();
+    const peak = 0.05 + 0.1 * strength;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(peak, t + 0.06);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + length);
+    src.connect(band).connect(gain).connect(this.sfxGain);
+    src.start(t);
+    src.stop(t + length);
+  }
+
   /** Hero taking hit damage / pain grunt. */
   playHeroHurt(): void {
     this.playSample('hero_hurt', 0.95, 1.0, this.sfxGain);

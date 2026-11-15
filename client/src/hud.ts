@@ -71,8 +71,10 @@ export class FightHud {
       '</div>' +
       '<div class="hud-vitals">' +
       `<div class="vital"><img class="vital-art" src="${ART}/heart.png" alt="">` +
-      '<div class="hero-health" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100">' +
-      '<div class="trail"></div><div class="fill"></div><div class="scars"></div></div></div>' +
+      '<div class="vital-bars"><div class="hero-health" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100">' +
+      '<div class="trail"></div><div class="fill"></div><div class="scars"></div></div>' +
+      '<div class="hero-stamina" role="meter" aria-label="Stamina" aria-valuemin="0" aria-valuemax="100"><div class="stamina-fill"></div></div>' +
+      '</div></div>' +
       `<div class="vital"><img class="vital-art element-art" src="${ART}/shard-ignis.png" alt="">` +
       '<div class="hero-meter" role="meter" aria-label="Bending meter" aria-valuemin="0" aria-valuemax="100">' +
       '<div class="meter-fill"></div><div class="meter-line"></div></div>' +
@@ -156,6 +158,28 @@ export class FightHud {
     this.purse.hidden = this.chroma === null && this.standing.redFlags === 0 && !this.standing.hasBounty && !this.debug;
     this.purse.querySelector<HTMLElement>('.purse-coin')!.hidden = this.chroma === null && !this.debug;
   }
+
+  /**
+   * Stamina, a thin line under health: shown only in fight stance and only below full, or while it flashes
+   * because a move was refused. Winded, it greys out.
+   */
+  setStamina(share: number, inFight: boolean, flashing: boolean, winded: boolean): void {
+    const bar = this.stamina ??= this.root.querySelector<HTMLElement>('.hero-stamina')!;
+    const fill = this.staminaFill ??= bar.querySelector<HTMLElement>('.stamina-fill')!;
+    const show = flashing || (inFight && share < 0.999);
+    const percent = Math.round(Math.max(0, Math.min(1, share)) * 200) / 2;
+    const key = `${show}|${flashing}|${winded}|${percent}`;
+    if (key === this.staminaKey) return;
+    this.staminaKey = key;
+    bar.classList.toggle('shown', show);
+    bar.classList.toggle('flash', flashing);
+    bar.classList.toggle('winded', winded);
+    fill.style.transform = `scaleX(${percent / 100})`;
+    bar.setAttribute('aria-valuenow', String(Math.round(percent)));
+  }
+  private stamina: HTMLElement | undefined;
+  private staminaFill: HTMLElement | undefined;
+  private staminaKey = '';
 
   /** Large centred line such as "You fell" or "Round Cleared", or empty to clear it. */
   say(text: string): void { this.banner.textContent = text; }

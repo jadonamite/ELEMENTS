@@ -9,7 +9,7 @@ import { drawnCrowd, drawnInTown, makeCrowd, staffPosts, type PlayerPerson } fro
 import type { Browse, Post } from '../world/builder.js';
 import { SINDR_TOWNSFOLK } from './townsfolk.js';
 import { WaypointMarker } from '../story/waypoint-marker.js';
-import { NpcDialogueUI } from '../story/npc-dialogue-ui.js';
+import { NpcDialogueUI, type MindDesk } from '../story/npc-dialogue-ui.js';
 import { LeadManager, type Lead } from '../../../shared/src/story/leads.js';
 import { createDialogueMemory, dialogueRules, type DialogueMemory, type PlayerDialogueContext } from '../../../shared/src/story/dialogue.js';
 import dialogueData from '../../../shared/dialogue.json';
@@ -54,6 +54,8 @@ export interface SindrLifeOptions {
   browse?: readonly Browse[];
   /** Shows a line someone in the street said, under their name, for `seconds`. */
   subtitle: (name: string, line: string, seconds: number) => void;
+  /** The server's minds, when the game is online: people answer in their own words. */
+  mind?: MindDesk | undefined;
 }
 
 export class SindrLifeSystem {
@@ -116,6 +118,7 @@ export class SindrLifeSystem {
         this.waypointMarker.setLead(lead);
         this.onNotice(`New Lead: ${lead.title} marked on compass`);
       },
+      options.mind,
     );
 
     // The named townsfolk, then a crowd wearing its own looks, copied round the streets.
@@ -204,6 +207,14 @@ export class SindrLifeSystem {
 
   private talkTo(npc: NonNullable<ReturnType<TownManager['getTalkTarget']>>): void {
     this.dialogueUI.interact(this.getPlayerContext(), npc);
+  }
+
+  /** Opens a talk with the keeper of a shop (from the shop window); false when they are not at hand. */
+  talkToKeeper(merchantId: string): boolean {
+    const keeper = this.townManager.townsfolk.find(p => p.data.keeps === merchantId);
+    if (!keeper) return false;
+    this.dialogueUI.interact(this.getPlayerContext(), keeper);
+    return true;
   }
 
   dispose(): void {

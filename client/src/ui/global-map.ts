@@ -1,3 +1,4 @@
+import { openMarketBoard } from '../economy/market-board.js';
 export type MapRegion = 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA' | 'CHROMARA';
 
 const REGIONS: ReadonlyArray<{
@@ -45,6 +46,7 @@ export function globalMapMarkup(inTown: boolean): string {
         <p class="atlas-description"></p>
         <div class="atlas-places-wrap"><h3>Known places</h3><ul class="atlas-places"></ul></div>
         <button type="button" class="home-btn primary atlas-enter" hidden>Enter Sindr</button>
+        <button type="button" class="home-btn atlas-market" hidden>Read Chromara’s market board</button>
         <p class="atlas-travel-note">Travel between regions is not available yet.</p>
       </aside>
     </section>`;
@@ -122,6 +124,8 @@ export function bindGlobalMap(root: ParentNode, inTown: boolean, navigateToSindr
       button.setAttribute('aria-pressed', String(selected));
       button.classList.toggle('is-selected', selected);
     });
+    const market = root.querySelector<HTMLButtonElement>('.atlas-market');
+    if (market) market.hidden = id !== 'CHROMARA';
     title.textContent = region.name;
     description.textContent = region.detail;
     status.textContent = region.ready ? (inTown ? 'You are here' : 'Available now') : 'Not available yet';
@@ -171,5 +175,6 @@ export function bindGlobalMap(root: ParentNode, inTown: boolean, navigateToSindr
   map?.addEventListener('pointerup', endDrag);
   map?.addEventListener('pointercancel', endDrag);
   enter?.addEventListener('click', navigateToSindr);
+  root.querySelector('.atlas-market')?.addEventListener('click', openMarketBoard);
   select(inTown ? 'IGNIS' : 'CHROMARA');
 }

@@ -31,14 +31,19 @@ export class RuleDecider implements AgentDecider {
     const restockedItems: Array<{ item: string; quantity: number }> = [];
     const tributeItems: Array<{ item: string; quantity: number }> = [];
 
-    // Rule 2: Restock items under 30% of max when purse allows
+    // Rule 2: Restock items under target ratio (from daily plan or config) when purse allows
     for (const [itemType, item] of Object.entries(obs.stock)) {
       if (item.maxStock <= 0) continue;
       const ratio = item.stock / item.maxStock;
-      if (ratio < AGENT_CONFIG.restockStockRatio) {
-        const needed = item.maxStock - item.stock;
+      const targetRestockRatio =
+        obs.currentPlan?.targetStockRatio?.[itemType] ??
+        obs.currentPlan?.targetStockRatio?.default ??
+        AGENT_CONFIG.restockStockRatio;
+
+      if (ratio < targetRestockRatio) {
+        const needed = Math.round(item.maxStock * targetRestockRatio) - item.stock;
         const affordable = Math.floor(availablePurse / item.basePrice);
-        const qty = Math.min(needed, affordable);
+        const qty = Math.min(needed > 0 ? needed : item.maxStock - item.stock, affordable);
         if (qty > 0) {
           actions.push({
             type: 'restock',
@@ -51,7 +56,11 @@ export class RuleDecider implements AgentDecider {
       }
     }
 
-    // Rule 3: Ship tribute of items over 90% of max
+    // Rule 3: Ship tribute on schedule or when shelves are crowded
+    const isTributeDue = obs.tributeStatus?.isDue ?? (obs.tributeStatus?.timeUntilTributeMs === 0);
+    const scheduledShare = AGENT_CONFIG.tributeScheduledShare ?? 0.1;
+    const minReserve = AGENT_CONFIG.tributeMinStockReserve ?? 5;
+
     for (const [itemType, item] of Object.entries(obs.stock)) {
       if (item.maxStock <= 0) continue;
       const ratio = item.stock / item.maxStock;
@@ -66,11 +75,25 @@ export class RuleDecider implements AgentDecider {
           });
           tributeItems.push({ item: itemType, quantity: excess });
         }
+      } else if (isTributeDue && item.stock > minReserve) {
+        const available = item.stock - minReserve;
+        const targetQty = Math.max(1, Math.floor(available * scheduledShare));
+        const qty = Math.min(available, targetQty);
+        if (qty > 0) {
+          actions.push({
+            type: 'tribute',
+            itemType,
+            quantity: qty,
+          });
+          tributeItems.push({ item: itemType, quantity: qty });
+        }
       }
     }
 
     // Reasoning sentence in the merchant's voice
-    let reasoning = 'Shelves are well apportioned and trade is steady across the square.';
+    let reasoning =
+      obs.currentPlan?.preparedLines?.[0] ??
+      'Shelves are well apportioned and trade is steady across the square.';
     if (obs.status === 'broke_buying_paused' || obs.purse < 1000) {
       reasoning = 'Purse is running thin; conserving coin until travelers buy our wares.';
     } else if (restockedItems.length > 0 && tributeItems.length > 0) {

@@ -1,6 +1,6 @@
 import type { AnimationClip, Group, Mesh, Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BodyKit } from '../body.js';
+import { BodyKit, markRest } from '../body.js';
 import { mergeFarBody } from './far-body.js';
 import { sanitizeCharacterConfig } from '../creator/creator-types.js';
 import { rollLook, seeded, type Look, type PlayerPerson } from './crowd.js';
@@ -50,7 +50,7 @@ export function ownLooks(people: readonly Townsperson[], player?: PlayerPerson):
 export async function loadLookBodies(looks: readonly Look[], children: ReadonlySet<string>,
   loader = new GLTFLoader(), warm?: (model: Object3D) => Promise<void>): Promise<Map<string, TownsfolkBody>> {
   const sets = await Promise.all(['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(f => loader.loadAsync(`/assets/characters/${f}.glb`)));
-  const clips = sets.flatMap(s => s.animations);
+  const clips = sets.flatMap(markRest);
   const kit = new BodyKit(loader);
   const farKit = new BodyKit(loader, 'far');
   const bodies = new Map<string, TownsfolkBody>();

@@ -10,6 +10,7 @@ build/
 coverage/
 *.tsbuildinfo
 *.log
+/contracts/**/target/
 
 # Working material
 workbench/

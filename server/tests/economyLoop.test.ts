@@ -10,10 +10,10 @@ test('Economy loop: starting the server opens the Sindr market and runs a first 
   setDatabase(db);
   const lines: string[] = [];
   const loop = startEconomyLoop({ db, decider: new RuleDecider(), now: () => 10 * 60 * 60 * 1000, log: (l) => lines.push(l) });
-  await new Promise((r) => setTimeout(r, 50));
+  await loop.step();
   loop.stop();
-  for (const id of ['sindr_shards', 'sindr_supplies', 'sindr_arms']) assert.ok(getMerchant(id, db), `${id} exists`);
-  assert.ok(lines.some((l) => l.startsWith('merchants ticked: 3')), lines.join('\n'));
+  for (const id of ['sindr_shards', 'sindr_supplies', 'sindr_arms', 'sindr_bright']) assert.ok(getMerchant(id, db), `${id} exists`);
+  assert.ok(lines.some((l) => l.startsWith('merchants ticked: 15')), lines.join('\n'));
   assert.equal(verifyWorldSupply(db), true);
 });
 

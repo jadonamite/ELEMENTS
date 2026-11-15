@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+client/public
+client/src
+art
+workbench
+contracts
+docs
+test-results
+*.sqlite
+*.glb
+.env

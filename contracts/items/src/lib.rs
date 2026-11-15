@@ -1,0 +1,391 @@
+//! NEP-245 multi-token balances for ELEMENTS item stacks.
+
+#[path = "../../session_grants.rs"]
+mod session_grants;
+use session_grants::{Grant, Grants, Payload};
+use near_sdk::json_types::Base64VecU8;
+use near_sdk::PublicKey;
+
+use near_sdk::borsh::BorshSerialize;
+use near_sdk::collections::LookupMap;
+use near_sdk::json_types::U128;
+use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::serde_json::json;
+use near_sdk::{assert_one_yocto, env, near, require, AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise};
+
+#[derive(BorshSerialize, BorshStorageKey)]
+#[borsh(crate = "near_sdk::borsh")]
+enum StorageKey { Balances, Supplies }
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct MtOp {
+    pub from: Option<AccountId>,
+    pub to: Option<AccountId>,
+    pub token_id: String,
+    pub amount: U128,
+    pub memo: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct MtContractMetadata { pub spec: String, pub name: String }
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct MtBaseTokenMetadata {
+    pub name: String, pub id: String, pub symbol: Option<String>, pub icon: Option<String>,
+    pub decimals: Option<String>, pub base_uri: Option<String>, pub reference: Option<String>,
+    pub copies: Option<u64>, pub reference_hash: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct MtTokenMetadata {
+    pub title: Option<String>, pub description: Option<String>, pub media: Option<String>,
+    pub media_hash: Option<String>, pub issued_at: Option<String>, pub expires_at: Option<String>,
+    pub starts_at: Option<String>, pub updated_at: Option<String>, pub extra: Option<String>,
+    pub reference: Option<String>, pub reference_hash: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct MtTokenMetadataAll { pub base: MtBaseTokenMetadata, pub token: MtTokenMetadata }
+
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
+pub struct ItemsContract {
+    owner_id: AccountId,
+    balances: LookupMap<String, u128>,
+    supplies: LookupMap<String, u128>,
+    last_batch: u64,
+    grants: Grants,
+}
+
+fn key(account: &AccountId, token: &str) -> String { format!("{account}\0{token}") }
+
+fn event(name: &str, data: near_sdk::serde_json::Value) {
+    env::log_str(&format!("EVENT_JSON:{}", json!({"standard":"nep245","version":"1.0.0","event":name,"data":data})));
+}
+
+#[near]
+impl ItemsContract {
+    #[init]
+    pub fn new(owner_id: AccountId) -> Self {
+        require!(!env::state_exists(), "Contract is already initialized");
+        Self { owner_id, balances: LookupMap::new(StorageKey::Balances), supplies: LookupMap::new(StorageKey::Supplies), last_batch: 0, grants: Grants::new() }
+    }
+
+    pub fn register_key(&mut self, public_key: PublicKey) { self.grants.register(public_key); }
+
+    pub fn grant(&mut self, payload: Payload, public_key: PublicKey, signature: Base64VecU8) {
+        self.grants.grant(payload, public_key, signature);
+    }
+
+    pub fn session_grant(&self, holder_id: AccountId) -> Option<Grant> { self.grants.get(&holder_id) }
+
+    pub fn owner(&self) -> AccountId { self.owner_id.clone() }
+    pub fn last_batch(&self) -> u64 { self.last_batch }
+
+    /// Ordered server ledger operations. `from: None` mints from world; `to: None` burns to world.
+    pub fn settle(&mut self, batch: u64, ops: Vec<MtOp>) {
+        require!(env::predecessor_account_id() == self.owner_id, "Only the game account settles");
+        require!(batch == self.last_batch + 1, "Batch out of order");
+        for op in ops {
+            require!(op.amount.0 > 0, "Amount must be positive");
+            let token = op.token_id;
+            let amount = op.amount.0;
+            if let Some(ref from) = op.from { self.grants.debit(from, &token, amount); }
+            match (op.from, op.to) {
+                (None, Some(to)) => {
+                    let balance=self.balances.get(&key(&to,&token)).unwrap_or(0);
+                    self.balances.insert(&key(&to,&token), &(balance+amount));
+                    let supply=self.supplies.get(&token).unwrap_or(0);
+                    self.supplies.insert(&token,&(supply+amount));
+                    event("mt_mint",json!([{"owner_id":to,"token_ids":[token],"amounts":[amount.to_string()],"memo":op.memo}]));
+                },
+                (Some(from), None) => {
+                    let balance=self.balances.get(&key(&from,&token)).unwrap_or(0);
+                    require!(balance>=amount,"Insufficient balance");
+                    self.balances.insert(&key(&from,&token),&(balance-amount));
+                    let supply=self.supplies.get(&token).unwrap_or(0);
+                    require!(supply>=amount,"Supply underflow");
+                    self.supplies.insert(&token,&(supply-amount));
+                    event("mt_burn",json!([{"owner_id":from,"token_ids":[token],"amounts":[amount.to_string()],"memo":op.memo}]));
+                },
+                (Some(from),Some(to)) => self.transfer(&from,&to,&token,amount,op.memo),
+                (None,None) => env::panic_str("Operation has no source or destination"),
+            }
+        }
+        self.last_batch = batch;
+    }
+
+    pub fn mt_balance_of(&self, account_id: AccountId, token_id: String) -> U128 { U128(self.balances.get(&key(&account_id, &token_id)).unwrap_or(0)) }
+    pub fn mt_batch_balance_of(&self, account_id: AccountId, token_ids: Vec<String>) -> Vec<U128> {
+        token_ids.iter().map(|token| self.mt_balance_of(account_id.clone(), token.clone())).collect()
+    }
+    pub fn mt_supply(&self, token_id: String) -> Option<U128> { self.supplies.get(&token_id).map(U128) }
+    pub fn mt_batch_supply(&self, token_ids: Vec<String>) -> Vec<Option<U128>> { token_ids.into_iter().map(|t| self.mt_supply(t)).collect() }
+    pub fn mt_token(&self, token_ids: Vec<String>) -> Vec<Option<near_sdk::serde_json::Value>> {
+        token_ids.into_iter().map(|token_id| self.supplies.get(&token_id).map(|_| json!({
+            "token_id":token_id,"owner_id":null,"base_metadata_id":token_id,
+            "token_metadata":self.token_metadata(&token_id)
+        }))).collect()
+    }
+    pub fn mt_metadata_contract(&self) -> MtContractMetadata { MtContractMetadata { spec:"mt-1.0.0".into(), name:"ELEMENTS Items".into() } }
+    pub fn mt_metadata_base_by_token_id(&self, token_ids: Vec<String>) -> Vec<MtBaseTokenMetadata> {
+        token_ids.iter().map(|id| self.base_metadata(id)).collect()
+    }
+    pub fn mt_metadata_base_by_metadata_id(&self, metadata_ids: Vec<String>) -> Vec<MtBaseTokenMetadata> {
+        metadata_ids.iter().map(|id| self.base_metadata(id)).collect()
+    }
+    pub fn mt_metadata_token_by_token_id(&self, token_ids: Vec<String>) -> Vec<MtTokenMetadata> {
+        token_ids.iter().map(|id| self.token_metadata(id)).collect()
+    }
+    pub fn mt_metadata_token_all(&self, token_ids: Vec<String>) -> Vec<MtTokenMetadataAll> {
+        token_ids.iter().map(|id| MtTokenMetadataAll { base:self.base_metadata(id), token:self.token_metadata(id) }).collect()
+    }
+}
+
+impl ItemsContract {
+    fn base_metadata(&self, token_id: &str) -> MtBaseTokenMetadata {
+        let name = token_name(token_id);
+        MtBaseTokenMetadata { name, id:token_id.into(), symbol:None, icon:None, decimals:None, base_uri:None, reference:None, copies:Some(self.supplies.get(&token_id.to_string()).unwrap_or(0).min(u64::MAX as u128) as u64), reference_hash:None }
+    }
+
+    fn token_metadata(&self, token_id: &str) -> MtTokenMetadata {
+        let element = ["ignis", "aques", "terra", "aura"].into_iter().find(|name| token_id.ends_with(name)).unwrap_or("none");
+        let media = if token_id.starts_with("shard_") && element != "none" { format!("https://elements.namite.xyz/assets/ui/hud/shard-{element}.png") } else { "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 4 53 20 48 50 32 60 16 50 11 20z' fill='%23b8862b'/%3E%3Cpath d='M32 9v45' stroke='%23f3d27a' stroke-width='4'/%3E%3C/svg%3E".to_string() };
+        MtTokenMetadata { title:Some(token_name(token_id)), description:Some(format!("ELEMENTS item token: {token_id}")), media:Some(media), media_hash:None, issued_at:None, expires_at:None, starts_at:None, updated_at:None, extra:Some(json!({"element":element,"token_id":token_id}).to_string()), reference:None, reference_hash:None }
+    }
+}
+
+fn token_name(token_id: &str) -> String {
+    token_id.split('_').map(|part| { let mut chars=part.chars(); chars.next().map(|first| first.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default() }).collect::<Vec<_>>().join(" ")
+}
+
+#[near]
+impl ItemsContract {
+    #[payable]
+    pub fn mt_transfer(&mut self, receiver_id: AccountId, token_id: String, amount: U128, approval: Option<(AccountId, u64)>, memo: Option<String>) {
+        assert_one_yocto();
+        require!(approval.is_none(), "Approvals are not supported");
+        self.transfer(&env::predecessor_account_id(), &receiver_id, &token_id, amount.0, memo);
+    }
+
+    #[payable]
+    pub fn mt_batch_transfer(&mut self, receiver_id: AccountId, token_ids: Vec<String>, amounts: Vec<U128>, approvals: Option<Vec<Option<(AccountId, u64)>>>, memo: Option<String>) {
+        assert_one_yocto();
+        require!(token_ids.len() == amounts.len(), "Token and amount lengths differ");
+        if let Some(ref values) = approvals {
+            require!(values.len() == token_ids.len(), "Token and approval lengths differ");
+            require!(values.iter().all(Option::is_none), "Approvals are not supported");
+        }
+        let sender = env::predecessor_account_id();
+        for (token, amount) in token_ids.iter().zip(amounts.iter()) { self.transfer(&sender, &receiver_id, token, amount.0, memo.clone()); }
+    }
+
+    #[payable]
+    pub fn mt_transfer_call(
+        &mut self,
+        receiver_id: AccountId,
+        token_id: String,
+        amount: U128,
+        approval: Option<(AccountId, u64)>,
+        memo: Option<String>,
+        msg: String,
+    ) -> Promise {
+        assert_one_yocto();
+        require!(approval.is_none(), "Approvals are not supported");
+        let sender_id = env::predecessor_account_id();
+        self.transfer(&sender_id, &receiver_id, &token_id, amount.0, memo);
+        self.transfer_call_promise(sender_id, receiver_id, vec![token_id], vec![amount], msg)
+    }
+
+    #[payable]
+    pub fn mt_batch_transfer_call(
+        &mut self,
+        receiver_id: AccountId,
+        token_ids: Vec<String>,
+        amounts: Vec<U128>,
+        approvals: Option<Vec<Option<(AccountId, u64)>>>,
+        memo: Option<String>,
+        msg: String,
+    ) -> Promise {
+        assert_one_yocto();
+        require!(token_ids.len() == amounts.len(), "Token and amount lengths differ");
+        if let Some(ref values) = approvals {
+            require!(values.len() == token_ids.len(), "Token and approval lengths differ");
+            require!(values.iter().all(Option::is_none), "Approvals are not supported");
+        }
+        let sender_id = env::predecessor_account_id();
+        for (token, amount) in token_ids.iter().zip(amounts.iter()) {
+            self.transfer(&sender_id, &receiver_id, token, amount.0, memo.clone());
+        }
+        self.transfer_call_promise(sender_id, receiver_id, token_ids, amounts, msg)
+    }
+
+    /// Resolves receiver usage and returns any unused amounts to the original owner.
+    pub fn mt_resolve_transfer(
+        &mut self,
+        sender_id: AccountId,
+        receiver_id: AccountId,
+        token_ids: Vec<String>,
+        amounts: Vec<U128>,
+        approvals: Option<Vec<Option<Vec<(AccountId, u64, U128)>>>>,
+    ) -> Vec<U128> {
+        require!(env::predecessor_account_id() == env::current_account_id(), "Resolver can only be called by this contract");
+        require!(token_ids.len() == amounts.len(), "Token and amount lengths differ");
+        require!(approvals.is_none(), "Approvals are not supported");
+
+        let unused = env::promise_result_checked(0, 64 * 1024)
+            .ok()
+            .and_then(|bytes| near_sdk::serde_json::from_slice::<Vec<U128>>(&bytes).ok())
+            .filter(|values| values.len() == amounts.len())
+            .unwrap_or_else(|| amounts.clone());
+
+        token_ids.iter().zip(amounts.iter()).zip(unused.iter()).map(|((token, amount), unused)| {
+            let receiver_key = key(&receiver_id, token);
+            let sender_key = key(&sender_id, token);
+            let receiver_balance = self.balances.get(&receiver_key).unwrap_or(0);
+            let refund = unused.0.min(amount.0).min(receiver_balance);
+            if refund > 0 {
+                let sender_balance = self.balances.get(&sender_key).unwrap_or(0);
+                self.balances.insert(&receiver_key, &(receiver_balance - refund));
+                self.balances.insert(&sender_key, &sender_balance.checked_add(refund).unwrap_or_else(|| env::panic_str("Balance overflow")));
+                event("mt_transfer", json!([{"old_owner_id":receiver_id,"new_owner_id":sender_id,"token_ids":[token],"amounts":[refund.to_string()],"memo":"refund"}]));
+            }
+            U128(amount.0 - refund)
+        }).collect()
+    }
+}
+
+impl ItemsContract {
+    fn transfer_call_promise(
+        &self,
+        sender_id: AccountId,
+        receiver_id: AccountId,
+        token_ids: Vec<String>,
+        amounts: Vec<U128>,
+        msg: String,
+    ) -> Promise {
+        const RECEIVER_GAS: Gas = Gas::from_tgas(30);
+        const RESOLVE_GAS: Gas = Gas::from_tgas(15);
+        let receiver_args = near_sdk::serde_json::to_vec(&json!({
+            "sender_id": sender_id.clone(),
+            "previous_owner_ids": vec![sender_id.clone(); token_ids.len()],
+            "token_ids": token_ids.clone(),
+            "amounts": amounts.clone(),
+            "msg": msg,
+        })).expect("receiver arguments serialize");
+        let resolver_args = near_sdk::serde_json::to_vec(&json!({
+            "sender_id": sender_id,
+            "receiver_id": receiver_id,
+            "token_ids": token_ids,
+            "amounts": amounts,
+            "approvals": Option::<Vec<Option<Vec<(AccountId, u64, U128)>>>>::None,
+        })).expect("resolver arguments serialize");
+        Promise::new(receiver_id)
+            .function_call("mt_on_transfer", receiver_args, NearToken::from_yoctonear(0), RECEIVER_GAS)
+            .then(Promise::new(env::current_account_id()).function_call(
+                "mt_resolve_transfer", resolver_args, NearToken::from_yoctonear(0), RESOLVE_GAS,
+            ))
+    }
+}
+
+impl ItemsContract {
+    fn transfer(&mut self, from: &AccountId, to: &AccountId, token: &str, amount: u128, memo: Option<String>) {
+        require!(amount > 0, "Amount must be positive");
+        require!(from != to, "Sender and receiver cannot be the same");
+        let source = self.balances.get(&key(from, token)).unwrap_or(0);
+        require!(source >= amount, "Insufficient balance");
+        self.balances.insert(&key(from, token), &(source - amount));
+        let target = self.balances.get(&key(to, token)).unwrap_or(0);
+        self.balances.insert(&key(to, token), &(target + amount));
+        event("mt_transfer", json!([{"old_owner_id":from,"new_owner_id":to,"token_ids":[token],"amounts":[amount.to_string()],"memo":memo}]));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::{testing_env, NearToken, PromiseResult};
+    fn id(v:&str)->AccountId { v.parse().unwrap() }
+    fn caller(v:&str, deposit:u128) { testing_env!(VMContextBuilder::new().current_account_id(id("items.testnet")).predecessor_account_id(id(v)).attached_deposit(NearToken::from_yoctonear(deposit)).build()); }
+    fn contract()->ItemsContract { caller("elements.testnet",0); { let mut c=ItemsContract::new(id("elements.testnet")); c.grants.fixture(id("world.elements.testnet"),"potion",100); c } }
+    fn op(from:Option<&str>, to:Option<&str>, token:&str, amount:u128)->MtOp { MtOp{from:from.map(id),to:to.map(id),token_id:token.into(),amount:U128(amount),memo:None} }
+    #[test] fn mint_transfer_burn_supply() {
+        let mut c=contract();
+        c.settle(1,vec![op(None,Some("world.elements.testnet"),"potion",10)]);
+        assert_eq!(c.mt_supply("potion".into()).unwrap().0,10);
+        c.settle(2,vec![op(Some("world.elements.testnet"),Some("alice.testnet"),"potion",4)]);
+        assert_eq!(c.mt_balance_of(id("alice.testnet"),"potion".into()).0,4);
+        c.settle(3,vec![op(Some("world.elements.testnet"),None,"potion",3)]);
+        assert_eq!(c.mt_balance_of(id("world.elements.testnet"),"potion".into()).0,3);
+        assert_eq!(c.mt_supply("potion".into()).unwrap().0,7);
+    }
+    #[test] #[should_panic(expected="Batch out of order")] fn rejects_replay(){ let mut c=contract(); c.settle(1,vec![]); c.settle(1,vec![]); }
+    #[test] #[should_panic(expected="Only the game account settles")] fn owner_only(){let mut c=contract(); caller("other.testnet",0);c.settle(1,vec![]);}
+    #[test] #[should_panic(expected="Insufficient balance")] fn refuses_overdraw(){let mut c=contract(); c.settle(1,vec![op(None,Some("world.elements.testnet"),"potion",1)]); c.settle(2,vec![op(Some("world.elements.testnet"),None,"potion",2)]);}
+
+    fn resolve_callback(c: &mut ItemsContract, result: PromiseResult) -> Vec<U128> {
+        let context = VMContextBuilder::new()
+            .current_account_id(id("items.testnet"))
+            .predecessor_account_id(id("items.testnet"))
+            .build();
+        testing_env!(context, near_sdk::test_vm_config(), near_sdk::RuntimeFeesConfig::test(), Default::default(), vec![result]);
+        c.mt_resolve_transfer(id("alice.testnet"), id("receiver.testnet"), vec!["potion".into()], vec![U128(10)], None)
+    }
+
+    fn transfer_to_receiver() -> ItemsContract {
+        let mut c = contract();
+        c.settle(1, vec![op(None, Some("alice.testnet"), "potion", 10)]);
+        caller("alice.testnet", 1);
+        let _promise = c.mt_transfer_call(id("receiver.testnet"), "potion".into(), U128(10), None, None, "accept".into());
+        c
+    }
+
+    #[test]
+    fn transfer_call_receiver_keeps_all() {
+        let mut c = transfer_to_receiver();
+        let used = resolve_callback(&mut c, PromiseResult::Successful(near_sdk::serde_json::to_vec(&vec![U128(0)]).unwrap()));
+        assert_eq!(used, vec![U128(10)]);
+        assert_eq!(c.mt_balance_of(id("alice.testnet"), "potion".into()).0, 0);
+        assert_eq!(c.mt_balance_of(id("receiver.testnet"), "potion".into()).0, 10);
+    }
+
+    #[test]
+    fn transfer_call_receiver_keeps_part_and_refunds_the_rest() {
+        let mut c = transfer_to_receiver();
+        let used = resolve_callback(&mut c, PromiseResult::Successful(near_sdk::serde_json::to_vec(&vec![U128(6)]).unwrap()));
+        assert_eq!(used, vec![U128(4)]);
+        assert_eq!(c.mt_balance_of(id("alice.testnet"), "potion".into()).0, 6);
+        assert_eq!(c.mt_balance_of(id("receiver.testnet"), "potion".into()).0, 4);
+    }
+
+    #[test]
+    fn transfer_call_receiver_keeps_none_and_full_amount_is_refunded() {
+        let mut c = transfer_to_receiver();
+        let used = resolve_callback(&mut c, PromiseResult::Successful(near_sdk::serde_json::to_vec(&vec![U128(10)]).unwrap()));
+        assert_eq!(used, vec![U128(0)]);
+        assert_eq!(c.mt_balance_of(id("alice.testnet"), "potion".into()).0, 10);
+        assert_eq!(c.mt_balance_of(id("receiver.testnet"), "potion".into()).0, 0);
+    }
+
+    #[test]
+    fn failed_receiver_callback_refunds_full_amount() {
+        let mut c = transfer_to_receiver();
+        let used = resolve_callback(&mut c, PromiseResult::Failed);
+        assert_eq!(used, vec![U128(0)]);
+        assert_eq!(c.mt_balance_of(id("alice.testnet"), "potion".into()).0, 10);
+        assert_eq!(c.mt_balance_of(id("receiver.testnet"), "potion".into()).0, 0);
+    }
+    #[test] #[should_panic(expected="No live grant")]
+    fn settle_refuses_unsigned_holder() {
+        let mut c=contract();
+        c.settle(1,vec![op(None,Some("alice.testnet"),"potion",10)]);
+        c.settle(2,vec![op(Some("alice.testnet"),None,"potion",1)]);
+    }
+
+}

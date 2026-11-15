@@ -3,6 +3,7 @@ import { Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { setupApi } from './api.js';
 import { setTokenVerifier } from './auth.js';
+import { startChainSettlement } from './chain/index.js';
 import { startEconomyLoop } from './economy/index.js';
 import { EmptyRoom } from './rooms/EmptyRoom.js';
 import { ZoneRoom } from './rooms/ZoneRoom.js';
@@ -46,8 +47,10 @@ export function buildServer(): { server: Server; transport: WebSocketTransport }
 
 const { server, transport } = buildServer();
 
-await server.listen(port, '127.0.0.1');
+const host = process.env.HOST || '127.0.0.1';
+await server.listen(port, host);
 startEconomyLoop();
-console.log(`ELEMENTS server listening on http://127.0.0.1:${port}`);
+startChainSettlement();
+console.log(`ELEMENTS server listening on http://${host}:${port}`);
 
 export { server, transport, port };

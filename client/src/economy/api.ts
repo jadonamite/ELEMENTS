@@ -208,6 +208,20 @@ export async function fetchMerchant(merchantId: string): Promise<Merchant> {
   return data.merchant;
 }
 
+export interface MerchantMind {
+  merchantId: string;
+  latestThought: string;
+  lastDecision: string;
+  actions: Array<{ action: unknown; reasoning?: string; timestamp: number }>;
+  purse: number;
+  open: boolean;
+  status: string;
+}
+
+export async function fetchMerchantMind(merchantId: string): Promise<MerchantMind> {
+  return call<MerchantMind>(`/api/economy/merchants/${encodeURIComponent(merchantId)}/mind`);
+}
+
 export async function fetchQuote(
   merchantId: string,
   itemType: string,
@@ -266,4 +280,60 @@ export async function withdrawCountingHouse(countingHouseId: string, noteId: str
 export async function fetchAccountNotes(accountId: string): Promise<CountingHouseNote[]> {
   const data = await call<{ notes: CountingHouseNote[] }>(`/api/economy/counting-house/notes/${encodeURIComponent(accountId)}`);
   return data.notes;
+}
+
+export interface DailyChronicle {
+  dayNumber: number;
+  title: string;
+  headline: string;
+  paragraphs: string[];
+  shortNotices: string[];
+  writtenAt: number;
+}
+
+export async function fetchDailyChronicle(): Promise<DailyChronicle | null> {
+  try {
+    const report = await call<{ chronicle?: DailyChronicle }>('/api/economy/director/today');
+    return report.chronicle ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export interface ConversationOutcome {
+  agentId: string;
+  agentName: string;
+  reply: string;
+  thinkingBeat: string;
+  memoryScore: number;
+  /** Which provider wrote the reply, or 'written'. */
+  source: string;
+  haggleOutcome?: {
+    success: boolean;
+    agreedPrice?: number;
+    reason: string;
+  };
+}
+
+export async function talkToAgent(
+  agentId: string,
+  message: string,
+  options: {
+    intent?: 'ask' | 'haggle' | 'gossip';
+    itemType?: string;
+    offeredPrice?: number;
+    /** Someone from the crowd, who exists only in the browser: their trade, name and zone. */
+    crowd?: { role: string; name: string; place: string };
+  } = {},
+): Promise<ConversationOutcome> {
+  return call(`/api/economy/agents/${encodeURIComponent(agentId)}/talk`, {
+    method: 'POST',
+    body: JSON.stringify({
+      message,
+      intent: options.intent ?? 'ask',
+      itemType: options.itemType,
+      offeredPrice: options.offeredPrice,
+      crowd: options.crowd,
+    }),
+  });
 }

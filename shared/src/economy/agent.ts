@@ -14,6 +14,82 @@ export interface AgentTributeSchedule {
   intervalMs: number;
 }
 
+export interface CustomerMemorySummary {
+  friendlyPatrons: number;
+  hostileCustomers: number;
+  neutralCustomers: number;
+  recentInteractionsCount: number;
+}
+
+export interface DemandFloodingSummary {
+  floodedItems: string[];
+  scarceItems: string[];
+  dominantShardColor?: string;
+}
+
+export interface SolvencyUrgency {
+  distanceToBroke: number;
+  isWarning: boolean;
+  isBroke: boolean;
+  daysBroke: number;
+}
+
+export interface TributeStatus {
+  timeUntilTributeMs: number;
+  isDueSoon: boolean;
+  isDue?: boolean;
+}
+
+export type PlanPhase = 'morning' | 'midday' | 'evening' | 'night';
+
+export interface AgentPlan {
+  phase: PlanPhase;
+  focus: string;
+  mood: string;
+  targetStockRatio: Record<string, number>;
+  bargainWillingness: number;
+  preparedLines: string[];
+  guidance?: string | undefined;
+  createdAt: number;
+}
+
+export type EventTier = 'face_to_face' | 'significant' | 'ordinary';
+
+export interface AgentEvent {
+  id: string;
+  tier: EventTier;
+  type: string;
+  description: string;
+  timestamp: number;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+export interface AgentGuidance {
+  agentId: string;
+  verdict: string;
+  score: number;
+  directive: string;
+}
+
+export interface DailyChronicle {
+  dayNumber: number;
+  title: string;
+  headline: string;
+  paragraphs: string[];
+  shortNotices: string[];
+  writtenAt: number;
+}
+
+export interface DailyJudgeReport {
+  dayNumber: number;
+  date: string;
+  totalTransactions: number;
+  totalVolumeChroma: number;
+  chronicle: DailyChronicle;
+  agentGuidance: Record<string, AgentGuidance>;
+  timestamp: number;
+}
+
 export interface AgentObservation {
   merchantId: string;
   purse: number;
@@ -27,6 +103,13 @@ export interface AgentObservation {
   daysBroke?: number;
   personality?: string;
   now?: number;
+  customerMemory?: CustomerMemorySummary;
+  floodingSummary?: DemandFloodingSummary;
+  solvencyUrgency?: SolvencyUrgency;
+  tributeStatus?: TributeStatus;
+  currentPlan?: AgentPlan | undefined;
+  guidance?: string | undefined;
+  recentEvents?: AgentEvent[] | undefined;
 }
 
 export type RestockAction = {

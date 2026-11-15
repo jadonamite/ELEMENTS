@@ -14,6 +14,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  Quaternion,
   Skeleton,
   SkinnedMesh,
   SRGBColorSpace,
@@ -327,7 +328,8 @@ export class BodyKit {
 
   /**
    * Clips fitted to an outfit's rig: only the pelvis keeps its translation (scaled to the
-   * rig's hip height) and scale tracks go, so each rig keeps its own bone lengths.
+   * rig's hip height) and scale tracks go, so each rig keeps its own bone lengths. A clip from a
+   * marked pack is also turned from the rest pose it was made on to this rig's.
    */
   async fitClips(sex: Sex, clips: readonly AnimationClip[], cacheKey: string, outfitId: OutfitId = 'rags',
     person?: string): Promise<AnimationClip[]> {
@@ -338,7 +340,16 @@ export class BodyKit {
     const rig = await this.scene(path);
     const pelvis = rig.getObjectByName('pelvis');
     const ratio = pelvis ? pelvis.position.length() / CLIP_PELVIS_HEIGHT : 1;
-    const out = clips.map(clip => fitClip(clip, ratio));
+    // Each pack was made on its own rest pose; its clips are turned onto this rig's.
+    const bodyRest = restOf(rig);
+    const retargets = new Map<number, Retarget>();
+    const out = clips.map((clip) => {
+      const pack = clip.userData.rest as number | undefined;
+      if (pack === undefined) return fitClip(clip, ratio);
+      let retarget = retargets.get(pack);
+      if (!retarget) retargets.set(pack, retarget = retargetBetween(packRests[pack]!, bodyRest));
+      return fitClip(clip, ratio, retarget);
+    });
     this.fitted.set(key, out);
     return out;
   }
@@ -413,8 +424,53 @@ function cullAsOneBody(group: Group, rig: SkinnedMesh): void {
 }
 
 const tmp = new Vector3();
+const turn = new Quaternion();
 
-export function fitClip(clip: AnimationClip, pelvisRatio: number): AnimationClip {
+/** Where each joint points when a skeleton rests, in the world, with its parent's. */
+type Rest = Map<string, { own: Quaternion; parent: Quaternion }>;
+
+const packRests: Rest[] = [];
+
+export function restOf(root: Object3D): Rest {
+  const rest: Rest = new Map();
+  root.updateMatrixWorld(true);
+  root.traverse((node) => {
+    if (!node.name || !node.parent) return;
+    rest.set(node.name, { own: node.getWorldQuaternion(new Quaternion()), parent: node.parent.getWorldQuaternion(new Quaternion()) });
+  });
+  return rest;
+}
+
+/**
+ * Marks a pack's clips with the rest pose they were made on, which is the pack's own skeleton.
+ * Call it on a freshly loaded pack; fitting then turns each clip onto the rest pose of the body it plays on.
+ */
+export function markRest(pack: { scene: Object3D; animations: AnimationClip[] }): AnimationClip[] {
+  const id = packRests.push(restOf(pack.scene)) - 1;
+  for (const clip of pack.animations) clip.userData.rest = id;
+  return pack.animations;
+}
+
+/**
+ * For each joint, the two turns that carry a rotation made on one rest pose over to another, so the
+ * joint ends as far from the new rest, seen in the world, as the clip put it from the old one.
+ */
+type Retarget = Map<string, { before: Quaternion; after: Quaternion }>;
+
+export function retargetBetween(from: Rest, to: Rest): Retarget {
+  const out: Retarget = new Map();
+  for (const [name, source] of from) {
+    const target = to.get(name);
+    if (!target) continue;
+    const before = target.parent.clone().invert().multiply(source.parent);
+    const after = source.own.clone().invert().multiply(target.own);
+    if (Math.abs(before.w) > 0.99999 && Math.abs(after.w) > 0.99999) continue;
+    out.set(name, { before, after });
+  }
+  return out;
+}
+
+export function fitClip(clip: AnimationClip, pelvisRatio: number, retarget?: Retarget): AnimationClip {
   const copy = clip.clone();
   copy.tracks = copy.tracks.filter((track) => {
     const [bone, prop] = track.name.split('.');
@@ -422,6 +478,23 @@ export function fitClip(clip: AnimationClip, pelvisRatio: number): AnimationClip
     if (prop === 'position') return bone === 'pelvis' || bone === 'root';
     return true;
   });
+  for (const track of copy.tracks) {
+    const [bone, prop] = track.name.split('.');
+    const joint = retarget?.get(bone!);
+    if (!joint) continue;
+    const v = track.values;
+    if (prop === 'quaternion') {
+      for (let i = 0; i < v.length; i += 4) {
+        turn.set(v[i]!, v[i + 1]!, v[i + 2]!, v[i + 3]!).premultiply(joint.before).multiply(joint.after);
+        v[i] = turn.x; v[i + 1] = turn.y; v[i + 2] = turn.z; v[i + 3] = turn.w;
+      }
+    } else if (prop === 'position') {
+      for (let i = 0; i < v.length; i += 3) {
+        tmp.set(v[i]!, v[i + 1]!, v[i + 2]!).applyQuaternion(joint.before);
+        v[i] = tmp.x; v[i + 1] = tmp.y; v[i + 2] = tmp.z;
+      }
+    }
+  }
   for (const track of copy.tracks) {
     if (track.name !== 'pelvis.position' || pelvisRatio === 1) continue;
     const v = track.values;

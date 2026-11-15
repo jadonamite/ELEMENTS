@@ -1,6 +1,6 @@
 import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BodyKit, type OutfitId } from '../body.js';
+import { BodyKit, markRest, type OutfitId } from '../body.js';
 import { sanitizeCharacterConfig } from '../creator/creator-types.js';
 import { disposeObject } from '../scene.js';
 import { AnimationPlayer } from '../anim/player.js';
@@ -33,7 +33,8 @@ export type IntroStep =
 export interface NationIntroOptions {
   scene: import('three').Scene;
   nation: string;
-  isDim: boolean;
+  /** Read when needed: signing in at the gate can bring back an account's earlier Drawing. */
+  isDim: () => boolean;
   controller: HeroController;
   shoulderCamera: ShoulderCamera;
   input: GameInput;
@@ -45,6 +46,8 @@ export interface NationIntroOptions {
   applyTier: (tier: number) => void;
   onEquipStarterWeapon: (weapon: 'sword' | 'staff') => void;
   onMissionComplete?: (missionLead: Lead) => void;
+  /** Runs at the gate before the level is granted: the sign-in that keeps the player's progress. */
+  beforeUnlock?: () => Promise<void>;
 }
 
 export class NationIntroFlow {
@@ -185,7 +188,7 @@ export class NationIntroFlow {
       const kit = new BodyKit(loader);
       model = await kit.build(config, 'hero', this.config.nation === 'AQUES' ? 0x667f86 : this.config.nation === 'TERRA' ? 0x77705e : this.config.nation === 'AURA' ? 0x9a8d9e : undefined, outfit);
       if (this.disposed) return;
-      const clips = await kit.fitClips(config.sex, townSets.flatMap(set => set.animations), 'townsfolk', outfit);
+      const clips = await kit.fitClips(config.sex, townSets.flatMap(markRest), 'townsfolk', outfit);
       if (this.disposed) return;
       model.name = `NationMaster-${this.config.nation}`;
       model.position.copy(this.masterPosition).addScaledVector(forward, 5.5);
@@ -429,7 +432,7 @@ export class NationIntroFlow {
           this.setStep('lore_and_mission');
           this.hideStepPrompt();
 
-          const roleLine = this.opts.isDim
+          const roleLine = this.opts.isDim()
             ? this.config.dialogue.hushRole
             : this.config.dialogue.shaperRole;
 
@@ -506,13 +509,19 @@ export class NationIntroFlow {
   private completeFirstMission(lead: Lead): void {
     this.setStep('completed');
     this.opts.waypointMarker.setLead(null);
+    const unlock = (): void => { if (!this.disposed) this.grantFirstLevel(lead); };
+    if (this.opts.beforeUnlock) void this.opts.beforeUnlock().catch(() => undefined).then(unlock);
+    else unlock();
+  }
 
+  private grantFirstLevel(lead: Lead): void {
     // Transfer user from Level 0 -> Level 1 (unlocks bending for Shapers)
     this.opts.applyTier(1);
 
-    const unlockKicker = this.opts.isDim ? 'Rank Attained' : 'Power Awakened';
-    const unlockTitle = this.opts.isDim ? 'Level 1 · Wayfarer' : 'Level 1 · Shaper Awoken';
-    const unlockDesc = this.opts.isDim
+    const isDim = this.opts.isDim();
+    const unlockKicker = isDim ? 'Rank Attained' : 'Power Awakened';
+    const unlockTitle = isDim ? 'Level 1 · Wayfarer' : 'Level 1 · Shaper Awoken';
+    const unlockDesc = isDim
       ? 'The roads of the nation are open. Crafting and town trade unlocked.'
       : 'Elemental bending is now available. Press B to channel your element.';
 

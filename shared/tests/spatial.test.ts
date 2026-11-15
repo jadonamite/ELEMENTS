@@ -8,7 +8,8 @@ import { atPlace, SINDR_COUNTING_HOUSES, SINDR_SPAWN, SINDR_STALLS } from '../sr
 test('one manifest preserves account IDs and matches counting-house entrance reach', () => {
   assert.deepEqual(validateAnchors(SINDR_ANCHORS), []);
   assert.deepEqual(SINDR_COUNTING_HOUSES, [{id:'ch_ignis_sindr_upper',x:119.7,z:-43},{id:'ch_ignis_sindr_lower',x:130.3,z:-43}]);
-  assert.deepEqual(SINDR_STALLS.map(a=>a.id), ['sindr_shards','sindr_supplies','sindr_arms']);
+  // Fifteen keepers trade in Sindr: the three market stalls, the yard stall and eleven counters.
+  assert.deepEqual(SINDR_STALLS.map(a=>a.id), ['sindr_shards','sindr_supplies','sindr_arms','sindr_loom','sindr_whetstone','sindr_packs','sindr_potter','sindr_anvil','sindr_coal','sindr_crimson','sindr_scales','sindr_cork','sindr_tally','sindr_wick','sindr_bright']);
   assert.deepEqual(SINDR_SPAWN,{x:8,y:0,z:0,facing:Math.PI/2});
   for (const h of SINDR_COUNTING_HOUSES) assert.equal(atPlace(h,h.x,h.z,0),true);
   assert.equal(atPlace(SINDR_COUNTING_HOUSES[0]!,125,-14),false);

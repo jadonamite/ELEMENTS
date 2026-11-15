@@ -17,6 +17,8 @@ import {
   grantPlayerStartingPurse,
   verifyWorldSupply,
   ensureSindrMerchants,
+  reconcileItemLedger,
+  verifyItemLedger,
 } from '../src/economy/index.js';
 
 function freshDb(): DatabaseSync {
@@ -130,6 +132,31 @@ test('Satchel: a failed multi-item removal leaves every stack untouched', () => 
   );
   assert.equal(getItemCount('p1', 'shard_terra', db), 4);
   assert.equal(ledgerNet(db, 'p1', 'shard_terra'), 4);
+});
+
+test('item ledger baseline replays merchant shelves, world loot, satchels, claims and consumption', () => {
+  const db = freshDb();
+  reconcileItemLedger(db);
+  assert.deepEqual(verifyItemLedger(db), { ok: true, mismatches: [] });
+  const pile = createLootPile({
+    id: 'pile_items_replay', x: 0, z: 0, zone: 'sindr', source: 'monster', now: 1000,
+    contents: { chroma: 0, shards: { IGNIS: 2, AQUES: 0, TERRA: 0, AURA: 0 }, materials: {} },
+  }, db);
+  claimLootPile({ pileId: pile.id, accountId: 'item_player', x: 0, z: 0, now: 1001 }, db);
+  addItems({ accountId: 'item_player', from: 'world', stacks: [{ itemId: 'potion', quantity: 1 }], reason: 'grant', now: 1002 }, db);
+  removeItems({ accountId: 'item_player', to: 'world', stacks: [{ itemId: 'potion', quantity: 1 }], reason: 'item_use', now: 1003 }, db);
+  assert.equal(verifyItemLedger(db).ok, true);
+  assert.equal(ledgerNet(db, 'item_player', 'shard_ignis'), 2);
+});
+
+test('opening reconciliation returns legacy expired pile items to world', () => {
+  const db = freshDb();
+  addItems({ accountId: 'dead_player', from: 'world', stacks: [{ itemId: 'shard_terra', quantity: 4 }], reason: 'grant', now: 1000 }, db);
+  const pile = createLootPileFromFight({ x: 0, z: 0, zone: 'sindr', source: 'player_death', sourceAccountId: 'dead_player', now: 1100 }, db)!;
+  db.prepare('UPDATE loot_piles SET expired = 1 WHERE id = ?').run(pile.id);
+  reconcileItemLedger(db);
+  assert.equal(ledgerNet(db, pile.id, 'shard_terra'), 0);
+  assert.equal(verifyItemLedger(db).ok, true);
 });
 
 test('Satchel: dying drops from what the server holds, not from what the client says, and another player can take it', () => {

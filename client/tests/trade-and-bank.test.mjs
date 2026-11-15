@@ -127,3 +127,35 @@ test('RoomDoor sends trade_offer, trade_accept, trade_cancel and listens to trad
 test('economyAvailable is on without an auth token so guests see loot online', () => {
   assert.equal(economyAvailable(), true);
 });
+
+test('fetchMerchantMind: queries merchant mind and parses reasoning and lastDecision', async () => {
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/api/economy/merchants/sindr_shards/mind')) {
+      return {
+        ok: true,
+        json: async () => ({
+          merchantId: 'sindr_shards',
+          latestThought: 'I stocked 12 Crimson shards to keep our counters bright.',
+          lastDecision: 'Restocked 12 Crimson shards',
+          actions: [{ action: { type: 'restock', itemType: 'shard', quantity: 12 }, timestamp: 1000 }],
+          purse: 20000,
+          open: true,
+          status: 'open',
+        }),
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+
+  try {
+    const { fetchMerchantMind } = await import('../src/economy/api.ts');
+    const mind = await fetchMerchantMind('sindr_shards');
+    assert.equal(mind.merchantId, 'sindr_shards');
+    assert.equal(mind.latestThought, 'I stocked 12 Crimson shards to keep our counters bright.');
+    assert.equal(mind.lastDecision, 'Restocked 12 Crimson shards');
+    assert.equal(mind.open, true);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

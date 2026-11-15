@@ -1,0 +1,14 @@
+{
+  "network": "testnet",
+  "height": 277719298,
+  "contracts": {
+    "chroma": "chroma-v2.elements-dev.testnet",
+    "items": "items-v4.elements-dev.testnet"
+  },
+  "holders": {
+    "743ef69fce49b6481d41efa4b051ab3a354f78f297f2eb793526db4a6cc623b9": {
+      "coin": "100",
+      "items": {}
+    }
+  }
+}

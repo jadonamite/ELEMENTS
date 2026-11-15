@@ -7,7 +7,7 @@ import {
   type Object3D,
   Vector3,
 } from 'three';
-import { BodyKit, type OutfitId } from './body.js';
+import { BodyKit, markRest, type OutfitId } from './body.js';
 import { rollRandomCharacter, sanitizeCharacterConfig } from './creator/creator-types.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -116,6 +116,7 @@ export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<Enem
     ...[SWORD_WEAPON, KNIFE_WEAPON, DESERTER_WEAPON, CLUB_WEAPON].map(slot => loader.loadAsync(slot.assetPath)),
   ]);
   // Walking, hits and death come from the hero's own clips; mixamo adds flying death and standing recovery.
+  for (const pack of [body, huskSet, mixamo, combat, unarmedA, unarmedB, street]) if (pack) markRest(pack);
   const own = body.animations.filter(c => ['idle', 'walk', 'run', 'hit', 'death', 'cast'].includes(c.name));
   const clips = [
     ...own, ...combat.animations, ...unarmedA.animations, ...unarmedB.animations,

@@ -1,6 +1,14 @@
+import { marketBoard } from './chain/market.js';
+import { prepareGuestClaim } from './chain/guest-claim.js';
 import express, { type Application, type Request, type Response } from 'express';
+import { bindPlayerGrant } from './chain/grants.js';
+import { ARMOUR } from './economy/armourService.js';
+import { getDatabase } from './db.js';
+import type { SignedSessionGrant } from '@elements/shared';
 import { verifyToken } from './auth.js';
-import { createOrGetAccount, createOrGetRising, getRising, getControlProgress, saveControlProgress } from './db.js';
+import { fastForwardWeek } from './economy/fastForwardRunner.js';
+import { chainSettler, itemsChainSettler, readChainConfig, worldAccount, worldHolders } from './chain/index.js';
+import { createGuestRising, createOrGetAccount, createOrGetRising, getRising, getControlProgress, saveControlProgress } from './db.js';
 import { isAccountAllowed, isIpAllowed } from './rate-limit.js';
 import { isOutsider } from './net/money.js';
 import { isInRoom, isZoneOnline } from './net/presence.js';
@@ -29,12 +37,17 @@ import {
   stockShop,
   withdrawShopProfit,
   getSatchel,
+  removeItems,
   clientKillsAllowed,
   dropFromClientKill,
   createLootPileFromFight,
   takeOffArmour,
   wearArmour,
   wornLook,
+  getLatestDailyJudgeReport,
+  createDeterministicJudgeReport,
+  getTownsfolkMindState,
+  getAgentRuntime,
 } from './economy/index.js';
 
 function extractToken(req: Request): string | null {
@@ -75,12 +88,8 @@ function heldByRoom(accountId: string, res: Response): boolean {
   return true;
 }
 
+/** The caller's address as the one proxy in front of the server saw it (see `trust proxy` in setupApi). */
 function extractIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first;
-  }
   return req.ip || req.socket.remoteAddress || '127.0.0.1';
 }
 
@@ -94,6 +103,8 @@ export function isOriginAllowed(origin: string, list = process.env.ALLOWED_ORIGI
 }
 
 export function setupApi(app: Application): void {
+  // One proxy (the host's edge) sits in front: req.ip is the address it saw, not one the browser wrote.
+  app.set('trust proxy', 1);
   app.use(express.json());
 
   app.use((req, res, next) => {
@@ -131,6 +142,13 @@ export function setupApi(app: Application): void {
 
     res.json({
       accountId: accountId,
+      grantCaps: { CHROMA: "100000", ...Object.fromEntries([...new Set([
+        ...Object.keys(getSatchel(accountId)), ...Object.keys(ARMOUR.pieces),
+        ...getAllMerchants().flatMap(m => Object.keys(m.inventory)),
+        'shard_ignis', 'shard_aques', 'shard_terra', 'shard_aura', 'material', 'material_linen',
+        ...(getDatabase().prepare('SELECT DISTINCT item_id FROM item_ledger').all() as Array<{item_id:string}>).map(row => row.item_id),
+      ])].map(itemId => [itemId, "1000"])) },
+      grantContracts: [chainSettler(), itemsChainSettler()].filter(s => s !== null).map(s => s.contractId),
       rising: stored
         ? {
             role: stored.role,
@@ -138,6 +156,84 @@ export function setupApi(app: Application): void {
           }
         : null,
     });
+  });
+
+  app.post('/api/market/:action', async (req: Request, res: Response) => {
+    const board = marketBoard();
+    if (!board) { res.status(503).json({ error: 'The Chromara board is not open yet' }); return; }
+    const owner = await requireAccount(req,res);
+    if (!owner) return;
+    if (!isAccountAllowed(owner)) { res.status(429).json({error:'Too many requests'}); return; }
+    try {
+      const body = req.body;
+      switch (req.params.action) {
+        case 'view': res.json(await board.view(owner)); break;
+        case 'deposit-quote': res.json(await board.depositQuote(owner,body.token,body.amount)); break;
+        case 'deposit': res.json(await board.deposit(owner,body.id,body.signature)); break;
+        case 'offer-quote': res.json(board.offerTerms(owner,body.offer)); break;
+        case 'offer': res.json({id:board.postOffer(owner,body.offer,body.signed)}); break;
+        case 'return': res.json(await board.returnGoods(owner,body.token,body.amount,body.signed)); break;
+        default: res.status(404).json({error:'Unknown board action'});
+      }
+    } catch (error) { res.status(400).json({error:error instanceof Error ? error.message : 'The board could not complete that action'}); }
+  });
+
+  app.post('/api/chain/grant', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (!isAccountAllowed(accountId)) { res.status(429).json({ error: 'Too many requests' }); return; }
+    const settlers = [chainSettler(), itemsChainSettler()].filter(s => s !== null);
+    const signed = req.body as SignedSessionGrant;
+    try {
+      const settler = settlers.find(s => s.contractId === signed.payload?.recipient);
+      if (!settler) { res.status(409).json({ error: 'Contract is not enabled' }); return; }
+      bindPlayerGrant(getDatabase(), accountId, signed, settlers.map(s => s.contractId));
+      await settler.submitGrant(signed);
+      res.json({ accepted: true });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid session grant' });
+    }
+  });
+
+  app.post('/api/chain/claim-guest', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    if (!isAccountAllowed(accountId)) { res.status(429).json({ error: 'Too many requests' }); return; }
+    const grants = req.body?.grants as SignedSessionGrant[];
+    const proof = req.body?.proof as SignedSessionGrant;
+    if (!Array.isArray(grants) || grants.length > 2) { res.status(400).json({ error: 'Guest grants required' }); return; }
+    try {
+      const coin = chainSettler(); const items = itemsChainSettler();
+      // Validate all proofs before forwarding them; ledger rows are written only after grants land.
+      const db = getDatabase();
+      db.exec('SAVEPOINT guest_proof');
+      try {
+        prepareGuestClaim(db, accountId, grants, { ...(coin ? { coin: coin.contractId } : {}), ...(items ? { items: items.contractId } : {}) }, proof);
+      } finally { db.exec('ROLLBACK TO guest_proof'); db.exec('RELEASE guest_proof'); }
+      for (const grant of grants) {
+        const settler = [coin, items].find(s => s?.contractId === grant.payload.recipient);
+        if (!settler) throw new Error('Contract is not enabled');
+        await settler.submitGrant(grant);
+      }
+      const result = prepareGuestClaim(db, accountId, grants, { ...(coin ? { coin: coin.contractId } : {}), ...(items ? { items: items.contractId } : {}) }, proof);
+      res.json(result);
+    } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Guest claim failed' }); }
+  });
+
+  // The Drawing for a player who has not signed in: the server keeps the result behind a ticket, and
+  // signing in with that ticket makes it the account's. The browser never chooses its own result.
+  app.post('/api/rising/guest', (req: Request, res: Response) => {
+    const ip = extractIp(req);
+    if (!isIpAllowed(ip)) {
+      res.status(429).json({ error: 'Too many requests' });
+      return;
+    }
+    const guest = createGuestRising(ip);
+    if (!guest) {
+      res.status(429).json({ error: 'Too many Drawings from this address today' });
+      return;
+    }
+    res.json({ guestTicket: guest.ticket, rising: { role: guest.role, element: guest.element } });
   });
 
   app.post('/api/rising', async (req: Request, res: Response) => {
@@ -155,7 +251,8 @@ export function setupApi(app: Application): void {
       return;
     }
 
-    const rising = createOrGetRising(accountId);
+    const ticket = typeof req.body?.guestTicket === 'string' ? req.body.guestTicket : undefined;
+    const rising = createOrGetRising(accountId, undefined, undefined, ticket);
 
     res.json({
       accountId: accountId,
@@ -187,6 +284,36 @@ export function setupApi(app: Application): void {
     res.json({ progress: saveControlProgress(accountId, req.body.progress) });
   });
 
+  // The treasury, keepers, masters and counting houses: each a NEAR account with its own key.
+  function worldAccountList() {
+    const config = readChainConfig();
+    if (!config) return [];
+    return worldHolders().map((ledgerId) => {
+      const account = worldAccount(ledgerId, config.gameAccount);
+      return { ledgerId, account, explorer: `${config.explorerUrl}/address/${account}` };
+    });
+  }
+
+  // Where CHROMA lives on NEAR: the contract, the last settled batch and how much is waiting.
+  app.get('/api/chain', (_req: Request, res: Response) => {
+    const chroma = chainSettler();
+    const items = itemsChainSettler();
+    res.json({ onChain: Boolean(chroma || items), contracts: {
+      chroma: chroma ? { onChain: true, ...chroma.status() } : { onChain: false },
+      items: items ? { onChain: true, ...items.status() } : { onChain: false },
+    }, worldAccounts: worldAccountList() });
+  });
+  app.get('/api/chain/me', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    const chroma = chainSettler();
+    const items = itemsChainSettler();
+    res.json({ onChain: Boolean(chroma || items), contracts: {
+      chroma: chroma ? { onChain: true, ...chroma.status(accountId) } : { onChain: false },
+      items: items ? { onChain: true, ...items.status(accountId) } : { onChain: false },
+    } });
+  });
+
   // --- Economy endpoints (M5) ---
 
   // Your own balance only. Robbers and Sentries read the ledger on the server, not through here.
@@ -207,6 +334,17 @@ export function setupApi(app: Application): void {
     const grant = grantPlayerStartingPurse(accountId);
     const balance = getAccountBalance(accountId);
     res.json({ accountId: accountId, granted: !!grant, balance, grant });
+  });
+
+  // A week of Sindr trading on a throwaway copy of the economy, for watching prices move. Never touches the live ledger.
+  app.get('/api/economy/fast-forward', async (req: Request, res: Response) => {
+    if (!isIpAllowed(req.ip ?? 'unknown')) { res.status(429).json({ error: 'Too many requests' }); return; }
+    const seed = Math.max(1, Math.min(9999, Math.floor(Number(req.query.seed) || 1)));
+    try {
+      res.json(await fastForwardWeek(seed));
+    } catch (err) {
+      res.status(503).json({ error: err instanceof Error ? err.message : 'Simulation failed' });
+    }
   });
 
   app.get('/api/economy/merchants', (_req: Request, res: Response) => {
@@ -548,6 +686,74 @@ export function setupApi(app: Application): void {
     }
   });
 
+  app.get('/api/economy/director/today', (_req: Request, res: Response) => {
+    try {
+      res.json(getLatestDailyJudgeReport() ?? createDeterministicJudgeReport(1, Date.now(), 0, 0));
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to query director report' });
+    }
+  });
+
+  app.get('/api/economy/townsfolk/:npcId/mind', (req: Request, res: Response) => {
+    const npcId = String(req.params.npcId ?? '');
+    try {
+      const state = getTownsfolkMindState(npcId);
+      if (!state) {
+        res.status(404).json({ error: 'Nobody by that name here' });
+        return;
+      }
+      res.json(state);
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to query townsfolk mind' });
+    }
+  });
+
+  // The minds' working: which provider served each recent call and how fast, the budget pressure, the event queue.
+  app.get('/api/economy/minds/telemetry', (_req: Request, res: Response) => {
+    const { router, queue } = getAgentRuntime();
+    res.json({
+      calls: router.getRecentTelemetry().slice(-200),
+      pressure: router.governor.getPressureLevel(),
+      usage: router.governor.getUsageStats(),
+      judge: router.nearAiAvailable() ? 'NEAR AI' : router.judgeAvailable() ? `free models (NEAR AI: ${router.offReason('nearai') ?? 'no key'})` : 'off',
+      events: queue.stats,
+    });
+  });
+
+  // Face to face: a player speaks to a keeper, a named townsperson or someone in the crowd.
+  app.post('/api/economy/agents/:agentId/talk', async (req: Request, res: Response) => {
+    const agentId = String(req.params.agentId ?? '').slice(0, 64);
+    const token = extractToken(req);
+    let accountId = `guest:${extractIp(req)}`;
+    if (token) {
+      const verified = await requireAccount(req, res);
+      if (!verified) return;
+      accountId = verified;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const crowd = body.crowd && typeof body.crowd === 'object' ? (body.crowd as Record<string, unknown>) : null;
+    try {
+      const result = await getAgentRuntime().conversations.talk({
+        accountId,
+        agentId,
+        message: typeof body.message === 'string' ? body.message : '',
+        intent: body.intent === 'haggle' ? 'haggle' : body.intent === 'gossip' ? 'gossip' : 'ask',
+        itemType: typeof body.itemType === 'string' ? body.itemType.slice(0, 64) : undefined,
+        offeredPrice: typeof body.offeredPrice === 'number' && Number.isFinite(body.offeredPrice) ? body.offeredPrice : undefined,
+        crowd: crowd && typeof crowd.role === 'string' && typeof crowd.name === 'string' && typeof crowd.place === 'string'
+          ? { role: crowd.role, name: crowd.name, place: crowd.place }
+          : undefined,
+      });
+      if (!result) {
+        res.status(404).json({ error: 'Nobody by that name here' });
+        return;
+      }
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Conversation failed' });
+    }
+  });
+
   // --- Shop Ownership endpoints (E4) ---
 
   app.get('/api/economy/shops/for-sale', (_req: Request, res: Response) => {
@@ -690,6 +896,19 @@ export function setupApi(app: Application): void {
   app.get('/api/economy/satchel', async (req: Request, res: Response) => {
     const accountId = await requireAccount(req, res);
     if (accountId) res.json({ accountId, items: getSatchel(accountId) });
+  });
+
+  app.post('/api/economy/items/use', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    const itemId = typeof req.body?.itemId === 'string' ? req.body.itemId : '';
+    if (itemId !== 'potion') { res.status(400).json({ error: 'This item cannot be consumed' }); return; }
+    try {
+      removeItems({ accountId, to: 'world', stacks: [{ itemId, quantity: 1 }], reason: 'item_use' });
+      res.json({ consumed: itemId, items: getSatchel(accountId) });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Item could not be consumed' });
+    }
   });
 
   app.post('/api/economy/shops/:merchantId/withdraw', async (req: Request, res: Response) => {

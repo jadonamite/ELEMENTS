@@ -51,7 +51,7 @@ export class RemotePlayer {
     hero.model.rotation.y = shown.facing + balance.controller.modelForwardYaw;
     // Walking clips follow the speed drawn here; any other clip is the move they are making.
     const reported = this.view.clip;
-    const moving = reported === 'walk' || reported === 'run' || reported === 'idle' || reported === 'idle_relaxed';
+    const moving = reported === 'walk' || reported === 'run' || reported === 'idle' || reported === 'idle_relaxed' || reported === 'idle_armed';
     const speed = this.track.speed;
     const pace = speed < idleSpeedThreshold ? null : speed < runSpeedThreshold ? 'walk' : 'run';
     const clip = moving ? (pace ?? reported) : reported;

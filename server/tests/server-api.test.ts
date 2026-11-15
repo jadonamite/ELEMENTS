@@ -7,6 +7,9 @@ import { isOriginAllowed, setupApi } from '../src/api.js';
 import { setTokenVerifier } from '../src/auth.js';
 import {
   createDatabase,
+  createGuestRising,
+  createOrGetRising,
+  GUEST_RISINGS_PER_IP_PER_DAY,
   getAccount,
   getRising,
   migrateDatabase,
@@ -384,4 +387,99 @@ test('Character controls: authenticated, per-character, bounded, merged across d
     migrateDatabase(db);
     assert.deepEqual(await (await call('learner-a')).json(), { progress: { strike: { uses: 3, shown: 2 } }, tier: 5 });
   } finally { setTokenVerifier(null); await ts.close(); db.close(); }
+});
+
+test('GET /api/economy/director/today serves the daily judge report and chronicle', async () => {
+  const db = new DatabaseSync(':memory:');
+  migrateDatabase(db);
+  setDatabase(db);
+  const ts = await startTestServer();
+  try {
+    const res = await fetch(`${ts.baseUrl}/api/economy/director/today`);
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as any;
+    assert.ok(data);
+    assert.equal(typeof data.dayNumber, 'number');
+    assert.ok(data.chronicle);
+    assert.ok(typeof data.chronicle.title === 'string');
+    assert.ok(Array.isArray(data.chronicle.paragraphs));
+    assert.ok(data.agentGuidance);
+  } finally {
+    await ts.close();
+    db.close();
+  }
+});
+
+test('Guest Drawing: signing in with the ticket makes the guest result the account\'s, once', async () => {
+  const ts = await startTestServer();
+  const testDb = createDatabase(':memory:');
+  setDatabase(testDb);
+  resetRateLimits();
+  setTokenVerifier(async (token: string) => ({ userId: `did:privy:${token}` }));
+  try {
+    const guestRes = await fetch(`${ts.baseUrl}/api/rising/guest`, { method: 'POST' });
+    assert.equal(guestRes.status, 200);
+    const guest = (await guestRes.json()) as { guestTicket: string; rising: { role: string; element: string | null } };
+    assert.ok(guest.guestTicket.length >= 32);
+
+    const claim = async (token: string): Promise<{ rising: { role: string; element: string | null } }> => {
+      const res = await fetch(`${ts.baseUrl}/api/rising`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, guestTicket: guest.guestTicket, element: 'TERRA', role: 'Shaper' }),
+      });
+      assert.equal(res.status, 200);
+      return (await res.json()) as { rising: { role: string; element: string | null } };
+    };
+
+    const first = await claim('guest_signs_in');
+    assert.deepEqual(first.rising, guest.rising, 'the account takes the result the server held, not anything the browser sends');
+    const row = testDb.prepare('SELECT claimed_by FROM guest_risings WHERE ticket = ?').get(guest.guestTicket) as { claimed_by: string };
+    assert.equal(row.claimed_by, 'did:privy:guest_signs_in');
+
+    await claim('someone_else');
+    const after = testDb.prepare('SELECT claimed_by FROM guest_risings WHERE ticket = ?').get(guest.guestTicket) as { claimed_by: string };
+    assert.equal(after.claimed_by, 'did:privy:guest_signs_in', 'a ticket is claimed once');
+  } finally {
+    await ts.close();
+  }
+});
+
+test('Guest Drawing: an account that already rose keeps its result and leaves the ticket unclaimed', () => {
+  const db = createDatabase(':memory:');
+  const hush = createGuestRising('1.2.3.4', () => 0.01, db);
+  assert.equal(hush?.role, 'Hush');
+  const kept = createOrGetRising('did:privy:veteran', () => 0.99, db);
+  assert.equal(kept.role, 'Shaper');
+  const again = createOrGetRising('did:privy:veteran', () => 0.99, db, hush!.ticket);
+  assert.equal(again.role, 'Shaper');
+  const row = db.prepare('SELECT claimed_by FROM guest_risings WHERE ticket = ?').get(hush!.ticket) as { claimed_by: string | null };
+  assert.equal(row.claimed_by, null);
+});
+
+test('Guest Drawing: one address gets a day\'s worth of draws, then none until the day passes', () => {
+  const db = createDatabase(':memory:');
+  const now = 1_800_000_000_000;
+  for (let i = 0; i < GUEST_RISINGS_PER_IP_PER_DAY; i++) assert.ok(createGuestRising('5.6.7.8', undefined, db, now));
+  assert.equal(createGuestRising('5.6.7.8', undefined, db, now), null);
+  assert.ok(createGuestRising('9.9.9.9', undefined, db, now), 'other addresses are unaffected');
+  assert.ok(createGuestRising('5.6.7.8', undefined, db, now + 24 * 60 * 60 * 1000 + 1));
+});
+
+test('Guest caps key on the address the proxy saw, not one the browser wrote first in X-Forwarded-For', async () => {
+  const ts = await startTestServer();
+  setDatabase(createDatabase(':memory:'));
+  resetRateLimits();
+  try {
+    const draw = (forwarded: string) =>
+      fetch(`${ts.baseUrl}/api/rising/guest`, { method: 'POST', headers: { 'X-Forwarded-For': forwarded } });
+    let refused = false;
+    for (let i = 0; i <= GUEST_RISINGS_PER_IP_PER_DAY && !refused; i++) {
+      refused = (await draw(`10.0.${i}.1, 7.7.7.7`)).status === 429;
+    }
+    assert.ok(refused, 'a new forged first address each time still hits the cap for 7.7.7.7');
+    assert.equal((await draw('7.7.7.7, 8.8.8.8')).status, 200, 'another real address is unaffected');
+  } finally {
+    await ts.close();
+  }
 });

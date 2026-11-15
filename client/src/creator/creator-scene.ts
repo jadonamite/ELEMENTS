@@ -21,7 +21,7 @@ import {
   TorusGeometry,
   WebGLRenderer,
 } from 'three';
-import { BodyKit } from '../body.js';
+import { BodyKit, markRest } from '../body.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CharacterConfig } from './creator-types.js';
 
@@ -195,6 +195,7 @@ export class CreatorScene {
       try {
         const heroGltf = await this.loader.loadAsync('/assets/characters/hero.glb');
         if (this.isDisposed || this.loadToken !== token) return;
+        markRest(heroGltf);
         this.idleClip =
           heroGltf.animations.find(a => a.name === 'idle_relaxed') ??
           heroGltf.animations.find(a => a.name === 'idle') ??

@@ -167,6 +167,10 @@ export const SINDR_MERCHANTS: SindrMerchantConfig[] = economyBalance?.merchants?
   },
 ];
 
+/** Every zone's merchants as balance.json lists them (`merchants.<zone>`); Sindr's are the only ones today. */
+export const MERCHANTS_BY_ZONE: Readonly<Record<string, readonly SindrMerchantConfig[]>> =
+  economyBalance?.merchants ?? { sindr: SINDR_MERCHANTS };
+
 export const AGENT_CONFIG = {
   tickGameMinutes: economyBalance?.agents?.tickGameMinutes ?? 30,
   dayStartHour: economyBalance?.agents?.dayStartHour ?? 6,
@@ -177,7 +181,29 @@ export const AGENT_CONFIG = {
   tributeStockRatio: economyBalance?.agents?.tributeStockRatio ?? 0.9,
   // Share of base price the Lord pays for goods shipped as tribute.
   tributePriceRatio: economyBalance?.agents?.tributePriceRatio ?? 0.25,
+  tributeScheduleIntervalHours: economyBalance?.agents?.tributeScheduleIntervalHours ?? 24,
+  tributeScheduledShare: economyBalance?.agents?.tributeScheduledShare ?? 0.1,
+  tributeMinStockReserve: economyBalance?.agents?.tributeMinStockReserve ?? 5,
+  /** When something in the world wakes a mind (queued, never sent at once). */
+  events: {
+    /** A robbery or theft this close to a counter is news to its keeper, metres. */
+    nearStallMetres: economyBalance?.agents?.events?.nearStallMetres ?? 15,
+    /** Net units of one item sold to a keeper inside the demand window that make a flood. */
+    floodNet: economyBalance?.agents?.events?.floodNet ?? 10,
+    /** A purse under brokeThreshold times this is near the broke line. */
+    brokeWarnRatio: economyBalance?.agents?.events?.brokeWarnRatio ?? 1.5,
+    /** A price moving by this share since a rival last heard of it is a price war. */
+    priceSwing: economyBalance?.agents?.events?.priceSwing ?? 0.15,
+  },
+  /** Face-to-face talk: lines a player may send a minute, and lines one mind answers a minute. */
+  talk: {
+    linesPerPlayerMinute: economyBalance?.agents?.talk?.linesPerPlayerMinute ?? 5,
+    linesPerAgentMinute: economyBalance?.agents?.talk?.linesPerAgentMinute ?? 12,
+  },
 } as const;
+
+/** The model router's providers, order and cooldowns, as balance.json sets them (server only). */
+export const AGENT_ROUTER_CONFIG: unknown = economyBalance?.agents?.router ?? null;
 
 export const SHOPS_CONFIG = {
   salePrice: economyBalance?.shops?.salePrice ?? 2_000,
@@ -188,5 +214,95 @@ export const SHOPS_CONFIG = {
   maxPriceMultiplier: economyBalance?.shops?.maxPriceMultiplier ?? 2.5,
   unpaidUpkeepDaysToForfeit: economyBalance?.shops?.unpaidUpkeepDaysToForfeit ?? 7,
 } as const;
+
+export interface CaravanRouteConfig {
+  id: string;
+  name: string;
+  fromMerchant: string;
+  toMerchant: string;
+  fromNation: string;
+  toNation: string;
+  itemType: string;
+  cargoQuantity: number;
+}
+
+export const CARAVANS_CONFIG = {
+  intervalHours: economyBalance?.caravans?.intervalHours ?? 12,
+  routes: (economyBalance?.caravans?.routes ?? [
+    {
+      id: 'route_ignis_chromara',
+      name: 'Ignis to Chromara High Road',
+      fromMerchant: 'merchant_ignis',
+      toMerchant: 'merchant_chromara',
+      fromNation: 'IGNIS',
+      toNation: 'CHROMARA',
+      itemType: 'shard',
+      cargoQuantity: 5,
+    },
+    {
+      id: 'route_ignis_aques',
+      name: 'Ignis to Aques Waterway',
+      fromMerchant: 'merchant_ignis',
+      toMerchant: 'merchant_aques',
+      fromNation: 'IGNIS',
+      toNation: 'AQUES',
+      itemType: 'item',
+      cargoQuantity: 2,
+    },
+    {
+      id: 'route_aques_terra',
+      name: 'Aques to Terra Canyon Route',
+      fromMerchant: 'merchant_aques',
+      toMerchant: 'merchant_terra',
+      fromNation: 'AQUES',
+      toNation: 'TERRA',
+      itemType: 'potion',
+      cargoQuantity: 5,
+    },
+    {
+      id: 'route_terra_aura',
+      name: 'Terra to Aura High Span',
+      fromMerchant: 'merchant_terra',
+      toMerchant: 'merchant_aura',
+      fromNation: 'TERRA',
+      toNation: 'AURA',
+      itemType: 'shard',
+      cargoQuantity: 5,
+    },
+    {
+      id: 'route_aura_ignis',
+      name: 'Aura to Ignis Caldera Trail',
+      fromMerchant: 'merchant_aura',
+      toMerchant: 'merchant_ignis',
+      fromNation: 'AURA',
+      toNation: 'IGNIS',
+      itemType: 'shard',
+      cargoQuantity: 5,
+    },
+  ]) as readonly CaravanRouteConfig[],
+} as const;
+
+export const MASTERS_CONFIG = {
+  baseTrainingFee: economyBalance?.masters?.baseTrainingFee ?? 50,
+  weeklyGrowthRate: economyBalance?.masters?.weeklyGrowthRate ?? 0.1,
+  minFee: economyBalance?.masters?.minFee ?? 20,
+  maxFee: economyBalance?.masters?.maxFee ?? 500,
+} as const;
+
+export const RIVAL_CLAN_CONFIG = {
+  tradeIntervalHours: economyBalance?.rivalClan?.tradeIntervalHours ?? 6,
+  maxTradeSpend: economyBalance?.rivalClan?.maxTradeSpend ?? 300,
+  preferredItems: (economyBalance?.rivalClan?.preferredItems ?? ['shard', 'potion', 'material']) as readonly string[],
+} as const;
+
+export const DIRECTOR_CONFIG = {
+  restHoursBetweenStorms: economyBalance?.director?.restHoursBetweenStorms ?? 24,
+  lookbackDays: economyBalance?.director?.lookbackDays ?? 3,
+  dominationThreshold: economyBalance?.director?.dominationThreshold ?? 0.35,
+  minActivePlayers: economyBalance?.director?.minActivePlayers ?? 2,
+  firestormDurationHours: economyBalance?.director?.firestormDurationHours ?? 24,
+  firestormPriceMultiplier: economyBalance?.director?.firestormPriceMultiplier ?? 1.25,
+} as const;
+
 
 

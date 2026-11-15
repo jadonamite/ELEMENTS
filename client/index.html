@@ -3,11 +3,36 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d0a08" />
     <link rel="icon" href="data:," />
     <title>ELEMENTS</title>
+    <script>
+      // A tab that already pressed Play Now, or a reload that skips the intro, goes straight to the game.
+      try {
+        if (sessionStorage.getItem('elements_cover_passed') === '1' || new URLSearchParams(location.search).has('skipIntro')) {
+          document.documentElement.classList.add('cover-passed');
+        }
+      } catch {}
+    </script>
   </head>
   <body>
+    <main id="cover" aria-labelledby="cover-title">
+      <picture class="cover-art">
+        <source media="(max-aspect-ratio: 1/1)" srcset="/assets/cover/poster-tall-r5.webp" type="image/webp" />
+        <img src="/assets/cover/poster-wide-r5.webp" alt="" width="3344" height="1882" fetchpriority="high" decoding="async" />
+      </picture>
+      <div class="cover-content">
+        <h1 id="cover-title" class="cover-title">ELEMENTS</h1>
+        <button type="button" id="cover-play" class="cover-play">Play Now</button>
+        <p id="cover-status" class="cover-status" role="status"></p>
+      </div>
+      <footer class="cover-footer">
+        <a href="/legal/terms.html" target="_blank" rel="noopener">Terms</a>
+        <a href="/legal/privacy.html" target="_blank" rel="noopener">Privacy</a>
+        <a href="/legal/cookies.html" target="_blank" rel="noopener">Cookies</a>
+      </footer>
+    </main>
     <canvas id="game" aria-label="ELEMENTS game canvas"></canvas>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/cover.ts"></script>
   </body>
 </html>

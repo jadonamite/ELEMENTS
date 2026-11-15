@@ -303,6 +303,28 @@ button.purse-coin:hover { filter: brightness(1.2); }
   border-left: 1px solid rgb(140 40 40 / 0.6);
   z-index: 2;
 }
+.vital-bars { display: flex; flex-direction: column; gap: 3px; }
+.hero-stamina {
+  position: relative;
+  width: min(280px, 40vw);
+  height: 3px;
+  background: rgb(12 10 8 / 0.55);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.hero-stamina.shown { opacity: 1; }
+.hero-stamina .stamina-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgb(214 170 110), rgb(242 214 150));
+}
+.hero-stamina.winded .stamina-fill { background: rgb(120 112 104); }
+.hero-stamina.flash { animation: stamina-flash 0.3s ease-in-out 2; }
+@keyframes stamina-flash { 50% { background: rgb(160 48 32 / 0.85); } }
+@media (prefers-reduced-motion: reduce) { .hero-stamina { transition: none; } .hero-stamina.flash { animation: none; background: rgb(160 48 32 / 0.85); } }
 .hero-meter {
   position: relative;
   flex: none;

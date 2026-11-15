@@ -19,7 +19,7 @@ import {
   type SkinnedMesh,
 } from 'three';
 import balance from '../../shared/balance.json';
-import { BodyKit, parseOutfit, type OutfitId } from './body.js';
+import { BodyKit, markRest, parseOutfit, type OutfitId } from './body.js';
 import { getDefaultCharacterConfig, getStoredCharacter, type CharacterConfig } from './creator/creator-types.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -32,7 +32,8 @@ import { carrySockets, gripAligned, hitSegment, palmSocket, snapToSocket } from 
 import { fetchWornArmour } from './economy/api.js';
 import { getStoredAuthToken, hasGameServer } from './auth/server-api.js';
 
-export type Limb = 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'knee_r' | 'knee_l';
+/** A fist is the middle of the hand, halfway from the wrist to the middle knuckle. */
+export type Limb = 'hand_r' | 'hand_l' | 'foot_r' | 'foot_l' | 'knee_r' | 'knee_l' | 'fist_r' | 'fist_l';
 
 export interface HeroInstance {
   /** Root 3D container added to the scene. */
@@ -125,6 +126,10 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   if (!kneeR) throw new Error('Right calf bone (calf_r) not found in hero rig.');
   let kneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
   if (!kneeL) throw new Error('Left calf bone (calf_l) not found in hero rig.');
+  /** Middle knuckles, for the fists; a rig without fingers falls back to the wrist. */
+  let knuckleR = heroModel.getObjectByName('middle_02_r') as Bone | undefined;
+  let knuckleL = heroModel.getObjectByName('middle_02_l') as Bone | undefined;
+  const knuckleAt = new Vector3();
   let swordMesh: Object3D = (await loader.loadAsync(weaponSlot.assetPath)).scene.clone(true);
   const swordMaterials: MeshStandardMaterial[] = [];
   const collectMaterials = (mesh: Object3D): void => {
@@ -263,6 +268,14 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   };
 
   const getLimbWorldPosition = (limb: Limb, out: Vector3): Vector3 => {
+    if (limb === 'fist_r' || limb === 'fist_l') {
+      const wrist = limb === 'fist_r' ? handBone : handL;
+      const knuckle = limb === 'fist_r' ? knuckleR : knuckleL;
+      if (!wrist) return out.copy(heroModel.position);
+      heroModel.updateMatrixWorld(true);
+      wrist.getWorldPosition(out);
+      return knuckle ? out.lerp(knuckle.getWorldPosition(knuckleAt), 0.5) : out;
+    }
     const bones = { hand_r: handBone, hand_l: handL, foot_r: footR, foot_l: footL, knee_r: kneeR, knee_l: kneeL };
     const bone = bones[limb];
     if (!bone) return out.copy(heroModel.position);
@@ -271,18 +284,18 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   };
 
   // Build animation clips, including bare hands combos & bending moves
-  const combatClips = (await loader.loadAsync('/assets/characters/combat.glb')).animations;
-  calmRunBounce(heroGltf.animations);
-  // Locomotion is the retargeted Mixamo pack: idle, walk, strafe and turn in place, jump.
-  const locomotionClips = (await loader.loadAsync('/assets/characters/locomotion.glb')).animations;
+  const combatClips = markRest(await loader.loadAsync('/assets/characters/combat.glb'));
+  calmRunBounce(markRest(heroGltf));
+  // Locomotion is the retargeted Mixamo pack: idle, weapon-drawn idle, walk, strafe and turn in place, jump.
+  const locomotionClips = markRest(await loader.loadAsync('/assets/characters/locomotion.glb'));
   // The mannequin's own relaxed idle, walk and jump are replaced by the pack; its start/land jump clips are unused.
   const REPLACED = new Set(['idle_relaxed', 'walk', 'jump', 'jump_start', 'jump_land']);
   const bodyClips = heroGltf.animations.filter(clip => !REPLACED.has(clip.name));
 
   // Unarmed fighting uses real punch and knee clips; the bare moves map onto them by name.
   const unarmed = [
-    ...(await loader.loadAsync('/assets/characters/unarmed_a.glb')).animations,
-    ...(await loader.loadAsync('/assets/characters/unarmed_b.glb')).animations,
+    ...markRest(await loader.loadAsync('/assets/characters/unarmed_a.glb')),
+    ...markRest(await loader.loadAsync('/assets/characters/unarmed_b.glb')),
   ];
   const rename: Record<string, string> = { punch_jab: 'bare_punch_1', punch_cross: 'bare_punch_2', knee: 'bare_kick', punch_hook: 'bare_heavy_1' };
   const subclips: AnimationClip[] = unarmed.map(clip => {
@@ -294,7 +307,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   });
 
   // Legs style kicks (Mixamo, retargeted), trimmed so the strike falls cleanly inside the active window.
-  const kickClips = (await loader.loadAsync('/assets/characters/kicks.glb')).animations;
+  const kickClips = markRest(await loader.loadAsync('/assets/characters/kicks.glb'));
   // Cuts start just before the foot leaves the floor and end once it is back down; the foot peaks near the middle.
   const kickCuts: Array<[string, string, number, number]> = [
     ['kick_front_double', 'leg_kick_1', 0.55, 1.25],
@@ -361,6 +374,8 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     if (nextKneeR) kneeR = nextKneeR;
     const nextKneeL = heroModel.getObjectByName('calf_l') as Bone | undefined;
     if (nextKneeL) kneeL = nextKneeL;
+    knuckleR = heroModel.getObjectByName('middle_02_r') as Bone | undefined;
+    knuckleL = heroModel.getObjectByName('middle_02_l') as Bone | undefined;
     palm = palmSocket(heroModel);
     torso = fitTorso(heroModel);
     if (!torso) throw new Error('Hero rig has no torso to carry a weapon on.');

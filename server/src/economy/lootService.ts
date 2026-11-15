@@ -21,7 +21,7 @@ import {
 import { armour } from '../net/balance.js';
 import { getDatabase, getRising } from '../db.js';
 import { getAccountBalance, recordTransaction } from './ledgerService.js';
-import { addItems, getSatchel, removeItems, withSavepoint } from './satchelService.js';
+import { addItems, getSatchel, recordItemMove, removeItems, withSavepoint } from './satchelService.js';
 
 const CLIENT_KILL_MIN_GAP_MS = 1500;
 
@@ -105,6 +105,12 @@ export function createLootPile(
     droppedAt: now,
     ownerId: params.ownerId ?? null,
   });
+
+  if (params.source !== 'player_death' || !params.sourceAccountId) {
+    for (const stack of itemsFromLoot(pile.contents)) {
+      recordItemMove(db, 'world', pile.id, stack, 'loot_drop', pile.id, now);
+    }
+  }
 
   if (pile.contents.chroma > 0) {
     let fromAccount = TREASURY_ACCOUNT_ID;
@@ -400,6 +406,10 @@ export function sweepExpiredPiles(
   for (const row of rows) {
     const pile = mapRowToPile(row);
     db.prepare(`UPDATE loot_piles SET expired = 1 WHERE id = ?`).run(pile.id);
+
+    for (const stack of itemsFromLoot(pile.contents)) {
+      recordItemMove(db, pile.id, 'world', stack, 'loot_expired', pile.id, now);
+    }
 
     if (pile.contents.chroma > 0) {
       recordTransaction(

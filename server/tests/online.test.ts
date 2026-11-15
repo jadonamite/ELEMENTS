@@ -188,9 +188,9 @@ test('Enemies: a raised guard facing the hound takes the guard share of a bite',
   const world = new ZoneWorld('arena', () => 0.5);
   const p = world.join('A', shaper, 0);
   world.move('A', { t: 0, x: 0, y: 0, z: 2, vx: 0, vz: 0, f: 0, a: 'block', r: 1, g: true }, 0);
-  const taken = p.takeStrike({ enemy: 'hound_1', target: 'A', damage: 18, fromX: 0, fromZ: 3 });
+  const taken = p.takeStrike({ enemy: 'hound_1', target: 'A', damage: 18, fromX: 0, fromZ: 3 }, 1);
   assert.equal(taken, 18 * balance.hero.blockDamageScale);
-  const behind = p.takeStrike({ enemy: 'hound_1', target: 'A', damage: 18, fromX: 0, fromZ: 0 });
+  const behind = p.takeStrike({ enemy: 'hound_1', target: 'A', damage: 18, fromX: 0, fromZ: 0 }, 1);
   assert.equal(behind, 18);
 });
 

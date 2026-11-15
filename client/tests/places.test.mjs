@@ -9,12 +9,13 @@ import { SINDR_STALLS, SINDR_COUNTING_HOUSES, SINDR_NOTICE_BOARD, placesFor } fr
 
 const byKind = (kind) => anchors.anchors.filter((a) => a.kind === kind);
 
-test('every Sindr stall the server knows stands where the town builds it', () => {
-  const stalls = byKind('stall').filter((a) => a.merchant);
-  assert.equal(SINDR_STALLS.length, stalls.length);
+test('every Sindr shop the server knows stands where the town builds it', () => {
+  const shops = anchors.anchors.filter((a) => a.merchant);
+  assert.equal(SINDR_STALLS.length, shops.length);
   for (const place of SINDR_STALLS) {
-    const anchor = stalls.find((a) => a.merchant === place.id);
-    assert.ok(anchor, `no anchor builds the stall ${place.id}`);
+    const anchor = shops.find((a) => a.merchant === place.id);
+    assert.ok(anchor, `no anchor builds the shop ${place.id}`);
+    assert.ok(['stall', 'counter'].includes(anchor.kind), `${anchor.id} is a stall or a counter`);
     assert.equal(place.x, anchor.x, `${place.id} x`);
     assert.equal(place.z, anchor.z, `${place.id} z`);
   }

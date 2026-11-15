@@ -1,6 +1,9 @@
 import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { getAccessToken, PrivyProvider, useLogin, usePrivy } from '@privy-io/react-auth';
+import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-chains';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+import { claimGuestSession, grantSession } from './session-grants.js';
 import type { DrawingResult } from '../opening.js';
 import {
   postSession,
@@ -19,11 +22,15 @@ export interface LoginSuccessPayload {
 export interface LoginIslandProps {
   onSuccess: (payload: LoginSuccessPayload) => void;
   onOffline: () => void;
+  /** Words for where the sign-in is asked; the opening's own words otherwise. */
+  copy?: { title: string; subtitle: string; offline: string; offlineNotice: string };
 }
 
-function LoginCard({ onSuccess, onOffline }: LoginIslandProps) {
+function LoginCard({ onSuccess, onOffline, copy }: LoginIslandProps) {
   const { ready, authenticated, user } = usePrivy();
   const sessionStarted = useRef(false);
+  const { createWallet } = useCreateWallet();
+  const { signRawHash } = useSignRawHash();
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +48,15 @@ function LoginCard({ onSuccess, onOffline }: LoginIslandProps) {
         return;
       }
       const session = hasGameServer() ? await postSession(token!) : localSession(user!.id);
+      if (session.grantContracts?.length) {
+        const linked = user?.linkedAccounts.find(a => a.type === 'wallet' && a.chainType === 'near');
+        const address = linked?.type === 'wallet' ? linked.address : (await createWallet({ chainType: 'near' })).wallet.address;
+        await grantSession(token!, address, session.grantContracts, session.grantCaps ?? { CHROMA: '100000' }, async hash => {
+          const { signature } = await signRawHash({ address, chainType: 'near', hash: `0x${bytesToHex(hash)}` });
+          return hexToBytes(signature.replace(/^0x/, ''));
+        });
+        await claimGuestSession(token!, address, session.grantContracts, session.grantCaps ?? { CHROMA: "100000" });
+      }
       setStoredAuthToken(token);
       setStoredAccountId(session.accountId);
       onSuccess({
@@ -55,7 +71,7 @@ function LoginCard({ onSuccess, onOffline }: LoginIslandProps) {
         : 'Sign-in could not be completed. Try again or continue offline.');
       setIsVerifying(false);
     }
-  }, [onSuccess, user?.id]);
+  }, [onSuccess, user, createWallet, signRawHash]);
 
   const { login } = useLogin({
     onComplete: () => {
@@ -84,11 +100,11 @@ function LoginCard({ onSuccess, onOffline }: LoginIslandProps) {
 
   return (
     <div className="opening-modal login-modal">
-      <h2>Enter the Realm</h2>
+      <h2>{copy?.title ?? 'Enter the Realm'}</h2>
       <p className="opening-subtitle">
-        {hasGameServer()
+        {copy?.subtitle ?? (hasGameServer()
           ? 'Sign in so your character and your rising are saved to your account. You rise only once.'
-          : 'Sign in to enter. Your character and rising are saved in this browser.'}
+          : 'Sign in to enter. Your character and rising are saved in this browser.')}
       </p>
 
       {error && (
@@ -110,12 +126,12 @@ function LoginCard({ onSuccess, onOffline }: LoginIslandProps) {
           className="opening-button secondary"
           onClick={onOffline}
         >
-          Continue Offline
+          {copy?.offline ?? 'Continue Offline'}
         </button>
       </div>
 
       <p className="login-offline-notice">
-        Offline play is not saved.
+        {copy?.offlineNotice ?? 'Offline play is not saved.'}
       </p>
 
       <div className="opening-footer">

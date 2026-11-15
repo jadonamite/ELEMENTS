@@ -34,6 +34,7 @@ export interface QuoteParams {
   shardSales?: Record<string, number> | ShardSaleEntry[];
   now?: number;
   nation?: string;
+  firestormMultiplier?: number | undefined;
 }
 
 export function calculateQuote(params: QuoteParams): Quote {
