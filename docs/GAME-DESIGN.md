@@ -4,7 +4,7 @@ Oct 28, 2026
 
 ## Overview
 
-ELEMENTS is a lightweight browser action game: you "buy" the game, get pulled into a world you can't leave, and are drawn by lottery into one of four elemental nations. Fights feel weighty like God of War, and the world's economy is run by players and AI agents, not patches.
+ELEMENTS is a lightweight browser MMORPG: you "buy" the game, get pulled into a world you can't leave, and are drawn by lottery into one of four elemental nations. Fights feel weighty like God of War, and the world's economy is run by players and AI agents, not patches.
 
 - **Hackathon:** NEAR Hackathon, primary track **Games With Real Economies** (`games`). Possible extra tags: Agent Economy, AI Swarms.
 - **Judging rule for this track:** judged on the game loop, not the token. Bonus if players never notice the chain.

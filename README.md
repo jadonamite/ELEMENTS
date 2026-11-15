@@ -4,7 +4,7 @@ You buy a game called ELEMENTS, take it home and press play. The picture tears, 
 
 You want to go home. Everyone you ask gives the same answer: only the Allborn, who commands all four elements, can open the way. So you follow the first rumour.
 
-ELEMENTS is a third-person action RPG in the browser, set in a world of four nations under one tyrant. Its coin and every item in it live on NEAR, and a player never sees a wallet.
+ELEMENTS is a third-person MMORPG in the browser, set in a world of four nations under one tyrant. Its coin and every item in it live on NEAR, and a player never sees a wallet.
 
 Play it at <https://elements.namite.xyz>.
 
