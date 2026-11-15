@@ -999,10 +999,7 @@
           "walk": 0.97,
           "run": 5.36
         },
-        "weapons": [
-          "club",
-          "knife"
-        ]
+        "weapons": ["club", "sword"]
       },
       "deserter": {
         "attacks": [
