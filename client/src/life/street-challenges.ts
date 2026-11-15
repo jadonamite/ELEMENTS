@@ -18,6 +18,8 @@ const GUARD_SIGHT = 25;
 
 export interface StreetChallengeOptions {
   spawnVillain: (at: { x: number; y: number; z: number }) => Enemy;
+  /** False until the villain bodies have loaded; no one is called out before then. */
+  villainsReady: () => boolean;
   enemies: () => readonly Enemy[];
   space: CombatSpace;
   /** Where the town watch stands now. */
@@ -70,7 +72,7 @@ export class StreetChallenges {
     if (!heroAlive) { this.reset(BETWEEN_CHALLENGES); return; }
     if (this.phase === 'waiting') {
       const busy = this.o.enemies().some(e => e.alive);
-      if (busy || !this.o.inTown(hero)) return;
+      if (busy || !this.o.villainsReady() || !this.o.inTown(hero)) return;
       this.wait -= dt;
       if (this.wait <= 0) this.offer(hero, heroFacing);
       return;

@@ -4,7 +4,9 @@ import type { CombatSpace } from '../attacks/space.js';
 import type { SoundManager } from '../audio.js';
 import type { WorldClock } from '../world/clock.js';
 import { SINDR_STREETS, SINDR_WALK, TownManager, type LiveTownsperson } from './town-manager.js';
-import { loadLookBodies, ownLooks } from './townsfolk-bodies.js';
+import { LookBodies, ownLooks } from './townsfolk-bodies.js';
+import type { Look } from './crowd.js';
+import type { Townsperson } from './townsfolk.js';
 import { drawnCrowd, drawnInTown, makeCrowd, staffPosts, type PlayerPerson } from './crowd.js';
 import type { Browse, Post } from '../world/builder.js';
 import { SINDR_TOWNSFOLK } from './townsfolk.js';
@@ -22,6 +24,8 @@ const { traffic: TRAFFIC, hearRadius: HEAR_RADIUS } = balance.speech;
 /** People wandering the streets beside the named townsfolk and the keepers of posts, and how many looks they share. */
 const CROWD_PEOPLE = 110;
 const CROWD_LOOKS = 30;
+/** Body files whose wearers are in the street before play; the rest of the crowd follows after. */
+const FIRST_FILES = 2;
 
 
 /** An open conversation as the input sees it. */
@@ -65,8 +69,13 @@ export class SindrLifeSystem {
   readonly dialogueUI: NpcDialogueUI;
   readonly dialogueMemory: DialogueMemory;
   readonly voices: TownVoices;
+  /** Resolves when the people near the start are in the street; the rest come with `bringInRest`. */
   readonly ready: Promise<void>;
   private disposed = false;
+  private readonly bodies: LookBodies;
+  private readonly people: readonly Townsperson[];
+  private readonly restLooks: readonly Look[];
+  private readonly warm: ((model: Object3D) => Promise<void>) | undefined;
 
   private scene: Scene;
   private readonly offerAt = new Vector3();
@@ -130,9 +139,44 @@ export class SindrLifeSystem {
     const people = [...cast, ...keepers, ...crowd.people];
     const looks = [...named, ...crowd.looks];
     const children = new Set(people.filter(p => p.role === 'child').map(p => p.look ?? p.id));
-    this.ready = loadLookBodies(looks, children, undefined, options.warm).then(async (bodies) => {
-      if (!this.disposed) await this.townManager.init(bodies, people, SINDR_STREETS, SINDR_WALK, options.browse ?? [], options.posts ?? []);
-    }).catch(console.error);
+    // Before play: everyone wearing the body files of the keepers posted nearest where the hero stands, up to
+    // FIRST_FILES files (every crowd look is one of a few sheet bodies, so files are what cost download).
+    // Everyone else is built after play starts (bringInRest).
+    const at = options.controller.position;
+    const file = (look: Look): string => `${look.outfit ?? 'rags'}:${look.config.sex}`;
+    const lookById = new Map(looks.map(l => [l.id, l]));
+    const firstFiles = new Set<string>();
+    for (const p of people.filter(p => !p.wander)
+      .sort((a, b) => Math.hypot(a.schedule.work.x - at.x, a.schedule.work.z - at.z) - Math.hypot(b.schedule.work.x - at.x, b.schedule.work.z - at.z))) {
+      const look = lookById.get(p.look ?? p.id);
+      if (look) firstFiles.add(file(look));
+      if (firstFiles.size >= FIRST_FILES) break;
+    }
+    const first = looks.filter(l => firstFiles.has(file(l)));
+    this.restLooks = looks.filter(l => !first.includes(l));
+    this.people = people;
+    this.warm = options.warm;
+    const town = this.townManager;
+    const lookBodies = this.bodies = new LookBodies(children, undefined, options.warm);
+    this.ready = (async () => {
+      const [, bodies] = await Promise.all([
+        town.prepare(SINDR_STREETS, SINDR_WALK, options.browse ?? [], options.posts ?? []),
+        lookBodies.build(first),
+      ]);
+      if (!this.disposed) town.admit(bodies, people);
+    })().catch(console.error);
+  }
+
+  /** Builds everyone not yet in the street, readies their bodies for drawing, then places them. */
+  async bringInRest(): Promise<void> {
+    await this.ready;
+    if (this.disposed || this.restLooks.length === 0) return;
+    const bodies = await this.bodies.build(this.restLooks);
+    for (const body of bodies.values()) {
+      if (this.disposed) return;
+      await this.warm?.(body.model);
+    }
+    if (!this.disposed) this.townManager.admit(bodies, this.people);
   }
 
   update(delta: number): void {

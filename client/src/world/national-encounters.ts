@@ -71,6 +71,8 @@ export class NationalEncounterManager {
         this.loadTemplate();
         return;
       }
+      // Robbers and deserters wait for the villain bodies, which arrive after play starts.
+      if (spot.kind !== 'hounds' && !this.fight.villainsReady) return;
       const spawns: Vector3[] = [];
       for (let i = 0; i < 3; i++) {
         const along = 8 + i * 2, side = i % 2 === 0 ? 3 : -3;

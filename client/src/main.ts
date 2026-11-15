@@ -19,7 +19,7 @@ import { ShoulderCamera } from './camera.js';
 import { GameInput } from './input.js';
 import { Controls } from './controls/index.js';
 import { Combat, strikeKind, type CombatAction, type FightingStyle } from './combat.js';
-import { loadEnemyTemplate, villainLooks, type VillainKind } from './enemy.js';
+import { loadEnemyTemplate, villainLooks, type EnemyTemplate, type VillainKind } from './enemy.js';
 import { Fight, type HeroView } from './fight.js';
 import { inFront } from './hits.js';
 import { FightHud, type RoundHudInfo } from './hud.js';
@@ -136,7 +136,14 @@ async function main(): Promise<void> {
   const initialBoneRotations = new Map<string, { x: number; y: number; z: number }>();
   let wasWindskiffActive = false;
   loader.setProgress(0.42, 'Forging the hero');
-  const villains = loadEnemyTemplate();
+  // The arena's waves start at once, so it loads villains before play; the town brings them in after play
+  // starts (bringInLater), and everything waiting on this promise (fight, robber gang, online) gets them then.
+  let villainsArrived: (template: EnemyTemplate) => void = () => undefined;
+  let villainsFailed: (error: unknown) => void = () => undefined;
+  const villains: Promise<EnemyTemplate> = zone
+    ? new Promise((resolve, reject) => { villainsArrived = resolve; villainsFailed = reject; })
+    : loadEnemyTemplate();
+  villains.catch(() => undefined);
   try {
     hero = await loadHero();
     loader.setProgress(0.55, 'Forging the hero');
@@ -310,7 +317,7 @@ async function main(): Promise<void> {
   const TURN_IN_PLACE_ANGLE = Math.PI / 3;
   const TURN_IN_PLACE_SECONDS = 0.6;
 
-  const fight = new Fight(await villains, physics.world, scene, {
+  const fight = new Fight(zone ? null : await villains, physics.world, scene, {
     heroHit(blocked) {
       hurtAt = performance.now();
       if (blocked) bend.gain('blocked');
@@ -505,6 +512,7 @@ async function main(): Promise<void> {
 
   input.onDuelToggle = () => {
     if (playingOnline) return;
+    if (!fight.villainsReady) { notice('No challenger is ready yet.'); return; }
     const fwd = new Vector3(Math.sin(controller.facing), 0, Math.cos(controller.facing));
     const spawnPos = controller.position.clone().addScaledVector(fwd, 4.0);
     const kinds: VillainKind[] = ['brawler', 'armed', 'bender'];
@@ -540,6 +548,7 @@ async function main(): Promise<void> {
   // One person in the street calls the hero out; the brawl starts only if the hero accepts.
   const streetChallenges = zone && !playingOnline ? new StreetChallenges({
     spawnVillain: (at) => fight.spawnVillain(at, 'robber', 100),
+    villainsReady: () => fight.villainsReady,
     enemies: () => fight.enemies,
     space,
     guards: () => lifeSystem?.townManager.townsfolk.filter(t => t.data.role === 'guard').map(t => t.position) ?? [],
@@ -1197,18 +1206,10 @@ async function main(): Promise<void> {
     loader.setProgress(0.80, 'Lighting the braziers');
     await Promise.all([zone.ready, bending.ready, lifeSystem?.ready]);
     if (disposed) return;
-    loader.setProgress(0.90, 'Attuning the elements');
-    const looks = new Group();
-    looks.add(...villainLooks(await villains));
-    scene.add(looks);
     loader.setProgress(0.92, 'Warming the world');
-    try {
-      await zone.warm(scene, (p) => {
-        loader.setProgress(0.92 + p * 0.07, 'Warming the world');
-      });
-    } finally {
-      looks.removeFromParent();
-    }
+    await zone.warm(scene, (p) => {
+      loader.setProgress(0.92 + p * 0.07, 'Warming the world');
+    });
     if (disposed) return;
   } else {
     loader.setProgress(0.85, 'Lighting the braziers');
@@ -1222,6 +1223,33 @@ async function main(): Promise<void> {
   status('');
   panel.hidden = true;
   loader.ready();
+  if (zone) void bringInLater().catch((error: unknown) => console.error('Loading after play failed:', error));
+
+  /**
+   * What the town needs after the first street, in order: the rest of the crowd (an empty street shows),
+   * the villains (nobody is called out until they arrive), then the full fire atlases. Each is readied for
+   * drawing before it shows.
+   */
+  async function bringInLater(): Promise<void> {
+    if (!zone) return;
+    await lifeSystem?.bringInRest().catch((error: unknown) => console.error('Townsfolk failed to load:', error));
+    if (disposed) return;
+    try {
+      const template = await loadEnemyTemplate();
+      if (disposed) return;
+      const looks = new Group();
+      looks.add(...villainLooks(template));
+      await zone.warm(looks);
+      if (disposed) return;
+      fight.setTemplate(template);
+      villainsArrived(template);
+    } catch (error) {
+      console.error('Villains failed to load:', error);
+      villainsFailed(error);
+    }
+    if (disposed) return;
+    await bending.useFullAtlases((texture) => renderer.initTexture(texture));
+  }
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();
@@ -1333,7 +1361,7 @@ async function main(): Promise<void> {
     if (!picking) nationalEncounters?.update(delta, controller.position, nightness.value);
     if (zone) {
       const yardDist = Math.hypot(controller.position.x - 124, controller.position.z - -36);
-      if (!playingOnline && yardDist < 12 && !yardSpawned && fight.enemies.filter(e => e.alive).length === 0) {
+      if (!playingOnline && yardDist < 12 && !yardSpawned && fight.villainsReady && fight.enemies.filter(e => e.alive).length === 0) {
         yardSpawned = true;
         fight.spawnVillain({ x: 121, z: -38 }, 'brawler', 100);
         fight.spawnVillain({ x: 127, z: -34 }, 'armed', 110);

@@ -160,6 +160,8 @@ export class SurfaceLibrary {
   private readonly loader: KTX2Loader;
   private readonly cache = new Map<Surface, MeshStandardMaterial>();
   private readonly pending: Promise<unknown>[] = [];
+  /** Colour and packed maps that start at 1K and move to the library's size once `sharpen` runs. */
+  private readonly sharpenLater: Array<() => Promise<void>> = [];
 
   constructor(renderer: WebGLRenderer, private readonly size: '2k' | '1k',
     private readonly onMaterial: (m: MeshStandardMaterial) => void = () => {}) {
@@ -195,15 +197,26 @@ export class SurfaceLibrary {
     }
     material.normalScale = new Vector2(look.normalScale ?? 1, look.normalScale ?? 1);
     // Normals stay at 1K on every level: the 2K ones cost four times the download for detail the town camera never sees.
-    const load = (map: string, srgb: boolean, apply: (t: Texture) => void): void => {
-      const size = map === 'nor_uastc' ? '1k' : this.size;
-      this.pending.push(this.loader.loadAsync(`${BASE}/${files}_${map}_${size}.ktx2`).then((t) => {
+    // Colour and packed maps start at 1K so play starts sooner; `sharpen` brings the 2K ones in afterwards.
+    const fetchMap = (map: string, size: '1k' | '2k', srgb: boolean): Promise<Texture> =>
+      this.loader.loadAsync(`${BASE}/${files}_${map}_${size}.ktx2`).then((t) => {
         t.wrapS = t.wrapT = RepeatWrapping;
         t.colorSpace = srgb ? SRGBColorSpace : LinearSRGBColorSpace;
         t.anisotropy = 8;
+        return t;
+      });
+    const load = (map: string, srgb: boolean, apply: (t: Texture) => void): void => {
+      const later = map !== 'nor_uastc' && this.size === '2k';
+      this.pending.push(fetchMap(map, '1k', srgb).then((t) => {
         apply(t);
         material.needsUpdate = true;
       }).catch((error: unknown) => console.warn(`Texture ${files} ${map} failed:`, error)));
+      if (later) this.sharpenLater.push(() => fetchMap(map, '2k', srgb).then((t) => {
+        this.upload?.(t);
+        const old = map === 'diff' ? material.map : material.aoMap;
+        apply(t);
+        if (old && old !== t) old.dispose();
+      }).catch((error: unknown) => console.warn(`Texture ${files} ${map} 2K failed:`, error)));
     };
     load('diff', true, (t) => { material.map = t; });
     load('nor_uastc', false, (t) => { material.normalMap = t; });
@@ -216,6 +229,15 @@ export class SurfaceLibrary {
   }
 
   ready(): Promise<unknown> { return Promise.all(this.pending); }
+
+  private upload: ((texture: Texture) => void) | null = null;
+
+  /** Swaps every 1K colour and packed map for the 2K one, one surface at a time, each uploaded before it is used. */
+  async sharpen(upload: (texture: Texture) => void): Promise<void> {
+    await this.ready();
+    this.upload = upload;
+    for (const swap of this.sharpenLater.splice(0)) await swap();
+  }
 
   dispose(): void {
     for (const m of this.cache.values()) {

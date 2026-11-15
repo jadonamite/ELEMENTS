@@ -23,7 +23,7 @@ export function globalMapMarkup(inTown: boolean): string {
     <section class="atlas-screen" aria-label="World map">
       <div class="atlas-map" role="group" aria-label="Schematic map of the four nations around Chromara">
         <div class="atlas-layer">
-          <img class="atlas-art" src="/assets/ui/elements-world-atlas.png" alt="Illustrated world with volcanic, icy, mountainous and canyon regions around a central city" />
+          <img class="atlas-art" decoding="async" data-src="/assets/ui/elements-world-atlas.png" alt="Illustrated world with volcanic, icy, mountainous and canyon regions around a central city" />
           <div class="atlas-wash" aria-hidden="true"></div>
           ${REGIONS.map(region => `
           <button type="button" class="atlas-region atlas-${region.position}${region.id === current ? ' is-current' : ''}" data-region="${region.id}" aria-pressed="${region.id === (current || 'CHROMARA')}" aria-label="${region.name}, ${region.subtitle}${region.ready ? ', available now' : ', not available yet'}">

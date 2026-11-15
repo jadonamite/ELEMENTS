@@ -207,7 +207,7 @@ function rebind(src: SkinnedMesh, rig: Skeleton, geometry = src.geometry): Skinn
 /** Loads the creator's bodies and hair once; fighters are cloned from these. */
 export class BodyKit {
   private readonly scenes = new Map<string, Promise<Object3D>>();
-  private readonly fitted = new Map<string, AnimationClip[]>();
+  private readonly fitted = new Map<string, Promise<AnimationClip[]>>();
   private readonly bare = new Map<string, BufferGeometry>();
   private wornRags: Promise<Texture> | null = null;
 
@@ -335,23 +335,25 @@ export class BodyKit {
     person?: string): Promise<AnimationClip[]> {
     const { path } = outfitFor(wornBy({ sex, person } as CharacterConfig, outfitId), sex);
     const key = `${path}:${cacheKey}`;
+    // The fitting in progress is cached, so builds running side by side share it.
     const cached = this.fitted.get(key);
     if (cached) return cached;
-    const rig = await this.scene(path);
-    const pelvis = rig.getObjectByName('pelvis');
-    const ratio = pelvis ? pelvis.position.length() / CLIP_PELVIS_HEIGHT : 1;
-    // Each pack was made on its own rest pose; its clips are turned onto this rig's.
-    const bodyRest = restOf(rig);
-    const retargets = new Map<number, Retarget>();
-    const out = clips.map((clip) => {
-      const pack = clip.userData.rest as number | undefined;
-      if (pack === undefined) return fitClip(clip, ratio);
-      let retarget = retargets.get(pack);
-      if (!retarget) retargets.set(pack, retarget = retargetBetween(packRests[pack]!, bodyRest));
-      return fitClip(clip, ratio, retarget);
+    const fitting = this.scene(path).then((rig) => {
+      const pelvis = rig.getObjectByName('pelvis');
+      const ratio = pelvis ? pelvis.position.length() / CLIP_PELVIS_HEIGHT : 1;
+      // Each pack was made on its own rest pose; its clips are turned onto this rig's.
+      const bodyRest = restOf(rig);
+      const retargets = new Map<number, Retarget>();
+      return clips.map((clip) => {
+        const pack = clip.userData.rest as number | undefined;
+        if (pack === undefined) return fitClip(clip, ratio);
+        let retarget = retargets.get(pack);
+        if (!retarget) retargets.set(pack, retarget = retargetBetween(packRests[pack]!, bodyRest));
+        return fitClip(clip, ratio, retarget);
+      });
     });
-    this.fitted.set(key, out);
-    return out;
+    this.fitted.set(key, fitting);
+    return fitting;
   }
 }
 

@@ -84,7 +84,10 @@ export function slopeBlend(ground: MeshStandardMaterial, rock: MeshStandardMater
   const uniforms = { ...(land?.uniforms ?? {}), tRock: { value: null as Texture | null }, uRockTint: { value: rock.color }, uRockTile: { value: 1 / LOOKS.basalt_rock_face.tile } };
   const watch = (): void => {
     if (rock.map && uniforms.tRock.value !== rock.map) uniforms.tRock.value = rock.map;
-    if (ground.map && material.map !== ground.map) { material.map = ground.map; material.normalMap = ground.normalMap; material.aoMap = ground.aoMap; material.roughnessMap = ground.roughnessMap; material.needsUpdate = true; }
+    // Each map is followed on its own: the ground's maps arrive, and later sharpen, one at a time.
+    for (const key of ['map', 'normalMap', 'aoMap', 'roughnessMap'] as const) {
+      if (ground[key] && material[key] !== ground[key]) { material[key] = ground[key]; material.needsUpdate = true; }
+    }
   };
   material.onBeforeRender = watch;
   material.onBeforeCompile = (shader) => {

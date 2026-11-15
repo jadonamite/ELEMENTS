@@ -181,8 +181,11 @@ export class Fight {
       : target.body;
   }
 
+  /** The villain bodies; in town they arrive after play starts, so a fight starts only once they are here. */
+  private template: EnemyTemplate | null;
+
   constructor(
-    private readonly template: EnemyTemplate,
+    template: EnemyTemplate | null,
     private readonly world: RAPIER.World,
     private readonly scene: Scene,
     private readonly events: FightEvents,
@@ -190,6 +193,7 @@ export class Fight {
       (t, w, p, m, k) => new Enemy(t, w, p, m, k),
     waves = true,
   ) {
+    this.template = template;
     this.waves = waves;
     this.space = new CombatSpace(world);
     if (waves) {
@@ -275,10 +279,21 @@ export class Fight {
 
   stopWaves(): void { this.waves = false; this.respawnIn = []; this.roundIntermission = 0; }
 
+  /** True once villain bodies have loaded; every place that starts a fight asks this first. */
+  get villainsReady(): boolean { return this.template !== null; }
+
+  /** Hands over the villain bodies once they have loaded and been readied for drawing. */
+  setTemplate(template: EnemyTemplate): void { this.template = template; }
+
+  private villains(): EnemyTemplate {
+    if (!this.template) throw new Error('Villains have not loaded yet; check villainsReady before starting a fight.');
+    return this.template;
+  }
+
   /** Spawns a specific villain at a world coordinate (used for road ambushes and world encounters). */
   spawnVillain(point: { x: number; z: number; y?: number }, kind: VillainKind = 'armed', maxHealth?: number): Enemy {
     const health = maxHealth ?? balance.enemy.maxHealth ?? 100;
-    return this.add(this.createEnemy(this.template, this.world, point, health, kind));
+    return this.add(this.createEnemy(this.villains(), this.world, point, health, kind));
   }
 
   /** The one way a foe joins the fight: drawn in the scene and counted among the enemies. */
@@ -907,7 +922,7 @@ export class Fight {
       const clearOfOthers = this.enemies.every(e => Math.hypot(point.x - e.controller.position.x, point.z - e.controller.position.z) > 2);
       if (clearOfHero && clearOfRocks && clearOfOthers) break;
     }
-    this.add(this.createEnemy(this.template, this.world, point, tuning.maxHealth, this.pickKind()));
+    this.add(this.createEnemy(this.villains(), this.world, point, tuning.maxHealth, this.pickKind()));
   }
 
   /** Rolls the next villain's kind from the current round's mix in balance.json. */

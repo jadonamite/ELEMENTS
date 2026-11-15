@@ -101,7 +101,7 @@ export class EncounterManager {
 
     // Only one ambush group active at a time
     const living = this.fight.enemies.filter(e => e.alive).length;
-    if (living > 0) return;
+    if (living > 0 || !this.fight.villainsReady) return;
 
     for (const spot of AMBUSH_SPOTS) {
       if (this.triggered.has(spot.name)) continue;

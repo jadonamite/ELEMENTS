@@ -119,6 +119,8 @@ function nearest(points: readonly Vector3[], from: Vector3): { at: Vector3; dist
 export class TownManager {
   readonly group = new Group();
   readonly townsfolk: LiveTownsperson[] = [];
+  /** Ids of the people already placed, so a later batch of bodies never places anyone twice. */
+  private readonly admitted = new Set<string>();
   /** Open spots wanderers walk between; every one is clear of the world's solids. */
   readonly spots: Vector3[] = [];
   /** Where people can walk, read from the world. */
@@ -147,6 +149,13 @@ export class TownManager {
   async init(bodies: ReadonlyMap<string, TownsfolkBody>, people: readonly Townsperson[] = SINDR_TOWNSFOLK,
     streets: readonly StreetArea[] = SINDR_STREETS, walk: { seeds: readonly Vector3[]; bounds: WalkBounds; water?: WaterQuery } = SINDR_WALK,
     browse: readonly Browse[] = [], posts: readonly Post[] = []): Promise<void> {
+    await this.prepare(streets, walk, browse, posts);
+    this.admit(bodies, people);
+  }
+
+  /** The walk map, the street spots, the goods to look at and the refuges, before anyone is placed. */
+  async prepare(streets: readonly StreetArea[] = SINDR_STREETS, walk: { seeds: readonly Vector3[]; bounds: WalkBounds; water?: WaterQuery } = SINDR_WALK,
+    browse: readonly Browse[] = [], posts: readonly Post[] = []): Promise<void> {
     if (this.space) {
       this.map = await WalkMap.over(this.space, walk.seeds, walk.bounds, walk.water ?? null);
       for (const s of browse) {
@@ -164,9 +173,18 @@ export class TownManager {
       const at = this.place(p);
       if (Math.abs(at.y - p.y) < 0.6 && !this.refuges.some(r => r.distanceToSquared(at) < 0.5)) this.refuges.push(at);
     }
+  }
+
+  /**
+   * Places everyone in `people` whose body is in `bodies` and who is not in the street yet. Called once per
+   * batch of bodies; `people` is always the whole list, so each person keeps the walk their place in it gives.
+   */
+  admit(bodies: ReadonlyMap<string, TownsfolkBody>, people: readonly Townsperson[]): void {
     for (const [i, npc] of people.entries()) {
+      if (this.admitted.has(npc.id)) continue;
       const body = bodies.get(npc.look ?? npc.id);
       if (!body) continue;
+      this.admitted.add(npc.id);
       const nearBody = cloneSkinned(body.model);
       const object = new Group();
       object.add(nearBody);

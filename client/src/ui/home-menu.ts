@@ -284,6 +284,8 @@ export class HomeMenu {
     if (this.overlay.querySelector<HTMLButtonElement>('.home-nav-tab.active')?.dataset.tab === 'abilities') this.refreshAbilities();
     this.isOpen = true;
     this.overlay.inert = false;
+    // The map picture is fetched the first time the menu opens, not while the game loads.
+    this.overlay.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((img) => { img.src = img.dataset.src!; img.removeAttribute('data-src'); });
     this.overlay.classList.add('open');
     document.body.classList.add('home-open');
     (this.overlay.querySelector('.home-menu-close') as HTMLElement)?.focus();

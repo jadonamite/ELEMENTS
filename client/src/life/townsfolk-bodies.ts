@@ -45,40 +45,54 @@ export function ownLooks(people: readonly Townsperson[], player?: PlayerPerson):
 
 /**
  * One real body per look, built like the fighters, with clips fitted to its rig. Everyone wearing
- * a look is a copy of its body, so a crowd costs one build per look, not per person.
+ * a look is a copy of its body, so a crowd costs one build per look, not per person. Looks are built
+ * in batches (the people near the start first) and each batch side by side; the kits keep what loaded.
  */
-export async function loadLookBodies(looks: readonly Look[], children: ReadonlySet<string>,
-  loader = new GLTFLoader(), warm?: (model: Object3D) => Promise<void>): Promise<Map<string, TownsfolkBody>> {
-  const sets = await Promise.all(['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(f => loader.loadAsync(`/assets/characters/${f}.glb`)));
-  const clips = sets.flatMap(markRest);
-  const kit = new BodyKit(loader);
-  const farKit = new BodyKit(loader, 'far');
-  const bodies = new Map<string, TownsfolkBody>();
-  for (const look of looks) {
+export class LookBodies {
+  private readonly kit: BodyKit;
+  private readonly farKit: BodyKit;
+  private readonly clips: Promise<AnimationClip[]>;
+
+  constructor(private readonly children: ReadonlySet<string>, loader = new GLTFLoader(),
+    private readonly warm?: (model: Object3D) => Promise<void>) {
+    this.kit = new BodyKit(loader);
+    this.farKit = new BodyKit(loader, 'far');
+    this.clips = Promise.all(['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(f => loader.loadAsync(`/assets/characters/${f}.glb`)))
+      .then(sets => sets.flatMap(markRest));
+  }
+
+  async build(looks: readonly Look[]): Promise<Map<string, TownsfolkBody>> {
+    const clips = await this.clips;
+    return new Map(await Promise.all(looks.map(async (look): Promise<[string, TownsfolkBody]> => [look.id, await this.body(look, clips)])));
+  }
+
+  private async body(look: Look, clips: readonly AnimationClip[]): Promise<TownsfolkBody> {
     const config = sanitizeCharacterConfig(look.config);
-    const model = await kit.build(config, 'hero', look.cloth, look.outfit);
-    model.scale.multiplyScalar(look.height * (children.has(look.id) ? CHILD_SCALE : 1));
+    const [model, fitted] = await Promise.all([
+      this.kit.build(config, 'hero', look.cloth, look.outfit),
+      this.kit.fitClips(config.sex, clips, 'townsfolk', look.outfit),
+    ]);
+    model.scale.multiplyScalar(look.height * (this.children.has(look.id) ? CHILD_SCALE : 1));
     let far: Promise<TownsfolkBody> | undefined;
-    bodies.set(look.id, { model, clips: await kit.fitClips(config.sex, clips, 'townsfolk', look.outfit), loadFar: () => far ??= (async () => {
-      const model = await farKit.build(config, 'hero', look.cloth, look.outfit);
-      model.scale.copy(bodies.get(look.id)!.model.scale);
-      model.traverse(n => {
+    return { model, clips: fitted, loadFar: () => far ??= (async () => {
+      const farModel = await this.farKit.build(config, 'hero', look.cloth, look.outfit);
+      farModel.scale.copy(model.scale);
+      farModel.traverse(n => {
         if (!(n as Mesh).isMesh) return;
         (n as Mesh).castShadow = false;
         if (/^eye/i.test(n.name)) n.visible = false;
       });
       const bones = new Set<string>();
-      model.traverse(n => { if (n.type === 'Bone') bones.add(n.name); });
-      const fitted = await farKit.fitClips(config.sex, clips, 'townsfolk', look.outfit);
-      const reduced = fitted.map(clip => {
+      farModel.traverse(n => { if (n.type === 'Bone') bones.add(n.name); });
+      const farFitted = await this.farKit.fitClips(config.sex, clips, 'townsfolk', look.outfit);
+      const reduced = farFitted.map(clip => {
         const copy = clip.clone();
         copy.tracks = copy.tracks.filter(t => bones.has(t.name.split('.')[0]!));
         return copy;
       });
-      mergeFarBody(model);
-      await warm?.(model);
-      return { model, clips: reduced };
-    })() });
+      mergeFarBody(farModel);
+      await this.warm?.(farModel);
+      return { model: farModel, clips: reduced };
+    })() };
   }
-  return bodies;
 }

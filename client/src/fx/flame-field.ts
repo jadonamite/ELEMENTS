@@ -142,6 +142,10 @@ export class FlameField {
   private drawCount = 0;
   private readonly loader = typeof document === 'undefined' ? null : new TextureLoader();
   private qualityReady = false;
+  private fullWanted = false;
+  private atlasSet: 'low' | 'full' | null = null;
+  /** Puts a loaded atlas on the GPU ahead of its first draw (the renderer's initTexture). */
+  private upload: ((texture: import('three').Texture) => void) | null = null;
   private textures: import('three').Texture[] = [];
   onTexturesUpdated?: () => void;
   ready: Promise<void> = Promise.resolve();
@@ -232,23 +236,37 @@ export class FlameField {
     this.normal.end();
   }
 
+  /** Low quality also halves emission. Atlases start small and move to full size once `useFullAtlases` is called. */
   setQuality(low: boolean): void {
     if (this.qualityReady && this.low === low) return;
     this.qualityReady = true;
     this.low = low;
-    if (!this.loader) return;
+    this.loadAtlases(low || !this.fullWanted ? 'low' : 'full');
+  }
+
+  /** Swaps in the full-size atlases on high quality; the small ones keep drawing until all three have loaded. */
+  useFullAtlases(upload?: (texture: import('three').Texture) => void): Promise<void> {
+    this.fullWanted = true;
+    this.upload = upload ?? null;
+    if (!this.low) this.loadAtlases('full');
+    return this.ready;
+  }
+
+  private loadAtlases(set: 'low' | 'full'): void {
+    if (!this.loader || this.atlasSet === set) return;
+    this.atlasSet = set;
     const old = this.textures;
     // Slot order is the shader's: 0 looping flame, 1 burst, 2 smoke, 3 one-shot tongue.
     // A tongue is the baked flame loop played once over its life, so slots 0 and 3 share one texture.
     const files = ['flame', 'burst', 'smoke', 'flame'];
     const loaded = new Map<string, import('three').Texture>();
     const pending: Promise<void>[] = [];
-    this.textures = files.map((name, i) => {
+    const textures = files.map((name) => {
       let texture = loaded.get(name);
       if (!texture) {
         let resolve!: () => void;
         pending.push(new Promise<void>((done) => { resolve = done; }));
-        texture = this.loader!.load(`/assets/fx/fire-${name}${low ? '-low' : ''}.png`, resolve, undefined, (error) => {
+        texture = this.loader!.load(`/assets/fx/fire-${name}${set === 'low' ? '-low' : ''}.png`, resolve, undefined, (error) => {
           console.warn(`Effect texture ${name} failed:`, error);
           resolve();
         });
@@ -258,12 +276,28 @@ export class FlameField {
         texture.colorSpace = SRGBColorSpace;
         loaded.set(name, texture);
       }
-      for (const mat of [this.additiveMat, this.normalMat]) mat.uniforms[`uAtlas${i}`] = { value: texture };
       return texture;
     });
-    this.ready = Promise.all(pending).then(() => undefined);
-    this.onTexturesUpdated?.();
-    new Set(old).forEach(texture => texture.dispose());
+    const apply = (): void => {
+      if (this.atlasSet !== set) { new Set(textures).forEach(texture => texture.dispose()); return; }
+      textures.forEach((texture, i) => {
+        for (const mat of [this.additiveMat, this.normalMat]) mat.uniforms[`uAtlas${i}`] = { value: texture };
+      });
+      this.textures = textures;
+      this.onTexturesUpdated?.();
+      new Set(old).forEach(texture => { if (!textures.includes(texture)) texture.dispose(); });
+    };
+    const done = Promise.all(pending).then(() => undefined);
+    // The first set binds at once (the shader needs a texture); a later set binds only once it has loaded.
+    // A later set is uploaded one atlas a frame first, so the swap never draws an atlas the GPU has not seen.
+    if (old.length === 0) { apply(); this.ready = done; }
+    else this.ready = done.then(async () => {
+      for (const texture of new Set(textures)) {
+        if (this.atlasSet !== set) break;
+        this.upload?.(texture);
+        await new Promise<void>((frame) => requestAnimationFrame(() => frame()));
+      }
+    }).then(apply);
   }
 
   dispose(): void {

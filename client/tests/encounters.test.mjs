@@ -34,6 +34,7 @@ test('EncounterManager spawns ambush when hero enters trigger radius', () => {
   const spawned = [];
   const fakeFight = {
     enemies: [],
+    villainsReady: false,
     spawnVillain(pt, kind) {
       const e = { alive: true, pt, kind };
       spawned.push(e);
@@ -47,6 +48,12 @@ test('EncounterManager spawns ambush when hero enters trigger radius', () => {
   // Initial update far away (x=0, z=0)
   encounters.update(new Vector3(0, 0, 0), 0);
   assert.equal(spawned.length, 0, 'No ambushes spawned in town center');
+
+  // Before the villain bodies have loaded, walking into an ambush starts nothing and does not use it up.
+  encounters.update(new Vector3(305, 0, 0), 1.0);
+  assert.equal(spawned.length, 0, 'No ambush before villains have loaded');
+  assert.ok(!encounters.isTriggered('collapsed-arch'), 'The ambush waits for the villains');
+  fakeFight.villainsReady = true;
 
   // Move hero into collapsed arch ambush (x=305, z=0, radius=15)
   // Nightness = 1.0 guarantees chance = 0.9, but let's test repeated or controlled triggers

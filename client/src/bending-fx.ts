@@ -920,6 +920,9 @@ export class BendingEffects {
     this.updateScorch(delta);
   }
 
+  /** Brings in the full-size fire atlases (high quality only); play starts on the small ones. */
+  useFullAtlases(upload?: (texture: import('three').Texture) => void): Promise<void> { return this.field.useFullAtlases(upload); }
+
   /** Low quality reduces atlas memory, particles, depth resolution and active lights. */
   setQuality(level: 'high' | 'low'): void {
     this.lowQuality = level === 'low';
