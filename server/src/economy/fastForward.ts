@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { COUNTING_HOUSES, GAME_HOUR_MS, SINDR_MERCHANTS } from '@elements/shared';
+import { CARAVANS_CONFIG, COUNTING_HOUSES, GAME_HOUR_MS, SINDR_MERCHANTS } from '@elements/shared';
 import { createOrGetAccount, migrateDatabase, setDatabase } from '../db.js';
 import { chainAccountFor } from '../chain/accounts.js';
 import { worldKeyPair } from '../chain/keys.js';
@@ -249,7 +249,24 @@ export async function simulateWeek(seed = 1): Promise<FastForwardWeek> {
     events = [];
   };
 
-  const name = (id: string): string => names.get(id) ?? id;
+  const name = (id: string): string => {
+    const nation = /^merchant_(\w+)$/.exec(id)?.[1];
+    return names.get(id) ?? (nation ? `the ${nation.toUpperCase()} merchant house` : id);
+  };
+  const goods = (type: string): string => ({ shard: 'shards', potion: 'potions', item: 'goods', material: 'materials' })[type] ?? type;
+
+  const newDay = () => ({
+    tribute: 0, caravans: 0, routes: new Set<string>(), rivalBuys: 0, rivalFrom: new Set<string>(), rivalGoods: new Set<string>(),
+    moves: {} as Partial<Record<FastForwardKind, FastForwardMove[]>>,
+  });
+  let day_ = newDay();
+  /** Runs routine work and keeps its NEAR moves for the day's one summary line. */
+  const quiet = async (kind: FastForwardKind, run: () => void | Promise<void>): Promise<void> => {
+    const coinRow = lastRow('ledger_entries');
+    const itemRow = lastRow('item_ledger');
+    await run();
+    (day_.moves[kind] ??= []).push(...movesSince(coinRow, itemRow));
+  };
   let boughtBroke = false;
   let abandonedBroke = false;
   let robberies = 0;
@@ -421,27 +438,43 @@ export async function simulateWeek(seed = 1): Promise<FastForwardWeek> {
     }
 
     // Keepers act on their plans every half hour, as on the live server; tribute ships on its schedule.
-    await happen('tribute', async () => {
+    // Tribute, caravans and the rival clan run every hour; the log gets one line for each per day.
+    await quiet('tribute', async () => {
       const before = (db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE reason = 'merchant_tribute'").get() as { n: number }).n;
       await tickAllMerchantAgents({ now: now - GAME_HOUR_MS / 2, decider, db });
       await tickAllMerchantAgents({ now, decider, db });
       const after = (db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE reason = 'merchant_tribute'").get() as { n: number }).n;
-      return after > before ? `Keepers ship ${after - before} loads of tribute to the Lord's treasury.` : null;
+      if (after > before) day_.tribute += after - before;
     });
-
-    // The roads: caravans between the nations, the rival clan's buying, and the world director.
-    await happen('caravan', () => {
-      const sent = tickCaravans({ now }, db).filter((c) => c.dispatched);
-      return sent.length ? `Caravans leave: ${sent.map((c) => `${c.quantity} ${c.itemType} on ${c.routeName}`).join('; ')}.` : null;
+    await quiet('caravan', () => {
+      for (const c of tickCaravans({ now }, db).filter((x) => x.dispatched)) {
+        day_.caravans++;
+        day_.routes.add(c.routeName);
+      }
     });
-    await happen('rival', () => {
+    await quiet('rival', () => {
       const r = tickRivalClanTrade({ now }, db);
-      return r.executed ? `The rival clan buys ${r.quantity} ${r.itemType} from ${name(r.merchantId ?? '')} with its own purse.` : null;
+      if (r.executed) {
+        day_.rivalBuys++;
+        day_.rivalFrom.add(name(r.merchantId ?? ''));
+        day_.rivalGoods.add(goods(r.itemType ?? ''));
+      }
     });
     await happen('firestorm', () => {
-      const { triggeredEvent } = tickWorldDirector({ now }, db);
-      return triggeredEvent ? `${triggeredEvent.nation}'s players have grown too strong. The world pushes back: a firestorm closes ${triggeredEvent.closedRoute} and ${triggeredEvent.nation} prices rise.` : null;
+      const { triggeredEvent: e } = tickWorldDirector({ now }, db);
+      if (!e) return null;
+      const route = CARAVANS_CONFIG.routes.find((r) => r.id === e.closedRoute)?.name ?? 'a trade road';
+      return `${e.nation}'s players have grown too strong. The world pushes back: a firestorm closes the ${route} and ${e.nation} prices rise for a day.`;
     });
+
+    if (clock === DAY_HOURS - 1) {
+      const lines: Array<[FastForwardKind, string]> = [];
+      if (day_.tribute) lines.push(['tribute', `Keepers ship ${day_.tribute} ${day_.tribute === 1 ? 'load' : 'loads'} of tribute to the Lord's treasury on day ${day}.`]);
+      if (day_.caravans) lines.push(['caravan', `${day_.caravans} caravans leave on day ${day}, on the ${[...day_.routes].join(', the ')}.`]);
+      if (day_.rivalBuys) lines.push(['rival', `The rival clan buys ${[...day_.rivalGoods].join(' and ')} ${day_.rivalBuys} times on day ${day} from ${[...day_.rivalFrom].join(' and ')}, with its own purse.`]);
+      for (const [kind, text] of lines) events.push({ kind, text, moves: day_.moves[kind] ?? [] });
+      day_ = newDay();
+    }
     snapshot(hour, now);
   }
 

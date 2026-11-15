@@ -326,9 +326,19 @@ test('Step 2.5b: A lone player cannot trigger domination pushback (minActivePlay
   assert.equal(triggeredEvent, null);
 });
 
+/** A world old enough for the director to judge: one small earning a full lookback window before `now`. */
+function seedFullWindow(now: number, db: DatabaseSync): void {
+  saveAccount('early_aura_player', 'Shaper', 'AURA', db);
+  recordTransaction(
+    { from: 'merchant_aura', to: 'early_aura_player', amount: 10, reason: 'merchant_sell', timestamp: now - DIRECTOR_CONFIG.lookbackDays * 24 * GAME_HOUR_MS },
+    db,
+  );
+}
+
 test('Step 2.5c: IGNIS players earning over threshold fires firestorm closing route, moving prices, then expires', () => {
   const db = setupTestDb();
-  const now = 24 * GAME_HOUR_MS;
+  const now = (DIRECTOR_CONFIG.lookbackDays * 24 + 1) * GAME_HOUR_MS;
+  seedFullWindow(now, db);
 
   // Two IGNIS players earn over the threshold (satisfies minActivePlayers = 2)
   saveAccount('ignis_player_1', 'Shaper', 'IGNIS', db);
@@ -481,4 +491,62 @@ test('Full Day Autonomous World Loop: produces tribute rows and at least one car
   } finally {
     loop.stop();
   }
+});
+
+/** Two IGNIS players and one AQUES player earn in a world with a full window behind it. */
+function ignisLead(now: number, db: DatabaseSync): void {
+  seedFullWindow(now, db);
+  saveAccount('ignis_player_1', 'Shaper', 'IGNIS', db);
+  saveAccount('ignis_player_2', 'Shaper', 'IGNIS', db);
+  saveAccount('aques_player_1', 'Shaper', 'AQUES', db);
+  saveAccount('aques_player_2', 'Shaper', 'AQUES', db);
+  for (const [to, amount, h] of [['ignis_player_1', 25_000, 3], ['ignis_player_2', 25_000, 2], ['aques_player_1', 5_000, 1]] as const) {
+    recordTransaction({ from: 'merchant_ignis', to, amount, reason: 'merchant_sell', timestamp: now - h * GAME_HOUR_MS }, db);
+  }
+}
+
+test('Director: a young world is not judged until a full lookback window of earnings exists', () => {
+  const db = setupTestDb();
+  const now = 24 * GAME_HOUR_MS;
+  saveAccount('ignis_player_1', 'Shaper', 'IGNIS', db);
+  saveAccount('ignis_player_2', 'Shaper', 'IGNIS', db);
+  for (const to of ['ignis_player_1', 'ignis_player_2']) {
+    recordTransaction({ from: 'merchant_ignis', to, amount: 25_000, reason: 'merchant_sell', timestamp: now - GAME_HOUR_MS }, db);
+  }
+  assert.equal(tickWorldDirector({ now }, db).triggeredEvent, null);
+});
+
+test('Director: earnings a storm answered never bring the storm back', () => {
+  const db = setupTestDb();
+  const now = (DIRECTOR_CONFIG.lookbackDays * 24 + 1) * GAME_HOUR_MS;
+  ignisLead(now, db);
+  const first = tickWorldDirector({ now }, db).triggeredEvent;
+  assert.equal(first?.nation, 'IGNIS');
+
+  // Past the storm and the rest that follows it, with no new IGNIS earnings: the same lead is spent.
+  const later = first!.expiresAt + (DIRECTOR_CONFIG.restHoursBetweenStorms + 1) * GAME_HOUR_MS;
+  const { report, triggeredEvent } = tickWorldDirector({ now: later }, db);
+  assert.equal(triggeredEvent, null);
+  assert.equal(report.nationVolumes['IGNIS'], 0);
+});
+
+test('Director: one storm at a time, and the world rests after each storm', () => {
+  const db = setupTestDb();
+  const now = (DIRECTOR_CONFIG.lookbackDays * 24 + 1) * GAME_HOUR_MS;
+  ignisLead(now, db);
+  const first = tickWorldDirector({ now }, db).triggeredEvent!;
+
+  // AQUES pulls ahead while IGNIS burns, and keeps ahead through the rest: no second storm until the rest is over.
+  const surge = (at: number) => {
+    for (const to of ['aques_player_1', 'aques_player_2']) {
+      recordTransaction({ from: 'merchant_aques', to, amount: 40_000, reason: 'merchant_sell', timestamp: at }, db);
+    }
+  };
+  surge(now + GAME_HOUR_MS);
+  assert.equal(tickWorldDirector({ now: now + 2 * GAME_HOUR_MS }, db).triggeredEvent, null, 'IGNIS still burns');
+  const resting = first.expiresAt + GAME_HOUR_MS;
+  assert.equal(tickWorldDirector({ now: resting }, db).triggeredEvent, null, 'the world rests');
+  const rested = first.expiresAt + (DIRECTOR_CONFIG.restHoursBetweenStorms + 1) * GAME_HOUR_MS;
+  surge(rested - GAME_HOUR_MS);
+  assert.equal(tickWorldDirector({ now: rested }, db).triggeredEvent?.nation, 'AQUES');
 });

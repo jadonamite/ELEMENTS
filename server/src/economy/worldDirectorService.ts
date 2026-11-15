@@ -73,7 +73,8 @@ export function evaluateNationDomination(
       `SELECT
          l.receiver AS account_id,
          UPPER(COALESCE(a.element, r.element)) AS element,
-         l.amount
+         l.amount,
+         l.timestamp
        FROM ledger_entries l
        LEFT JOIN accounts a ON a.id = l.receiver
        LEFT JOIN risings r ON r.account_id = l.receiver
@@ -83,7 +84,18 @@ export function evaluateNationDomination(
     account_id: string;
     element: string | null;
     amount: number;
+    timestamp: number;
   }>;
+
+  // Earnings a storm already answered are spent: each nation counts only what it earned after its last storm ended.
+  const answeredUntil = new Map(
+    (db.prepare("SELECT nation, MAX(expires_at) AS until FROM world_director_events WHERE event_type = 'firestorm' AND started_at <= ? GROUP BY nation")
+      .all(now) as Array<{ nation: string; until: number }>).map((r) => [r.nation, r.until]),
+  );
+  // A lead must be sustained: a nation is judged only on a full lookback window since the world began or its last storm.
+  const firstEarning = (db.prepare("SELECT MIN(timestamp) AS t FROM ledger_entries WHERE reason NOT IN ('genesis', 'player_starting_grant')")
+    .get() as { t: number | null }).t ?? now;
+  const judged = (nation: string): boolean => now - Math.max(firstEarning, answeredUntil.get(nation) ?? 0) >= lookbackMs;
 
   const nationVolumes: Record<string, number> = {
     IGNIS: 0,
@@ -104,8 +116,9 @@ export function evaluateNationDomination(
   for (const row of rows) {
     const nation = row.element;
     if (nation && nationVolumes[nation] !== undefined) {
-      nationVolumes[nation] += row.amount;
       totalVolume += row.amount;
+      if (row.timestamp < (answeredUntil.get(nation) ?? 0)) continue;
+      nationVolumes[nation] += row.amount;
       activePlayersByNation[nation]?.add(row.account_id);
     }
   }
@@ -123,7 +136,7 @@ export function evaluateNationDomination(
     nationShares[nat] = share;
     nationPlayerCounts[nat] = activeCount;
 
-    if (activeCount >= minActivePlayers && share >= threshold && share > dominantShare) {
+    if (judged(nat) && activeCount >= minActivePlayers && share >= threshold && share > dominantShare) {
       dominantNation = nat;
       dominantShare = share;
     }
@@ -261,8 +274,13 @@ export function tickWorldDirector(
 
   const report = evaluateNationDomination(params.now, db);
 
+  // One storm in the world at a time, and the world rests between storms.
+  const lastEnd = (db.prepare("SELECT MAX(expires_at) AS t FROM world_director_events WHERE event_type = 'firestorm' AND started_at <= ?")
+    .get(params.now) as { t: number | null }).t;
+  const resting = lastEnd !== null && params.now < lastEnd + DIRECTOR_CONFIG.restHoursBetweenStorms * GAME_HOUR_MS;
+
   let triggeredEvent: DirectorEvent | null = null;
-  if (report.dominantNation) {
+  if (report.dominantNation && !resting) {
     const existing = getActiveFirestorm(report.dominantNation, params.now, db);
     if (!existing) {
       triggeredEvent = triggerFirestormPushback(

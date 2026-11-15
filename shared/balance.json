@@ -1658,7 +1658,7 @@
       "preferredItems": ["shard", "potion", "material"]
     },
     "director": {
-      "evaluationIntervalHours": 24,
+      "restHoursBetweenStorms": 24,
       "lookbackDays": 3,
       "dominationThreshold": 0.35,
       "minActivePlayers": 2,

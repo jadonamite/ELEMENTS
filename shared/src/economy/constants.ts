@@ -296,7 +296,7 @@ export const RIVAL_CLAN_CONFIG = {
 } as const;
 
 export const DIRECTOR_CONFIG = {
-  evaluationIntervalHours: economyBalance?.director?.evaluationIntervalHours ?? 24,
+  restHoursBetweenStorms: economyBalance?.director?.restHoursBetweenStorms ?? 24,
   lookbackDays: economyBalance?.director?.lookbackDays ?? 3,
   dominationThreshold: economyBalance?.director?.dominationThreshold ?? 0.35,
   minActivePlayers: economyBalance?.director?.minActivePlayers ?? 2,
