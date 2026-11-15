@@ -863,8 +863,7 @@
     "calmAfterSeconds": 6,
     "drawSeconds": 0.55,
     "fastDrawSeconds": 0.32,
-    "sheatheSeconds": 0.6,
-    "swapAt": 0.5
+    "sheatheSeconds": 0.6
   },
   "enemy": {
     "placeholder": true,
@@ -1000,10 +999,7 @@
           "walk": 0.97,
           "run": 5.36
         },
-        "weapons": [
-          "club",
-          "sword"
-        ]
+        "weapons": ["club", "sword"]
       },
       "deserter": {
         "attacks": [
@@ -1023,7 +1019,7 @@
           "run": 5.36
         },
         "weapons": [
-          "sword"
+          "deserter_sword"
         ]
       }
     },

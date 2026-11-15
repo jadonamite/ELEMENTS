@@ -167,8 +167,8 @@ test('weapon slot is completely data-driven with sword as first entry', () => {
   // Verify sword entry shape
   assert.equal(SWORD_WEAPON.id, 'worn_iron_sword');
   assert.equal(SWORD_WEAPON.type, 'sword');
-  assert.equal(SWORD_WEAPON.handBone, 'hand_r');
-  assert.equal(SWORD_WEAPON.sheatheBone, 'spine_03');
+  assert.equal(SWORD_WEAPON.hitShape.from, 'Grip');
+  assert.equal(SWORD_WEAPON.carry.mount, 'back');
   assert.equal(SWORD_WEAPON.hitShape.kind, 'blade_segment');
   assert.ok(SWORD_WEAPON.reach > 0);
   assert.deepEqual(SWORD_WEAPON.moves.light, ['light_1', 'light_2', 'light_3']);
@@ -180,19 +180,10 @@ test('weapon slot is completely data-driven with sword as first entry', () => {
     name: 'Nordic Battle Axe',
     type: 'axe',
     assetPath: '/assets/characters/axe.glb',
-    meshName: 'Axe',
-    handBone: 'hand_r',
-    handOffset: [-0.03, 0.08, -0.04],
-    handRotation: [1.35, 0.0, 0.0],
-    handScale: 0.25,
-    sheatheBone: 'spine_03',
-    sheathePosition: [-0.15, 1.38, -0.15],
-    sheatheBladeDirection: [0.5, -0.86, 0],
-    sheatheScale: 0.25,
     hitShape: {
       kind: 'blade_segment',
-      baseFraction: 0.65, // head of the axe
-      tipFraction: 1.0,
+      from: 'Grip',
+      to: 'Tip',
     },
     reach: 2.2,
     moves: {
@@ -202,7 +193,7 @@ test('weapon slot is completely data-driven with sword as first entry', () => {
   };
 
   assert.equal(BATTLE_AXE_WEAPON.type, 'axe');
-  assert.equal(BATTLE_AXE_WEAPON.hitShape.baseFraction, 0.65);
+  assert.equal(BATTLE_AXE_WEAPON.hitShape.to, 'Tip');
   assert.equal(BATTLE_AXE_WEAPON.reach, 2.2);
 });
 
@@ -376,7 +367,7 @@ test('heavy kicks land at least 7 in 10 times against a walking villain with exp
 
 test('sword is mounted to WeaponBackSocket on spine_03 when sheathed for bare hands or kicks', () => {
   // Verify configuration in SWORD_WEAPON
-  assert.equal(SWORD_WEAPON.sheatheBone, 'spine_03');
+  assert.equal(SWORD_WEAPON.carry.mount, 'back');
 
   // Verify bone hierarchy and arm(false) socket behavior
   const spine03 = new Bone();

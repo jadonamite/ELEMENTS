@@ -10,19 +10,11 @@ import {
   type Object3D,
 } from 'three';
 
-/**
- * Data-driven weapon slot definition.
- * All weapon geometry, socket positions, carrying transforms, hit shapes, and movesets
- * are specified via data so that new weapons (spear, axe, staff, gauntlets) can be
- * equipped without altering fight simulation logic.
- */
-
+/** Weapon assets use metres, +Y along the blade, and named Grip and Tip markers. */
 export interface WeaponHitShape {
   readonly kind: 'blade_segment';
-  /** Fraction along mesh height where contact surface begins (skipping the hilt/grip). */
-  readonly baseFraction: number;
-  /** Fraction along mesh height where contact surface ends (the blade tip). */
-  readonly tipFraction: number;
+  readonly from: 'Grip';
+  readonly to: 'Tip';
 }
 
 export interface WeaponSlotData {
@@ -30,19 +22,8 @@ export interface WeaponSlotData {
   readonly name: string;
   readonly type: 'sword' | 'spear' | 'axe' | 'staff' | 'gauntlets';
   readonly assetPath: string;
-  readonly meshName?: string;
-  /** Hand bone socketed to when drawn. */
-  readonly handBone: string;
-  readonly handOffset: readonly [number, number, number];
-  readonly handRotation: readonly [number, number, number];
-  readonly handScale: number;
-  /** Bone socketed to when sheathed on the hero body. */
-  readonly sheatheBone: string;
-  readonly sheathePosition: readonly [number, number, number];
-  readonly sheatheBladeDirection: readonly [number, number, number];
-  readonly sheatheScale: number;
-  /** Hit shape definition used for contact testing. */
   readonly hitShape: WeaponHitShape;
+  readonly carry?: { readonly assetPath: string; readonly mount: 'back' | 'hip' };
   readonly reach: number;
   readonly moves: {
     readonly light: readonly string[];
@@ -53,78 +34,38 @@ export interface WeaponSlotData {
   };
 }
 
-/**
- * Returns the nation/starting weapon for the hero kit.
- * AURA wields a staff; all others default to sword until their nation weapons exist.
- */
 export function heroWeaponFor(kit: { element: string; hush?: boolean }): 'staff' | 'sword' {
-  if (!kit.hush && kit.element === 'AURA') return 'staff';
-  return 'sword';
+  return !kit.hush && kit.element === 'AURA' ? 'staff' : 'sword';
 }
 
-/**
- * Standard Worn Iron Sword: the first weapon entry in the data-driven slot registry.
- */
-export const SWORD_WEAPON: WeaponSlotData = {
-  id: 'worn_iron_sword',
-  name: 'Worn Iron Sword',
-  type: 'sword',
-  assetPath: '/assets/characters/sword.glb',
-  meshName: 'Sword',
-  handBone: 'hand_r',
-  handOffset: [-0.027, 0.094, -0.053],
-  handRotation: [1.402, 0.005, 0.006],
-  handScale: 0.23,
-  sheatheBone: 'spine_03',
-  sheathePosition: [-0.12, 1.42, -0.17],
-  sheatheBladeDirection: [0.42, -0.9, 0],
-  sheatheScale: 0.23,
-  hitShape: {
-    kind: 'blade_segment',
-    baseFraction: 0.2,
-    tipFraction: 1.0,
-  },
-  reach: 2.5,
-  moves: {
-    light: ['light_1', 'light_2', 'light_3'],
-    heavy: ['heavy_1', 'heavy_2'],
-    uppercut: 'uppercut',
-    ground_pound: 'ground_pound',
-    dash: 'dash_strike',
-  },
+const hitShape = { kind: 'blade_segment', from: 'Grip', to: 'Tip' } as const;
+const moves = {
+  light: ['light_1', 'light_2', 'light_3'],
+  heavy: ['heavy_1', 'heavy_2'],
+  uppercut: 'uppercut', ground_pound: 'ground_pound', dash: 'dash_strike',
 };
-
-/**
- * AURA Quarterstaff: 1.7 m pale ash wood with worn steel caps and wrapped grip in the middle third.
- * Socketed to hand_r, held two-handed in stance, sheathed diagonally across the back.
- */
+export const SWORD_WEAPON: WeaponSlotData = {
+  id: 'worn_iron_sword', name: 'Worn Iron Sword', type: 'sword',
+  assetPath: '/assets/weapons/worn-iron-sword.glb', hitShape,
+  carry: { assetPath: '/assets/weapons/back-scabbard.glb', mount: 'back' },
+  reach: 2.5, moves,
+};
+export const KNIFE_WEAPON: WeaponSlotData = {
+  id: 'long_knife', name: 'Long knife', type: 'sword',
+  assetPath: '/assets/weapons/long-knife.glb', hitShape, reach: 1.9, moves,
+};
+export const DESERTER_WEAPON: WeaponSlotData = {
+  id: 'deserter_sword', name: 'Deserter arming sword', type: 'sword',
+  assetPath: '/assets/weapons/deserter-sword.glb', hitShape, reach: 2.5, moves,
+};
+export const CLUB_WEAPON: WeaponSlotData = {
+  id: 'bound_club', name: 'Bound hardwood club', type: 'axe',
+  assetPath: '/assets/weapons/bound-club.glb', hitShape, reach: 2.1, moves,
+};
+// The existing staff stays in service until the second concept receives approval.
 export const STAFF_WEAPON: WeaponSlotData = {
-  id: 'aura_quarterstaff',
-  name: 'Aura Quarterstaff',
-  type: 'staff',
-  assetPath: '/assets/weapons/staff.glb',
-  meshName: 'Staff',
-  handBone: 'hand_r',
-  handOffset: [-0.027, 0.094, -0.053],
-  handRotation: [1.402, 0.005, 0.006],
-  handScale: 1.0,
-  sheatheBone: 'spine_03',
-  sheathePosition: [-0.14, 1.35, -0.16],
-  sheatheBladeDirection: [0.52, -0.85, 0],
-  sheatheScale: 1.0,
-  hitShape: {
-    kind: 'blade_segment',
-    baseFraction: 0.05,
-    tipFraction: 0.98,
-  },
-  reach: 3.2,
-  moves: {
-    light: ['light_1', 'light_2', 'light_3'],
-    heavy: ['heavy_1', 'heavy_2'],
-    uppercut: 'uppercut',
-    ground_pound: 'ground_pound',
-    dash: 'dash_strike',
-  },
+  id: 'aura_quarterstaff', name: 'Aura Quarterstaff', type: 'staff',
+  assetPath: '/assets/weapons/staff.glb', hitShape, reach: 3.2, moves,
 };
 
 const MAX_STAFF_SAMPLES = 48;

@@ -16,12 +16,9 @@ test('STAFF_WEAPON slot data is configured with reach 3.2, 5 moves, and correct 
   assert.equal(STAFF_WEAPON.type, 'staff');
   assert.equal(STAFF_WEAPON.reach, 3.2);
   assert.equal(STAFF_WEAPON.assetPath, '/assets/weapons/staff.glb');
-  assert.equal(STAFF_WEAPON.meshName, 'Staff');
-  assert.equal(STAFF_WEAPON.handBone, 'hand_r');
-  assert.equal(STAFF_WEAPON.sheatheBone, 'spine_03');
   assert.deepEqual(STAFF_WEAPON.moves.light, ['light_1', 'light_2', 'light_3']);
   assert.deepEqual(STAFF_WEAPON.moves.heavy, ['heavy_1', 'heavy_2']);
-  assert.ok(STAFF_WEAPON.hitShape.tipFraction > STAFF_WEAPON.hitShape.baseFraction);
+  assert.deepEqual(STAFF_WEAPON.hitShape, { kind: 'blade_segment', from: 'Grip', to: 'Tip' });
 });
 
 test('StaffAirTrail records swing samples and updates cleanly', () => {
