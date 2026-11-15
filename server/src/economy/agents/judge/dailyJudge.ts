@@ -9,6 +9,7 @@ import {
 } from '@elements/shared';
 import { getDatabase, getMerchantMindHistory } from '../../../db.js';
 import { getDailyJudgeReportByDay, getLatestDailyJudgeReport, saveDailyJudgeReport } from '../db.js';
+import { getMerchant } from '../../merchantService.js';
 import { keepersIn, mindPlaces } from '../minds.js';
 import { parseModelJson } from '../plans/agentPlan.js';
 import type { ModelRouter } from '../router/modelRouter.js';
@@ -39,6 +40,37 @@ function dayActivity(now: number, db: DatabaseSync): { totalTransactions: number
 
 const allKeepers = () => mindPlaces().flatMap((p) => keepersIn(p));
 
+/** One keeper's own day from the ledger and its shop: what the judge scores. */
+export interface KeeperDay {
+  purseAtDayStart: number;
+  purseNow: number;
+  status: string;
+  trades: number;
+  /** Coin in and out today by ledger reason (merchant_buy is a player buying from the keeper). */
+  coinIn: Record<string, number>;
+  coinOut: Record<string, number>;
+  /** Each shelf: stock of max stock. */
+  shelves: Record<string, string>;
+}
+
+export function keeperDay(id: string, now: number, db: DatabaseSync): KeeperDay | null {
+  const merchant = getMerchant(id, db);
+  if (!merchant) return null;
+  const since = Math.floor(now / DAY_MS) * DAY_MS;
+  const rows = db
+    .prepare('SELECT sender, receiver, amount, reason FROM ledger_entries WHERE timestamp >= ? AND timestamp <= ? AND (sender = ? OR receiver = ?)')
+    .all(since, now, id, id) as Array<{ sender: string; receiver: string; amount: number; reason: string }>;
+  const coinIn: Record<string, number> = {};
+  const coinOut: Record<string, number> = {};
+  let net = 0;
+  for (const r of rows) {
+    if (r.receiver === id) { coinIn[r.reason] = (coinIn[r.reason] ?? 0) + r.amount; net += r.amount; }
+    if (r.sender === id) { coinOut[r.reason] = (coinOut[r.reason] ?? 0) + r.amount; net -= r.amount; }
+  }
+  const shelves = Object.fromEntries(Object.entries(merchant.inventory).map(([item, inv]) => [item, `${inv.stock} of ${inv.maxStock}`]));
+  return { purseAtDayStart: merchant.balance - net, purseNow: merchant.balance, status: merchant.status, trades: rows.length, coinIn, coinOut, shelves };
+}
+
 export function createDeterministicChronicle(dayNumber: number, now: number, totalTransactions: number, totalVolumeChroma: number): DailyChronicle {
   const headline =
     totalVolumeChroma > 5000
@@ -49,7 +81,7 @@ export function createDeterministicChronicle(dayNumber: number, now: number, tot
     title: `The Sindr Chronicle, day ${dayNumber}`,
     headline,
     paragraphs: [
-      `The square hummed from first bell to dusk. Carts came in under light escort and the counting-house scribes noted ${totalTransactions} payments across the town.`,
+      `The square hummed from first bell to dusk. Carts came in under light escort and the counting-house scribes noted ${totalTransactions} ${totalTransactions === 1 ? 'payment' : 'payments'} across the town.`,
       "The keepers held to the Lord's price rules through the day's swings, and the tribute was gathered as the shadows lengthened.",
     ],
     shortNotices: [
@@ -58,6 +90,7 @@ export function createDeterministicChronicle(dayNumber: number, now: number, tot
       'Keep blades sheathed near the counting houses.',
     ],
     writtenAt: now,
+    writtenBy: 'rules',
   };
 }
 
@@ -77,7 +110,11 @@ export function createDeterministicJudgeReport(dayNumber: number, now: number, t
 function saveMerged(dayNumber: number, now: number, db: DatabaseSync, patch: Partial<DailyJudgeReport>): DailyJudgeReport {
   const activity = dayActivity(now, db);
   const base = getDailyJudgeReportByDay(dayNumber, db) ?? createDeterministicJudgeReport(dayNumber, now, activity.totalTransactions, activity.totalVolumeChroma);
-  const report: DailyJudgeReport = { ...base, ...activity, ...patch, dayNumber, timestamp: now };
+  // The written chronicle quotes the day's totals, so it is rewritten whenever they are; a model's chronicle stands.
+  const chronicle = patch.chronicle ?? (base.chronicle.writtenBy && base.chronicle.writtenBy !== 'rules'
+    ? base.chronicle
+    : createDeterministicChronicle(dayNumber, now, activity.totalTransactions, activity.totalVolumeChroma));
+  const report: DailyJudgeReport = { ...base, ...activity, ...patch, chronicle, dayNumber, timestamp: now };
   saveDailyJudgeReport(report, db);
   return report;
 }
@@ -129,7 +166,7 @@ export async function runEveningChronicle(options: { router: ModelRouter; db?: D
   });
 
   const chronicle = acceptChronicle(parseModelJson<Partial<DailyChronicle>>(result?.content) ?? undefined, fallback);
-  const report = saveMerged(dayNumber, now, db, { chronicle: chronicle ?? fallback });
+  const report = saveMerged(dayNumber, now, db, { chronicle: chronicle && result ? { ...chronicle, writtenBy: `${result.provider}:${result.model}` } : fallback });
   return { report, source: chronicle && result ? `${result.provider}:${result.model}` : 'written' };
 }
 
@@ -165,7 +202,9 @@ export async function runDailyJudge(options: { router: ModelRouter; db?: Databas
       {
         role: 'system',
         content: [
-          'You judge the shopkeepers of Sindr, four times a day. Score each keeper 0 to 100 on prudent trade and staying in character, and give one short directive for the hours ahead.',
+          'You judge the shopkeepers of Sindr, four times a day, on their own day so far: purse at day start and now, coin in and out by reason (merchant_buy is a player buying from the keeper, merchant_sell the keeper paying a player, merchant_tribute tribute to the treasury, merchant_restock stock bought), trades, shelves as stock of max, and status.',
+          'Prudent trade keeps the purse well above 1,000, keeps shelves neither empty nor full, sells more than it pays out, and ships tribute. A keeper that sat idle, lost coin, or let a shelf run empty or overflow scores lower: spread the scores by what the numbers show.',
+          'Each verdict names at least one number from that keeper\'s own day. Give one short directive for the hours ahead, in character.',
           'Directives guide plans only; they cannot change prices or rules.',
           'Reply with JSON only: { "agentGuidance": { "<id>": { "verdict": "", "score": 80, "directive": "" } } }',
         ].join(' '),
@@ -175,7 +214,7 @@ export async function runDailyJudge(options: { router: ModelRouter; db?: Databas
         content: JSON.stringify({
           dayNumber,
           ...activity,
-          keepers: keepers.map((k) => ({ id: k.id, name: k.name, character: k.character, latestThought: getMerchantMindHistory(k.id, 1, db)?.latestThought })),
+          keepers: keepers.map((k) => ({ id: k.id, name: k.name, character: k.character, day: keeperDay(k.id, now, db), latestThought: getMerchantMindHistory(k.id, 1, db)?.latestThought })),
         }),
       },
     ],
@@ -192,6 +231,8 @@ export async function runDailyJudge(options: { router: ModelRouter; db?: Databas
   for (const k of keepers) {
     const raw = parsed[k.id];
     if (!raw || typeof raw.directive !== 'string' || speaksBanished(raw.directive)) continue;
+    // A verdict that quotes none of the keeper's numbers judged nothing; that keeper keeps its last directive.
+    if (typeof raw.verdict !== 'string' || !/\d/.test(raw.verdict)) continue;
     agentGuidance[k.id] = {
       agentId: k.id,
       verdict: typeof raw.verdict === 'string' ? cleanLine(raw.verdict.slice(0, 200), 'Judged.') : 'Judged.',

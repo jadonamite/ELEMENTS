@@ -78,6 +78,8 @@ export interface DailyChronicle {
   paragraphs: string[];
   shortNotices: string[];
   writtenAt: number;
+  /** 'rules' for the written fallback, else the provider:model that wrote it. */
+  writtenBy?: string;
 }
 
 export interface DailyJudgeReport {

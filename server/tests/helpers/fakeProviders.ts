@@ -47,8 +47,8 @@ export const defaultResponder: Responder = (call) => {
     return JSON.stringify({ title: 'The Sindr Chronicle', headline: 'Shelves full, purses fuller', paragraphs: ['The keepers traded well.', 'The watch kept the peace.'], shortNotices: ['Mind the alleys.', 'Bank your coin.', 'Fair prices at the terrace.'] });
   }
   if (call.intent === 'judge') {
-    const ids: string[] = (user?.keepers ?? []).map((k: { id: string }) => k.id);
-    return JSON.stringify({ agentGuidance: Object.fromEntries(ids.map((id) => [id, { verdict: 'Prudent.', score: 82, directive: 'Keep the shelves half full.' }])) });
+    const keepers: Array<{ id: string; day?: { purseNow: number } }> = user?.keepers ?? [];
+    return JSON.stringify({ agentGuidance: Object.fromEntries(keepers.map((k) => [k.id, { verdict: `Prudent: purse at ${k.day?.purseNow ?? 0}.`, score: 82, directive: 'Keep the shelves half full.' }])) });
   }
   return 'Good day, traveller. The shelves are full this morning.';
 };

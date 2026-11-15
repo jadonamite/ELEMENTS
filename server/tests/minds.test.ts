@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { GAME_HOUR_MS, SINDR_TOWNSFOLK, carriesItemId, speaksBanished } from '@elements/shared';
-import { migrateDatabase, setDatabase } from '../src/db.js';
+import { migrateDatabase, saveAccount, setDatabase } from '../src/db.js';
+import { recordTransaction } from '../src/economy/ledgerService.js';
+import { type KeeperDay } from '../src/economy/agents/judge/dailyJudge.js';
 import {
   createAgentRuntime,
   crowdMindsIn,
@@ -293,4 +295,53 @@ test('Haggling stays inside the price rule: never below base price', async () =>
   } finally {
     runtime.detach();
   }
+});
+
+test('Judge: each keeper is judged on its own day, and a verdict that quotes none of its numbers is refused', async () => {
+  const db = freshDb();
+  resetJudgeLog();
+  ensureSindrMerchants(db, D0);
+  // One keeper sells to a player today; the judge must see that keeper's own coin and shelves.
+  saveAccount('judge_buyer', 'Shaper', 'IGNIS', db);
+  recordTransaction({ from: 'treasury', to: 'judge_buyer', amount: 500, reason: 'loot_claim', timestamp: D0 + GAME_HOUR_MS }, db);
+  recordTransaction({ from: 'judge_buyer', to: 'sindr_potter', amount: 120, reason: 'merchant_buy', timestamp: D0 + 2 * GAME_HOUR_MS }, db);
+  let seen: Array<{ id: string; day: KeeperDay | null }> = [];
+  const { router } = fakeRouter({
+    responder: (c) => {
+      if (c.intent !== 'judge') return defaultResponder(c);
+      seen = JSON.parse(c.user).keepers;
+      return JSON.stringify({ agentGuidance: {
+        sindr_potter: { verdict: 'Took 120 from a buyer.', score: 88, directive: 'Hold the tonic price.' },
+        sindr_shards: { verdict: 'Prudent and in character.', score: 90, directive: 'Weigh every shard.' },
+      } });
+    },
+  });
+  const report = await runDailyJudge({ router, db, now: D0 + 3 * GAME_HOUR_MS, log: () => {} });
+  const potter = seen.find((k) => k.id === 'sindr_potter')!.day!;
+  assert.equal(potter.coinIn.merchant_buy, 120);
+  assert.equal(potter.purseNow - potter.purseAtDayStart, 120);
+  assert.ok(Object.values(potter.shelves).every((s) => / of /.test(s)));
+  assert.equal(report?.agentGuidance.sindr_potter?.score, 88);
+  assert.equal(report?.agentGuidance.sindr_shards, undefined, 'a verdict with no number judged nothing');
+});
+
+test('Chronicle: the written chronicle follows the day\'s totals; a model\'s chronicle is kept', async () => {
+  const db = freshDb();
+  resetJudgeLog();
+  ensureSindrMerchants(db, D0);
+  saveAccount('chron_buyer', 'Shaper', 'IGNIS', db);
+  recordTransaction({ from: 'treasury', to: 'chron_buyer', amount: 900, reason: 'loot_claim', timestamp: D0 + GAME_HOUR_MS }, db);
+  const { router } = fakeRouter({ responder: (c) => (c.intent === 'chronicle' ? 500 : defaultResponder(c)) });
+  recordTransaction({ from: 'chron_buyer', to: 'sindr_potter', amount: 20, reason: 'merchant_buy', timestamp: D0 + 2 * GAME_HOUR_MS }, db);
+  const first = await runDailyJudge({ router, db, now: D0 + 3 * GAME_HOUR_MS, log: () => {} });
+  assert.match(first!.chronicle.headline, /\b20 CHROMA/);
+  recordTransaction({ from: 'chron_buyer', to: 'sindr_potter', amount: 700, reason: 'merchant_buy', timestamp: D0 + 4 * GAME_HOUR_MS }, db);
+  const later = await runDailyJudge({ router, db, now: D0 + 5 * GAME_HOUR_MS, log: () => {} });
+  assert.match(later!.chronicle.headline, /\b720 CHROMA/, 'the written headline is not left at the morning total');
+  assert.match(later!.chronicle.paragraphs[0]!, /2 payments/);
+
+  const written = await runEveningChronicle({ router: fakeRouter({ responder: defaultResponder }).router, db, now: D0 + 6 * GAME_HOUR_MS });
+  assert.equal(written.report.chronicle.headline, 'Shelves full, purses fuller');
+  const after = await runDailyJudge({ router, db, now: D0 + 7 * GAME_HOUR_MS, log: () => {} });
+  assert.equal(after!.chronicle.headline, 'Shelves full, purses fuller', 'a model chronicle stands');
 });
