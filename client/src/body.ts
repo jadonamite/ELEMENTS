@@ -17,6 +17,7 @@ import {
   Quaternion,
   Skeleton,
   SkinnedMesh,
+  Sphere,
   SRGBColorSpace,
   Texture,
   TextureLoader,
@@ -409,12 +410,20 @@ const POSE_REACH = 1.6;
  * Every part of a body is culled by one sphere: the rest pose's, widened for the reach of a
  * clip. Off-screen bodies then skip both the picture and the shadow passes.
  */
+/** A rig's skinned bounding sphere at rest, per source geometry: every clone of a body shares it, so it is measured once. */
+const restSpheres = new WeakMap<BufferGeometry, Sphere>();
+
 function cullAsOneBody(group: Group, rig: SkinnedMesh): void {
   group.updateMatrixWorld(true);
-  rig.skeleton.update();
-  rig.computeBoundingSphere();
-  const world = rig.boundingSphere?.clone().applyMatrix4(rig.matrixWorld);
-  if (!world) return;
+  let rest = restSpheres.get(rig.geometry);
+  if (!rest) {
+    rig.skeleton.update();
+    rig.computeBoundingSphere();
+    rest = rig.boundingSphere!.clone();
+    restSpheres.set(rig.geometry, rest);
+  }
+  rig.boundingSphere = rest.clone();
+  const world = rig.boundingSphere.clone().applyMatrix4(rig.matrixWorld);
   world.radius *= POSE_REACH;
   const toLocal = new Matrix4();
   group.traverse((node) => {
