@@ -64,8 +64,24 @@ button:focus-visible, a:focus-visible, .ff-price:focus-visible { outline: 2px so
 
 .ff-events ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .ff-events li { display: grid; grid-template-columns: 8.5em 1fr; gap: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--ff-surface); border-radius: var(--radius-md); }
-.ff-events li span:first-child { color: var(--ff-gold); white-space: nowrap; }
+.ff-events ol > li > span:first-child { color: var(--ff-gold); white-space: nowrap; }
 .ff-events .ff-empty { color: var(--ff-muted); grid-template-columns: 1fr; }
+.ff-events li > p, .ff-events details { margin: 0; min-width: 0; }
+.ff-events summary { cursor: pointer; min-height: var(--target-min-height); display: block; padding-block: var(--space-2); margin-block: calc(-1 * var(--space-2)); }
+.ff-events summary::marker { color: var(--ff-gold); }
+.ff-kind { display: inline-block; margin-right: var(--space-2); padding: 0 var(--space-2); font-size: var(--font-size-xs); border-radius: var(--radius-full); background: var(--ff-raised); color: var(--ff-gold); }
+.ff-kind:is([data-kind='robbery'], [data-kind='jail'], [data-kind='firestorm'], [data-kind='rival']) { color: var(--ff-up); }
+.ff-kind:is([data-kind='bounty'], [data-kind='law']) { color: var(--ff-warn); }
+.ff-move-count { margin-left: var(--space-2); font-size: var(--font-size-xs); color: var(--ff-muted); white-space: nowrap; }
+.ff-moves { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.ff-moves li { display: grid; grid-template-columns: minmax(8em, auto) 1fr; gap: 0 var(--space-3); padding: var(--space-1) 0; background: none; border-top: 1px solid var(--ff-line); border-radius: 0; }
+.ff-move-what { color: var(--ff-text); }
+.ff-move-path { color: var(--ff-gold); overflow-wrap: anywhere; font-family: var(--font-family-mono); font-size: 0.92em; }
+.ff-move-why { grid-column: 1 / -1; color: var(--ff-muted); }
+.ff-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 560px) {
+  .ff-moves li { grid-template-columns: 1fr; }
+}
 
 .ff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-4); }
 .ff-card { padding: var(--space-4); background: var(--ff-surface); border: 1px solid var(--ff-line); border-radius: var(--radius-xl); transition: border-color var(--duration-normal) var(--ease-out); }
@@ -102,7 +118,7 @@ button:focus-visible, a:focus-visible, .ff-price:focus-visible { outline: 2px so
 .ff-foot a { display: inline-flex; align-items: center; min-height: var(--target-min-height); margin-right: var(--space-4); }
 
 @media (max-width: 520px) {
-  .ff-events li { grid-template-columns: 1fr; gap: 0; }
+  .ff-events ol > li { grid-template-columns: 1fr; gap: var(--space-1); }
   .ff-day { min-width: 0; }
 }
 @media (prefers-reduced-motion: reduce) {

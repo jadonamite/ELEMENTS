@@ -5,11 +5,21 @@ import { getServerUrl } from './auth/server-api.js';
 
 interface Good { item: string; stock: number; maxStock: number; buy: number; sell: number; reason: number }
 interface Keeper { id: string; name: string; status: string; purse: number; owner: string | null; goods: Good[] }
-interface Frame { hour: number; label: string; keepers: Keeper[]; events: string[] }
-interface Week { seed: number; frames: Frame[]; reasons: string[]; supplyConserved: boolean; trades: number; refusals: number }
+interface Move { contract: 'coin' | 'items'; from: string | null; to: string | null; amount: number; token?: string; reason: string }
+interface Happening { kind: string; text: string; moves: Move[] }
+interface Frame { hour: number; label: string; keepers: Keeper[]; events: Happening[] }
+interface Week {
+  seed: number; days: number; frames: Frame[]; reasons: string[]; supplyConserved: boolean; trades: number; refusals: number;
+  contracts: { coin: string; items: string }; missing: string[];
+}
 
 const PLAY_MS = 60_000;
 const STATUS: Record<string, string> = { open: 'Open', broke_buying_paused: 'Broke, not buying', closed: 'Shut' };
+const KIND: Record<string, string> = {
+  bank: 'Bank', robbery: 'Robbery', law: 'Law', bounty: 'Bounty', jail: 'Jail', trade: 'Trade', tribute: 'Tribute',
+  caravan: 'Caravan', rival: 'Rival clan', firestorm: 'Firestorm', shop: 'Shop', memory: 'Memory', outsider: 'Outsider',
+  hire: 'Hired fighter', market: 'Market',
+};
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const grid = $<HTMLDivElement>('ff-grid');
@@ -62,10 +72,32 @@ function render(): void {
     return `<article class="ff-card" data-status="${k.status}"><div class="ff-card-head"><h3>${escapeHtml(k.name)}</h3><span class="ff-status">${status}</span></div><p class="ff-purse">Purse <strong>${k.purse.toLocaleString('en')}</strong> CHROMA</p><table class="ff-goods"><thead><tr><th scope="col">Good</th><th scope="col">Stock</th><th scope="col">Buy</th><th scope="col">Sell</th></tr></thead><tbody>${rows}</tbody></table><p class="ff-reason">${escapeHtml(lead)}</p></article>`;
   }).join('');
 
-  const happened = week.frames.slice(0, index + 1).flatMap((f) => f.events.map((e) => ({ when: f.label, e })));
+  const happened = week.frames.slice(0, index + 1).flatMap((f) => f.events.map((e, i) => ({ when: f.label, key: `${f.hour}:${i}`, e })));
+  const open = new Set([...eventsList.querySelectorAll<HTMLDetailsElement>('details[open]')].map((d) => d.dataset.key));
   eventsList.innerHTML = happened.length
-    ? happened.map((x) => `<li><span>${x.when}</span><span>${escapeHtml(x.e)}</span></li>`).join('')
-    : '<li class="ff-empty"><span>Day 1: ordinary trading. The story starts on day 2.</span></li>';
+    ? happened.map((x) => eventItem(x.when, x.key, x.e, open.has(x.key))).join('')
+    : '<li class="ff-empty"><span>Day 1 opens quietly. The story starts as the players arrive.</span></li>';
+}
+
+/** Chain names without the shared testnet suffix, which every world account carries. */
+function who(account: string | null, contract: 'coin' | 'items'): string {
+  if (!account) return contract === 'coin' ? 'the world' : 'the forge';
+  // A player's account is a 64-character implicit NEAR account; the full name stays in the row's title.
+  if (/^[0-9a-f]{64}$/.test(account)) return `player ${account.slice(0, 4)}…${account.slice(-4)}`;
+  return account.replace(/\.elements-dev\.testnet$/, '');
+}
+
+function moveText(m: Move): string {
+  const what = m.contract === 'coin' ? `${m.amount.toLocaleString('en')} CHROMA` : `${m.amount} x ${goodName(m.token ?? 'item')}`;
+  return `<li><span class="ff-move-what">${escapeHtml(what)}</span><span class="ff-move-path" title="${escapeHtml(`${m.from ?? 'minted'} to ${m.to ?? 'burned'}`)}">${escapeHtml(who(m.from, m.contract))} <span aria-hidden="true">&rarr;</span><span class="ff-sr"> to </span> ${escapeHtml(who(m.to, m.contract))}</span><span class="ff-move-why">${escapeHtml(m.reason)}</span></li>`;
+}
+
+function eventItem(when: string, key: string, e: Happening, open: boolean): string {
+  const tag = `<span class="ff-kind" data-kind="${escapeHtml(e.kind)}">${escapeHtml(KIND[e.kind] ?? e.kind)}</span>`;
+  const body = e.moves.length
+    ? `<details data-key="${key}" ${open ? 'open' : ''}><summary>${tag}${escapeHtml(e.text)}<span class="ff-move-count">${e.moves.length} NEAR ${e.moves.length === 1 ? 'move' : 'moves'}</span></summary><ol class="ff-moves">${e.moves.map(moveText).join('')}</ol></details>`
+    : `<p>${tag}${escapeHtml(e.text)}</p>`;
+  return `<li><span>${when}</span>${body}</li>`;
 }
 
 function step(): void {
@@ -92,7 +124,8 @@ async function load(seed: number): Promise<void> {
     week = (await res.json()) as Week;
     progress.max = week.frames.length - 1;
     index = 0;
-    meta.textContent = `Week ${week.seed}: ${week.trades} trades, ${week.refusals} refused by the rules. Coin supply conserved: ${week.supplyConserved ? 'yes' : 'no'}.`;
+    const moves = week.frames.reduce((n, f) => n + f.events.reduce((m, e) => m + e.moves.length, 0), 0);
+    meta.textContent = `Week ${week.seed}: ${week.trades} trades, ${week.refusals} refused by the rules, ${moves} NEAR moves named. Coin supply conserved: ${week.supplyConserved ? 'yes' : 'no'}. Moves are written for ${week.contracts.coin} and ${week.contracts.items} and never sent.`;
     render();
     for (const b of [playBtn, restartBtn, newBtn]) b.disabled = false;
     setPlaying(true);
