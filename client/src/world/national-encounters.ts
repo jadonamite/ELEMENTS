@@ -8,6 +8,7 @@ import { CombatSpace } from '../attacks/space.js';
 import type { VillainKind } from '../enemy.js';
 import type { Fight } from '../fight.js';
 import { loadHoundTemplate, type HoundTemplate } from '../monsters/hound.js';
+import { loaders } from '../assets/loaders.js';
 
 interface RoadEncounter {
   id: string;
@@ -104,7 +105,7 @@ export class NationalEncounterManager {
 
   private loadTemplate(): void {
     if (this.loading || this.loadFailed) return;
-    this.loading = loadHoundTemplate(undefined, this.renderer).then(template => {
+    this.loading = loadHoundTemplate(loaders(this.renderer)).then(template => {
       if (this.disposed) this.releaseTemplate(template);
       else this.template = template;
     }).catch(() => {

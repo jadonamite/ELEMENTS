@@ -7,9 +7,7 @@ import {
   type Object3D,
   Vector3,
 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import type { Loaders } from '../assets/loaders.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import balance from '../../../shared/balance.json';
 import { AnimationPlayer } from '../anim/index.js';
@@ -105,28 +103,9 @@ export function houndDamage(
   return { damage, isWeakSpot, stagger, staggerDuration };
 }
 
-/**
- * Loads the rigged Ember Hound GLB template.
- */
-export async function loadHoundTemplate(
-  loader = new GLTFLoader(),
-  renderer?: import('three').WebGLRenderer,
-  ktx2TranscoderPath = '/assets/env/ignis/basis/'
-): Promise<HoundTemplate> {
-  loader.setMeshoptDecoder(MeshoptDecoder);
-
-  if (typeof window !== 'undefined' && renderer) {
-    try {
-      const ktx2Loader = new KTX2Loader();
-      ktx2Loader.setTranscoderPath(ktx2TranscoderPath);
-      ktx2Loader.detectSupport(renderer);
-      loader.setKTX2Loader(ktx2Loader);
-    } catch {
-      // Fallback if KTX2 transcoder fails or support detection isn't initialized yet
-    }
-  }
-
-  const gltf = await loader.loadAsync('/assets/monsters/ember_hound.glb');
+/** Loads the rigged Ember Hound template. Each caller gets its own parse, since whoever holds a template disposes it. */
+export async function loadHoundTemplate(loaders: Loaders): Promise<HoundTemplate> {
+  const gltf = await loaders.gltf.loadAsync('/assets/monsters/ember_hound.glb');
   return {
     model: gltf.scene,
     clips: gltf.animations,

@@ -40,9 +40,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { FXAAPass } from 'three/examples/jsm/postprocessing/FXAAPass.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { loaders } from '../assets/loaders.js';
 import balance from '../../../shared/balance.json';
 import { SANITIZE_SHADER } from '../env/postprocessing.js';
 import type { PhysicsWorld } from '../physics.js';
@@ -461,8 +459,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
  * past the distance the haze swallows a thing of its size. On low quality only the low model is loaded.
  */
 async function loadProps(renderer: WebGLRenderer, placements: WorldBuilder['props'], into: Group, low: boolean, iron: Material): Promise<void> {
-  const ktx2 = new KTX2Loader().setTranscoderPath('/assets/env/ignis/basis/').detectSupport(renderer);
-  const loader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  const loader = loaders(renderer).gltf;
   const byId = new Map<string, WorldBuilder['props']>();
   for (const p of placements) byId.set(p.id, [...(byId.get(p.id) ?? []), p]);
   // The procedural iron pieces export without textures; they take the scanned blackened iron.
@@ -510,7 +507,6 @@ async function loadProps(renderer: WebGLRenderer, placements: WorldBuilder['prop
       console.warn(`Prop ${id} failed to load:`, error);
     }
   }));
-  ktx2.dispose();
 }
 
 /** The procedural iron pieces have collapsed UVs: unpack them to floats in metres and project the iron scan on. */

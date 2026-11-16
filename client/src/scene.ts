@@ -22,7 +22,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import type { Loaders } from './assets/loaders.js';
 import balance from '../../shared/balance.json';
 import type { Element } from '../../shared/src/index.js';
 import { getNationGeography } from './env/nations.js';
@@ -185,7 +185,7 @@ interface PropPlacement {
 }
 
 /** Props and crags attuned to nation geography. */
-export async function loadProps(scene: Scene, loader = new GLTFLoader(), nation: Element = 'IGNIS'): Promise<void> {
+export async function loadProps(scene: Scene, loaders: Loaders, nation: Element = 'IGNIS'): Promise<void> {
   const placements: PropPlacement[] = [];
 
   if (nation === 'AQUES') {
@@ -255,7 +255,7 @@ export async function loadProps(scene: Scene, loader = new GLTFLoader(), nation:
 
   await Promise.all(
     [...new Set(placements.map((p) => p.file))].map(async (file) => {
-      const gltf = await loader.loadAsync(`/assets/props/${file}.glb`);
+      const gltf = await loaders.gltf.loadAsync(`/assets/props/${file}.glb`);
       gltf.scene.traverse((node) => {
         if (node instanceof Mesh) {
           node.castShadow = !file.startsWith('rock_');

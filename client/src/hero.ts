@@ -19,10 +19,9 @@ import {
   type SkinnedMesh,
 } from 'three';
 import balance from '../../shared/balance.json';
-import { BodyKit, markRest, parseOutfit, type OutfitId } from './body.js';
+import { bodyKit, markRest, parseOutfit, type OutfitId } from './body.js';
 import { getDefaultCharacterConfig, getStoredCharacter, type CharacterConfig } from './creator/creator-types.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import type { Loaders } from './assets/loaders.js';
 import { AnimationPlayer } from './anim/index.js';
 import { StrikeLimbs, type StrikeLimb } from './anim/strike-limb.js';
 import { STAFF_WEAPON, SWORD_WEAPON, heroWeaponFor, type WeaponSlotData } from './weapon.js';
@@ -78,12 +77,19 @@ export interface HeroInstance {
   switchOutfit(outfitId: OutfitId): Promise<void>;
 }
 
-/** Keep only part of the run clip's hip bounce, measured up from its lowest (planted) point. */
-function calmRunBounce(clips: AnimationClip[]): void {
-  const track = clips.find(c => c.name === 'run')?.tracks.find(t => t.name === 'pelvis.position');
-  if (!track) return;
+/** The clips with the run keeping only part of its hip bounce, measured up from its lowest (planted) point. The pack's own clips are left as loaded. */
+function calmRunBounce(clips: AnimationClip[]): AnimationClip[] {
+  return clips.map((clip) => {
+    if (clip.name !== 'run') return clip;
+    const calm = clip.clone();
+    const track = calm.tracks.find(t => t.name === 'pelvis.position');
+    if (track) calmBounce(track.values);
+    return calm;
+  });
+}
+
+function calmBounce(values: Float32Array | number[]): void {
   // The rig's root is turned to Z-up, so height is the third component.
-  const values = track.values;
   let lowest = Infinity;
   for (let i = 2; i < values.length; i += 3) lowest = Math.min(lowest, values[i]!);
   for (let i = 2; i < values.length; i += 3) values[i] = lowest + (values[i]! - lowest) * balance.controller.runBounceKeep;
@@ -93,12 +99,11 @@ function calmRunBounce(clips: AnimationClip[]): void {
  * Loads the hero character, dresses it, attaches the sword to the right hand
  * and sets up the animation player.
  */
-export async function loadHero(loader = new GLTFLoader(), initialOutfit?: OutfitId): Promise<HeroInstance> {
-  loader.setMeshoptDecoder(MeshoptDecoder);
+export async function loadHero(loaders: Loaders, initialOutfit?: OutfitId): Promise<HeroInstance> {
   // The body is the player's own creation; hero.glb now only supplies animation clips.
-  const heroGltf = await loader.loadAsync('/assets/characters/hero.glb');
+  const heroGltf = await loaders.model('/assets/characters/hero.glb');
   const config = getStoredCharacter() ?? getDefaultCharacterConfig('male');
-  const kit = new BodyKit(loader);
+  const kit = bodyKit(loaders);
 
   let currentOutfit: OutfitId = initialOutfit ?? 'rags';
   if (!initialOutfit && hasGameServer() && getStoredAuthToken()) {
@@ -130,7 +135,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   let knuckleR = heroModel.getObjectByName('middle_02_r') as Bone | undefined;
   let knuckleL = heroModel.getObjectByName('middle_02_l') as Bone | undefined;
   const knuckleAt = new Vector3();
-  let swordMesh: Object3D = (await loader.loadAsync(weaponSlot.assetPath)).scene.clone(true);
+  let swordMesh: Object3D = (await loaders.model(weaponSlot.assetPath)).scene.clone(true);
   const swordMaterials: MeshStandardMaterial[] = [];
   const collectMaterials = (mesh: Object3D): void => {
     swordMaterials.length = 0;
@@ -195,7 +200,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
     scabbard = null;
     activeCarry = slot.carry?.mount === 'hip' ? mounts.hip : mounts.back;
     if (slot.carry) {
-      scabbard = gripAligned((await loader.loadAsync(slot.carry.assetPath)).scene.clone(true));
+      scabbard = gripAligned((await loaders.model(slot.carry.assetPath)).scene.clone(true));
       scabbard.traverse(node => { if ((node as Mesh).isMesh) { (node as Mesh).castShadow = true; (node as Mesh).receiveShadow = true; } });
       snapToSocket(scabbard, activeCarry);
     }
@@ -244,8 +249,8 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   const equipWeapon = async (slot: WeaponSlotData): Promise<void> => {
     const request = ++equipRequest;
     const [weapon, carry] = await Promise.all([
-      loader.loadAsync(slot.assetPath),
-      slot.carry ? loader.loadAsync(slot.carry.assetPath) : Promise.resolve(null),
+      loaders.model(slot.assetPath),
+      slot.carry ? loaders.model(slot.carry.assetPath) : Promise.resolve(null),
     ]);
     if (request !== equipRequest) return;
     const aligned = gripAligned(weapon.scene.clone(true));
@@ -284,18 +289,18 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   };
 
   // Build animation clips, including bare hands combos & bending moves
-  const combatClips = markRest(await loader.loadAsync('/assets/characters/combat.glb'));
-  calmRunBounce(markRest(heroGltf));
+  const combatClips = markRest(await loaders.model('/assets/characters/combat.glb'));
+  const heroClips = calmRunBounce(markRest(heroGltf));
   // Locomotion is the retargeted Mixamo pack: idle, weapon-drawn idle, walk, strafe and turn in place, jump.
-  const locomotionClips = markRest(await loader.loadAsync('/assets/characters/locomotion.glb'));
+  const locomotionClips = markRest(await loaders.model('/assets/characters/locomotion.glb'));
   // The mannequin's own relaxed idle, walk and jump are replaced by the pack; its start/land jump clips are unused.
   const REPLACED = new Set(['idle_relaxed', 'walk', 'jump', 'jump_start', 'jump_land']);
-  const bodyClips = heroGltf.animations.filter(clip => !REPLACED.has(clip.name));
+  const bodyClips = heroClips.filter(clip => !REPLACED.has(clip.name));
 
   // Unarmed fighting uses real punch and knee clips; the bare moves map onto them by name.
   const unarmed = [
-    ...markRest(await loader.loadAsync('/assets/characters/unarmed_a.glb')),
-    ...markRest(await loader.loadAsync('/assets/characters/unarmed_b.glb')),
+    ...markRest(await loaders.model('/assets/characters/unarmed_a.glb')),
+    ...markRest(await loaders.model('/assets/characters/unarmed_b.glb')),
   ];
   const rename: Record<string, string> = { punch_jab: 'bare_punch_1', punch_cross: 'bare_punch_2', knee: 'bare_kick', punch_hook: 'bare_heavy_1' };
   const subclips: AnimationClip[] = unarmed.map(clip => {
@@ -307,7 +312,7 @@ export async function loadHero(loader = new GLTFLoader(), initialOutfit?: Outfit
   });
 
   // Legs style kicks (Mixamo, retargeted), trimmed so the strike falls cleanly inside the active window.
-  const kickClips = markRest(await loader.loadAsync('/assets/characters/kicks.glb'));
+  const kickClips = markRest(await loaders.model('/assets/characters/kicks.glb'));
   // Cuts start just before the foot leaves the floor and end once it is back down; the foot peaks near the middle.
   const kickCuts: Array<[string, string, number, number]> = [
     ['kick_front_double', 'leg_kick_1', 0.55, 1.25],

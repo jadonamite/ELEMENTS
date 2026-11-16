@@ -9,6 +9,7 @@ import dialogueData from '../../shared/dialogue.json';
 import { dialogueRules } from '../../shared/src/story/dialogue.js';
 import { SpeechMemory } from '../../shared/src/story/speech.js';
 import { createArena, disposeObject, loadProps } from './scene.js';
+import { loaders } from './assets/loaders.js';
 import { createZone, SPAWN } from './world/zone.js';
 import { initPhysics } from './physics.js';
 import { FpsCounter } from './fps.js';
@@ -123,7 +124,8 @@ async function main(): Promise<void> {
   cleanup.push(() => physics.dispose());
   const arena = zone ?? createArena(canvas, initialChoice, isFullMoon);
   const { scene, camera, renderer } = arena;
-  if (!zone) loadProps(scene, undefined, initialChoice).catch((error: unknown) => console.error('Arena props failed to load:', error));
+  const assets = loaders(renderer);
+  if (!zone) loadProps(scene, assets, initialChoice).catch((error: unknown) => console.error('Arena props failed to load:', error));
   cleanup.push(() => { renderer.setAnimationLoop(null); arena.dispose(); });
   loader.setProgress(0.40, inTown ? "Raising Sindr's streets" : 'Shaping the arena');
   const controller = new HeroController(physics.world, zone ? SPAWN : undefined, undefined, !zone);
@@ -142,10 +144,10 @@ async function main(): Promise<void> {
   let villainsFailed: (error: unknown) => void = () => undefined;
   const villains: Promise<EnemyTemplate> = zone
     ? new Promise((resolve, reject) => { villainsArrived = resolve; villainsFailed = reject; })
-    : loadEnemyTemplate();
+    : loadEnemyTemplate(assets);
   villains.catch(() => undefined);
   try {
-    hero = await loadHero();
+    hero = await loadHero(assets);
     loader.setProgress(0.55, 'Forging the hero');
     for (const name of windskiffBones) {
       const b = hero.model.getObjectByName(name);
@@ -278,7 +280,7 @@ async function main(): Promise<void> {
   /** Seconds of AQUES Mend left, and how much it heals each second. */
   let mending = { left: 0, perSecond: 0 };
 
-  const bending = new BendingEffects(scene);
+  const bending = new BendingEffects(scene, assets);
   bending.space = elementFx.space;
   cleanup.push(() => bending.dispose());
   bending.onFireballImpact = (pos, elem, hostile) => {
@@ -459,6 +461,7 @@ async function main(): Promise<void> {
       }),
       onNotice: (msg) => notice(msg),
       warm: zone.warm,
+      loaders: assets,
       getThreats: () => {
         const foes = fight.enemies.filter(e => e.alive && !e.challenging).map(e => e.controller.position);
         return foes.some(at => at.distanceTo(controller.position) < 24) ? [controller.position, ...foes] : foes;
@@ -748,6 +751,7 @@ async function main(): Promise<void> {
   if (shouldRunIntro && zone && lifeSystem) {
     nationIntro = new NationIntroFlow({
       scene,
+      loaders: assets,
       nation: kitElement,
       isDim: () => isDim,
       controller,
@@ -1141,8 +1145,8 @@ async function main(): Promise<void> {
       kit: () => fight.kit,
       alive: () => fight.heroAlive,
       isLit: () => isLit,
-      loadAvatar: (outfit) => loadHero(undefined, outfit),
-      loadHound: () => loadHoundTemplate(undefined, renderer),
+      loadAvatar: (outfit) => loadHero(assets, outfit),
+      loadHound: () => loadHoundTemplate(assets),
       villains,
       onMyHit(at, damage, killed) {
         bend.gain('hit');
@@ -1235,7 +1239,7 @@ async function main(): Promise<void> {
     await lifeSystem?.bringInRest().catch((error: unknown) => console.error('Townsfolk failed to load:', error));
     if (disposed) return;
     try {
-      const template = await loadEnemyTemplate();
+      const template = await loadEnemyTemplate(assets);
       if (disposed) return;
       const looks = new Group();
       looks.add(...villainLooks(template));

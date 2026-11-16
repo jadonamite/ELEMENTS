@@ -19,7 +19,7 @@ import {
   WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loaders } from '../assets/loaders.js';
 import {
   EmberHound,
   HoundPack,
@@ -330,12 +330,12 @@ async function init() {
   world.createCollider(RAPIER.ColliderDesc.cuboid(40, 0.05, 40), floorBody);
 
   // Load Hound Template
-  const gltfLoader = new GLTFLoader();
-  template = await loadHoundTemplate(gltfLoader, renderer);
+  const assets = loaders(renderer);
+  template = await loadHoundTemplate(assets);
 
   // Load Villain Template for Outlaws
   try {
-    enemyTemplate = await loadEnemyTemplate(gltfLoader);
+    enemyTemplate = await loadEnemyTemplate(assets);
   } catch (err) {
     console.warn('Failed loading enemy template:', err);
   }

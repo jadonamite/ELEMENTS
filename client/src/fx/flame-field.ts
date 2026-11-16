@@ -6,12 +6,12 @@ import {
   Mesh,
   NormalBlending,
   PlaneGeometry,
-  TextureLoader,
   LinearFilter,
   SRGBColorSpace,
   ShaderMaterial,
   type Blending,
   type Object3D,
+  type Texture,
 } from 'three';
 import type { SoftDepth } from './soft-depth.js';
 import { SPRITE_FRAGMENT, SPRITE_VERTEX } from './shaders.js';
@@ -117,7 +117,8 @@ class Batch {
 
 function makeMaterial(blending: Blending, time: { value: number }): ShaderMaterial {
   return new ShaderMaterial({
-    uniforms: { uTime: time },
+    // Atlases start empty (three binds a blank texture) and are filled once loaded.
+    uniforms: { uTime: time, uAtlas0: { value: null }, uAtlas1: { value: null }, uAtlas2: { value: null }, uAtlas3: { value: null } },
     vertexShader: SPRITE_VERTEX,
     fragmentShader: SPRITE_FRAGMENT,
     transparent: true,
@@ -140,17 +141,18 @@ export class FlameField {
   private cursor = 0;
   private low = false;
   private drawCount = 0;
-  private readonly loader = typeof document === 'undefined' ? null : new TextureLoader();
   private qualityReady = false;
   private fullWanted = false;
   private atlasSet: 'low' | 'full' | null = null;
   /** Puts a loaded atlas on the GPU ahead of its first draw (the renderer's initTexture). */
-  private upload: ((texture: import('three').Texture) => void) | null = null;
-  private textures: import('three').Texture[] = [];
+  private upload: ((texture: Texture) => void) | null = null;
+  private textures: Texture[] = [];
   onTexturesUpdated?: () => void;
   ready: Promise<void> = Promise.resolve();
 
-  constructor(parent: Object3D, depth?: SoftDepth, poolSize = 420, capacity = 640) {
+  /** `loadAtlas` fetches one KTX2 atlas; without it (tests) no atlas loads. */
+  constructor(parent: Object3D, depth?: SoftDepth, private readonly loadAtlas?: (path: string) => Promise<Texture>,
+    poolSize = 420, capacity = 640) {
     if (depth) for (const mat of [this.additiveMat, this.normalMat]) Object.assign(mat.uniforms, depth.uniforms);
     this.setQuality(false);
     this.additive = new Batch(capacity, this.additiveMat);
@@ -201,7 +203,7 @@ export class FlameField {
     batch.push(x, y, z, w, h, tilt, life, seed, alpha, mode, mode === FxMode.SMOKE ? 2 : atlas, vx, vy, realVz);
   }
 
-  getTexture(index: number): import('three').Texture | undefined {
+  getTexture(index: number): Texture | undefined {
     return this.textures[index];
   }
 
@@ -245,7 +247,7 @@ export class FlameField {
   }
 
   /** Swaps in the full-size atlases on high quality; the small ones keep drawing until all three have loaded. */
-  useFullAtlases(upload?: (texture: import('three').Texture) => void): Promise<void> {
+  useFullAtlases(upload?: (texture: Texture) => void): Promise<void> {
     this.fullWanted = true;
     this.upload = upload ?? null;
     if (!this.low) this.loadAtlases('full');
@@ -253,51 +255,44 @@ export class FlameField {
   }
 
   private loadAtlases(set: 'low' | 'full'): void {
-    if (!this.loader || this.atlasSet === set) return;
+    const load = this.loadAtlas;
+    if (!load || this.atlasSet === set) return;
     this.atlasSet = set;
-    const old = this.textures;
     // Slot order is the shader's: 0 looping flame, 1 burst, 2 smoke, 3 one-shot tongue.
     // A tongue is the baked flame loop played once over its life, so slots 0 and 3 share one texture.
     const files = ['flame', 'burst', 'smoke', 'flame'];
-    const loaded = new Map<string, import('three').Texture>();
-    const pending: Promise<void>[] = [];
-    const textures = files.map((name) => {
-      let texture = loaded.get(name);
-      if (!texture) {
-        let resolve!: () => void;
-        pending.push(new Promise<void>((done) => { resolve = done; }));
-        texture = this.loader!.load(`/assets/fx/fire-${name}${set === 'low' ? '-low' : ''}.png`, resolve, undefined, (error) => {
-          console.warn(`Effect texture ${name} failed:`, error);
-          resolve();
-        });
+    const byName = new Map<string, Promise<Texture | null>>();
+    for (const name of new Set(files)) {
+      byName.set(name, load(`/assets/fx/fire-${name}${set === 'low' ? '-low' : ''}.ktx2`).then((texture) => {
         texture.minFilter = LinearFilter;
         texture.magFilter = LinearFilter;
-        texture.generateMipmaps = false;
         texture.colorSpace = SRGBColorSpace;
-        loaded.set(name, texture);
+        return texture;
+      }, (error: unknown) => {
+        console.warn(`Effect texture ${name} failed:`, error);
+        return null;
+      }));
+    }
+    // A set binds only once every atlas in it has loaded and, when an upload is given, reached the GPU one
+    // atlas a frame, so a swap never draws an atlas the GPU has not seen.
+    this.ready = Promise.all(files.map(name => byName.get(name)!)).then(async (loaded) => {
+      const unique = [...new Set(loaded)].filter((t): t is Texture => t !== null);
+      if (this.atlasSet !== set || loaded.some(t => t === null)) { unique.forEach(t => t.dispose()); return; }
+      for (const texture of unique) {
+        if (!this.upload) break;
+        this.upload(texture);
+        await new Promise<void>((frame) => requestAnimationFrame(() => frame()));
+        if (this.atlasSet !== set) { unique.forEach(t => t.dispose()); return; }
       }
-      return texture;
-    });
-    const apply = (): void => {
-      if (this.atlasSet !== set) { new Set(textures).forEach(texture => texture.dispose()); return; }
+      const textures = loaded as Texture[];
       textures.forEach((texture, i) => {
-        for (const mat of [this.additiveMat, this.normalMat]) mat.uniforms[`uAtlas${i}`] = { value: texture };
+        for (const mat of [this.additiveMat, this.normalMat]) mat.uniforms[`uAtlas${i}`]!.value = texture;
       });
+      const old = this.textures;
       this.textures = textures;
       this.onTexturesUpdated?.();
       new Set(old).forEach(texture => { if (!textures.includes(texture)) texture.dispose(); });
-    };
-    const done = Promise.all(pending).then(() => undefined);
-    // The first set binds at once (the shader needs a texture); a later set binds only once it has loaded.
-    // A later set is uploaded one atlas a frame first, so the swap never draws an atlas the GPU has not seen.
-    if (old.length === 0) { apply(); this.ready = done; }
-    else this.ready = done.then(async () => {
-      for (const texture of new Set(textures)) {
-        if (this.atlasSet !== set) break;
-        this.upload?.(texture);
-        await new Promise<void>((frame) => requestAnimationFrame(() => frame()));
-      }
-    }).then(apply);
+    });
   }
 
   dispose(): void {

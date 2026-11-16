@@ -73,8 +73,8 @@ export const BOOT_ASSETS: readonly string[] = [
   '/assets/characters/creator/peasant_male.glb',
   '/assets/characters/creator/peasant_female.glb',
   '/assets/characters/people/hush_ignis_male.glb',
-  '/assets/characters/creator/peasant_worn.webp',
-  '/assets/fx/fire-flame.png',
-  '/assets/fx/fire-burst.png',
-  '/assets/fx/fire-smoke.png',
+  '/assets/characters/creator/peasant_worn.ktx2',
+  '/assets/fx/fire-flame.ktx2',
+  '/assets/fx/fire-burst.ktx2',
+  '/assets/fx/fire-smoke.ktx2',
 ];

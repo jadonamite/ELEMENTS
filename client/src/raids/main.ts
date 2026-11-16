@@ -13,6 +13,7 @@ import { loadEnemyTemplate, type Enemy, type EnemyTemplate, type VillainKind } f
 import { Fight, type HeroView } from '../fight.js';
 import { FpsCounter } from '../fps.js';
 import { loadHero } from '../hero.js';
+import { loaders } from '../assets/loaders.js';
 import { FightHud } from '../hud.js';
 import { ThreatArrows } from '../threat-arrows.js';
 import { GameInput } from '../input.js';
@@ -94,7 +95,8 @@ async function main(): Promise<void> {
   const { scene, camera, world } = stage;
   const status = new Status();
   status.set('The Raid Hall, Sindr', 'Loading');
-  const [hero, template] = await Promise.all([loadHero(), loadEnemyTemplate()]);
+  const assets = loaders(stage.renderer);
+  const [hero, template] = await Promise.all([loadHero(assets), loadEnemyTemplate(assets)]);
   scene.add(hero.model);
   const controller = new HeroController(world, HALL.spawn, undefined, false);
   controller.facing = HALL.spawn.facing;

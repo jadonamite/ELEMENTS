@@ -11,3 +11,5 @@ The supplied `art/reference/fx/fireball-target.png` controls fire colour and sha
 Each atlas has 64 frames in an 8 × 8 grid. Full atlases use 128px frames (256px for projectile); low quality uses 64px frames (128px for projectile). Flame and projectile atlases loop. Burst, smoke and lick atlases fade to transparency at the end. Transparent tile padding prevents seams, and all frames reach zero alpha at least 8 px inside every frame edge.
 
 `python3 workbench/scripts/verify-fire-atlases.py` checks dimensions, border alpha, animation, end fades and loop-wrap differences.
+
+The PNGs here are the originals. The game loads KTX2 copies (UASTC, flipped to match the PNG UVs) written to `client/public/assets/fx/` by `npm run assets:pack`, which needs KTX-Software `toktx` 4.4 on the PATH.

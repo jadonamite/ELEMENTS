@@ -1,3 +1,4 @@
+import type { Loaders } from '../assets/loaders.js';
 import { Scene, Vector3, type Camera, type Object3D } from 'three';
 import type { HeroController } from '../controller.js';
 import type { CombatSpace } from '../attacks/space.js';
@@ -54,6 +55,8 @@ export interface SindrLifeOptions {
   /** Where people belong, as the town was built; each gets someone. */
   posts?: readonly Post[];
   warm?: (model: Object3D) => Promise<void>;
+  /** The game's shared model loaders. */
+  loaders: Loaders;
   /** Where passers-by stop to look at goods, as the town was built. */
   browse?: readonly Browse[];
   /** Shows a line someone in the street said, under their name, for `seconds`. */
@@ -157,7 +160,7 @@ export class SindrLifeSystem {
     this.people = people;
     this.warm = options.warm;
     const town = this.townManager;
-    const lookBodies = this.bodies = new LookBodies(children, undefined, options.warm);
+    const lookBodies = this.bodies = new LookBodies(children, options.loaders, options.warm);
     this.ready = (async () => {
       const [, bodies] = await Promise.all([
         town.prepare(SINDR_STREETS, SINDR_WALK, options.browse ?? [], options.posts ?? []),

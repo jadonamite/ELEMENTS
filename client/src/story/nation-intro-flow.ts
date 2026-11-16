@@ -1,8 +1,7 @@
-import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BodyKit, markRest, type OutfitId } from '../body.js';
+import { Group, PerspectiveCamera, Quaternion, Vector3, type Mesh, type Object3D, type SkinnedMesh } from 'three';
+import type { Loaders } from '../assets/loaders.js';
+import { bodyKit, markRest, type OutfitId } from '../body.js';
 import { sanitizeCharacterConfig } from '../creator/creator-types.js';
-import { disposeObject } from '../scene.js';
 import { AnimationPlayer } from '../anim/player.js';
 import type { HeroController } from '../controller.js';
 import type { ShoulderCamera } from '../camera.js';
@@ -32,6 +31,8 @@ export type IntroStep =
 
 export interface NationIntroOptions {
   scene: import('three').Scene;
+  /** The game's shared model loaders. */
+  loaders: Loaders;
   nation: string;
   /** Read when needed: signing in at the gate can bring back an account's earlier Drawing. */
   isDim: () => boolean;
@@ -174,9 +175,8 @@ export class NationIntroFlow {
   }
 
   private async loadMaster(forward: Vector3): Promise<void> {
-    const loader = new GLTFLoader();
     const townSets = await Promise.all(
-      ['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(name => loader.loadAsync(`/assets/characters/${name}.glb`)),
+      ['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(name => this.opts.loaders.model(`/assets/characters/${name}.glb`)),
     );
     let model: Group | null = null;
     try {
@@ -185,7 +185,7 @@ export class NationIntroFlow {
         sex: 'male', skinToneId: 'bronze', hairStyleId: 'beard', hairColorId: 'silver', bodyPreset: 'broad',
       });
       const outfit: OutfitId = this.config.nation === 'IGNIS' ? 'shaper_ignis' : 'rags';
-      const kit = new BodyKit(loader);
+      const kit = bodyKit(this.opts.loaders);
       model = await kit.build(config, 'hero', this.config.nation === 'AQUES' ? 0x667f86 : this.config.nation === 'TERRA' ? 0x77705e : this.config.nation === 'AURA' ? 0x9a8d9e : undefined, outfit);
       if (this.disposed) return;
       const clips = await kit.fitClips(config.sex, townSets.flatMap(markRest), 'townsfolk', outfit);
@@ -204,8 +204,7 @@ export class NationIntroFlow {
       this.playMasterPose('walk_sage', 'walk');
       model = null;
     } finally {
-      for (const set of townSets) disposeObject(set.scene);
-      if (model) disposeObject(model);
+      if (model) releaseMaster(model);
     }
   }
 
@@ -564,11 +563,21 @@ export class NationIntroFlow {
     this.masterPose = '';
     if (this.masterModel) {
       this.opts.scene.remove(this.masterModel);
-      disposeObject(this.masterModel);
+      releaseMaster(this.masterModel);
       this.masterModel = null;
     }
     if (this.overlay.parentNode) {
       this.overlay.remove();
     }
   }
+}
+
+/** The master's own materials and skeletons go; geometry and textures belong to the shared body files the crowd also draws. */
+function releaseMaster(model: Object3D): void {
+  model.traverse((node) => {
+    const mesh = node as Mesh;
+    if (!mesh.isMesh) return;
+    if ((mesh as SkinnedMesh).isSkinnedMesh) (mesh as SkinnedMesh).skeleton.dispose();
+    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) material.dispose();
+  });
 }

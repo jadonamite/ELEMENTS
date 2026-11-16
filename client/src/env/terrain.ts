@@ -26,9 +26,7 @@ import {
   type Scene,
   type WebGLRenderer,
 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { loaders } from '../assets/loaders.js';
 import balance from '../../../shared/balance.json';
 import type { Element } from '../../../shared/src/index.js';
 import { fbm2D, ridgedNoise2D, warpedFbm2D } from './noise.js';
@@ -694,12 +692,10 @@ export class TerrainSystem {
    * with real rusted iron PBR textures, small glowing coal bed, and subtle animated flame.
    */
   private buildBraziers(res: string): void {
-    const gltfLoader = new GLTFLoader();
-    gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+    const { gltf: gltfLoader, ktx2 } = loaders(this.renderer);
 
     const ironPbrMat = new MeshStandardMaterial({ roughness: 0.72, metalness: 0.88 });
     // The kit stores its maps as KTX2 only; normals exist at 1K.
-    const ktx2 = new KTX2Loader().setTranscoderPath('/assets/env/ignis/basis/').detectSupport(this.renderer);
     const iron = (map: string, size: string, srgb: boolean, apply: (t: Texture) => void): void => {
       ktx2.load(`/assets/env/ignis/materials/blackened_rusted_iron_${map}_${size}.ktx2`, (tex) => {
         if (srgb) tex.colorSpace = SRGBColorSpace;

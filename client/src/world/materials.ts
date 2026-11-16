@@ -11,7 +11,8 @@ import {
   Vector3,
   type WebGLRenderer,
 } from 'three';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import type { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import { loaders } from '../assets/loaders.js';
 
 const BASE = '/assets/env/ignis/materials';
 
@@ -165,7 +166,7 @@ export class SurfaceLibrary {
 
   constructor(renderer: WebGLRenderer, private readonly size: '2k' | '1k',
     private readonly onMaterial: (m: MeshStandardMaterial) => void = () => {}) {
-    this.loader = new KTX2Loader().setTranscoderPath('/assets/env/ignis/basis/').detectSupport(renderer);
+    this.loader = loaders(renderer).ktx2;
   }
 
   /** A material per surface; its textures stream in after it is first used. */
@@ -244,7 +245,6 @@ export class SurfaceLibrary {
       m.map?.dispose(); m.normalMap?.dispose(); m.aoMap?.dispose();
       m.dispose();
     }
-    this.loader.dispose();
   }
 }
 

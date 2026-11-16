@@ -11,9 +11,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { FXAAPass } from 'three/examples/jsm/postprocessing/FXAAPass.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import type { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loaders } from '../assets/loaders.js';
 import balance from '../../../shared/balance.json';
 import { SANITIZE_SHADER } from '../env/postprocessing.js';
 import { WorldBuilder, type Bucket } from '../world/builder.js';
@@ -43,7 +42,6 @@ export class Stage {
   private place: Place | null = null;
   private last = performance.now();
   readonly focus = new Vector3();
-  private readonly ktx2: KTX2Loader;
   private readonly loader: GLTFLoader;
   private readonly propCache = new Map<string, Promise<Group | null>>();
 
@@ -84,8 +82,7 @@ export class Stage {
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.composer.addPass(low ? new FXAAPass() : new SMAAPass());
-    this.ktx2 = new KTX2Loader().setTranscoderPath('/assets/env/ignis/basis/').detectSupport(this.renderer);
-    this.loader = new GLTFLoader().setKTX2Loader(this.ktx2).setMeshoptDecoder(MeshoptDecoder);
+    this.loader = loaders(this.renderer).gltf;
   }
 
   static async create(canvas: HTMLCanvasElement, low: boolean): Promise<Stage> {

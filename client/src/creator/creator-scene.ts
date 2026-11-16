@@ -21,8 +21,8 @@ import {
   TorusGeometry,
   WebGLRenderer,
 } from 'three';
-import { BodyKit, markRest } from '../body.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { bodyKit, type BodyKit, markRest } from '../body.js';
+import { loaders, type Loaders } from '../assets/loaders.js';
 import type { CharacterConfig } from './creator-types.js';
 
 export class CreatorScene {
@@ -30,7 +30,7 @@ export class CreatorScene {
   private readonly renderer: WebGLRenderer;
   private readonly scene: Scene;
   private readonly camera: PerspectiveCamera;
-  private readonly loader: GLTFLoader;
+  private readonly loaders: Loaders;
 
   private readonly turntableGroup: Group;
   private characterGroup: Group | null = null;
@@ -79,8 +79,8 @@ export class CreatorScene {
     this.turntableGroup = new Group();
     this.scene.add(this.turntableGroup);
 
-    this.loader = new GLTFLoader();
-    this.kit = new BodyKit(this.loader);
+    this.loaders = loaders(this.renderer);
+    this.kit = bodyKit(this.loaders);
 
     this.setupLighting();
     this.setupPlinth();
@@ -193,7 +193,7 @@ export class CreatorScene {
 
     if (!this.idleClip) {
       try {
-        const heroGltf = await this.loader.loadAsync('/assets/characters/hero.glb');
+        const heroGltf = await this.loaders.model('/assets/characters/hero.glb');
         if (this.isDisposed || this.loadToken !== token) return;
         markRest(heroGltf);
         this.idleClip =

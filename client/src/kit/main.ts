@@ -22,10 +22,8 @@ import {
   WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { loaders } from '../assets/loaders.js';
 
 interface KitMaterial {
   id: string;
@@ -147,12 +145,7 @@ hdrLoader.load('/assets/hdri/belfast_sunset_puresky_1k.hdr', (envTex) => {
 });
 
 // Loaders
-const ktx2Loader = new KTX2Loader();
-ktx2Loader.setTranscoderPath('/assets/env/ignis/basis/');
-ktx2Loader.detectSupport(renderer);
-
-const gltfLoader = new GLTFLoader();
-gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+const { ktx2: ktx2Loader, gltf: gltfLoader } = loaders(renderer);
 
 // Content root groups
 const sheetGroup = new Group();

@@ -1,0 +1,37 @@
+{
+  "client/public/assets/characters/creator/peasant_worn.ktx2": {
+    "source": "fddffe64183e83e5",
+    "recipe": "925f967ec8325a79",
+    "output": "d26cba54fa0d1ab4"
+  },
+  "client/public/assets/fx/fire-burst-low.ktx2": {
+    "source": "8f9b9bc4bf005dfa",
+    "recipe": "fde545bc58475303",
+    "output": "b35c9f4209881ce2"
+  },
+  "client/public/assets/fx/fire-burst.ktx2": {
+    "source": "0e73355fc2e8945c",
+    "recipe": "fde545bc58475303",
+    "output": "55be12d230866017"
+  },
+  "client/public/assets/fx/fire-flame-low.ktx2": {
+    "source": "3a30b87e568682dc",
+    "recipe": "fde545bc58475303",
+    "output": "d96311b5cf1267b2"
+  },
+  "client/public/assets/fx/fire-flame.ktx2": {
+    "source": "240ad35a3ac49bf8",
+    "recipe": "fde545bc58475303",
+    "output": "c1e1b8a480a0e212"
+  },
+  "client/public/assets/fx/fire-smoke-low.ktx2": {
+    "source": "5c31f99426b1a8ef",
+    "recipe": "fde545bc58475303",
+    "output": "141a52dbc602db6a"
+  },
+  "client/public/assets/fx/fire-smoke.ktx2": {
+    "source": "912eb5f3c65f1d16",
+    "recipe": "fde545bc58475303",
+    "output": "7e20a653ef252926"
+  }
+}

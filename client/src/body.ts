@@ -20,10 +20,9 @@ import {
   Sphere,
   SRGBColorSpace,
   Texture,
-  TextureLoader,
   Vector3,
 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import type { Loaders } from './assets/loaders.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
@@ -118,7 +117,7 @@ export function outfitFits(id: OutfitId, sex: Sex): boolean {
 }
 
 /** Patched, greener rags for robbers. */
-const WORN_RAGS_PATH = '/assets/characters/creator/peasant_worn.webp';
+const WORN_RAGS_PATH = '/assets/characters/creator/peasant_worn.ktx2';
 
 interface SkinUniforms {
   uSkinColor: { value: Color };
@@ -212,7 +211,7 @@ export class BodyKit {
   private readonly bare = new Map<string, BufferGeometry>();
   private wornRags: Promise<Texture> | null = null;
 
-  constructor(private readonly loader = new GLTFLoader(), private readonly detail: 'near' | 'far' = 'near') {}
+  constructor(private readonly loaders: Loaders, private readonly detail: 'near' | 'far' = 'near') {}
 
   async preload(paths: readonly string[] = [...Object.values(BODY_PATH), ...Object.values(OUTFITS.rags.path)]): Promise<void> {
     await Promise.all(paths.map(p => this.scene(p)));
@@ -222,7 +221,7 @@ export class BodyKit {
     let pending = this.scenes.get(path);
     if (!pending) {
       const file = this.detail === 'far' ? path.replace(/\/(creator|people)\//, '/$1/far/') : path;
-      pending = this.loader.loadAsync(file).then(({ scene }) => {
+      pending = this.loaders.model(file).then(({ scene }) => {
         if (OUTFIT_FILES.has(path)) joinByMaterial(scene);
         return scene;
       });
@@ -232,8 +231,7 @@ export class BodyKit {
   }
 
   private worn(): Promise<Texture> {
-    this.wornRags ??= new TextureLoader().loadAsync(WORN_RAGS_PATH).then((t) => {
-      t.flipY = false;
+    this.wornRags ??= this.loaders.texture(WORN_RAGS_PATH).then((t) => {
       t.colorSpace = SRGBColorSpace;
       return t;
     });
@@ -452,11 +450,15 @@ export function restOf(root: Object3D): Rest {
   return rest;
 }
 
+const marked = new WeakSet<Object3D>();
+
 /**
  * Marks a pack's clips with the rest pose they were made on, which is the pack's own skeleton.
- * Call it on a freshly loaded pack; fitting then turns each clip onto the rest pose of the body it plays on.
+ * A pack is marked once however many systems use it; fitting then turns each clip onto the rest pose of the body it plays on.
  */
 export function markRest(pack: { scene: Object3D; animations: AnimationClip[] }): AnimationClip[] {
+  if (marked.has(pack.scene)) return pack.animations;
+  marked.add(pack.scene);
   const id = packRests.push(restOf(pack.scene)) - 1;
   for (const clip of pack.animations) clip.userData.rest = id;
   return pack.animations;
@@ -515,4 +517,13 @@ export function fitClip(clip: AnimationClip, pelvisRatio: number, retarget?: Ret
     }
   }
   return copy;
+}
+
+const kits = new WeakMap<Loaders, Record<'near' | 'far', BodyKit>>();
+
+/** The game's one kit per detail level, shared by hero, villains and crowd, so a body is built from one parse. */
+export function bodyKit(loaders: Loaders, detail: 'near' | 'far' = 'near'): BodyKit {
+  let pair = kits.get(loaders);
+  if (!pair) kits.set(loaders, pair = { near: new BodyKit(loaders), far: new BodyKit(loaders, 'far') });
+  return pair[detail];
 }

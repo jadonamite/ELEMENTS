@@ -7,9 +7,9 @@ import {
   type Object3D,
   Vector3,
 } from 'three';
-import { BodyKit, markRest, type OutfitId } from './body.js';
+import { bodyKit, markRest, type OutfitId } from './body.js';
+import type { Loaders } from './assets/loaders.js';
 import { rollRandomCharacter, sanitizeCharacterConfig } from './creator/creator-types.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import balance from '../../shared/balance.json';
 import type { Health } from '../../shared/src/index.js';
@@ -18,7 +18,6 @@ import { HeroController } from './controller.js';
 import { inFront } from './hits.js';
 import { CLUB_WEAPON, DESERTER_WEAPON, KNIFE_WEAPON, SWORD_WEAPON } from './weapon.js';
 import { gripAligned, palmSocket, snapToSocket } from './weapon-mount.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 const tuning = balance.enemy;
 /** Gravity multiplier while launched, so bodies arc up and drop instead of drifting. */
@@ -103,17 +102,17 @@ function huskClips(clips: AnimationClip[]): AnimationClip[] {
 }
 
 /** Villains are built from the creator's male and female bodies, each a rolled look in worn rags. */
-export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<EnemyTemplate> {
-  loader.setMeshoptDecoder(MeshoptDecoder);
+export async function loadEnemyTemplate(loaders: Loaders): Promise<EnemyTemplate> {
+  const load = (path: string) => loaders.model(path);
   const [body, huskSet, mixamo, combat, unarmedA, unarmedB, street, ...weaponAssets] = await Promise.all([
-    loader.loadAsync('/assets/characters/hero.glb'),
-    loader.loadAsync('/assets/characters/enemy.glb'),
-    loader.loadAsync('/assets/characters/mixamo.glb').catch(() => null),
-    loader.loadAsync('/assets/characters/combat.glb'),
-    loader.loadAsync('/assets/characters/unarmed_a.glb'),
-    loader.loadAsync('/assets/characters/unarmed_b.glb'),
-    loader.loadAsync('/assets/characters/townsfolk_mixamo.glb').catch(() => null),
-    ...[SWORD_WEAPON, KNIFE_WEAPON, DESERTER_WEAPON, CLUB_WEAPON].map(slot => loader.loadAsync(slot.assetPath)),
+    load('/assets/characters/hero.glb'),
+    load('/assets/characters/enemy.glb'),
+    load('/assets/characters/mixamo.glb').catch(() => null),
+    load('/assets/characters/combat.glb'),
+    load('/assets/characters/unarmed_a.glb'),
+    load('/assets/characters/unarmed_b.glb'),
+    load('/assets/characters/townsfolk_mixamo.glb').catch(() => null),
+    ...[SWORD_WEAPON, KNIFE_WEAPON, DESERTER_WEAPON, CLUB_WEAPON].map(slot => load(slot.assetPath)),
   ]);
   // Walking, hits and death come from the hero's own clips; mixamo adds flying death and standing recovery.
   for (const pack of [body, huskSet, mixamo, combat, unarmedA, unarmedB, street]) if (pack) markRest(pack);
@@ -124,29 +123,28 @@ export async function loadEnemyTemplate(loader = new GLTFLoader()): Promise<Enem
     ...(street?.animations.filter(c => c.name === 'challenge_idle') ?? []),
   ];
 
-  const kit = new BodyKit(loader);
-  const variants: EnemyTemplate['variants'] = [];
+  const kit = bodyKit(loaders);
+  // Looks are rolled first, then every variant is built side by side.
+  const rolled: Array<{ config: ReturnType<typeof rollRandomCharacter>; outfit?: OutfitId; kinds?: readonly VillainKind[] }> = [];
   for (let i = 0; i < VILLAIN_VARIANTS; i++) {
     const config = rollRandomCharacter();
     if (i < 2) config.sex = i === 0 ? 'male' : 'female';
     if (config.hairStyleId === 'beard' && config.sex === 'female') config.hairStyleId = 'none';
-    variants.push({
-      model: await kit.build(sanitizeCharacterConfig(config), 'villain'),
-      clips: await kit.fitClips(config.sex, clips, 'villain'),
-      sex: config.sex,
-    });
+    rolled.push({ config });
   }
   // People from the character sheets, each worn by the kinds it was drawn for.
   for (const [outfit, sex, kinds] of SHEET_VILLAINS) {
     const config = rollRandomCharacter();
     config.sex = sex;
-    variants.push({
-      model: await kit.build(sanitizeCharacterConfig(config), 'villain', undefined, outfit),
-      clips: await kit.fitClips(sex, clips, 'villain', outfit),
-      sex,
-      kinds,
-    });
+    rolled.push({ config, outfit, kinds });
   }
+  const variants: EnemyTemplate['variants'] = await Promise.all(rolled.map(async ({ config, outfit, kinds }) => {
+    const [model, fitted] = await Promise.all([
+      kit.build(sanitizeCharacterConfig(config), 'villain', undefined, outfit),
+      kit.fitClips(config.sex, clips, 'villain', outfit),
+    ]);
+    return { model, clips: fitted, sex: config.sex, ...(kinds ? { kinds } : {}) };
+  }));
   const weapons: Record<string, Object3D> = {};
   ['sword', 'knife', 'deserter_sword', 'club'].forEach((id, i) => {
     weapons[id] = weaponAssets[i]!.scene;

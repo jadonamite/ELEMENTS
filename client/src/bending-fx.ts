@@ -1,3 +1,4 @@
+import type { Loaders } from './assets/loaders.js';
 import {
   AdditiveBlending,
   BufferGeometry,
@@ -482,12 +483,12 @@ export class BendingEffects {
     this.onFireballImpact?.(end, 'IGNIS', false);
   }
 
-  constructor(private readonly scene: Scene) {
+  constructor(private readonly scene: Scene, loaders?: Loaders) {
     this.root.name = 'BendingEffects';
     this.scene.add(this.root);
 
     this.depth = new SoftDepth(scene, this.root);
-    this.field = new FlameField(this.root, this.depth);
+    this.field = new FlameField(this.root, this.depth, loaders ? (path) => loaders.texture(path) : undefined);
     this.depth.needed = () => this.field.drawing;
     this.rings = new GroundRings(this.root, this.field.time);
     this.walls = new FireWalls(this.root, this.field.time);

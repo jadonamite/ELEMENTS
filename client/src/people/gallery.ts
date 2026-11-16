@@ -2,7 +2,7 @@ import {
   ACESFilmicToneMapping, AnimationMixer, Clock, Color, DirectionalLight, Group, HemisphereLight, Mesh,
   MeshStandardMaterial, Object3D, PerspectiveCamera, PlaneGeometry, Scene, SRGBColorSpace, WebGLRenderer,
 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loaders } from '../assets/loaders.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { fitClip } from '../body.js';
 import { fitToReference } from './rig.js';
@@ -39,7 +39,7 @@ const floor = new Mesh(new PlaneGeometry(60, 60).rotateX(-Math.PI / 2), new Mesh
 floor.receiveShadow = true;
 scene.add(floor);
 
-const loader = new GLTFLoader();
+const loader = loaders(renderer).gltf;
 const mixers: AnimationMixer[] = [];
 const spacing = 1.1;
 
