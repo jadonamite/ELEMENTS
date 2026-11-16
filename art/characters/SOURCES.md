@@ -56,3 +56,7 @@ Fighters wear the Peasant outfit from Quaternius **Modular Character Outfits - F
   `art/raw/concepts/gpt/ignis_shaper_armour_v01_{front,side,back}.png`; decimated to about 42k triangles,
   weighted to the Quaternius skeleton from the creator body, head and hands removed, leather recoloured toward the
   concept, metal kept on iron only. Textures 2K colour and normal, 1K metal-roughness, WebP.
+
+## Shipped files
+
+The GLBs in this folder are the originals. The game loads packed copies in `client/public/assets/characters/` written by `npm run assets:pack` (meshopt geometry; KTX2 textures at 1024, normal maps at 512; far bodies keep their own textures). A new or rebuilt body dropped into `client/public/assets/characters/` is taken in by the next `npm run assets:pack`, and `client/tests/asset-pack.test.mjs` fails until it is.

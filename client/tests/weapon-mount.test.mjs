@@ -50,7 +50,7 @@ test('approved GLBs contain Grip/Tip, UVs, PBR textures, unit transforms and 3â€
   const j=glb('weapons/'+name+'.glb');
   assert.ok(j.nodes.some(n=>n.name==='Grip'));assert.ok(j.nodes.some(n=>n.name==='Tip'));
   assert.ok(j.extensionsRequired.includes('EXT_meshopt_compression'));
-  assert.ok(j.images.length>=3);assert.ok(j.images.every(i=>i.mimeType==='image/webp'));
+  assert.ok(j.images.length>=3);assert.ok(j.images.every(i=>i.mimeType==='image/ktx2'));
   let triangles=0;
   for(const mesh of j.meshes)for(const p of mesh.primitives){
    triangles+=j.accessors[p.indices].count/3;assert.notEqual(p.attributes.TEXCOORD_0,undefined);

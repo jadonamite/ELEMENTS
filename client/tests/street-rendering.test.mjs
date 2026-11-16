@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
+import { NodeIO } from '@gltf-transform/core';
+import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { MeshoptDecoder } from 'meshoptimizer';
 import { BoxGeometry, MeshStandardMaterial, PerspectiveCamera, Raycaster, Vector3 } from 'three';
 import { cellLods, seeded, WorldBuilder } from '../src/world/builder.ts';
 import { surfaceColor } from '../src/world/materials.ts';
@@ -64,22 +67,22 @@ test('a shop counter opens onto its interior instead of a solid facade', () => {
 const glb = path => {const b=readFileSync(path);return {json:JSON.parse(b.subarray(20,20+b.readUInt32LE(12))),bin:b.subarray(28+b.readUInt32LE(12))};};
 const triangles = j => j.meshes.reduce((n,m)=>n+m.primitives.reduce((n,p)=>n+j.accessors[p.indices].count/3,0),0);
 
-test('offline crowd models preserve material references with fewer triangles and a valid reduced skeleton', () => {
+test('offline crowd models preserve material references with fewer triangles and a valid reduced skeleton', async () => {
+  await MeshoptDecoder.ready;
+  const io=new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({'meshopt.decoder':MeshoptDecoder});
   const root = new URL('../public/assets/characters/creator/', import.meta.url);
   for (const file of readdirSync(new URL('far/', root)).filter(f=>f.endsWith('.glb'))) {
-    const near=glb(new URL(file,root)).json, {json:far,bin}=glb(new URL(`far/${file}`,root));
+    const near=glb(new URL(file,root)).json, {json:far}=glb(new URL(`far/${file}`,root));
     assert.ok(triangles(far)<triangles(near)*0.35,file);
     assert.equal(far.skins[0].joints.length,21,file);
     const reachable=new Set(),visit=i=>{reachable.add(i);for(const c of far.nodes[i].children??[])visit(c);};
     for(const i of far.scenes[0].nodes)visit(i);
     assert.ok(far.skins[0].joints.every(i=>reachable.has(i)),`${file}: every joint is in the scene`);
-    for(const mesh of far.meshes)for(const p of mesh.primitives){
-      const a=far.accessors[p.attributes.JOINTS_0],view=far.bufferViews[a.bufferView];
-      const width=a.componentType===5121?1:2;
-      for(let i=0;i<a.count;i++)for(let k=0;k<4;k++){
-        const at=(view.byteOffset??0)+(a.byteOffset??0)+i*(view.byteStride??4*width)+k*width;
-        assert.ok((width===1?bin[at]:bin.readUInt16LE(at))<far.skins[0].joints.length,`${file}: joint index`);
-      }
+    // Joint indices read through the meshopt decoder, as the game reads them.
+    const doc=await io.read(new URL(`far/${file}`,root).pathname);
+    for(const mesh of doc.getRoot().listMeshes())for(const p of mesh.listPrimitives()){
+      const joints=p.getAttribute('JOINTS_0').getArray();
+      assert.ok(joints.every(j=>j<far.skins[0].joints.length),`${file}: joint index`);
     }
   }
 });

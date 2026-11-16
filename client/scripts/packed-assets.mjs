@@ -7,7 +7,7 @@ export const MANIFEST = 'art/packed.json';
 export const CHARACTER_TEXTURE_SIZE = 1024;
 
 /** Longest side of character and weapon normal maps, in pixels. */
-export const NORMAL_TEXTURE_SIZE = 1024;
+export const NORMAL_TEXTURE_SIZE = 512;
 
 const glb = (kind) => ({ source: /\.glb$/, out: (name) => name, kind });
 const ktx2 = (name) => name.replace(/\.\w+$/, '.ktx2');

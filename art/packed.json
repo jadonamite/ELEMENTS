@@ -1,8 +1,213 @@
 {
+  "client/public/assets/characters/creator/far/female.glb": {
+    "source": "49a95b335be9ad12",
+    "recipe": "b64792e9e72a8d52",
+    "output": "c20287e6fe85fbab"
+  },
+  "client/public/assets/characters/creator/far/hair_beard.glb": {
+    "source": "e359d4e10f92b44c",
+    "recipe": "b64792e9e72a8d52",
+    "output": "88cad6addd231878"
+  },
+  "client/public/assets/characters/creator/far/hair_buns.glb": {
+    "source": "f340433e1288f038",
+    "recipe": "b64792e9e72a8d52",
+    "output": "d0e36beb62262a52"
+  },
+  "client/public/assets/characters/creator/far/hair_buzzed_female.glb": {
+    "source": "bb2259f6e51928cd",
+    "recipe": "b64792e9e72a8d52",
+    "output": "f75bdda7a2075408"
+  },
+  "client/public/assets/characters/creator/far/hair_buzzed.glb": {
+    "source": "b582168a579402d2",
+    "recipe": "b64792e9e72a8d52",
+    "output": "d8651bb62e39dc7b"
+  },
+  "client/public/assets/characters/creator/far/hair_long.glb": {
+    "source": "8138207917aee9d5",
+    "recipe": "b64792e9e72a8d52",
+    "output": "1ee89ae1d3593b24"
+  },
+  "client/public/assets/characters/creator/far/hair_simple_parted.glb": {
+    "source": "277d4680a520bea3",
+    "recipe": "b64792e9e72a8d52",
+    "output": "bedc61f3b151487d"
+  },
+  "client/public/assets/characters/creator/far/male.glb": {
+    "source": "e04f0d7d78622785",
+    "recipe": "b64792e9e72a8d52",
+    "output": "11df2b5e501d34a8"
+  },
+  "client/public/assets/characters/creator/far/peasant_female.glb": {
+    "source": "ffa3e06c59b69de6",
+    "recipe": "b64792e9e72a8d52",
+    "output": "7eabce3d468c36d1"
+  },
+  "client/public/assets/characters/creator/far/peasant_male.glb": {
+    "source": "5be50fd43c1a92bf",
+    "recipe": "b64792e9e72a8d52",
+    "output": "75910c555a6785bb"
+  },
+  "client/public/assets/characters/creator/female.glb": {
+    "source": "7ae71a556119fa80",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "ff4cc12362d1a1f6"
+  },
+  "client/public/assets/characters/creator/hair_beard.glb": {
+    "source": "9272a28282c45f67",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "8b58e9bfe7be5342"
+  },
+  "client/public/assets/characters/creator/hair_buns.glb": {
+    "source": "8ca4770e1a2095bd",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "595889c65cc919c7"
+  },
+  "client/public/assets/characters/creator/hair_buzzed_female.glb": {
+    "source": "aeba0b538a07a6ab",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "6494bb9ba7a292d1"
+  },
+  "client/public/assets/characters/creator/hair_buzzed.glb": {
+    "source": "b5a9955211755822",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "0a1d327c6f1309d1"
+  },
+  "client/public/assets/characters/creator/hair_long.glb": {
+    "source": "e170b8c6c46a890e",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "c417880620768898"
+  },
+  "client/public/assets/characters/creator/hair_simple_parted.glb": {
+    "source": "c920a24949661e03",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "b89b09be8c2d3404"
+  },
+  "client/public/assets/characters/creator/male.glb": {
+    "source": "d954c23a801c97ba",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "786fdc618da4016b"
+  },
+  "client/public/assets/characters/creator/peasant_female.glb": {
+    "source": "bf1b1a04913fa82e",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "388376ddc20bf489"
+  },
+  "client/public/assets/characters/creator/peasant_male.glb": {
+    "source": "6315ebcde136a720",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "81984c5a36902108"
+  },
   "client/public/assets/characters/creator/peasant_worn.ktx2": {
     "source": "fddffe64183e83e5",
     "recipe": "925f967ec8325a79",
     "output": "d26cba54fa0d1ab4"
+  },
+  "client/public/assets/characters/outfits/shaper_ignis_male.glb": {
+    "source": "d44bb77c12622155",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "992cccbdb842724a"
+  },
+  "client/public/assets/characters/people/deserter_male.glb": {
+    "source": "f42788b53aada84c",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "ca1d536321538e4c"
+  },
+  "client/public/assets/characters/people/far/hush_aques_female.glb": {
+    "source": "bc4c9408b3d77f21",
+    "recipe": "b64792e9e72a8d52",
+    "output": "d5c5a9d7881e3b81"
+  },
+  "client/public/assets/characters/people/far/hush_aques_male.glb": {
+    "source": "2105dff26f45ebea",
+    "recipe": "b64792e9e72a8d52",
+    "output": "73a0767647532a30"
+  },
+  "client/public/assets/characters/people/far/hush_aura_female.glb": {
+    "source": "a456972c6fd424e1",
+    "recipe": "b64792e9e72a8d52",
+    "output": "842ef5b6b8c411ef"
+  },
+  "client/public/assets/characters/people/far/hush_aura_male.glb": {
+    "source": "bfe12b7517bc3e84",
+    "recipe": "b64792e9e72a8d52",
+    "output": "f7abb736b965b098"
+  },
+  "client/public/assets/characters/people/far/hush_ignis_female.glb": {
+    "source": "bdaf0c7395412332",
+    "recipe": "b64792e9e72a8d52",
+    "output": "e3acde2356e0d1ef"
+  },
+  "client/public/assets/characters/people/far/hush_ignis_male.glb": {
+    "source": "c2ad00d17659e560",
+    "recipe": "b64792e9e72a8d52",
+    "output": "d12c12e2499b124b"
+  },
+  "client/public/assets/characters/people/far/hush_terra_female.glb": {
+    "source": "e91cc655e2dca110",
+    "recipe": "b64792e9e72a8d52",
+    "output": "d89e228a09ffe0f4"
+  },
+  "client/public/assets/characters/people/far/hush_terra_male.glb": {
+    "source": "8f2fe524c21c785a",
+    "recipe": "b64792e9e72a8d52",
+    "output": "2227428e1286745b"
+  },
+  "client/public/assets/characters/people/hush_aques_female.glb": {
+    "source": "efc16d2999a02ea6",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "985b7051db4e1e0f"
+  },
+  "client/public/assets/characters/people/hush_aques_male.glb": {
+    "source": "1962f57ef4105543",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "672b6646c5be6f74"
+  },
+  "client/public/assets/characters/people/hush_aura_female.glb": {
+    "source": "2f0cdf21da028633",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "9b47d182babddd02"
+  },
+  "client/public/assets/characters/people/hush_aura_male.glb": {
+    "source": "8662d1e207d37904",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "a0eb8228be8547fd"
+  },
+  "client/public/assets/characters/people/hush_ignis_female.glb": {
+    "source": "b22df06a208555ea",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "473c328e9e6b989d"
+  },
+  "client/public/assets/characters/people/hush_ignis_male.glb": {
+    "source": "399769a1bd58d143",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "896b1c5f1250c876"
+  },
+  "client/public/assets/characters/people/hush_terra_female.glb": {
+    "source": "e820ac12acf41c56",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "2510a09e521be223"
+  },
+  "client/public/assets/characters/people/hush_terra_male.glb": {
+    "source": "6ba91d2b156e9d53",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "470a5d0b029f4a1f"
+  },
+  "client/public/assets/characters/people/robber_female.glb": {
+    "source": "7b9b73ff242ee862",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "72b589a33b975bcb"
+  },
+  "client/public/assets/characters/people/soldier_male.glb": {
+    "source": "8a5e70d22ed3eed8",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "e52ea8bc1c1578b6"
+  },
+  "client/public/assets/characters/people/warlord_ignis_female.glb": {
+    "source": "d2e2a5f4d051c70a",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "6b4af6b7c63f726d"
   },
   "client/public/assets/fx/fire-burst-low.ktx2": {
     "source": "8f9b9bc4bf005dfa",
@@ -33,5 +238,35 @@
     "source": "912eb5f3c65f1d16",
     "recipe": "fde545bc58475303",
     "output": "7e20a653ef252926"
+  },
+  "client/public/assets/weapons/back-scabbard.glb": {
+    "source": "6e8d7d542d8114ac",
+    "recipe": "d59d595da3bd8eed",
+    "output": "d83adb743eded969"
+  },
+  "client/public/assets/weapons/bound-club.glb": {
+    "source": "e6710d292bb0b962",
+    "recipe": "d59d595da3bd8eed",
+    "output": "faaf74556294a2ab"
+  },
+  "client/public/assets/weapons/deserter-sword.glb": {
+    "source": "bd7e3f51188b49a2",
+    "recipe": "d59d595da3bd8eed",
+    "output": "1774bc3951b89c3a"
+  },
+  "client/public/assets/weapons/long-knife.glb": {
+    "source": "e065740a8c540b8e",
+    "recipe": "d59d595da3bd8eed",
+    "output": "891e565996cdbbc3"
+  },
+  "client/public/assets/weapons/staff.glb": {
+    "source": "43a04da4820438eb",
+    "recipe": "d59d595da3bd8eed",
+    "output": "7ceaaa4e09c05f38"
+  },
+  "client/public/assets/weapons/worn-iron-sword.glb": {
+    "source": "e84eb73e3d599a31",
+    "recipe": "d59d595da3bd8eed",
+    "output": "308cabb53b8b4ace"
   }
 }
