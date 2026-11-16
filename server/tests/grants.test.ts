@@ -33,7 +33,8 @@ test('player key binding requires the implicit holder signature and stays fixed'
   assert.throws(()=>bindPlayerGrant(database,'alice',signed(),[contract]),/signed migration/);
 });
 test('a tampered grant cannot bind a key', () => {
-  const database=db();const grant=signed();grant.payload.message=grant.payload.message.replace('100','1000');
+  // Raise the coin cap itself; a plain text replace could land in the random holder key instead.
+  const database=db();const grant=signed();const terms=JSON.parse(grant.payload.message);terms.caps.CHROMA='1000';grant.payload.message=JSON.stringify(terms);
   assert.throws(()=>bindPlayerGrant(database,'alice',grant,[contract]),/Invalid grant signature/);
   assert.throws(()=>chainAccountFor('alice',{gameAccount:'game.testnet',playerSecret:'unused'},database),/no holder key/);
 });
