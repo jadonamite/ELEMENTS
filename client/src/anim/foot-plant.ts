@@ -1,4 +1,5 @@
 import { Vector3, type Bone, type BufferGeometry, type Object3D, type SkinnedMesh } from 'three';
+import { skinStride } from './skin-sample.js';
 
 /** Most the pelvis is raised to keep the body above the floor, in metres. */
 const MAX_LIFT = 0.5;
@@ -125,7 +126,7 @@ function measure(mesh: SkinnedMesh, floor: number): Fit {
   const sole: [number[], number[]] = [[], []];
   const point = new Vector3();
   const along = new Vector3();
-  for (let i = 0; i < position.count; i++) {
+  for (let i = 0; i < position.count; i += skinStride(position.count)) {
     mesh.getVertexPosition(i, point).applyMatrix4(mesh.matrixWorld);
     let bone = 0;
     let heaviest = 0;

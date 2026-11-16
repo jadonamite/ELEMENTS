@@ -6,6 +6,7 @@
 
 import {
   AnimationClip,
+  Box3,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -23,6 +24,7 @@ import {
   Vector3,
 } from 'three';
 import type { Loaders } from './assets/loaders.js';
+import { skinStride } from './anim/skin-sample.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
@@ -215,6 +217,16 @@ export class BodyKit {
 
   async preload(paths: readonly string[] = [...Object.values(BODY_PATH), ...Object.values(OUTFITS.rags.path)]): Promise<void> {
     await Promise.all(paths.map(p => this.scene(p)));
+  }
+
+  /** The files `build` reads for this configuration and outfit. */
+  files(config: CharacterConfig, outfitId: OutfitId = 'rags'): string[] {
+    const { outfit, path } = outfitFor(wornBy(config, outfitId), config.sex);
+    if (outfit.whole) return [path];
+    const person = personOf(config);
+    const style = person ? undefined : HAIR_STYLE_OPTIONS.find(h => h.id === config.hairStyleId);
+    return [path, person ? OUTFITS[person].path[config.sex]! : BODY_PATH[config.sex],
+      ...(style?.assetFile ? [`/assets/characters/creator/${style.assetFile}`] : [])];
   }
 
   private async scene(path: string): Promise<Object3D> {
@@ -411,13 +423,30 @@ const POSE_REACH = 1.6;
 /** A rig's skinned bounding sphere at rest, per source geometry: every clone of a body shares it, so it is measured once. */
 const restSpheres = new WeakMap<BufferGeometry, Sphere>();
 
+/** A skinned mesh's bounding sphere in its current pose, from an even sample of its vertices (as three measures it: box centre, farthest point). */
+function sampledSphere(rig: SkinnedMesh): Sphere {
+  rig.skeleton.update();
+  const count = rig.geometry.getAttribute('position').count;
+  const stride = skinStride(count);
+  const points = new Float32Array(Math.ceil(count / stride) * 3);
+  const box = new Box3();
+  const point = new Vector3();
+  for (let i = 0, k = 0; i < count; i += stride, k += 3) {
+    rig.getVertexPosition(i, point).toArray(points, k);
+    box.expandByPoint(point);
+  }
+  const sphere = new Sphere(box.getCenter(new Vector3()), 0);
+  let farthest = 0;
+  for (let k = 0; k < points.length; k += 3) farthest = Math.max(farthest, sphere.center.distanceToSquared(point.fromArray(points, k)));
+  sphere.radius = Math.sqrt(farthest);
+  return sphere;
+}
+
 function cullAsOneBody(group: Group, rig: SkinnedMesh): void {
   group.updateMatrixWorld(true);
   let rest = restSpheres.get(rig.geometry);
   if (!rest) {
-    rig.skeleton.update();
-    rig.computeBoundingSphere();
-    rest = rig.boundingSphere!.clone();
+    rest = sampledSphere(rig);
     restSpheres.set(rig.geometry, rest);
   }
   rig.boundingSphere = rest.clone();

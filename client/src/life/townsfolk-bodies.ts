@@ -2,6 +2,7 @@ import type { AnimationClip, Group, Mesh, Object3D } from 'three';
 import type { Loaders } from '../assets/loaders.js';
 import { bodyKit, type BodyKit, markRest } from '../body.js';
 import { mergeFarBody } from './far-body.js';
+import { inTurn } from '../world/warmup.js';
 import { sanitizeCharacterConfig } from '../creator/creator-types.js';
 import { rollLook, seeded, type Look, type PlayerPerson } from './crowd.js';
 import type { Townsperson, TownsfolkRole } from './townsfolk.js';
@@ -61,9 +62,17 @@ export class LookBodies {
       .then(sets => sets.flatMap(markRest));
   }
 
-  async build(looks: readonly Look[]): Promise<Map<string, TownsfolkBody>> {
+  /**
+   * Bodies for these looks. Side by side by default (before play, when nothing draws); `oneAFrame` fetches every
+   * file side by side, then builds the looks in turn (one a frame).
+   */
+  async build(looks: readonly Look[], oneAFrame = false): Promise<Map<string, TownsfolkBody>> {
     const clips = await this.clips;
-    return new Map(await Promise.all(looks.map(async (look): Promise<[string, TownsfolkBody]> => [look.id, await this.body(look, clips)])));
+    if (!oneAFrame) return new Map(await Promise.all(looks.map(async (look): Promise<[string, TownsfolkBody]> => [look.id, await this.body(look, clips)])));
+    await this.kit.preload([...new Set(looks.flatMap(look => this.kit.files(sanitizeCharacterConfig(look.config), look.outfit)))]);
+    const bodies = new Map<string, TownsfolkBody>();
+    for (const look of looks) bodies.set(look.id, await inTurn(() => this.body(look, clips)));
+    return bodies;
   }
 
   private async body(look: Look, clips: readonly AnimationClip[]): Promise<TownsfolkBody> {
@@ -75,24 +84,29 @@ export class LookBodies {
     model.scale.multiplyScalar(look.height * (this.children.has(look.id) ? CHILD_SCALE : 1));
     let far: Promise<TownsfolkBody> | undefined;
     return { model, clips: fitted, loadFar: () => far ??= (async () => {
-      const farModel = await this.farKit.build(config, 'hero', look.cloth, look.outfit);
-      farModel.scale.copy(model.scale);
-      farModel.traverse(n => {
-        if (!(n as Mesh).isMesh) return;
-        (n as Mesh).castShadow = false;
-        if (/^eye/i.test(n.name)) n.visible = false;
+      await this.farKit.preload(this.farKit.files(config, look.outfit));
+      // Building the far body, baking its colours and readying it to draw are three turns.
+      const farBody = await inTurn(async (): Promise<TownsfolkBody> => {
+        const farModel = await this.farKit.build(config, 'hero', look.cloth, look.outfit);
+        farModel.scale.copy(model.scale);
+        farModel.traverse(n => {
+          if (!(n as Mesh).isMesh) return;
+          (n as Mesh).castShadow = false;
+          if (/^eye/i.test(n.name)) n.visible = false;
+        });
+        const bones = new Set<string>();
+        farModel.traverse(n => { if (n.type === 'Bone') bones.add(n.name); });
+        const farFitted = await this.farKit.fitClips(config.sex, clips, 'townsfolk', look.outfit);
+        const reduced = farFitted.map(clip => {
+          const copy = clip.clone();
+          copy.tracks = copy.tracks.filter(t => bones.has(t.name.split('.')[0]!));
+          return copy;
+        });
+        return { model: farModel, clips: reduced };
       });
-      const bones = new Set<string>();
-      farModel.traverse(n => { if (n.type === 'Bone') bones.add(n.name); });
-      const farFitted = await this.farKit.fitClips(config.sex, clips, 'townsfolk', look.outfit);
-      const reduced = farFitted.map(clip => {
-        const copy = clip.clone();
-        copy.tracks = copy.tracks.filter(t => bones.has(t.name.split('.')[0]!));
-        return copy;
-      });
-      mergeFarBody(farModel);
-      await this.warm?.(farModel);
-      return { model: farModel, clips: reduced };
+      await inTurn(() => mergeFarBody(farBody.model));
+      await this.warm?.(farBody.model);
+      return farBody;
     })() };
   }
 }

@@ -1,5 +1,23 @@
 import { Vector4, type BufferGeometry, type Camera, type InstancedBufferGeometry, type InstancedMesh, type LOD, type Material, type Mesh, type Object3D, type Scene, type Texture, type WebGLRenderer, type WebGLRenderTarget } from 'three';
 
+/** Resolves at the start of the next frame. */
+export function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+let turns: Promise<unknown> = Promise.resolve();
+
+/**
+ * Runs heavy work that arrives during play (building a body, baking a far body, readying a model to draw) one
+ * piece a frame, in the order asked, whichever system asked, so pieces arriving together never share a frame.
+ * A task must not wait on another `inTurn` task.
+ */
+export function inTurn<T>(task: () => T | Promise<T>): Promise<T> {
+  const turn = turns.then(nextFrame).then(task);
+  turns = turn.catch(() => undefined);
+  return turn;
+}
+
 /** Uploads textures, compiles materials and exercises the scene's depth and shadow passes before play. */
 export async function warm(renderer: WebGLRenderer, scene: Scene, camera: Camera, object: Object3D,
   target: WebGLRenderTarget | null, onProgress?: (fraction: number) => void): Promise<void> {

@@ -10,6 +10,7 @@ import { dialogueRules } from '../../shared/src/story/dialogue.js';
 import { SpeechMemory } from '../../shared/src/story/speech.js';
 import { createArena, disposeObject, loadProps } from './scene.js';
 import { loaders } from './assets/loaders.js';
+import { inTurn } from './world/warmup.js';
 import { createZone, SPAWN } from './world/zone.js';
 import { initPhysics } from './physics.js';
 import { FpsCounter } from './fps.js';
@@ -1239,11 +1240,10 @@ async function main(): Promise<void> {
     await lifeSystem?.bringInRest().catch((error: unknown) => console.error('Townsfolk failed to load:', error));
     if (disposed) return;
     try {
-      const template = await loadEnemyTemplate(assets);
+      const template = await loadEnemyTemplate(assets, true);
       if (disposed) return;
-      const looks = new Group();
-      looks.add(...villainLooks(template));
-      await zone.warm(looks);
+      // Each look is readied on its own, one a frame.
+      for (const look of villainLooks(template)) await zone.warm(look);
       if (disposed) return;
       fight.setTemplate(template);
       villainsArrived(template);
@@ -1252,7 +1252,7 @@ async function main(): Promise<void> {
       villainsFailed(error);
     }
     if (disposed) return;
-    await bending.useFullAtlases((texture) => renderer.initTexture(texture));
+    await bending.useFullAtlases((texture) => inTurn(() => renderer.initTexture(texture)));
     if (disposed) return;
     await zone.sharpen();
   }

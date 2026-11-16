@@ -66,7 +66,7 @@ import { buildSindr, sindrGround, SPAWN } from './sindr.js';
 import { createPlants } from './trees.js';
 import { addTownPhysics } from './town-physics.js';
 import { installHaze } from './haze.js';
-import { warm } from './warmup.js';
+import { inTurn, warm } from './warmup.js';
 import { buildGorge } from './gorge.js';
 import { buildWildLands } from './wild-lands.js';
 import { buildBarrens } from './barrens.js';
@@ -263,6 +263,8 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const nationalForest = await createNationalForest({ renderer, bark: lib.get('charred_timber_beams'), low, fog, world, origin: ORIGIN });
   scene.add(nationalForest.group);
   nationalForest.update(stream.near.cells, stream.mid.cells, SPAWN);
+  // The forest ring seen from the gate is part of the first view: planted before play, built by one update.
+  const forestReady = nationalForest.plantAround(SPAWN).then(() => nationalForest.update(stream.near.cells, stream.mid.cells, SPAWN));
   const cover = createGroundCover({ ground, origin: ORIGIN, low }); scene.add(cover.mesh);
   const landAir = createLandAir({ ground, origin: ORIGIN, low }); scene.add(landAir.points);
   const map = {
@@ -344,7 +346,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   // Kit models placed as instances, one draw call per model part.
   // Entry waits for every level and surface before warming the completed scene.
   const props = new Group();
-  const ready = Promise.all([loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron')), lib.ready(), national.ready, landMap.ready])
+  const ready = Promise.all([loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron')), lib.ready(), national.ready, landMap.ready, forestReady])
     .then(() => { scene.add(props); map.ready = true; });
 
   // Post: sanitize first (stops NaN black frames), bloom only for what is brighter than sunlit ground (fire, lava, slag), grade, then anti-aliasing.
@@ -352,20 +354,20 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const depthTexture = new DepthTexture(1, 1, FloatType);
   const composer = new EffectComposer(renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthTexture }));
   composer.addPass(new RenderPass(scene, camera));
-  /** Readies an object to draw the way the scene pass draws it, before it first shows. */
-  // Lazy model detail warms against matching lights without redrawing the live town for each arriving model.
+  /**
+   * Readies an object to draw the way the scene pass draws it, before it first shows. Objects arriving after play
+   * are warmed in turn (one a frame), in one scene that holds copies of the town's lights, so their shadow maps are made once.
+   */
+  let lateScene: Scene | null = null;
   const warmUp = (object: Object3D, onProgress?: (fraction: number) => void): Promise<void> => {
     if (object === scene) return warm(renderer, scene, camera, scene, composer.renderTarget1, onProgress);
-    const modelWarmScene = new Scene(); modelWarmScene.fog = fog;
-    modelWarmScene.environment = scene.environment; modelWarmScene.environmentIntensity = scene.environmentIntensity;
-    for (const child of scene.children) if ('isLight' in child) modelWarmScene.add(child.clone());
-    return warm(renderer, modelWarmScene, camera, object, composer.renderTarget1, onProgress).finally(() => {
-      for (const light of modelWarmScene.children) {
-        const shadow = (light as DirectionalLight).shadow;
-        shadow?.map?.dispose(); shadow?.mapPass?.dispose();
-      }
-      modelWarmScene.clear();
-    });
+    if (!lateScene) {
+      lateScene = new Scene(); lateScene.fog = fog;
+      lateScene.environment = scene.environment; lateScene.environmentIntensity = scene.environmentIntensity;
+      for (const child of scene.children) if ('isLight' in child) lateScene.add(child.clone());
+    }
+    const into = lateScene;
+    return inTurn(() => warm(renderer, into, camera, object, composer.renderTarget1, onProgress));
   };
   composer.addPass(new ShaderPass(SANITIZE_SHADER));
   const bloom = new UnrealBloomPass(new Vector2(640, 360), 0.55, 0.6, 1.05);
@@ -439,6 +441,10 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       residentRoads.clear(); nationalRoadGroup.removeFromParent();
       landMap.dispose(); nationalForest.dispose(); cover.dispose(); landAir.dispose(); stream.dispose(); national.dispose(); roadMaterial.dispose(); terrainMat.dispose();
       pool.dispose();
+      for (const light of lateScene?.children ?? []) {
+        const shadow = (light as DirectionalLight).shadow;
+        shadow?.map?.dispose(); shadow?.mapPass?.dispose();
+      }
       composer.dispose();
       lib.dispose();
       envTarget.dispose();

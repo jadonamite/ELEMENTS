@@ -174,12 +174,13 @@ export class SindrLifeSystem {
   async bringInRest(): Promise<void> {
     await this.ready;
     if (this.disposed || this.restLooks.length === 0) return;
-    const bodies = await this.bodies.build(this.restLooks);
-    for (const body of bodies.values()) {
+    const bodies = await this.bodies.build(this.restLooks, true);
+    // Each look's people step into the street once its body is readied, so arrivals spread over frames.
+    for (const [id, body] of bodies) {
       if (this.disposed) return;
       await this.warm?.(body.model);
+      if (!this.disposed) this.townManager.admit(new Map([[id, body]]), this.people);
     }
-    if (!this.disposed) this.townManager.admit(bodies, this.people);
   }
 
   update(delta: number): void {

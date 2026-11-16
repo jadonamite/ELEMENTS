@@ -26,6 +26,8 @@ let shared: Loaders | null = null;
 export function loaders(renderer: WebGLRenderer): Loaders {
   if (shared) return shared;
   const ktx2 = new KTX2Loader().setTranscoderPath(TRANSCODER_PATH).detectSupport(renderer);
+  // Geometry is unpacked off the main thread too, so a file arriving during play costs no frame.
+  MeshoptDecoder.useWorkers(2);
   const gltf = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
   const files = new Map<string, Promise<GLTF>>();
   shared = {

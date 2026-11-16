@@ -9,6 +9,7 @@ import {
 } from 'three';
 import { bodyKit, markRest, type OutfitId } from './body.js';
 import type { Loaders } from './assets/loaders.js';
+import { inTurn } from './world/warmup.js';
 import { rollRandomCharacter, sanitizeCharacterConfig } from './creator/creator-types.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import balance from '../../shared/balance.json';
@@ -102,7 +103,8 @@ function huskClips(clips: AnimationClip[]): AnimationClip[] {
 }
 
 /** Villains are built from the creator's male and female bodies, each a rolled look in worn rags. */
-export async function loadEnemyTemplate(loaders: Loaders): Promise<EnemyTemplate> {
+/** `oneAFrame` (after play) fetches every file side by side, then builds the variants in turn (one a frame). */
+export async function loadEnemyTemplate(loaders: Loaders, oneAFrame = false): Promise<EnemyTemplate> {
   const load = (path: string) => loaders.model(path);
   const [body, huskSet, mixamo, combat, unarmedA, unarmedB, street, ...weaponAssets] = await Promise.all([
     load('/assets/characters/hero.glb'),
@@ -138,13 +140,19 @@ export async function loadEnemyTemplate(loaders: Loaders): Promise<EnemyTemplate
     config.sex = sex;
     rolled.push({ config, outfit, kinds });
   }
-  const variants: EnemyTemplate['variants'] = await Promise.all(rolled.map(async ({ config, outfit, kinds }) => {
+  const variant = async ({ config, outfit, kinds }: (typeof rolled)[number]): Promise<EnemyTemplate['variants'][number]> => {
     const [model, fitted] = await Promise.all([
       kit.build(sanitizeCharacterConfig(config), 'villain', undefined, outfit),
       kit.fitClips(config.sex, clips, 'villain', outfit),
     ]);
     return { model, clips: fitted, sex: config.sex, ...(kinds ? { kinds } : {}) };
-  }));
+  };
+  let variants: EnemyTemplate['variants'];
+  if (oneAFrame) {
+    await kit.preload([...new Set(rolled.flatMap(r => kit.files(sanitizeCharacterConfig(r.config), r.outfit)))]);
+    variants = [];
+    for (const r of rolled) variants.push(await inTurn(() => variant(r)));
+  } else variants = await Promise.all(rolled.map(variant));
   const weapons: Record<string, Object3D> = {};
   ['sword', 'knife', 'deserter_sword', 'club'].forEach((id, i) => {
     weapons[id] = weaponAssets[i]!.scene;

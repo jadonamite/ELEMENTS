@@ -144,8 +144,8 @@ export class FlameField {
   private qualityReady = false;
   private fullWanted = false;
   private atlasSet: 'low' | 'full' | null = null;
-  /** Puts a loaded atlas on the GPU ahead of its first draw (the renderer's initTexture). */
-  private upload: ((texture: Texture) => void) | null = null;
+  /** Puts a loaded atlas on the GPU ahead of its first draw; resolves once it is there. */
+  private upload: ((texture: Texture) => Promise<void>) | null = null;
   private textures: Texture[] = [];
   onTexturesUpdated?: () => void;
   ready: Promise<void> = Promise.resolve();
@@ -247,7 +247,7 @@ export class FlameField {
   }
 
   /** Swaps in the full-size atlases on high quality; the small ones keep drawing until all three have loaded. */
-  useFullAtlases(upload?: (texture: Texture) => void): Promise<void> {
+  useFullAtlases(upload?: (texture: Texture) => Promise<void>): Promise<void> {
     this.fullWanted = true;
     this.upload = upload ?? null;
     if (!this.low) this.loadAtlases('full');
@@ -273,15 +273,14 @@ export class FlameField {
         return null;
       }));
     }
-    // A set binds only once every atlas in it has loaded and, when an upload is given, reached the GPU one
-    // atlas a frame, so a swap never draws an atlas the GPU has not seen.
+    // A set binds only once every atlas in it has loaded and, when an upload is given, reached the GPU,
+    // so a swap never draws an atlas the GPU has not seen.
     this.ready = Promise.all(files.map(name => byName.get(name)!)).then(async (loaded) => {
       const unique = [...new Set(loaded)].filter((t): t is Texture => t !== null);
       if (this.atlasSet !== set || loaded.some(t => t === null)) { unique.forEach(t => t.dispose()); return; }
       for (const texture of unique) {
         if (!this.upload) break;
-        this.upload(texture);
-        await new Promise<void>((frame) => requestAnimationFrame(() => frame()));
+        await this.upload(texture);
         if (this.atlasSet !== set) { unique.forEach(t => t.dispose()); return; }
       }
       const textures = loaded as Texture[];

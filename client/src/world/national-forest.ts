@@ -44,6 +44,8 @@ export interface NationalForest {
   /** Live totals of what is planted round the hero. */
   stats: { cells: number; stems: number; colliders: number; far: number };
   update(near: ReadonlyMap<string, ResidentCell>, mid?: ReadonlyMap<string, ResidentCell>, localPosition?: Point3): void;
+  /** Plants every distant cell round a point ahead of play, a few milliseconds at a time; `update` then only builds them. */
+  plantAround(localPosition: Point3): Promise<void>;
   dispose(): void;
 }
 
@@ -334,6 +336,19 @@ export async function createNationalForest(options: NationalForestOptions): Prom
   const farReach = low ? 4 : FAR_REACH;
   return {
     group, stats,
+    async plantAround(localPosition) {
+      const hx = Math.floor((localPosition.x + origin.x) / SIZE), hz = Math.floor((localPosition.z + origin.z) / SIZE);
+      let slice = performance.now();
+      for (let dz = -farReach; dz <= farReach; dz++) for (let dx = -farReach; dx <= farReach; dx++) {
+        if (disposed) return;
+        const key = `${hx + dx}:${hz + dz}`;
+        if (!farSpots.has(key)) farSpots.set(key, nationalForestCell(hx + dx, hz + dz));
+        if (performance.now() - slice > 8) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          slice = performance.now();
+        }
+      }
+    },
     update(near, mid = new Map(), localPosition) {
       if (disposed) return;
       const wanted = new Map<string, { cell: ResidentCell; tier: Tier }>(), far = new Map<string, ResidentCell>();
