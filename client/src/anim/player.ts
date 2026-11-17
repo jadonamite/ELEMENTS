@@ -95,12 +95,15 @@ export class AnimationPlayer {
     return true;
   }
 
-  /** Play a clip once from the start, even when it is already the current clip. */
+  /** Play a clip once from the start, including while it is still fading out. */
   playOnce(name: string, fadeDuration = this.defaultFadeDuration): boolean {
-    if (this.currentClipName === name) {
-      this.actions.get(name)?.reset().play();
-      return true;
-    }
+    if (this.isDisposed) return false;
+    const action = this.actions.get(name);
+    if (!action) return this.play(name, fadeDuration, false);
+    action.setLoop(LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.reset().setEffectiveTimeScale(1).play();
+    if (this.currentClipName === name) return true;
     return this.play(name, fadeDuration, false);
   }
 

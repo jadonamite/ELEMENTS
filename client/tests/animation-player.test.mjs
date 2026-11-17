@@ -80,6 +80,29 @@ test('third clips and repeated interruptions retain every contributing action', 
   f.player.dispose();
 });
 
+test('playOnce restarts a clip that is still contributing to a fade-out', () => {
+  const root = new Object3D();
+  const clips = [
+    new AnimationClip('idle', 10, [new NumberKeyframeTrack('.position[x]', [0, 10], [0, 10])]),
+    new AnimationClip('attack', 1, [new NumberKeyframeTrack('.position[x]', [0, 1], [0, 10])]),
+  ];
+  const player = new AnimationPlayer(root, clips);
+  const attack = player.mixer.clipAction(clips[1]);
+
+  player.playOnce('attack', 0);
+  player.update(0.95);
+  player.play('idle', 0.1);
+  player.update(0.04);
+  assert.ok(attack.getEffectiveWeight() > 0, 'attack is still fading out');
+  assert.ok(attack.time > 0.9, 'attack is near its final pose');
+
+  player.playOnce('attack', 0.1);
+  close(attack.time, 0, 'restarted attack time');
+  player.update(0.02);
+  close(attack.time, 0.02, 'attack advances from its start');
+  player.dispose();
+});
+
 test('immediate switches, first fade, completed clips and disposal stay usable', () => {
   const f = fixture();
   f.player.play('walk');
