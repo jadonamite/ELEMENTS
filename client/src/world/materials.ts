@@ -179,6 +179,7 @@ export class SurfaceLibrary {
     // Colour = the tint's hue scaled so the textured surface lands on its target albedo.
     const color = surfaceColor(canonical);
     const material = new MeshStandardMaterial({ color, vertexColors: !look.overlay, roughness: look.roughness ?? 1, metalness: 0 });
+    material.name = canonical;
     if (look.metal) {
       material.color.setHex(look.tint ?? 0xffffff);
       material.metalness = look.metal;

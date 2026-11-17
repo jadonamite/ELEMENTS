@@ -19,6 +19,7 @@ const ktx2 = (name) => name.replace(/\.\w+$/, '.ktx2');
  *   their textures on the CPU, so positions stay float and textures stay images the browser can draw.
  * - weapon: KTX2 textures at their own size (normals at most NORMAL_TEXTURE_SIZE), meshopt geometry, positions float (grips are measured from them).
  * - image: one ETC1S KTX2 texture with mipmaps. atlas: one UASTC KTX2 effect atlas, no mipmaps.
+ * - normal: one UASTC KTX2 town normal map with mipmaps, RDO for size, linear.
  */
 export const PACKED_FOLDERS = [
   { dir: 'characters/creator', ...glb('body') },
@@ -29,4 +30,5 @@ export const PACKED_FOLDERS = [
   { dir: 'weapons', ...glb('weapon') },
   { dir: 'characters/creator', source: /^peasant_worn\.webp$/, out: ktx2, kind: 'image' },
   { dir: 'fx', source: /^fire-[a-z-]+\.png$/, out: ktx2, kind: 'atlas' },
+  { dir: 'env/ignis/materials', source: /_nor_uastc_1k\.png$/, out: ktx2, kind: 'normal' },
 ];
