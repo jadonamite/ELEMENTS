@@ -96,7 +96,17 @@ export const CRIME_CONFIG = {
 } as const;
 
 export const DEATH_CONFIG = {
-  carriedShardLossRate: economyBalance?.death?.carriedShardLossRate ?? 0.25,
+  /** With no killer (a fall, lava, a beast), only the fallen can pick up what they dropped, for this long. */
+  ownerlessMinutes: economyBalance?.death?.ownerlessMinutes ?? 5,
+  /** A player who kills another holds the drop alone for this long. */
+  killerMinutes: economyBalance?.death?.killerMinutes ?? 5,
+  /** An outlaw carries what he took this long; kill him first to take it back, after that it is the world's. */
+  outlawHoldMinutes: economyBalance?.death?.outlawHoldMinutes ?? 10,
+} as const;
+
+/** Travel between lit shrines: shards go by road, and only a little coin goes along. */
+export const TRAVEL_CONFIG = {
+  coinAllowance: economyBalance?.travel?.coinAllowance ?? 25,
 } as const;
 
 export const DROPS_CONFIG = {

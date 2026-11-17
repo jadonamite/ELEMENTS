@@ -107,36 +107,39 @@ export function monsterDrop(
 }
 
 /**
- * Dying out in the world drops all carried materials and 25% of carried shards.
- * Coin stays with the player.
+ * Dying drops every carried shard and all carried coin, nothing else: materials, food and gear stay with
+ * the player, and coin in the bank is never carried.
  */
 export function deathDrop(carried: CarriedLootInput): LootContents {
-  const droppedShards = createEmptyShards();
-  const lossRate = DEATH_CONFIG.carriedShardLossRate;
-
+  const shards = createEmptyShards();
   if (typeof carried.shards === 'number') {
-    const count = Math.floor(Math.max(0, carried.shards) * lossRate);
-    droppedShards.IGNIS = count;
+    shards.IGNIS = Math.max(0, Math.floor(carried.shards));
   } else if (carried.shards && typeof carried.shards === 'object') {
-    for (const col of COLOURS) {
-      const count = Math.max(0, carried.shards[col] ?? 0);
-      droppedShards[col] = Math.floor(count * lossRate);
-    }
+    for (const col of COLOURS) shards[col] = Math.max(0, Math.floor(carried.shards[col] ?? 0));
   }
-
-  let droppedMaterials: Record<string, number> = {};
-  if (typeof carried.materials === 'number') {
-    droppedMaterials = { material: Math.max(0, carried.materials) };
-  } else if (carried.materials && typeof carried.materials === 'object') {
-    droppedMaterials = { ...carried.materials };
-  }
-
-  return {
-    chroma: 0,
-    shards: droppedShards,
-    materials: droppedMaterials,
-  };
+  return { chroma: Math.max(0, Math.floor(carried.chroma ?? 0)), shards, materials: {} };
 }
+
+/** Who ended a player: another player, an in-game outlaw (robber or villain), or nobody (a fall, lava, a beast). */
+export type Killer = { kind: 'player'; accountId: string } | { kind: 'outlaw'; id: string } | { kind: 'none' };
+
+/**
+ * Where a death's drop goes, by who caused it. A player killer holds it alone for a while; an outlaw carries
+ * it until he is killed or his hold runs out; with no killer it waits where the player fell, for them alone.
+ */
+export function deathClaim(killer: Killer, fallenId: string): { ownerId: string; ownerSeconds: number; expireMinutes: number } {
+  if (killer.kind === 'player') {
+    return { ownerId: killer.accountId, ownerSeconds: DEATH_CONFIG.killerMinutes * 60, expireMinutes: DEATH_CONFIG.killerMinutes + DROPS_CONFIG.expireMinutes };
+  }
+  if (killer.kind === 'outlaw') {
+    return { ownerId: outlawHolder(killer.id), ownerSeconds: DEATH_CONFIG.outlawHoldMinutes * 60, expireMinutes: DEATH_CONFIG.outlawHoldMinutes };
+  }
+  return { ownerId: fallenId, ownerSeconds: DEATH_CONFIG.ownerlessMinutes * 60, expireMinutes: DEATH_CONFIG.ownerlessMinutes };
+}
+
+/** The owner id an outlaw holds a pile under; nobody can claim it while he lives. */
+export const outlawHolder = (enemyId: string): string => `outlaw:${enemyId}`;
+export const isOutlawHolder = (ownerId: string | null): boolean => ownerId?.startsWith('outlaw:') ?? false;
 
 /**
  * Calculates both dropped loot and retained loot upon player death.
@@ -164,9 +167,9 @@ export function calculateDeathDropResolution(carried: CarriedLootInput): {
   return {
     dropped,
     retained: {
-      chroma: Math.max(0, carried.chroma ?? 0),
+      chroma: Math.max(0, (carried.chroma ?? 0) - dropped.chroma),
       shards: retainedShards,
-      materials: {},
+      materials: typeof carried.materials === 'object' && carried.materials ? { ...carried.materials } : {},
     },
   };
 }
