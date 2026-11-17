@@ -164,6 +164,7 @@ export async function loadEnemyTemplate(loaders: Loaders, oneAFrame = false): Pr
 export interface Quarry { position: Vector3; alive: boolean }
 
 export class Enemy {
+  readonly id: string;
   readonly model: Object3D;
   readonly anim: AnimationPlayer;
   readonly controller: HeroController;
@@ -205,7 +206,9 @@ export class Enemy {
     maxHealth: number,
     kind: VillainKind = 'brawler',
     bounded = Math.hypot(spawn.x, spawn.z) <= (balance.arena.size / 2),
+    id?: string,
   ) {
+    this.id = id ?? `enemy_${Math.random().toString(36).slice(2, 9)}`;
     const own = template.variants.filter(v => v.kinds?.includes(kind));
     const pool = own.length ? own : template.variants.filter(v => !v.kinds);
     const variant = pool[Math.floor(Math.random() * pool.length)]!;

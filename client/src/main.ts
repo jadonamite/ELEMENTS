@@ -58,6 +58,7 @@ import type { Quarry } from './enemy.js';
 import { CombatSpace } from './attacks/space.js';
 import { hasGameServer } from './auth/server-api.js';
 import type { OnlineSession } from './net/online.js';
+import { ShrineState } from './shrine-state.js';
 import { LEGACY_SINDR_ORIGIN, regionFor, SINDR_SPAWN, toGlobal } from '../../shared/src/index.js';
 import type { NetEnemy } from './net/puppets.js';
 import { isTownMode } from './world-mode.js';
@@ -303,6 +304,7 @@ async function main(): Promise<void> {
   let hitStop = 0;
   let hurtAt = -Infinity;
   let reviveIn = 0;
+  let fallPosition: Vector3 | null = null;
   let slowMotion = 0;
   /** Slow motion only where it earns its place: a kill, the last foe, an ultimate landing. Ordinary hits keep the hit-stop. */
   /** Foes within this many metres count toward the wide crowd view. */
@@ -367,13 +369,14 @@ async function main(): Promise<void> {
       if (p.side === 'hero' && kitElement !== 'IGNIS' && p.end) bending.spawnHitBurst(p.end.at, heroElement);
       if (p.end?.reason === 'world') sound.playImpact(false, true);
     },
-    heroDied() {
+    heroDied(killer) {
       combat.react('death');
       fightHud.say('You fell');
       shoulderCamera.shake(0.4);
       sound.playThump(50, 0.6, 0.7);
       reviveIn = balance.hero.respawnSeconds;
-      townEconomy?.heroDied(controller.position.clone());
+      fallPosition = controller.position.clone();
+      townEconomy?.heroDied(controller.position.clone(), killer);
     },
     heroParried() {
       sustain.parried();
@@ -396,7 +399,7 @@ async function main(): Promise<void> {
       if (elemental) bending.spawnHitBurst(pos, heroElement);
       else bending.spawnImpact(pos, sword.armed);
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
-      if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone(), _enemy.element);
+      if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone(), _enemy.element, _enemy.id);
       if (killed) markKill(fight.allDead);
       else if (combat.current === 'ultimate') {
         slowMotion = Math.max(slowMotion, ULTIMATE_SLOW_SECONDS);
@@ -685,6 +688,7 @@ async function main(): Promise<void> {
     status(text);
     hudLine(text, 1600);
   };
+  const shrineState = new ShrineState({ onNotice: notice });
   // Street villains speak through the same speech rules as the townsfolk, in their body's voice.
   const streetSpeech = new SpeechMemory();
   const villainSay = (speaker: Enemy, concept: string): void => {
@@ -1173,6 +1177,7 @@ async function main(): Promise<void> {
           combat.react('death');
           fightHud.say('You fell');
           reviveIn = balance.hero.respawnSeconds;
+          fallPosition = controller.position.clone();
         } else if (hp > 0) {
           sound.playHeroHurt();
           if (!combat.current) combat.react('hit');
@@ -1183,6 +1188,19 @@ async function main(): Promise<void> {
       onNotice: notice,
       onTier: applyTier,
       onOutfit: (outfit) => { void hero.switchOutfit(parseOutfit(outfit)); },
+      onShrines: (lit) => shrineState.setOnlineLit(lit),
+      onShrineLit: (shrineId) => shrineState.onOnlineShrineLit(shrineId),
+      onRevived: (_position, facing) => {
+        fight.reviveHero();
+        combat.reset();
+        sustain.reset();
+        fightHud.say('');
+        reviveIn = 0;
+        if (typeof facing === 'number') {
+          controller.facing = facing;
+          shoulderCamera.yaw = facing + Math.PI;
+        }
+      },
       clock: zone?.clock,
     }, {
       server: getServerUrl(),
@@ -1338,9 +1356,9 @@ async function main(): Promise<void> {
       fight.healHero(mending.perSecond * step);
     }
     const inLightning = performance.now() < lightningBareUntil;
+    const threatened = !heldCalm && fight.nearestDistance(controller.position) < balance.stance.engageRadius;
     if (fightingStyle === 'weapon' && !inLightning) {
       // Stay drawn while fighting or with a villain close by; sheathe after a quiet spell.
-      const threatened = !heldCalm && fight.nearestDistance(controller.position) < balance.stance.engageRadius;
       if ((combat.current && combat.current !== 'dodge') || combat.blocking || pending || threatened) {
         calmIn = balance.stance.calmAfterSeconds;
       }
@@ -1360,17 +1378,20 @@ async function main(): Promise<void> {
     const hx = controller.position.x, hz = controller.position.z;
     shoulderCamera.crowd = fight.enemies.filter((e) => e.alive && !e.challenging
       && Math.hypot(e.controller.position.x - hx, e.controller.position.z - hz) < CROWD_RADIUS).length >= 3;
-    if (reviveIn > 0 && (reviveIn -= delta) <= 0) {
+    if (!playingOnline && reviveIn > 0 && (reviveIn -= delta) <= 0) {
       fight.reviveHero();
       combat.reset();
       sustain.reset();
       fightHud.say('');
       if (zone) {
-        controller.place(SPAWN.x, 0, SPAWN.z);
-        controller.facing = SPAWN.facing;
-        shoulderCamera.yaw = SPAWN.facing + Math.PI;
+        const spot = shrineState.wakeSpot(fallPosition ?? controller.position);
+        controller.place(spot.x, spot.y, spot.z);
+        controller.facing = spot.facing;
+        shoulderCamera.yaw = spot.facing + Math.PI;
       }
     }
+    const inFight = threatened || sword.engaged || (combat.current !== null && combat.current !== 'dodge');
+    shrineState.update(delta, controller.position, inFight, playingOnline);
     if (!picking) nationalEncounters?.update(delta, controller.position, nightness.value);
     if (zone) {
       const yardDist = Math.hypot(controller.position.x - 124, controller.position.z - -36);

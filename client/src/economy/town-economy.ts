@@ -413,22 +413,29 @@ export class TownEconomy {
     room.send('econ_sync', {});
   }
 
-  enemyKilled(kind: string, at: Vector3, nation?: string): void {
+  enemyKilled(kind: string, at: Vector3, nation?: string, enemyId?: string): void {
     if (!this.enabled || this.door.online) return;
-    reportKill(LOOT_KIND[kind] ?? kind, at.x, at.z, this.zone, nation ?? this.nation)
-      .then((pile) => {
-        if (!pile) return;
-        this.loot?.add(pile);
-        this.events.lootDropped?.(pile.x, pile.z);
+    reportKill(LOOT_KIND[kind] ?? kind, at.x, at.z, this.zone, nation ?? this.nation, enemyId)
+      .then((res) => {
+        if (res.pile) {
+          this.loot?.add(res.pile);
+          this.events.lootDropped?.(res.pile.x, res.pile.z);
+        }
+        if (res.releasedPiles) {
+          for (const p of res.releasedPiles) {
+            this.loot?.add(p);
+            this.events.lootDropped?.(p.x, p.z);
+          }
+        }
       })
       .catch(() => {
         // No drop: the server refused (production, or too many kills too fast).
       });
   }
 
-  heroDied(at: Vector3): void {
+  heroDied(at: Vector3, killer?: { id?: string; kind: string }): void {
     if (!this.enabled || this.door.online) return;
-    reportDeath(at.x, at.z, this.zone)
+    reportDeath(at.x, at.z, this.zone, killer)
       .then((pile) => {
         if (!pile) return this.refresh();
         this.loot?.add(pile);

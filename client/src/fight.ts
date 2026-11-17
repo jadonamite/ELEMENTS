@@ -54,10 +54,14 @@ export interface HeroView {
   weaponSlot?: WeaponSlotData;
 }
 
+export type FightKiller = { id?: string; kind: string };
+
 export interface FightEvents {
   /** The hero was hit; `blocked` when the guard took most of it. */
-  heroHit(blocked: boolean): void;
-  heroDied(): void;
+  heroHit(blocked: boolean, by?: FightKiller): void;
+  heroDied(killer?: FightKiller): void;
+  /** Life changed on a hit nothing stopped. */
+  onHurt?(hp: number, max: number, damage: number, by?: FightKiller): void;
   /** A projectile left a hand; the scene draws it following `p.position` until `p.done`. */
   projectileLaunched?(p: Projectile): void;
   /** A projectile ended against the world, a body, or ran out of range. */
@@ -183,6 +187,7 @@ export class Fight {
 
   /** The villain bodies; in town they arrive after play starts, so a fight starts only once they are here. */
   private template: EnemyTemplate | null;
+  private lastStriker: FightKiller | null = null;
 
   constructor(
     template: EnemyTemplate | null,
@@ -512,7 +517,8 @@ export class Fight {
       if (cast) {
         const origin = chest(cast.origin).addScaledVector(new Vector3(Math.sin(cast.facing), 0, Math.cos(cast.facing)), 0.8);
         this.throw(launch({ side: 'villain', element: (cast.element as Element), move: 'cast', damage: cast.damage,
-          origin, direction: chest(hero.position, this.a).sub(origin), speed: cast.speed, radius: 0.3, range: cast.range }));
+          origin, direction: chest(hero.position, this.a).sub(origin), speed: cast.speed, radius: 0.3, range: cast.range,
+          shooter: { id: enemy.id, kind: enemy.kind } }));
       }
       if (!landed) {
         if (enemy.attacking && !this.attacker) this.attacker = enemy;
@@ -526,14 +532,14 @@ export class Fight {
         this.events.wallBlocked?.(from.clone().addScaledVector(to.sub(from).normalize(), blockedAt));
         continue;
       }
-      this.strikeHero(enemy.controller.position, enemy.attackDamage || tuning.attackDamage, enemy.element as Element | undefined, combat, hero, enemy);
+      this.strikeHero(enemy.controller.position, enemy.attackDamage || tuning.attackDamage, enemy.element as Element | undefined, combat, hero, enemy, { id: enemy.id, kind: enemy.kind });
     }
     for (const entry of this.packs) {
       entry.pack.update(dt, {
         position: hero.position, alive: this.heroAlive,
         takeHit: (damage, source) => {
           if (this.space.clear(chest(source), chest(hero.position), 0.15)) {
-            this.strikeHero(source, damage, undefined, combat, hero, null);
+            this.strikeHero(source, damage, undefined, combat, hero, null, { kind: 'hound' });
           }
         },
       });
@@ -551,7 +557,7 @@ export class Fight {
         position: hero.position, alive: this.heroAlive,
         takeHit: (damage, source) => {
           if (this.space.clear(chest(source), chest(hero.position), 0.15)) {
-            this.strikeHero(source, damage, undefined, combat, hero, null);
+            this.strikeHero(source, damage, undefined, combat, hero, null, { kind: 'monster' });
           }
         },
       });
@@ -639,7 +645,7 @@ export class Fight {
    * The one judge for anything that reaches the hero: dodge, parry (melee only), guard, elemental counter, then damage.
    * A guard takes the whole hit; life drops only on a hit nothing stopped.
    */
-  private strikeHero(source: Vector3, rawDamage: number, element: Element | undefined, combat: Combat, hero: HeroView, melee: Enemy | null): void {
+  private strikeHero(source: Vector3, rawDamage: number, element: Element | undefined, combat: Combat, hero: HeroView, melee: Enemy | null, striker?: FightKiller): void {
     if (!this.heroAlive || combat.invulnerable) return;
     const guarded = combat.blocking && inFront(hero.position, hero.facing, source, balance.hero.blockAngle);
     if (melee && guarded && combat.blockAge <= rules.parryWindow(this.kit.hush)) {
@@ -648,15 +654,21 @@ export class Fight {
       return;
     }
     const damage = rules.calculateDamage(rawDamage, this.heroArmour);
-    if (guarded && (this.guardSoak?.(damage) ?? 'held') === 'held') { this.events.heroHit(true); return; }
+    const resolvedStriker = striker ?? (melee ? { id: melee.id, kind: melee.kind } : undefined);
+    if (guarded && (this.guardSoak?.(damage) ?? 'held') === 'held') { this.events.heroHit(true, resolvedStriker); return; }
     if (!guarded && element && this.isAttackCountered?.(element)) { this.events.elementBlocked?.(source); return; }
+    this.lastStriker = resolvedStriker ?? null;
     this.heroHealth = rules.applyDamage(this.heroHealth, damage);
     if (damage >= 14) {
       // Heavy unblocked trauma leaves scars that water healing cannot close.
       this.heroHealth = rules.inflictScars(this.heroHealth, Math.max(1, Math.round(damage * 0.18)));
     }
-    if (rules.isDead(this.heroHealth)) this.events.heroDied();
-    else this.events.heroHit(false);
+    if (rules.isDead(this.heroHealth)) {
+      this.events.heroDied(this.lastStriker ?? undefined);
+    } else {
+      this.events.heroHit(false, this.lastStriker ?? undefined);
+      this.events.onHurt?.(this.heroHealth.current, this.heroHealth.maximum, damage, this.lastStriker ?? undefined);
+    }
   }
 
   private throw(p: Projectile): void {
@@ -674,7 +686,7 @@ export class Fight {
       const before = p.done;
       const hit = advance(p, dt, this.space, targets);
       if (p.side === 'villain' && p.end?.reason === 'body' && !before) {
-        this.strikeHero(p.origin, p.damage, p.element, combat, hero, null);
+        this.strikeHero(p.origin, p.damage, p.element, combat, hero, null, p.shooter);
       } else if (hit && hit.key !== 'hero') {
         this.landHeroMove(hit.key, p.move, p.origin, p.lit, p.swingAt, p.scale, p.chained, p.end?.at);
       }
@@ -882,6 +894,7 @@ export class Fight {
     this.heroHealth = rules.createHealth(balance.hero.maxHealth);
     this.heroState = rules.createActionState();
     this.attacker = null;
+    this.lastStriker = null;
 
     // Restart the current round attempt
     this.clearPacks();
