@@ -229,6 +229,66 @@
     "recipe": "d9aec5a0ce3a341f",
     "output": "15ce3824d933413b"
   },
+  "client/public/assets/env/ignis/materials/ash_cinder_ground_nor_uastc_1k.ktx2": {
+    "source": "9d6e70ee9a9cba00",
+    "recipe": "25f9906deca87bca",
+    "output": "87eeb28c26944549"
+  },
+  "client/public/assets/env/ignis/materials/ashlar_stone_blocks_nor_uastc_1k.ktx2": {
+    "source": "f2d87a3f9db948ad",
+    "recipe": "25f9906deca87bca",
+    "output": "beadbefe3e8283e7"
+  },
+  "client/public/assets/env/ignis/materials/basalt_cobblestone_nor_uastc_1k.ktx2": {
+    "source": "820f3dbb1920f16e",
+    "recipe": "25f9906deca87bca",
+    "output": "209f33d030bfae3b"
+  },
+  "client/public/assets/env/ignis/materials/basalt_rock_face_nor_uastc_1k.ktx2": {
+    "source": "f0f90366cb6242a6",
+    "recipe": "25f9906deca87bca",
+    "output": "a0e5cc8c0a7fceb4"
+  },
+  "client/public/assets/env/ignis/materials/blackened_rusted_iron_nor_uastc_1k.ktx2": {
+    "source": "5fd85caa64473a02",
+    "recipe": "25f9906deca87bca",
+    "output": "a1acb29fe58b33a8"
+  },
+  "client/public/assets/env/ignis/materials/charred_timber_beams_nor_uastc_1k.ktx2": {
+    "source": "3e7ca13568529693",
+    "recipe": "25f9906deca87bca",
+    "output": "8945aacf5ffea676"
+  },
+  "client/public/assets/env/ignis/materials/clean_plaster_nor_uastc_1k.ktx2": {
+    "source": "599e04575a9cc96f",
+    "recipe": "25f9906deca87bca",
+    "output": "af5d078f5f6d139c"
+  },
+  "client/public/assets/env/ignis/materials/cooled_lava_crust_nor_uastc_1k.ktx2": {
+    "source": "341502f249d0caab",
+    "recipe": "25f9906deca87bca",
+    "output": "e67d2d76038325ba"
+  },
+  "client/public/assets/env/ignis/materials/packed_dirt_road_nor_uastc_1k.ktx2": {
+    "source": "ecf0ac922f24f4c7",
+    "recipe": "25f9906deca87bca",
+    "output": "1bde750c5553d0c4"
+  },
+  "client/public/assets/env/ignis/materials/roof_slates_nor_uastc_1k.ktx2": {
+    "source": "e233a0d3b6335251",
+    "recipe": "25f9906deca87bca",
+    "output": "ebfe88f29d1737eb"
+  },
+  "client/public/assets/env/ignis/materials/sooted_plaster_nor_uastc_1k.ktx2": {
+    "source": "f8860b3270aca371",
+    "recipe": "25f9906deca87bca",
+    "output": "b808889ced711c13"
+  },
+  "client/public/assets/env/ignis/materials/worn_flagstones_nor_uastc_1k.ktx2": {
+    "source": "dcaab2b5d623da4d",
+    "recipe": "25f9906deca87bca",
+    "output": "67f53609117523d3"
+  },
   "client/public/assets/fx/fire-burst-low.ktx2": {
     "source": "8f9b9bc4bf005dfa",
     "recipe": "fde545bc58475303",
