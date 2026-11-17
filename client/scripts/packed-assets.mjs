@@ -13,11 +13,11 @@ export const NORMAL_TEXTURE_SIZE = 512;
 export const CLOSE_UP_TEXTURE_SIZE = 2048;
 export const CLOSE_UP_NORMAL_SIZE = 1024;
 
-const glb = (kind) => ({ source: /\.glb$/, out: (name) => name, kind });
+const glb = (kind) => ({ source: /\.glb$/, out: (name) => name, kind, glb: true });
 const ktx2 = (name) => name.replace(/\.\w+$/, '.ktx2');
 
 /**
- * Folders under client/public/assets; originals live under art/ at the same path. Kinds:
+ * Folders under client/public/assets (`glb` marks the folders of models); originals live under art/ at the same path. Kinds:
  * - body: KTX2 textures at CHARACTER_TEXTURE_SIZE (normals at NORMAL_TEXTURE_SIZE), meshopt geometry, positions quantised over the whole file.
  * - far: meshopt geometry only. Far bodies merge parts of different files into one mesh and bake colour from
  *   their textures on the CPU, so positions stay float and textures stay images the browser can draw.

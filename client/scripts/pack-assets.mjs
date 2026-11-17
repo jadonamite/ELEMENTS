@@ -125,7 +125,7 @@ const manifest = outDir ? {} : JSON.parse(existsSync(manifestPath) ? await readF
 const report = [];
 
 for (const folder of PACKED_FOLDERS) {
-  if (outDir && !folder.source.test('.glb')) continue;
+  if (outDir && !folder.glb) continue;
   const publicDir = join(PUBLIC, folder.dir);
   const artDir = join(ART, folder.from ?? folder.dir);
   // Adopt: a source-format file in public/ that this script did not write is the new original.
@@ -152,7 +152,7 @@ for (const folder of PACKED_FOLDERS) {
     if (!force && !outDir && known && known.source === entry.source && known.recipe === entry.recipe
       && known.output === await hashFile(output)) continue;
     const before = (await stat(source)).size;
-    if (folder.source.test('.glb')) await packGlb(source, output, folder.kind);
+    if (folder.glb) await packGlb(source, output, folder.kind);
     else await packImage(source, output, folder.kind);
     const after = (await stat(output)).size;
     if (!outDir) manifest[key] = { ...entry, output: await hashFile(output) };
