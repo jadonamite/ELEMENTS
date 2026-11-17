@@ -83,6 +83,52 @@ test('globalMapMarkup includes shrines and fast travel markup', async () => {
   assert.ok(html.includes('atlas-travel-wrap'));
   assert.ok(html.includes('Fast Travel'));
   assert.ok(html.includes('atlas-travel-hint'));
+  assert.ok(html.includes('atlas-drop-wrap'));
+});
+
+test('WaypointMarker tracks death drop target and outlaw holder', async () => {
+  const originals = { document: globalThis.document, window: globalThis.window };
+  const mockElements = [];
+  globalThis.document = {
+    createElement: (tag) => {
+      const el = { tag, style: {}, innerHTML: '', id: '', className: '', remove: () => {} };
+      mockElements.push(el);
+      return el;
+    },
+    body: { appendChild: () => {} },
+  };
+  globalThis.window = { innerWidth: 1920, innerHeight: 1080 };
+
+  try {
+    const { Scene, Camera, Vector3 } = await import('three');
+    const { WaypointMarker } = await import('../src/story/waypoint-marker.ts');
+    const scene = new Scene();
+    const marker = new WaypointMarker(scene);
+
+    let expiredCalled = false;
+    marker.setDropTarget({
+      kind: 'outlaw',
+      title: 'Hunt Outlaw: Recover Drop',
+      getPosition: () => ({ x: 10, y: 0, z: 20 }),
+      expiresAt: Date.now() + 600000,
+      onExpired: () => { expiredCalled = true; },
+    });
+
+    assert.ok(marker.activeDropTarget);
+    assert.equal(marker.activeDropTarget.title, 'Hunt Outlaw: Recover Drop');
+
+    const camera = new Camera();
+    marker.update(0.016, camera, new Vector3(0, 0, 0));
+
+    // Clearing drop target removes active target
+    marker.setDropTarget(null);
+    assert.equal(marker.activeDropTarget, null);
+
+    marker.dispose();
+  } finally {
+    globalThis.document = originals.document;
+    globalThis.window = originals.window;
+  }
 });
 
 test('shrine travel rules: refusal with bounty, in fight, with shards, or high coin', async () => {

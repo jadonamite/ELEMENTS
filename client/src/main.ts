@@ -59,6 +59,7 @@ import { CombatSpace } from './attacks/space.js';
 import { hasGameServer } from './auth/server-api.js';
 import type { OnlineSession } from './net/online.js';
 import { ShrineState } from './shrine-state.js';
+import type { WaypointDropTarget } from './story/waypoint-marker.js';
 import { LEGACY_SINDR_ORIGIN, regionFor, SINDR_SPAWN, shrineById, toGlobal, travelRefusal } from '../../shared/src/index.js';
 import type { NetEnemy } from './net/puppets.js';
 import { isTownMode } from './world-mode.js';
@@ -318,6 +319,7 @@ async function main(): Promise<void> {
   };
   let lockedEnemy: Enemy | null = null;
   let onlineSession: OnlineSession | null = null;
+  let activeDropTarget: WaypointDropTarget | null = null;
   let remoteLock: NetEnemy | null = null;
   /** A 90° step in place: standing, the camera swings past this and the body turns to follow it. */
   let turnStep: { clip: 'turn_l' | 'turn_r'; from: number; to: number; startedAt: number; span: number } | null = null;
@@ -377,6 +379,38 @@ async function main(): Promise<void> {
       reviveIn = balance.hero.respawnSeconds;
       fallPosition = controller.position.clone();
       townEconomy?.heroDied(controller.position.clone(), killer);
+
+      const isOutlaw = killer && (killer.kind === 'robber' || killer.kind === 'villain');
+      const robber = isOutlaw && killer?.id ? fight.enemies.find(e => e.id === killer.id && e.alive) : null;
+      if (robber && killer?.id) {
+        const holdDuration = (balance.economy?.death?.outlawHoldMinutes ?? 10) * 60 * 1000;
+        const targetRobber = robber;
+        activeDropTarget = {
+          kind: 'outlaw',
+          title: 'Hunt Outlaw: Recover Drop',
+          enemyId: killer.id,
+          getPosition: () => ({ x: targetRobber.controller.position.x, y: targetRobber.controller.position.y, z: targetRobber.controller.position.z }),
+          expiresAt: Date.now() + holdDuration,
+          onExpired: () => {
+            activeDropTarget = null;
+            lifeSystem?.waypointMarker.setDropTarget(null);
+          },
+        };
+      } else {
+        const claimDuration = (balance.economy?.death?.ownerlessMinutes ?? 5) * 60 * 1000;
+        const dropPos = controller.position.clone();
+        activeDropTarget = {
+          kind: 'drop',
+          title: 'Recover Drop',
+          getPosition: () => ({ x: dropPos.x, y: dropPos.y, z: dropPos.z }),
+          expiresAt: Date.now() + claimDuration,
+          onExpired: () => {
+            activeDropTarget = null;
+            lifeSystem?.waypointMarker.setDropTarget(null);
+          },
+        };
+      }
+      lifeSystem?.waypointMarker.setDropTarget(activeDropTarget);
     },
     heroParried() {
       sustain.parried();
@@ -400,6 +434,22 @@ async function main(): Promise<void> {
       else bending.spawnImpact(pos, sword.armed);
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
       if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone(), _enemy.element, _enemy.id);
+      if (killed && activeDropTarget?.kind === 'outlaw' && activeDropTarget.enemyId === _enemy.id) {
+        const dropPos = _enemy.controller.position.clone();
+        const claimDuration = (balance.economy?.death?.ownerlessMinutes ?? 5) * 60 * 1000;
+        activeDropTarget = {
+          kind: 'drop',
+          title: 'Recover Drop',
+          getPosition: () => ({ x: dropPos.x, y: dropPos.y, z: dropPos.z }),
+          expiresAt: Date.now() + claimDuration,
+          onExpired: () => {
+            activeDropTarget = null;
+            lifeSystem?.waypointMarker.setDropTarget(null);
+          },
+        };
+        lifeSystem?.waypointMarker.setDropTarget(activeDropTarget);
+        notice('Outlaw fell: collect your goods');
+      }
       if (killed) markKill(fight.allDead);
       else if (combat.current === 'ultimate') {
         slowMotion = Math.max(slowMotion, ULTIMATE_SLOW_SECONDS);
@@ -718,6 +768,10 @@ async function main(): Promise<void> {
     },
     lootDropped: (x, z) => lifeSystem?.witness('loot_dropped', new Vector3(x, controller.position.y, z)),
     talkToKeeper: (merchantId) => { lifeSystem?.talkToKeeper(merchantId); },
+    lootClaimed: () => {
+      activeDropTarget = null;
+      lifeSystem?.waypointMarker.setDropTarget(null);
+    },
     wornChanged: (worn) => {
       void hero.switchOutfit(parseOutfit(worn.outfit));
       fight.setHeroArmour(worn.armour);
@@ -757,6 +811,7 @@ async function main(): Promise<void> {
     onOpenPicker: () => picker?.open(true),
     onOpenCreator: () => picker?.open(true),
     shrineState,
+    getDropTarget: () => activeDropTarget,
     getPlayerPosition: () => ({ x: controller.position.x, y: controller.position.y, z: controller.position.z }),
     getTravelState: () => {
       const inFight = sword.engaged || (combat.current !== null && combat.current !== 'dodge') || fight.nearestDistance(controller.position) < balance.stance.engageRadius;

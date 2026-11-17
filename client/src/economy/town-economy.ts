@@ -57,6 +57,8 @@ export interface TownEconomyEvents {
   lootDropped?(x: number, z: number): void;
   /** Opens a talk with a shop's keeper, from the shop window. */
   talkToKeeper?(merchantId: string): void;
+  /** A loot pile was claimed. */
+  lootClaimed?(pileId: string): void;
 }
 
 export class TownEconomy {
@@ -106,7 +108,9 @@ export class TownEconomy {
       satchelChanged: () => void this.refresh(),
       claim: async (pileId, x, z) => {
         try {
-          return await this.door.claim(pileId, x, z);
+          const res = await this.door.claim(pileId, x, z);
+          this.events.lootClaimed?.(pileId);
+          return res;
         } catch (err) {
           if (err instanceof EconomyError && (err.status === 403 || /reserved for fight victor/.test(err.message))) {
             throw err;
@@ -121,6 +125,7 @@ export class TownEconomy {
               this.items[k] = (this.items[k] ?? 0) + v;
             }
             this.known = true;
+            this.events.lootClaimed?.(pileId);
             return pile.contents;
           }
           throw err;

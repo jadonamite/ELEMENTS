@@ -6,6 +6,7 @@ import {
   shrineAt,
 } from '../../../shared/src/index.js';
 import type { ShrineState } from '../shrine-state.js';
+import type { WaypointDropTarget } from '../story/waypoint-marker.js';
 export type MapRegion = 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA' | 'CHROMARA';
 
 export interface GlobalMapOptions {
@@ -14,6 +15,7 @@ export interface GlobalMapOptions {
   shrineState?: ShrineState | undefined;
   getPlayerPosition?: (() => { x: number; y: number; z: number }) | undefined;
   getTravelState?: (() => { inFight: boolean; bounty: boolean; shards: number; coin: number }) | undefined;
+  getDropTarget?: (() => WaypointDropTarget | null) | undefined;
   travel?: ((shrineId: string) => void | string | Promise<void | string>) | undefined;
   onNotice?: ((text: string) => void) | undefined;
   close?: (() => void) | undefined;
@@ -62,6 +64,7 @@ export function globalMapMarkup(inTown: boolean): string {
         <div class="atlas-detail-top"><span class="atlas-kicker">World atlas</span><span class="atlas-status"></span></div>
         <h2 class="atlas-title"></h2>
         <p class="atlas-description"></p>
+        <div class="atlas-drop-wrap" hidden></div>
         <div class="atlas-places-wrap"><h3>Known places</h3><ul class="atlas-places"></ul></div>
         <div class="atlas-shrines-wrap">
           <h3>Shrines</h3>
@@ -96,6 +99,7 @@ export function bindGlobalMap(
   const description = root.querySelector<HTMLElement>('.atlas-description');
   const status = root.querySelector<HTMLElement>('.atlas-status');
   const places = root.querySelector<HTMLUListElement>('.atlas-places');
+  const dropWrap = root.querySelector<HTMLElement>('.atlas-drop-wrap');
   const shrinesWrap = root.querySelector<HTMLElement>('.atlas-shrines-wrap');
   const shrinesList = root.querySelector<HTMLUListElement>('.atlas-shrines');
   const travelWrap = root.querySelector<HTMLElement>('.atlas-travel-wrap');
@@ -182,6 +186,37 @@ export function bindGlobalMap(
       item.textContent = name;
       return item;
     }));
+
+    if (dropWrap) {
+      const drop = options.getDropTarget?.();
+      if (drop && id === 'IGNIS') {
+        const remainingSec = Math.max(0, Math.round((drop.expiresAt - Date.now()) / 1000));
+        if (remainingSec > 0) {
+          dropWrap.hidden = false;
+          const pos = drop.getPosition();
+          const playerPos = options.getPlayerPosition?.() ?? { x: 0, y: 0, z: 0 };
+          const dist = Math.round(Math.hypot(pos.x - playerPos.x, pos.z - playerPos.z));
+          const mins = Math.floor(remainingSec / 60);
+          const secs = remainingSec % 60;
+          const countdown = `${mins}:${secs.toString().padStart(2, '0')}`;
+          dropWrap.innerHTML = `
+            <div class="atlas-drop-card">
+              <span class="atlas-drop-marker" aria-hidden="true"></span>
+              <div class="atlas-drop-info">
+                <span class="atlas-drop-title">${drop.title}</span>
+                <span class="atlas-drop-meta">${dist}m away · ${countdown}</span>
+              </div>
+            </div>
+          `;
+        } else {
+          dropWrap.hidden = true;
+          dropWrap.innerHTML = '';
+        }
+      } else {
+        dropWrap.hidden = true;
+        dropWrap.innerHTML = '';
+      }
+    }
 
     if (shrinesWrap && shrinesList) {
       if (id === 'IGNIS') {

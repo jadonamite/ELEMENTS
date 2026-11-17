@@ -3,6 +3,7 @@ import type { Controls } from '../controls/index.js';
 import { globalMapMarkup, bindGlobalMap } from './global-map.js';
 import { abilitiesMarkup, bindAbilities } from './abilities-screen.js';
 import type { ShrineState } from '../shrine-state.js';
+import type { WaypointDropTarget } from '../story/waypoint-marker.js';
 
 export interface HomeMenuOptions {
   inTown: boolean;
@@ -12,6 +13,7 @@ export interface HomeMenuOptions {
   shrineState?: ShrineState | undefined;
   getPlayerPosition?: (() => { x: number; y: number; z: number }) | undefined;
   getTravelState?: (() => { inFight: boolean; bounty: boolean; shards: number; coin: number }) | undefined;
+  getDropTarget?: (() => WaypointDropTarget | null) | undefined;
   travel?: ((shrineId: string) => void | string | Promise<void | string>) | undefined;
   onNotice?: ((text: string) => void) | undefined;
 }
@@ -193,6 +195,7 @@ export class HomeMenu {
       shrineState: options.shrineState,
       getPlayerPosition: options.getPlayerPosition,
       getTravelState: options.getTravelState,
+      getDropTarget: options.getDropTarget,
       travel: options.travel,
       onNotice: options.onNotice,
       close: () => this.close(),

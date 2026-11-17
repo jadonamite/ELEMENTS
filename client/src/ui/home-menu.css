@@ -432,6 +432,27 @@ body.selecting #home-hud-button {
 .atlas-travel-empty { color: #8f9994; font-size: var(--font-size-xs); line-height: 1.4; padding: 4px 0; }
 .atlas-travel-error { margin: 8px 0 0; color: #e63946; font-size: var(--font-size-xs); line-height: 1.4; }
 .atlas-travel-hint { color: #8f9994; font-size: var(--font-size-xs); line-height: 1.4; margin: 8px 0 0; }
+.atlas-drop-wrap { margin-top: 18px; }
+.atlas-drop-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgb(40 12 16 / .7);
+  border: 1px solid rgb(230 57 70 / .4);
+  border-radius: 4px;
+}
+.atlas-drop-marker {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e63946;
+  box-shadow: 0 0 8px #e63946;
+  flex-shrink: 0;
+}
+.atlas-drop-info { display: flex; flex-direction: column; gap: 2px; }
+.atlas-drop-title { color: #f5f0e4; font: var(--font-weight-semibold) var(--font-size-sm)/1.2 var(--font-family-body); }
+.atlas-drop-meta { color: #f28b82; font: var(--font-size-xs)/1.2 var(--font-family-body); }
 .atlas-enter { min-height: 48px; margin-top: 25px; }
 .atlas-enter[hidden] { display: none; }
 .atlas-travel-note { margin-top: auto; padding-top: 25px; color: #8f9994; font: var(--font-size-xs)/1.5 var(--font-family-body); }
