@@ -185,7 +185,7 @@ export class NationIntroFlow {
         sex: 'male', skinToneId: 'bronze', hairStyleId: 'beard', hairColorId: 'silver', bodyPreset: 'broad',
       });
       const outfit: OutfitId = this.config.nation === 'IGNIS' ? 'shaper_ignis' : 'rags';
-      const kit = bodyKit(this.opts.loaders);
+      const kit = bodyKit(this.opts.loaders, 'close');
       model = await kit.build(config, 'hero', this.config.nation === 'AQUES' ? 0x667f86 : this.config.nation === 'TERRA' ? 0x77705e : this.config.nation === 'AURA' ? 0x9a8d9e : undefined, outfit);
       if (this.disposed) return;
       const clips = await kit.fitClips(config.sex, townSets.flatMap(markRest), 'townsfolk', outfit);

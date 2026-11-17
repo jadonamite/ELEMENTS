@@ -84,6 +84,56 @@
     "recipe": "d9aec5a0ce3a341f",
     "output": "b89b09be8c2d3404"
   },
+  "client/public/assets/characters/creator/hd/female.glb": {
+    "source": "7ae71a556119fa80",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "167ca251999d12ea"
+  },
+  "client/public/assets/characters/creator/hd/hair_beard.glb": {
+    "source": "9272a28282c45f67",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "f64fab8b59b739a4"
+  },
+  "client/public/assets/characters/creator/hd/hair_buns.glb": {
+    "source": "8ca4770e1a2095bd",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "46b2b9e8f713102e"
+  },
+  "client/public/assets/characters/creator/hd/hair_buzzed_female.glb": {
+    "source": "aeba0b538a07a6ab",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "44612d8305fa2fc8"
+  },
+  "client/public/assets/characters/creator/hd/hair_buzzed.glb": {
+    "source": "b5a9955211755822",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "7e654e5bf58a4b05"
+  },
+  "client/public/assets/characters/creator/hd/hair_long.glb": {
+    "source": "e170b8c6c46a890e",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "8a62ee0777937941"
+  },
+  "client/public/assets/characters/creator/hd/hair_simple_parted.glb": {
+    "source": "c920a24949661e03",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "6acad080af8888f3"
+  },
+  "client/public/assets/characters/creator/hd/male.glb": {
+    "source": "d954c23a801c97ba",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "a9b7477ad0b3a8c3"
+  },
+  "client/public/assets/characters/creator/hd/peasant_female.glb": {
+    "source": "bf1b1a04913fa82e",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "cc4bc82c79df4ec9"
+  },
+  "client/public/assets/characters/creator/hd/peasant_male.glb": {
+    "source": "6315ebcde136a720",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "ca19c0d589c65779"
+  },
   "client/public/assets/characters/creator/male.glb": {
     "source": "d954c23a801c97ba",
     "recipe": "d9aec5a0ce3a341f",
@@ -103,6 +153,11 @@
     "source": "fddffe64183e83e5",
     "recipe": "925f967ec8325a79",
     "output": "d26cba54fa0d1ab4"
+  },
+  "client/public/assets/characters/outfits/hd/shaper_ignis_male.glb": {
+    "source": "d44bb77c12622155",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "9c2b331dae11a674"
   },
   "client/public/assets/characters/outfits/shaper_ignis_male.glb": {
     "source": "d44bb77c12622155",
@@ -153,6 +208,46 @@
     "source": "8f2fe524c21c785a",
     "recipe": "b64792e9e72a8d52",
     "output": "2227428e1286745b"
+  },
+  "client/public/assets/characters/people/hd/hush_aques_female.glb": {
+    "source": "efc16d2999a02ea6",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "3effcd3220ae04c4"
+  },
+  "client/public/assets/characters/people/hd/hush_aques_male.glb": {
+    "source": "1962f57ef4105543",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "ee3d5f34ff77112f"
+  },
+  "client/public/assets/characters/people/hd/hush_aura_female.glb": {
+    "source": "2f0cdf21da028633",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "b44df79e6ba886e0"
+  },
+  "client/public/assets/characters/people/hd/hush_aura_male.glb": {
+    "source": "8662d1e207d37904",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "88b333791003c220"
+  },
+  "client/public/assets/characters/people/hd/hush_ignis_female.glb": {
+    "source": "b22df06a208555ea",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "16f069503f7e7782"
+  },
+  "client/public/assets/characters/people/hd/hush_ignis_male.glb": {
+    "source": "399769a1bd58d143",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "532447e1ba68dc0e"
+  },
+  "client/public/assets/characters/people/hd/hush_terra_female.glb": {
+    "source": "e820ac12acf41c56",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "eb451b0a42d345c1"
+  },
+  "client/public/assets/characters/people/hd/hush_terra_male.glb": {
+    "source": "6ba91d2b156e9d53",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "60508fff5a789841"
   },
   "client/public/assets/characters/people/hush_aques_female.glb": {
     "source": "efc16d2999a02ea6",

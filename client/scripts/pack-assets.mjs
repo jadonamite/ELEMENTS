@@ -25,7 +25,7 @@ import { quantize, reorder, textureCompress } from '@gltf-transform/functions';
 import { Mode, toktx } from '@gltf-transform/cli';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import sharp from 'sharp';
-import { CHARACTER_TEXTURE_SIZE, MANIFEST, NORMAL_TEXTURE_SIZE, PACKED_FOLDERS } from './packed-assets.mjs';
+import { CHARACTER_TEXTURE_SIZE, CLOSE_UP_NORMAL_SIZE, CLOSE_UP_TEXTURE_SIZE, MANIFEST, NORMAL_TEXTURE_SIZE, PACKED_FOLDERS } from './packed-assets.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const PUBLIC = join(ROOT, 'client/public/assets');
@@ -46,6 +46,7 @@ const toktxVersion = execFileSync('toktx', ['--version']).toString().trim();
 const RECIPES = {
   body: { v: 1, size, normalSize, color: 'etc1s q255 c2', normal: 'uastc 2 rdo 1.5 zstd 18', positions: 'scene volume' },
   far: { v: 1, textures: 'kept', positions: 'float' },
+  closeup: { v: 1, size: CLOSE_UP_TEXTURE_SIZE, normalSize: CLOSE_UP_NORMAL_SIZE, color: 'etc1s q255 c2', normal: 'uastc 2 rdo 1.5 zstd 18', positions: 'scene volume' },
   weapon: { v: 1, normalSize, color: 'etc1s q255 c2', normal: 'uastc 2 rdo 1.5 zstd 18', positions: 'float' },
   image: { v: 1, mode: 'etc1s q255 c2 mipmaps srgb' },
   atlas: { v: 1, mode: 'uastc 2 rdo 1.5 zstd 18 srgb flip no-mipmaps' },
@@ -64,17 +65,18 @@ async function packGlb(source, output, kind) {
   const doc = await io.read(source);
   const steps = [];
   if (kind !== 'far') {
+    const [colourMax, normalMax] = kind === 'closeup' ? [CLOSE_UP_TEXTURE_SIZE, CLOSE_UP_NORMAL_SIZE] : [size, normalSize];
     steps.push(
-      // WebP is decoded to PNG first (toktx reads PNG, not WebP); normals at most `normalSize`, body maps at most `size`.
-      textureCompress({ encoder: sharp, targetFormat: 'png', slots: /^normalTexture$/, resize: [normalSize, normalSize] }),
-      textureCompress({ encoder: sharp, targetFormat: 'png', slots: /^(?!normalTexture$).*/, ...(kind === 'body' ? { resize: [size, size] } : {}) }),
+      // WebP is decoded to PNG first (toktx reads PNG, not WebP); weapons keep their own colour size.
+      textureCompress({ encoder: sharp, targetFormat: 'png', slots: /^normalTexture$/, resize: [normalMax, normalMax] }),
+      textureCompress({ encoder: sharp, targetFormat: 'png', slots: /^(?!normalTexture$).*/, ...(kind === 'weapon' ? {} : { resize: [colourMax, colourMax] }) }),
       toktx({ mode: Mode.ETC1S, slots: /^(?!normalTexture$).*/, quality: 255, compression: 2 }),
       toktx({ mode: Mode.UASTC, slots: /^normalTexture$/, level: 2, rdo: true, rdoLambda: 1.5, zstd: 18 }),
     );
   }
   // One quantisation volume for the whole file keeps every part on one skin, so an outfit's parts still
   // join into one draw; far bodies and weapons keep float positions (see packed-assets.mjs).
-  const pattern = kind === 'body' ? WITH_POSITION : GENERIC;
+  const pattern = kind === 'body' || kind === 'closeup' ? WITH_POSITION : GENERIC;
   steps.push(
     reorder({ encoder: MeshoptEncoder, target: 'size' }),
     quantize({ pattern, patternTargets: pattern, quantizationVolume: 'scene', quantizeNormal: 8 }),
@@ -121,9 +123,9 @@ const report = [];
 for (const folder of PACKED_FOLDERS) {
   if (outDir && !folder.source.test('.glb')) continue;
   const publicDir = join(PUBLIC, folder.dir);
-  const artDir = join(ART, folder.dir);
+  const artDir = join(ART, folder.from ?? folder.dir);
   // Adopt: a source-format file in public/ that this script did not write is the new original.
-  if (!outDir) for (const name of await listFiles(publicDir, folder.source)) {
+  if (!outDir && !folder.from) for (const name of await listFiles(publicDir, folder.source)) {
     const at = join(publicDir, name);
     const outName = folder.out(name);
     const key = relative(ROOT, join(publicDir, outName));
@@ -134,7 +136,7 @@ for (const folder of PACKED_FOLDERS) {
     report.push(`adopted ${relative(ROOT, at)} -> ${relative(ROOT, join(artDir, name))}`);
   }
   // A trial size (--out) reads the originals where they are, before or after adoption.
-  const sourceDir = outDir && !existsSync(artDir) ? publicDir : artDir;
+  const sourceDir = outDir && !existsSync(artDir) ? join(PUBLIC, folder.from ?? folder.dir) : artDir;
   for (const name of await listFiles(sourceDir, folder.source)) {
     if (only && !name.includes(only)) continue;
     const source = join(sourceDir, name);

@@ -80,7 +80,7 @@ export class CreatorScene {
     this.scene.add(this.turntableGroup);
 
     this.loaders = loaders(this.renderer);
-    this.kit = bodyKit(this.loaders);
+    this.kit = bodyKit(this.loaders, 'close');
 
     this.setupLighting();
     this.setupPlinth();

@@ -92,6 +92,16 @@ const OUTFITS: Record<OutfitId, Outfit> = {
 };
 const OUTFIT_FILES = new Set(Object.values(OUTFITS).flatMap(o => Object.values(o.path)));
 
+/** How closely a kit's bodies are seen: the crowd (near), distant townsfolk (far), or the hero, masters and creator (close). */
+export type BodyDetail = 'near' | 'far' | 'close';
+
+/** The file a kit loads for a body path: far bodies from far/, close-ups from hd/ (sharper textures; see packed-assets.mjs). */
+function detailFile(path: string, detail: BodyDetail): string {
+  if (detail === 'far') return path.replace(/\/(creator|people)\//, '/$1/far/');
+  if (detail === 'close') return path.replace(/\/(creator|outfits)\//, '/$1/hd/').replace(/\/people\/(hush_)/, '/people/hd/$1');
+  return path;
+}
+
 export function parseOutfit(value: string | null | undefined): OutfitId {
   return value && value in OUTFITS ? (value as OutfitId) : 'rags';
 }
@@ -213,7 +223,7 @@ export class BodyKit {
   private readonly bare = new Map<string, BufferGeometry>();
   private wornRags: Promise<Texture> | null = null;
 
-  constructor(private readonly loaders: Loaders, private readonly detail: 'near' | 'far' = 'near') {}
+  constructor(private readonly loaders: Loaders, private readonly detail: BodyDetail = 'near') {}
 
   async preload(paths: readonly string[] = [...Object.values(BODY_PATH), ...Object.values(OUTFITS.rags.path)]): Promise<void> {
     await Promise.all(paths.map(p => this.scene(p)));
@@ -232,7 +242,7 @@ export class BodyKit {
   private async scene(path: string): Promise<Object3D> {
     let pending = this.scenes.get(path);
     if (!pending) {
-      const file = this.detail === 'far' ? path.replace(/\/(creator|people)\//, '/$1/far/') : path;
+      const file = detailFile(path, this.detail);
       pending = this.loaders.model(file).then(({ scene }) => {
         if (OUTFIT_FILES.has(path)) joinByMaterial(scene);
         return scene;
@@ -548,11 +558,11 @@ export function fitClip(clip: AnimationClip, pelvisRatio: number, retarget?: Ret
   return copy;
 }
 
-const kits = new WeakMap<Loaders, Record<'near' | 'far', BodyKit>>();
+const kits = new WeakMap<Loaders, Record<BodyDetail, BodyKit>>();
 
-/** The game's one kit per detail level, shared by hero, villains and crowd, so a body is built from one parse. */
-export function bodyKit(loaders: Loaders, detail: 'near' | 'far' = 'near'): BodyKit {
-  let pair = kits.get(loaders);
-  if (!pair) kits.set(loaders, pair = { near: new BodyKit(loaders), far: new BodyKit(loaders, 'far') });
-  return pair[detail];
+/** The game's one kit per detail level, shared by every body seen at that distance, so a body is built from one parse. */
+export function bodyKit(loaders: Loaders, detail: BodyDetail = 'near'): BodyKit {
+  let set = kits.get(loaders);
+  if (!set) kits.set(loaders, set = { near: new BodyKit(loaders), far: new BodyKit(loaders, 'far'), close: new BodyKit(loaders, 'close') });
+  return set[detail];
 }

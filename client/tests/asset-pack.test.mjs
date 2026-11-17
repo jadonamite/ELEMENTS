@@ -20,7 +20,7 @@ function gltfJson(path) {
 
 for (const folder of PACKED_FOLDERS) {
   const publicDir = join(ROOT, 'client/public/assets', folder.dir);
-  const artDir = join(ROOT, 'art', folder.dir);
+  const artDir = join(ROOT, 'art', folder.from ?? folder.dir);
   const isGlb = folder.source.test('.glb');
 
   test(`${folder.dir}: no unpacked ${isGlb ? 'GLB' : 'image'} ships`, () => {
