@@ -59,7 +59,7 @@ import { CombatSpace } from './attacks/space.js';
 import { hasGameServer } from './auth/server-api.js';
 import type { OnlineSession } from './net/online.js';
 import { ShrineState } from './shrine-state.js';
-import { LEGACY_SINDR_ORIGIN, regionFor, SINDR_SPAWN, toGlobal } from '../../shared/src/index.js';
+import { LEGACY_SINDR_ORIGIN, regionFor, SINDR_SPAWN, shrineById, toGlobal, travelRefusal } from '../../shared/src/index.js';
 import type { NetEnemy } from './net/puppets.js';
 import { isTownMode } from './world-mode.js';
 import './controls/controls.css';
@@ -756,6 +756,52 @@ async function main(): Promise<void> {
     getCharacterState: () => ({ element: kitElement, isDim, tier: fight.tier }),
     onOpenPicker: () => picker?.open(true),
     onOpenCreator: () => picker?.open(true),
+    shrineState,
+    getPlayerPosition: () => ({ x: controller.position.x, y: controller.position.y, z: controller.position.z }),
+    getTravelState: () => {
+      const inFight = sword.engaged || (combat.current !== null && combat.current !== 'dodge') || fight.nearestDistance(controller.position) < balance.stance.engageRadius;
+      const bounty = townEconomy?.standing.hasBounty ?? false;
+      let shards = 0;
+      if (townEconomy) {
+        for (const [k, v] of Object.entries(townEconomy.satchelItems)) {
+          if (k.startsWith('shard_')) shards += v;
+        }
+      }
+      const coin = townEconomy?.carried?.chroma ?? 0;
+      return { inFight, bounty, shards, coin };
+    },
+    travel: (targetShrineId) => {
+      const target = shrineById(targetShrineId);
+      if (!target) return;
+      if (playingOnline && onlineSession) {
+        onlineSession.travel(target.id);
+        homeMenu.close();
+        return;
+      }
+      const inFight = sword.engaged || (combat.current !== null && combat.current !== 'dodge') || fight.nearestDistance(controller.position) < balance.stance.engageRadius;
+      const bounty = townEconomy?.standing.hasBounty ?? false;
+      let shards = 0;
+      if (townEconomy) {
+        for (const [k, v] of Object.entries(townEconomy.satchelItems)) {
+          if (k.startsWith('shard_')) shards += v;
+        }
+      }
+      const coin = townEconomy?.carried?.chroma ?? 0;
+      const refusal = travelRefusal({ inFight, bounty, shards, coin }, 25);
+      if (refusal) {
+        notice(refusal);
+        return refusal;
+      }
+      const wakeX = target.wake.x - LEGACY_SINDR_ORIGIN.x;
+      const wakeZ = target.wake.z - LEGACY_SINDR_ORIGIN.z;
+      const wakeY = target.y - LEGACY_SINDR_ORIGIN.y;
+      controller.place(wakeX, wakeY, wakeZ);
+      controller.facing = target.wake.facing;
+      shoulderCamera.yaw = target.wake.facing + Math.PI;
+      homeMenu.close();
+      notice(`Travelled to ${target.name}`);
+    },
+    onNotice: notice,
   });
   cleanup.push(() => homeMenu.dispose());
   input.onMenu = () => homeMenu.toggle();

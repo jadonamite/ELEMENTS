@@ -74,3 +74,25 @@ test('SettlementStream tracks lit state of precinct shrines', async () => {
   stream.setLit('shrine_pinewatch', false);
   assert.equal(stream.isShrineLit(pinewatch), false);
 });
+
+test('globalMapMarkup includes shrines and fast travel markup', async () => {
+  const { globalMapMarkup } = await import('../src/ui/global-map.ts');
+  const html = globalMapMarkup(true);
+  assert.ok(html.includes('atlas-shrines-wrap'));
+  assert.ok(html.includes('Shrines'));
+  assert.ok(html.includes('atlas-travel-wrap'));
+  assert.ok(html.includes('Fast Travel'));
+  assert.ok(html.includes('atlas-travel-hint'));
+});
+
+test('shrine travel rules: refusal with bounty, in fight, with shards, or high coin', async () => {
+  const { travelRefusal } = await import('../../shared/src/index.js');
+  const coinAllowance = 25;
+
+  assert.equal(travelRefusal({ inFight: true, bounty: false, shards: 0, coin: 10 }, coinAllowance), 'Not while you are fighting');
+  assert.equal(travelRefusal({ inFight: false, bounty: true, shards: 0, coin: 10 }, coinAllowance), 'The shrines will not carry someone the watch is hunting');
+  assert.equal(travelRefusal({ inFight: false, bounty: false, shards: 2, coin: 10 }, coinAllowance), 'Shards travel by road: bank them or carry them');
+  assert.equal(travelRefusal({ inFight: false, bounty: false, shards: 0, coin: 50 }, coinAllowance), 'Bank your coin first (up to 25 travels with you)');
+  assert.equal(travelRefusal({ inFight: false, bounty: false, shards: 0, coin: 25 }, coinAllowance), null);
+  assert.equal(travelRefusal({ inFight: false, bounty: false, shards: 0, coin: 0 }, coinAllowance), null);
+});
