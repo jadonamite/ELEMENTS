@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   calculateVillainDrop,
   rollArmourDrop,
+  type Killer,
   type LootPile,
   TREASURY_ACCOUNT_ID,
 } from '@elements/shared';
@@ -16,6 +17,7 @@ import {
   getOpenBounties,
   getSatchel,
   processJailSentence,
+  releaseOutlawHold,
 } from '../economy/index.js';
 import type { KillReport } from './kill-hook.js';
 import { persistentPosition } from './coordinates.js';
@@ -82,12 +84,28 @@ export function dropForKill(kill: KillReport, rng: () => number = Math.random, d
 }
 
 /** A player fell in the room's own fight: what the server holds for them drops where the room has them. */
-export function dropForDeath(accountId: string, zone: string, x: number, z: number, db: DatabaseSync = getDatabase()): LootPile | null {
+export function dropForDeath(
+  accountId: string, zone: string, x: number, z: number, killer: Killer = { kind: 'none' }, db: DatabaseSync = getDatabase(),
+): LootPile | null {
   if (isGuest(accountId)) return null;
   const rising = getRising(accountId, db);
   const nation = rising?.element ?? ZONE_NATION[zone] ?? 'IGNIS';
   const position = persistentPosition(zone, { x, y: 0, z });
-  return createLootPileFromFight({ x: position.x, z: position.z, zone, source: 'player_death', sourceAccountId: accountId, nation }, db);
+  return createLootPileFromFight({ x: position.x, z: position.z, zone, source: 'player_death', sourceAccountId: accountId, nation, killer }, db);
+}
+
+/** The key an outlaw in a zone holds loot under: enemy ids repeat across zones. */
+export const outlawKey = (zone: string, enemyId: string): string => `${zone}/${enemyId}`;
+
+/** Who a room enemy counts as when it ends a player: a beast is nobody's hand, a robber or villain an outlaw. */
+export const killerFor = (zone: string, enemy: { id: string; kind: string } | undefined): Killer =>
+  !enemy || enemy.kind === 'hound' ? { kind: 'none' } : { kind: 'outlaw', id: outlawKey(zone, enemy.id) };
+
+/** An outlaw the room saw killed gives up what he carried, where he fell, to whoever killed him. */
+export function releaseForKill(kill: KillReport, now = Date.now(), db: DatabaseSync = getDatabase()): LootPile[] {
+  if (kill.kind === 'hound') return [];
+  const position = persistentPosition(kill.zone, { x: kill.x, y: 0, z: kill.z });
+  return releaseOutlawHold(outlawKey(kill.zone, kill.enemyId), position, kill.killerAccountId, now, db);
 }
 
 /** A red flag the room's own rules saw earned (a banished name in chat, a robbery). */

@@ -421,8 +421,8 @@ export class ZoneRoom extends Room {
   /** Sends world events to the one player they concern, or to everyone. */
   private deliver(events: WorldEvent[]): void {
     for (const ev of events) {
-      // A fall the room saw drops what the player carries where the room has them.
-      if (ev.type === 'fell') this.pay(this.economy.death(ev.to));
+      // A fall the room saw drops what the player carries where the room has them, held for whoever caused it.
+      if (ev.type === 'fell') this.pay(this.economy.death(ev.to, ev.by));
       const { type, ...body } = ev;
       if ('to' in ev) {
         const { to, ...rest } = body as typeof body & { to: string };

@@ -189,13 +189,15 @@ test('Satchel: dying drops from what the server holds, not from what the client 
     db,
   );
 
-  assert.equal(pile.contents.shards.IGNIS, 2); // a quarter of 8
-  assert.deepEqual(pile.contents.materials, { linen: 2 });
-  assert.equal(getItemCount('victim', 'shard_ignis', db), 6);
-  assert.equal(getItemCount('victim', 'material_linen', db), 0);
+  // Every carried shard drops; materials stay with the fallen.
+  assert.equal(pile.contents.shards.IGNIS, 8);
+  assert.deepEqual(pile.contents.materials, {});
+  assert.equal(getItemCount('victim', 'shard_ignis', db), 0);
+  assert.equal(getItemCount('victim', 'material_linen', db), 2);
 
-  claimLootPile({ pileId: pile.id, accountId: 'scavenger', x: 10, z: 10.5, now: 3000 }, db);
-  assert.equal(getItemCount('scavenger', 'shard_ignis', db), 2);
-  assert.equal(getItemCount('scavenger', 'material_linen', db), 2);
-  assert.equal(getAccountBalance('victim', db), 0);
+  // Nobody killed them, so only they can take it back.
+  assert.throws(() => claimLootPile({ pileId: pile.id, accountId: 'scavenger', x: 10, z: 10.5, now: 3000 }, db));
+  claimLootPile({ pileId: pile.id, accountId: 'victim', x: 10, z: 10.5, now: 3000 }, db);
+  assert.equal(getItemCount('victim', 'shard_ignis', db), 8);
+  assert.equal(getItemCount('scavenger', 'shard_ignis', db), 0);
 });

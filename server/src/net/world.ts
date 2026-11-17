@@ -275,7 +275,7 @@ export type WorldEvent =
   | { type: 'enemy_hit'; e: string; d: number; hp: number; by: string }
   | { type: 'enemy_died'; e: string; by: string; x: number; z: number }
   | { type: 'hurt'; to: string; by: string; d: number; hp: number; max: number }
-  | { type: 'fell'; to: string; x: number; z: number }
+  | { type: 'fell'; to: string; x: number; z: number; by: { id: string; kind: string } }
   | { type: 'revived'; to: string; x: number; z: number }
   | { type: 'stamina'; to: string; v: number; cap: number; w: number };
 
@@ -386,7 +386,7 @@ export class ZoneWorld {
         const d = p.takeStrike(s, now);
         if (d === null) continue;
         events.push({ type: 'hurt', to: p.id, by: e.id, d, hp: p.hp, max: p.maxHp });
-        if (wasUp && !p.alive) events.push({ type: 'fell', to: p.id, x: p.x, z: p.z });
+        if (wasUp && !p.alive) events.push({ type: 'fell', to: p.id, x: p.x, z: p.z, by: { id: e.id, kind: e.kind } });
       }
       if (!wasAlive && e.alive) this.damageBy.delete(e.id);
     }
