@@ -50,6 +50,8 @@ export const TRADE_REACH = 4;
 export interface Shrine extends Place {
   kind: 'shrine';
   name: string;
+  /** Floor height, nation-global metres: picks the region's altitude band. */
+  y: number;
   wake: { x: number; z: number; facing: number };
 }
 
@@ -66,12 +68,12 @@ const WAKE_STEP = 6;
 export const SHRINES: readonly Shrine[] = [
   {
     id: FIRST_SHRINE, kind: 'shrine', name: 'Shrine of Embers',
-    x: LEGACY_SINDR_ORIGIN.x, z: LEGACY_SINDR_ORIGIN.z,
+    x: LEGACY_SINDR_ORIGIN.x, y: LEGACY_SINDR_ORIGIN.y, z: LEGACY_SINDR_ORIGIN.z,
     wake: { x: LEGACY_SINDR_ORIGIN.x + SINDR_SPAWN.x, z: LEGACY_SINDR_ORIGIN.z + SINDR_SPAWN.z, facing: SINDR_SPAWN.facing },
   },
   ...SETTLEMENT_PRECINCTS.map((p): Shrine => ({
     id: `shrine_${p.id.split(':').pop()!.replaceAll('-', '_')}`, kind: 'shrine', name: `${p.name} Shrine`,
-    x: p.x, z: p.z - SHRINE_SOUTH,
+    x: p.x, y: p.height, z: p.z - SHRINE_SOUTH,
     wake: { x: p.x, z: p.z - SHRINE_SOUTH + WAKE_STEP, facing: 0 },
   })),
 ];

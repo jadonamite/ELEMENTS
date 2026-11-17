@@ -1,4 +1,4 @@
-import { withinLocalBounds } from '@elements/shared';
+import { FIRST_SHRINE, wakeShrine, withinLocalBounds } from '@elements/shared';
 import type { ActionState, Element, Weapon } from '@elements/shared';
 import { armourOf, outfitOf, standClear, Stamina, actStaminaCost, moveStaminaCost, MOVE_IDS, type MoveId, type StaminaTuning } from '@elements/shared';
 import { armour, balance, rules } from './balance.js';
@@ -7,7 +7,7 @@ import { PoseHistory } from './history.js';
 import { judgeHit, parseHit, REWIND_LIMIT, type Attacker } from './hit-check.js';
 import { reportKill, type KillReport } from './kill-hook.js';
 import { layoutFor } from './zones.js';
-import { nationalRegion, regionContains, networkPosition, NATIONAL_SPAWN, SPAWN_REGION, type NationalRegion } from './coordinates.js';
+import { nationalRegion, regionContains, networkPosition, persistentPosition, NATIONAL_SPAWN, SPAWN_REGION, type NationalRegion } from './coordinates.js';
 
 /** Fastest a player can honestly cover ground, metres per second: a Lit sprint plus dash lunges. */
 export const MAX_PLAYER_SPEED = 14;
@@ -68,6 +68,8 @@ export class ServerPlayer implements Attacker {
   private movedAt: number;
   transferUntil = 0;
   region: NationalRegion | null = null;
+  /** Shrines this player has lit (the first always); the room loads them on join. */
+  lit = new Set<string>([FIRST_SHRINE]);
   readonly history = new PoseHistory(1.5);
   action: ActionState = rules.createActionState();
   swings = new Map<number, { at: number; move: string; struck: Set<string> }>();
@@ -276,7 +278,8 @@ export type WorldEvent =
   | { type: 'enemy_died'; e: string; by: string; x: number; z: number }
   | { type: 'hurt'; to: string; by: string; d: number; hp: number; max: number }
   | { type: 'fell'; to: string; x: number; z: number; by: { id: string; kind: string } }
-  | { type: 'revived'; to: string; x: number; z: number }
+  | { type: 'revived'; to: string; x: number; z: number; y?: number; facing?: number; shrine?: string }
+  | { type: 'wake_away'; to: string; shrine: string }
   | { type: 'stamina'; to: string; v: number; cap: number; w: number };
 
 /**
@@ -367,12 +370,27 @@ export class ZoneWorld {
     return events;
   }
 
+  /**
+   * Where a revived player stands up: in the nation, at the lit shrine nearest where they fell (another
+   * region's shrine is reached by the room moving them there); in the old town, at its spawn.
+   */
+  private wake(p: ServerPlayer, now: number): WorldEvent {
+    if (!p.region) return { type: 'revived', to: p.id, x: this.layout.respawn.x, z: this.layout.respawn.z };
+    const fell = persistentPosition(this.zone, p);
+    const shrine = wakeShrine(p.lit, fell.x, fell.z);
+    const local = networkPosition(this.zone, { x: shrine.wake.x, y: shrine.y, z: shrine.wake.z });
+    if (!regionContains(p.region, local)) return { type: 'wake_away', to: p.id, shrine: shrine.id };
+    p.enterRegion(p.region, local, now);
+    p.facing = shrine.wake.facing;
+    return { type: 'revived', to: p.id, x: local.x, y: local.y, z: local.z, facing: shrine.wake.facing, shrine: shrine.id };
+  }
+
   step(dt: number, now: number): WorldEvent[] {
     const events: WorldEvent[] = [];
     for (const p of this.players.values()) {
       p.inFight = false;
       for (const e of this.enemies.values()) if (e.alive && e.target === p.id) { p.inFight = true; break; }
-      if (p.tick(dt, now)) events.push({ type: 'revived', to: p.id, x: p.region ? p.x : this.layout.respawn.x, z: p.region ? p.z : this.layout.respawn.z });
+      if (p.tick(dt, now)) events.push(this.wake(p, now));
       const report = p.staminaReport(dt);
       if (report) events.push({ type: 'stamina', to: p.id, ...report });
     }
