@@ -140,7 +140,7 @@ export class Loader {
         <figure class="loader-ink">
           <figcaption class="loader-marginalia loader-plate-caption">${plate.caption}</figcaption>
           <span class="loader-marginalia loader-plate-nation">${plate.nation}</span>
-          <img class="loader-ink-figure" alt="${plate.caption}, an ink study" src="${picture}" width="667" height="1000" fetchpriority="high">
+          <img class="loader-ink-figure" alt="${plate.caption}, an ink study" src="${picture.replace(/\.jpg$/, '.webp')}" width="667" height="1000" fetchpriority="high">
           <span class="loader-marginalia loader-plate-number">PLATE ${plate.number}</span>
           ${turningEmblem()}
           <span class="loader-marginalia loader-plate-index">${plate.number} / 030</span>

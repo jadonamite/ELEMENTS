@@ -88,7 +88,7 @@ const ANCHORS: Record<typeof LOADER_PICTURES[number], { head: readonly [number, 
 };
 
 export function loaderPictureDetails(path: string): LoaderPlate {
-  const id = path.split('/').at(-1)?.replace(/\.jpg$/, '') ?? '';
+  const id = path.split('/').at(-1)?.replace(/\.(webp|jpg)$/, '') ?? '';
   const index = (LOADER_PICTURES as readonly string[]).indexOf(id);
   const nation = ['ignis', 'aques', 'terra', 'aura'].find(n => id.endsWith(n));
   const bending: Record<string, string> = { fire: 'IGNIS', water: 'AQUES', earth: 'TERRA', air: 'AURA' };

@@ -32,7 +32,7 @@ function mountLoader(): void {
   }
 
   const plateId = LOADER_PICTURES[activePlateIndex]!;
-  const picturePath = `/assets/ui/loader/pictures/${plateId}.jpg`;
+  const picturePath = `/assets/ui/loader/pictures/${plateId}.webp`;
 
   activeLoader = new Loader({
     destination: activeDestination,
@@ -79,7 +79,7 @@ function setupControls(): void {
   const select = document.createElement('select');
   select.style.cssText = 'background: #2a2b27; color: #efede7; border: 1px solid #60615d; border-radius: 4px; padding: 2px 6px; font-size: 12px;';
   LOADER_PICTURES.forEach((id, idx) => {
-    const details = loaderPictureDetails(`/assets/ui/loader/pictures/${id}.jpg`);
+    const details = loaderPictureDetails(`/assets/ui/loader/pictures/${id}.webp`);
     const opt = document.createElement('option');
     opt.value = String(idx);
     opt.textContent = `${details.number}: ${details.caption} (${details.element})`;
