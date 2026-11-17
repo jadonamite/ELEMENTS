@@ -21,6 +21,7 @@ export interface Hint {
 export interface LoaderOptions {
   destination: 'town' | 'arena';
   onEnter: () => void;
+  picture?: string | undefined;
 }
 
 export type HintClass = 'know' | 'hint';
@@ -114,16 +115,23 @@ export class Loader {
     this.device = window.matchMedia?.('(pointer: coarse)').matches ||
       (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ? 'touch' : 'desktop';
     const destination = options.destination === 'town' ? 'Sindr' : 'The arena';
-    const picture = nextLoaderPicture();
+    const backdropSrc = options.destination === 'arena'
+      ? '/assets/ui/loader/backgrounds/concept-volcano-road.webp'
+      : '/assets/ui/loader/backgrounds/concept-market-canal.webp';
+    const picture = options.picture ?? nextLoaderPicture();
     const plate = loaderPictureDetails(picture);
-    const diagramSeed = Math.floor(Math.random() * 0xffffffff);
+    const diagramSeed = Number(plate.number) * 7919;
     this.root = document.createElement('div');
     this.root.id = 'elements-loader';
     this.root.setAttribute('role', 'region');
     this.root.setAttribute('aria-label', `${destination} loading screen`);
     this.root.innerHTML = `
-      <div class="loader-frame" aria-hidden="true"></div>
+      <div class="loader-backdrop" aria-hidden="true">
+        <img class="loader-backdrop-image" alt="" src="${backdropSrc}" fetchpriority="high">
+        <div class="loader-backdrop-overlay"></div>
+      </div>
       <div class="loader-inner">
+        <div class="loader-frame" aria-hidden="true"></div>
         <svg class="loader-diagram" viewBox="0 0 1000 1000" aria-hidden="true">${loaderDiagram(plate, 1000, 1000, diagramSeed)}</svg>
         <header class="loader-header">
           <h1 class="loader-title">ELEMENTS</h1>
