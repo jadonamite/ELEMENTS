@@ -110,9 +110,14 @@
     "output": "992cccbdb842724a"
   },
   "client/public/assets/characters/people/deserter_male.glb": {
-    "source": "f42788b53aada84c",
+    "source": "be50be5b8ec14d9e",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "ca1d536321538e4c"
+    "output": "2ca2ce2e27484f24"
+  },
+  "client/public/assets/characters/people/far/deserter_male.glb": {
+    "source": "5a45128a96e8831c",
+    "recipe": "b64792e9e72a8d52",
+    "output": "6fc5da97c08011ca"
   },
   "client/public/assets/characters/people/far/hush_aques_female.glb": {
     "source": "bc4c9408b3d77f21",
@@ -120,24 +125,24 @@
     "output": "d5c5a9d7881e3b81"
   },
   "client/public/assets/characters/people/far/hush_aques_male.glb": {
-    "source": "2105dff26f45ebea",
+    "source": "660ce3565a1f1a99",
     "recipe": "b64792e9e72a8d52",
-    "output": "73a0767647532a30"
+    "output": "a6285e0746ed1d43"
   },
   "client/public/assets/characters/people/far/hush_aura_female.glb": {
-    "source": "a456972c6fd424e1",
+    "source": "dd7858d80447f543",
     "recipe": "b64792e9e72a8d52",
-    "output": "842ef5b6b8c411ef"
+    "output": "acd9d3d7fd5805cf"
   },
   "client/public/assets/characters/people/far/hush_aura_male.glb": {
-    "source": "bfe12b7517bc3e84",
+    "source": "6c12c77be8a980b7",
     "recipe": "b64792e9e72a8d52",
-    "output": "f7abb736b965b098"
+    "output": "daab77d6bea491c6"
   },
   "client/public/assets/characters/people/far/hush_ignis_female.glb": {
-    "source": "bdaf0c7395412332",
+    "source": "0a9ee82803724521",
     "recipe": "b64792e9e72a8d52",
-    "output": "e3acde2356e0d1ef"
+    "output": "88eef36116a22d97"
   },
   "client/public/assets/characters/people/far/hush_ignis_male.glb": {
     "source": "c2ad00d17659e560",
@@ -145,14 +150,29 @@
     "output": "d12c12e2499b124b"
   },
   "client/public/assets/characters/people/far/hush_terra_female.glb": {
-    "source": "e91cc655e2dca110",
+    "source": "fd5921eee39d4941",
     "recipe": "b64792e9e72a8d52",
-    "output": "d89e228a09ffe0f4"
+    "output": "3ec5f86ed49a75fc"
   },
   "client/public/assets/characters/people/far/hush_terra_male.glb": {
-    "source": "8f2fe524c21c785a",
+    "source": "218880ea765312e5",
     "recipe": "b64792e9e72a8d52",
-    "output": "2227428e1286745b"
+    "output": "937ed3f0a9f8dfce"
+  },
+  "client/public/assets/characters/people/far/robber_female.glb": {
+    "source": "19c46400709c7793",
+    "recipe": "b64792e9e72a8d52",
+    "output": "385db7b16f1f7e12"
+  },
+  "client/public/assets/characters/people/far/soldier_male.glb": {
+    "source": "dd1c5ccb136a1ef1",
+    "recipe": "b64792e9e72a8d52",
+    "output": "11c7daa780a13501"
+  },
+  "client/public/assets/characters/people/far/warlord_ignis_female.glb": {
+    "source": "123a55e1c55b5899",
+    "recipe": "b64792e9e72a8d52",
+    "output": "b7305a36ce34ff68"
   },
   "client/public/assets/characters/people/hush_aques_female.glb": {
     "source": "efc16d2999a02ea6",
@@ -160,24 +180,24 @@
     "output": "985b7051db4e1e0f"
   },
   "client/public/assets/characters/people/hush_aques_male.glb": {
-    "source": "1962f57ef4105543",
+    "source": "b56e1e8406b039d8",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "672b6646c5be6f74"
+    "output": "f18a77841caab514"
   },
   "client/public/assets/characters/people/hush_aura_female.glb": {
-    "source": "2f0cdf21da028633",
+    "source": "f19c70265362b43a",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "9b47d182babddd02"
+    "output": "6f360c564f9c2a5b"
   },
   "client/public/assets/characters/people/hush_aura_male.glb": {
-    "source": "8662d1e207d37904",
+    "source": "aa4efba7d744d668",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "a0eb8228be8547fd"
+    "output": "03b847763ad69d43"
   },
   "client/public/assets/characters/people/hush_ignis_female.glb": {
-    "source": "b22df06a208555ea",
+    "source": "f99a32180f581361",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "473c328e9e6b989d"
+    "output": "8e633013ff0e503f"
   },
   "client/public/assets/characters/people/hush_ignis_male.glb": {
     "source": "399769a1bd58d143",
@@ -185,29 +205,29 @@
     "output": "896b1c5f1250c876"
   },
   "client/public/assets/characters/people/hush_terra_female.glb": {
-    "source": "e820ac12acf41c56",
+    "source": "57381f0f4f056246",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "2510a09e521be223"
+    "output": "9e51f44528b44b29"
   },
   "client/public/assets/characters/people/hush_terra_male.glb": {
-    "source": "6ba91d2b156e9d53",
+    "source": "97abae4ba466f689",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "470a5d0b029f4a1f"
+    "output": "9961ac2dd6730684"
   },
   "client/public/assets/characters/people/robber_female.glb": {
-    "source": "7b9b73ff242ee862",
+    "source": "284669c33e053468",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "72b589a33b975bcb"
+    "output": "2df6ae628e2fc79c"
   },
   "client/public/assets/characters/people/soldier_male.glb": {
-    "source": "8a5e70d22ed3eed8",
+    "source": "82fa3008b175e290",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "e52ea8bc1c1578b6"
+    "output": "0077b465dcb495ce"
   },
   "client/public/assets/characters/people/warlord_ignis_female.glb": {
-    "source": "d2e2a5f4d051c70a",
+    "source": "c414e7dffe408ebf",
     "recipe": "d9aec5a0ce3a341f",
-    "output": "6b4af6b7c63f726d"
+    "output": "15ce3824d933413b"
   },
   "client/public/assets/fx/fire-burst-low.ktx2": {
     "source": "8f9b9bc4bf005dfa",
