@@ -25,6 +25,7 @@ const ktx2 = (name) => name.replace(/\.\w+$/, '.ktx2');
  * - closeup: a body packed again at the CLOSE_UP sizes into an hd/ folder, from the
  *   same original (`from` names the folder whose originals it reads).
  * - image: one ETC1S KTX2 texture with mipmaps. atlas: one UASTC KTX2 effect atlas, no mipmaps.
+ * - normal: one UASTC KTX2 town normal map with mipmaps, RDO for size, linear.
  */
 export const PACKED_FOLDERS = [
   { dir: 'characters/creator', ...glb('body') },
@@ -38,4 +39,5 @@ export const PACKED_FOLDERS = [
   { dir: 'weapons', ...glb('weapon') },
   { dir: 'characters/creator', source: /^peasant_worn\.webp$/, out: ktx2, kind: 'image' },
   { dir: 'fx', source: /^fire-[a-z-]+\.png$/, out: ktx2, kind: 'atlas' },
+  { dir: 'env/ignis/materials', source: /_nor_uastc_1k\.png$/, out: ktx2, kind: 'normal' },
 ];

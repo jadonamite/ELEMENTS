@@ -319,7 +319,42 @@
       "Everyone wants the advanced techniques right now. That changes the price.",
       "I set the fee based on demand. Demand is high.",
       "It went up. The training didn't get worse. There's just more competition for a seat."
-    ]
+    ],
+    "intro_greeting": [
+      "Easy. On your feet. You're through the Draw."
+    ],
+    "intro_lore": [
+      "This is Sindr, forge-heart of IGNIS. If you seek a way back to where you came from, keep your head. Tales tell of the Allborn: one who commands all four primal elements and might open a passage between worlds. For now, it is only a whisper. You survive here first."
+    ],
+    "intro_footing": [
+      "First, find your balance on this stone. Take three paces forward."
+    ],
+    "intro_sprint_jump": [
+      "Good. Now quicken your stride and spring clear of the ground."
+    ],
+    "intro_weapon": [
+      "Take this. Worn iron from our forge. It will keep you whole until you earn finer steel."
+    ],
+    "intro_attacks": [
+      "Feel the balance. Test a swift light cut, then drive your shoulder into a heavy strike."
+    ],
+    "intro_defense": [
+      "Striking is simple; surviving is discipline. Raise your guard, then slip aside with a dodge."
+    ],
+    "intro_shaper": [
+      "The Draw marked you with Crimson. But raw embers without disciplined bone will consume you before dusk. Keep your blade ready."
+    ],
+    "intro_hush": [
+      "The Draw named you Hush. No Crimson runs in your veins. But without your hands to forge iron and shape relics, the Shapers are helpless. You fight with steel alone."
+    ],
+    "intro_mission": [
+      "Down this paved road stands the West Gate of Sindr. Walk the road, hold your blade firm, and reach the gate. Reach it, and your true standing here begins."
+    ],
+    "_delivery": {
+      "intro_greeting": "Steady and calm, helping a stranger to their feet.",
+      "intro_lore": "Low and measured, telling an old tale.",
+      "intro_mission": "Firm, pointing the way."
+    }
   },
   "master_aques": {
     "_note": "AQUES element master. Calm, slow to judge, but clear about standards. Gives reasons.",
@@ -343,7 +378,42 @@
       "When the boss shifts to a counter element, everyone wants AQUES techniques. The fee moves with the season.",
       "The fee's higher now. I'll tell you plainly what changed and why, if you want to know.",
       "It's gone up. I'm sorry."
-    ]
+    ],
+    "intro_greeting": [
+      "Breathe. The current has settled. You are through the Draw."
+    ],
+    "intro_lore": [
+      "You stand among the canals of AQUES. Many who arrive search for the threshold back to their realm. The myth of the Allborn speaks of one who joins all four streams of power. Until that legend walks, you must hold your ground in the tides."
+    ],
+    "intro_footing": [
+      "Walk across these wet planks. Prove your feet will not betray you."
+    ],
+    "intro_sprint_jump": [
+      "Quicken your pace and leap over the mooring timbers."
+    ],
+    "intro_weapon": [
+      "Take this blade. Cold-forged steel. It cuts true even under heavy mist."
+    ],
+    "intro_attacks": [
+      "Give me two strokes: one swift as a crest, one heavy as an undertow."
+    ],
+    "intro_defense": [
+      "Brace your guard against the blow, then glide out of its arc."
+    ],
+    "intro_shaper": [
+      "The Azure answers your pulse. But an undisciplined river drowns its own banks. Master your stance first."
+    ],
+    "intro_hush": [
+      "You are Hush. The Azure does not bend to your voice. Yet our fleet depends on your hands to bind hull and temper iron."
+    ],
+    "intro_mission": [
+      "Follow the canal path to the Harbor Arch. Reach the archway to prove your readiness to walk the river cities."
+    ],
+    "_delivery": {
+      "intro_greeting": "Steady and calm, helping a stranger to their feet.",
+      "intro_lore": "Low and measured, telling an old tale.",
+      "intro_mission": "Firm, pointing the way."
+    }
   },
   "master_terra": {
     "_note": "TERRA element master. Economy of words. Tests with actions before words.",
@@ -367,7 +437,42 @@
       "New rate. It's fair.",
       "More students this month. The price reflects that.",
       "Prices changed. That's it."
-    ]
+    ],
+    "intro_greeting": [
+      "Firm ground under you now. The Draw has released you."
+    ],
+    "intro_lore": [
+      "These are the stone crags of TERRA. If you wonder how to return beyond the veil, look to the bedrock legend of the Allborn, the singular sovereign of all four powers. A distant hope. The mountains demand patience and iron."
+    ],
+    "intro_footing": [
+      "Tread the gravel. Let your weight sink into the stone."
+    ],
+    "intro_sprint_jump": [
+      "Sprint past the stone marker and leap the fissure."
+    ],
+    "intro_weapon": [
+      "Take this heavy iron. Rough edge, but unbreakable spine. Grip it firm."
+    ],
+    "intro_attacks": [
+      "Swing with intent: a short cutting strike, followed by a crushing blow."
+    ],
+    "intro_defense": [
+      "Lock your shield guard against impact, then roll clear when the hammer falls."
+    ],
+    "intro_shaper": [
+      "Stone sleeps in your marrow. But rock unhewn breaks under pressure. Learn the discipline of iron before stone."
+    ],
+    "intro_hush": [
+      "You carry no stonecraft in your blood. You are Hush. It is your craft that cuts the quarry and binds the fortress gates."
+    ],
+    "intro_mission": [
+      "Advance up the mountain approach to the High Bastion Gate. Show that your legs can climb these crags."
+    ],
+    "_delivery": {
+      "intro_greeting": "Steady and calm, helping a stranger to their feet.",
+      "intro_lore": "Low and measured, telling an old tale.",
+      "intro_mission": "Firm, pointing the way."
+    }
   },
   "master_aura": {
     "_note": "AURA element master. Quick wit but no nonsense beneath it. Reads students fast.",
@@ -391,7 +496,42 @@
       "Fee's up. Supply and demand, same as the merchants.",
       "When everyone's scrambling for Pale techniques, my rate goes up. That's the deal.",
       "It costs more now. The training's worth it. You know that, or you wouldn't be here."
-    ]
+    ],
+    "intro_greeting": [
+      "Stand tall. The gale has passed. You have crossed the Draw."
+    ],
+    "intro_lore": [
+      "You breathe the high Pale currents of AURA. If you seek the seam leading homeward, ancient songs speak of the Allborn who harmonized all four elements. A myth across centuries. Today, your duty is to keep your balance."
+    ],
+    "intro_footing": [
+      "Step lightly across the stone flagstones. Feel the updraft."
+    ],
+    "intro_sprint_jump": [
+      "Run with the gusts and take flight over the gap."
+    ],
+    "intro_weapon": [
+      "Take this quarterstaff. Seasoned ash with bound grips. Two hands, wide reach."
+    ],
+    "intro_attacks": [
+      "Sweep wide: a quick thrust, then a full two-handed circular strike."
+    ],
+    "intro_defense": [
+      "Raise the staff to deflect, then drift backward into open space."
+    ],
+    "intro_shaper": [
+      "The Pale heeds your breath. But breath without center is merely storm and folly. Master the staff first."
+    ],
+    "intro_hush": [
+      "You are Hush; the sky does not lift you. But our spires stand only because your hands weave harness, rope, and glider frames."
+    ],
+    "intro_mission": [
+      "Walk the terrace path to the Sky Arch. Cross the span to demonstrate your steady footing."
+    ],
+    "_delivery": {
+      "intro_greeting": "Steady and calm, helping a stranger to their feet.",
+      "intro_lore": "Low and measured, telling an old tale.",
+      "intro_mission": "Firm, pointing the way."
+    }
   },
   "sentry": {
     "_note": "Lord's Sentries in Chromara. Enforce the Edict of Unnaming. Formal, measured, a little cold. They take no pleasure in the work. They do it anyway.",

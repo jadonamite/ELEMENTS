@@ -203,8 +203,13 @@ async function main(): Promise<void> {
   applyDrawing(forcedElement || forcedHush ? getStoredDrawing() : lastFighter() ?? getStoredDrawing());
 
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
+  /** Settles when the opening (the Draw) has closed, or at once when there is none. */
+  let openingClosed: Promise<void> = Promise.resolve();
   if (!params.has('skipIntro')) {
+    let closed!: () => void;
+    openingClosed = new Promise(resolve => { closed = resolve; });
     const opening = new OpeningFlow((res) => {
+      closed();
       applyDrawing(forcedElement || forcedHush ? res : lastFighter() ?? res);
       if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });
     }, (character) => { void hero.redress(character); });
@@ -783,7 +788,6 @@ async function main(): Promise<void> {
       },
     });
     cleanup.push(() => nationIntro?.dispose());
-    nationIntro.start();
   }
   input.onTargetTap = (x, y) => {
     const point = new Vector3(); let target: Enemy | null = null, nearest = 48;
@@ -1256,6 +1260,9 @@ async function main(): Promise<void> {
     if (disposed) return;
     await zone.sharpen();
   }
+
+  // The master walks up once the player can see the street: the loader has handed over and the Draw is closed.
+  if (nationIntro) void openingClosed.then(() => { if (!disposed) nationIntro?.start(); });
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();

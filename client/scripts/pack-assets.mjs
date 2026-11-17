@@ -50,6 +50,7 @@ const RECIPES = {
   weapon: { v: 1, normalSize, color: 'etc1s q255 c2', normal: 'uastc 2 rdo 1.5 zstd 18', positions: 'float' },
   image: { v: 1, mode: 'etc1s q255 c2 mipmaps srgb' },
   atlas: { v: 1, mode: 'uastc 2 rdo 1.5 zstd 18 srgb flip no-mipmaps' },
+  normal: { v: 1, mode: 'uastc 1 rdo 5 dict 32768 zstd 18 linear mipmaps' },
 };
 const recipeHash = (kind) => sha(JSON.stringify({ ...RECIPES[kind], toktxVersion }));
 
@@ -100,6 +101,9 @@ async function packImage(source, output, kind) {
     // Flipped so the KTX2 atlas lands on the same UVs the PNG had with three's default flipY.
     runToktx(['--t2', '--encode', 'uastc', '--uastc_quality', '2', '--uastc_rdo_l', '1.5', '--zcmp', '18',
       '--assign_oetf', 'srgb', '--lower_left_maps_to_s0t0', output, work]);
+  } else if (kind === 'normal') {
+    runToktx(['--t2', '--encode', 'uastc', '--uastc_quality', '1', '--uastc_rdo_l', '5', '--uastc_rdo_d', '32768', '--zcmp', '18',
+      '--genmipmap', '--assign_oetf', 'linear', output, work]);
   } else {
     runToktx(['--t2', '--encode', 'etc1s', '--qlevel', '255', '--clevel', '2', '--genmipmap',
       '--assign_oetf', 'srgb', output, work]);
