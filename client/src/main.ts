@@ -207,7 +207,7 @@ async function main(): Promise<void> {
     const opening = new OpeningFlow((res) => {
       applyDrawing(forcedElement || forcedHush ? res : lastFighter() ?? res);
       if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });
-    });
+    }, (character) => { void hero.redress(character); });
     cleanup.push(() => opening.dispose());
   }
   const consent = new ConsentBanner();

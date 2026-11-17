@@ -388,12 +388,13 @@ button.purse-coin:hover { filter: brightness(1.2); }
 }
 .fight-banner:empty { display: none; }
 
+/* Above every game screen (the opening flow is 1000) so it can always be answered; below the cover (1100) and the menu (2000). */
 #consent-banner {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 999;
+  z-index: 1050;
   background: rgb(14 12 10 / 0.95);
   border-bottom: 1px solid rgb(214 170 110 / 0.4);
   padding: var(--space-2) var(--space-6);

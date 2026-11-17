@@ -75,6 +75,8 @@ export interface HeroInstance {
   readonly outfit: OutfitId;
   /** Switches the outfit model without page reload, keeping animation state and weapons. */
   switchOutfit(outfitId: OutfitId): Promise<void>;
+  /** Rebuilds the body for a new look (the creator saved one), keeping the worn outfit. */
+  redress(config: CharacterConfig): Promise<void>;
 }
 
 /** The clips with the run keeping only part of its hip bounce, measured up from its lowest (planted) point. The pack's own clips are left as loaded. */
@@ -102,8 +104,8 @@ function calmBounce(values: Float32Array | number[]): void {
 export async function loadHero(loaders: Loaders, initialOutfit?: OutfitId): Promise<HeroInstance> {
   // The body is the player's own creation; hero.glb now only supplies animation clips.
   const heroGltf = await loaders.model('/assets/characters/hero.glb');
-  const config = getStoredCharacter() ?? getDefaultCharacterConfig('male');
-  const kit = bodyKit(loaders);
+  let config = getStoredCharacter() ?? getDefaultCharacterConfig('male');
+  const kit = bodyKit(loaders, 'close');
 
   let currentOutfit: OutfitId = initialOutfit ?? 'rags';
   if (!initialOutfit && hasGameServer() && getStoredAuthToken()) {
@@ -347,8 +349,9 @@ export async function loadHero(loaders: Loaders, initialOutfit?: OutfitId): Prom
   arm(false);
   refitBaldric();
 
-  const switchOutfit = async (newOutfitId: OutfitId): Promise<void> => {
-    if (newOutfitId === currentOutfit) return;
+  /** Rebuilds the body for a look and outfit, keeping the rig's place, animation player and weapon. */
+  const dress = async (nextConfig: CharacterConfig, newOutfitId: OutfitId): Promise<void> => {
+    config = nextConfig;
     currentOutfit = newOutfitId;
 
     if (holder.parent) holder.parent.remove(holder);
@@ -394,10 +397,16 @@ export async function loadHero(loaders: Loaders, initialOutfit?: OutfitId): Prom
     strikeLimbs = new StrikeLimbs(heroModel, newFittedClips, balance.combat.activeWindow as [number, number], balance.controller.modelForwardYaw);
     refitBaldric();
   };
+  const switchOutfit = async (newOutfitId: OutfitId): Promise<void> => {
+    if (newOutfitId !== currentOutfit) await dress(config, newOutfitId);
+  };
+  const redress = async (nextConfig: CharacterConfig): Promise<void> => {
+    if (JSON.stringify(nextConfig) !== JSON.stringify(config)) await dress(nextConfig, currentOutfit);
+  };
 
   return {
     model: heroModel,
-    character: config,
+    get character(): CharacterConfig { return config; },
     anim,
     sword: holder,
     get weaponSlot(): WeaponSlotData { return weaponSlot; },
@@ -419,5 +428,6 @@ export async function loadHero(loaders: Loaders, initialOutfit?: OutfitId): Prom
     get elemental(): boolean { return elemental; },
     get outfit(): OutfitId { return currentOutfit; },
     switchOutfit,
+    redress,
   };
 }

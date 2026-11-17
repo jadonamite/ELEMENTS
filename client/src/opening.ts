@@ -1,5 +1,6 @@
 import {
   BODY_PRESET_OPTIONS,
+  type CharacterConfig,
   CreatorView,
   getStoredCharacter,
   HAIR_COLOR_PRESETS,
@@ -61,14 +62,17 @@ export function calculateAge(dobString: string, referenceDate = new Date()): num
 export class OpeningFlow {
   private readonly container: HTMLDivElement;
   private readonly onComplete: (result: DrawingResult) => void;
+  private readonly onCharacter: (config: CharacterConfig) => void;
   private activeCreatorView: CreatorView | null = null;
   private activeLoginIsland: { unmount: () => void } | null = null;
   private authToken: string | null = null;
   private accountId: string | null = null;
   private isOffline = false;
 
-  constructor(onComplete: (result: DrawingResult) => void) {
+  /** `onCharacter` runs when the creator saves a character, so the hero can wear it before the town opens. */
+  constructor(onComplete: (result: DrawingResult) => void, onCharacter: (config: CharacterConfig) => void = () => {}) {
     this.onComplete = onComplete;
+    this.onCharacter = onCharacter;
     this.container = document.createElement('div');
     this.container.id = 'opening-overlay';
     document.body.appendChild(this.container);
@@ -239,8 +243,9 @@ export class OpeningFlow {
 
   private renderCharacterCreator(): void {
     this.cleanupSubviews();
-    this.activeCreatorView = new CreatorView(this.container, () => {
+    this.activeCreatorView = new CreatorView(this.container, (config) => {
       this.activeCreatorView = null;
+      this.onCharacter(config);
       this.renderStorefront();
     });
   }
