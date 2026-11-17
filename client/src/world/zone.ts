@@ -97,6 +97,8 @@ export interface Zone {
   sounds: { market: readonly Vector3[]; forge: readonly Vector3[] };
   /** What the ground is made of under feet at a spot; open land outside the town is ash and cinder. */
   surfaceAt(x: number, y: number, z: number): Surface;
+  /** Inhabited precincts streamed along the road network. */
+  settlements: SettlementStream;
   /** The point the shadows and the nearest lights follow, usually the hero. */
   follow(point: Vector3): void;
   groundStep(controller: { position: Vector3; place(x: number, y: number, z: number): void }): boolean;
@@ -316,7 +318,13 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     window: createWindowMaterial(), forge: createForgeMaterial(), lava: createLavaMaterial(), ao: createAoMaterial(),
     wet: createWetMaterial(), water: createWaterMaterial(), fresh_water: createWaterMaterial('fresh'), paper: createPaperMaterial(),
   };
-  const settlements = new SettlementStream(world, bucket => glows[bucket] ?? lib.get(bucket as Surface), low);
+  const settlements = new SettlementStream(
+    world,
+    bucket => glows[bucket] ?? lib.get(bucket as Surface),
+    low,
+    undefined,
+    path => loaders(renderer).texture(path),
+  );
   scene.add(settlements.group);
   settlements.update(stream.near.cells);
   if (debug) Object.assign(map, { settlements });
@@ -384,6 +392,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   return {
     scene, camera, renderer, clock, ready, posts: builder.posts, browse: builder.browse,
+    settlements,
     surfaceAt: (x, y, z) => waterworks.surfaceAt(x, y, z) ?? quarry.surfaceAt(x, y, z) ?? settlements.surfaceAt(x, y, z) ?? builder.treads.at(x, y, z) ?? 'ash_cinder_ground',
     sounds: {
       market: [...builder.browse, ...builder.posts.filter(post => post.kind === 'keeper')].map(spot => new Vector3(spot.x, spot.y, spot.z)),
@@ -426,6 +435,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       sun.target.position.set(fx, 0, fz);
       sun.position.set(fx, 0, fz).addScaledVector(clock.light.direction, 120);
       pool.update(focus, worldTime.value, camera);
+      settlements.stepFlames(dt);
       // Debug only: a fixed photographer's camera for comparison shots (window.elementsShotCam = [px, py, pz, tx, ty, tz]).
       const shot = debug ? (window as unknown as { elementsShotCam?: number[] }).elementsShotCam : undefined;
       if (shot && shot.length === 6) { camera.position.set(shot[0]!, shot[1]!, shot[2]!); camera.lookAt(shot[3]!, shot[4]!, shot[5]!); }

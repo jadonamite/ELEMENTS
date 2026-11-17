@@ -1,34 +1,98 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Group, Mesh, type Material } from 'three';
+import { Group, Mesh, type Material, type Texture } from 'three';
 import { LEGACY_SINDR_ORIGIN as ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
 import { SETTLEMENT_PRECINCTS, settlementCells, type SettlementPrecinct } from '../../../shared/src/world/ignis/settlements.js';
+import { FlameField, FxMode } from '../fx/flame-field.js';
 import { WorldBuilder, seeded, type Bucket } from './builder.js';
 import { townHouse } from './style-kit.js';
 import { addShells } from './town-physics.js';
 
 interface Resident { group: Group; colliders: RAPIER.Collider[]; builder: WorldBuilder }
 
+/** A settlement's shrine stands at the south end of its lane, clear of the houses, its wake spot toward them. */
+const SHRINE_SOUTH = 70;
+
 /** Inhabited precincts follow the same nation-global cell ownership as near terrain collision. */
 export class SettlementStream {
   readonly group = new Group();
   private readonly resident = new Map<string, Resident>();
   private readonly owners = SETTLEMENT_PRECINCTS.map(place => ({ place, cells: settlementCells(place) }));
+  private readonly litShrines = new Set<string>();
+  private flames?: FlameField;
+  isLit?: ((shrineId: string) => boolean) | undefined;
 
-  constructor(private readonly world: RAPIER.World, private readonly material: (bucket: Bucket) => Material, private readonly low: boolean) {
+  constructor(
+    private readonly world: RAPIER.World,
+    private readonly material: (bucket: Bucket) => Material,
+    private readonly low: boolean,
+    isLit?: ((shrineId: string) => boolean) | undefined,
+    private readonly loadAtlas?: ((path: string) => Promise<Texture>) | undefined,
+  ) {
     this.group.name = 'ignis-settlements';
+    this.isLit = isLit;
   }
 
-  update(cells: ReadonlyMap<string, unknown>): void {
+  setLit(shrineId: string, lit = true): void {
+    if (lit) this.litShrines.add(shrineId);
+    else this.litShrines.delete(shrineId);
+    for (const owner of this.owners) {
+      const sId = `shrine_${owner.place.id.split(':').pop()!.replaceAll('-', '_')}`;
+      if (sId === shrineId && this.resident.has(owner.place.id)) {
+        this.unload(owner.place.id);
+        this.load(owner.place);
+      }
+    }
+  }
+
+  isShrineLit(place: SettlementPrecinct): boolean {
+    const sId = `shrine_${place.id.split(':').pop()!.replaceAll('-', '_')}`;
+    return this.litShrines.has(sId) || (this.isLit ? this.isLit(sId) : false);
+  }
+
+  update(cells: ReadonlyMap<string, unknown>, delta = 0): void {
     for (const owner of this.owners) {
       const wanted = owner.cells.some(key => cells.has(key));
       if (wanted && !this.resident.has(owner.place.id)) this.load(owner.place);
       if (!wanted) this.unload(owner.place.id);
     }
+    if (delta > 0) this.stepFlames(delta);
+  }
+
+  stepFlames(delta: number): void {
+    if (delta <= 0) return;
+    const litPlaces: SettlementPrecinct[] = [];
+    for (const [id] of this.resident) {
+      const owner = this.owners.find(o => o.place.id === id);
+      if (owner && this.isShrineLit(owner.place)) litPlaces.push(owner.place);
+    }
+    if (litPlaces.length === 0) {
+      if (this.flames?.drawing) {
+        this.flames.begin();
+        this.flames.end(delta);
+      }
+      return;
+    }
+    if (!this.flames) {
+      this.flames = new FlameField(this.group, undefined, this.loadAtlas, 48, 96);
+    }
+    this.flames.begin();
+    for (const p of litPlaces) {
+      const px = p.x - ORIGIN.x;
+      const py = p.height - ORIGIN.y;
+      const pz = p.z - ORIGIN.z - SHRINE_SOUTH;
+      this.flames.emit({
+        x: px, y: py + 1.35, z: pz,
+        vy: 1.1, life: 0.55,
+        w0: 0.75, h0: 0.75, w1: 1.3, h1: 1.5,
+        mode: FxMode.FIRE, alpha: 0.85,
+      });
+    }
+    this.flames.end(delta);
   }
 
   private load(place: SettlementPrecinct): void {
     const builder = new WorldBuilder({ low: this.low });
-    buildSettlement(builder, place);
+    buildSettlement(builder, place, this.isShrineLit(place));
     const group = builder.build(this.material);
     group.name = place.id;
     const colliders = builder.colliders.map(c => this.world.createCollider(
@@ -59,10 +123,14 @@ export class SettlementStream {
   }
 
   get places(): readonly string[] { return [...this.resident.keys()]; }
-  dispose(): void { for (const id of [...this.resident.keys()]) this.unload(id); this.group.removeFromParent(); }
+  dispose(): void {
+    for (const id of [...this.resident.keys()]) this.unload(id);
+    this.flames?.dispose();
+    this.group.removeFromParent();
+  }
 }
 
-function buildSettlement(b: WorldBuilder, place: SettlementPrecinct): void {
+function buildSettlement(b: WorldBuilder, place: SettlementPrecinct, lit = false): void {
   const x = place.x - ORIGIN.x, z = place.z - ORIGIN.z, y = place.height - ORIGIN.y;
   const rand = seeded(place.x + place.z + place.height);
   const frame = (): void => { b.at(x, z, 0, y); };
@@ -79,9 +147,8 @@ function buildSettlement(b: WorldBuilder, place: SettlementPrecinct): void {
     b.box('worn_flagstones', (from + to) / 2, 0.025, h.z, Math.abs(to - from), 0.05, 3);
   }
   frame();
-  // Walk-in repair room at the end of the lane, with level ground-floor access.
-  townHouse(b, { x, z: z - 69, y, yaw: 0, w: 14, d: 11, floors: 1, rank: 'common',
-    weeds: false, door: 0, room: { x: 0, w: 6, d: 6, kind: 'service' } }, rand);
+  // The precinct shrine stands at the south end of the lane.
+  buildSettlementShrine(b, lit);
   frame();
   b.box('worn_flagstones', 0, 0.025, -59, 6, 0.05, 9);
   switch (place.industry) {
@@ -94,6 +161,29 @@ function buildSettlement(b: WorldBuilder, place: SettlementPrecinct): void {
     case 'fort': fortWorks(b); break;
   }
   b.at(0, 0, 0);
+}
+
+/**
+ * A settlement's shrine: a stone ring and raised plinth carrying an iron brazier.
+ * Cold ash and dark coals when unlit; glowing lava coals, fire and warm light when lit.
+ */
+function buildSettlementShrine(b: WorldBuilder, lit: boolean): void {
+  // Broad low stone ring surrounding the brazier
+  b.cylinder('ashlar_stone_blocks', 0, 0.12, -SHRINE_SOUTH, 2.8, 3.0, 0.24, 16);
+  // Raised plinth
+  b.cylinder('basalt_rock_face', 0, 0.35, -SHRINE_SOUTH, 1.4, 1.5, 0.3, 16);
+  // Brazier sits atop the plinth at y = 0.5
+  b.prop('iron_brazier', 0, -SHRINE_SOUTH, 0, 1.1, 0.5);
+  // Collision around the plinth and brazier
+  b.solid(0, 0.7, -SHRINE_SOUTH, 1.8, 1.4, 1.8);
+
+  if (lit) {
+    b.cylinder('lava', 0, 1.32, -SHRINE_SOUTH, 0.48, 0.48, 0.04, 16);
+    b.fire(0, 1.34, -SHRINE_SOUTH, 0.9);
+    b.light(0, 2.4, -SHRINE_SOUTH, 0xff7428, 28, 14, 0.3);
+  } else {
+    b.cylinder('ash_cinder_ground', 0, 1.28, -SHRINE_SOUTH, 0.48, 0.48, 0.04, 16);
+  }
 }
 
 /** Open sorting bays and hoist sit north of the village; the quarry is a separate atlas workplace. */

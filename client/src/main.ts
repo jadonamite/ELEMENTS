@@ -688,7 +688,15 @@ async function main(): Promise<void> {
     status(text);
     hudLine(text, 1600);
   };
-  const shrineState = new ShrineState({ onNotice: notice });
+  const shrineState = new ShrineState({
+    onNotice: notice,
+    onLit: (shrine) => {
+      zone?.settlements.setLit(shrine.id, true);
+    },
+  });
+  if (zone) {
+    zone.settlements.isLit = (id) => shrineState.isLit(id);
+  }
   // Street villains speak through the same speech rules as the townsfolk, in their body's voice.
   const streetSpeech = new SpeechMemory();
   const villainSay = (speaker: Enemy, concept: string): void => {
@@ -1188,8 +1196,14 @@ async function main(): Promise<void> {
       onNotice: notice,
       onTier: applyTier,
       onOutfit: (outfit) => { void hero.switchOutfit(parseOutfit(outfit)); },
-      onShrines: (lit) => shrineState.setOnlineLit(lit),
-      onShrineLit: (shrineId) => shrineState.onOnlineShrineLit(shrineId),
+      onShrines: (lit) => {
+        shrineState.setOnlineLit(lit);
+        if (zone) for (const id of lit) zone.settlements.setLit(id, true);
+      },
+      onShrineLit: (shrineId) => {
+        shrineState.onOnlineShrineLit(shrineId);
+        zone?.settlements.setLit(shrineId, true);
+      },
       onRevived: (_position, facing) => {
         fight.reviveHero();
         combat.reset();

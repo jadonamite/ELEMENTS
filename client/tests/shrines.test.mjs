@@ -58,3 +58,19 @@ test('ShrineState: falling near Sindr with multiple lit shrines still wakes at t
   const pwWake = state.wakeSpot(pinewatchScene);
   assert.equal(pwWake.shrine.id, pinewatch.id);
 });
+
+test('SettlementStream tracks lit state of precinct shrines', async () => {
+  const { SettlementStream } = await import('../src/world/settlements.ts');
+  const { SETTLEMENT_PRECINCTS } = await import('../../shared/src/world/ignis/settlements.js');
+  const pinewatch = SETTLEMENT_PRECINCTS.find(p => p.name === 'Pinewatch');
+  assert.ok(pinewatch);
+
+  const stream = new SettlementStream(null, () => null, false);
+  assert.equal(stream.isShrineLit(pinewatch), false);
+
+  stream.setLit('shrine_pinewatch', true);
+  assert.equal(stream.isShrineLit(pinewatch), true);
+
+  stream.setLit('shrine_pinewatch', false);
+  assert.equal(stream.isShrineLit(pinewatch), false);
+});
