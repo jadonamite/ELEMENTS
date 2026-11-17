@@ -6,7 +6,7 @@ Written 6 November 2026, after the pass that built the loop's trade, bank, notic
 
 In Sindr, on `main`:
 
-- Fight a brawler, a robber, a bender or a husk; kill it and the loot falls where it died. Walk over it to claim it. Die and what you carried is left on the ground.
+- Fight a brawler, a robber, a bender or a husk; kill it and the loot falls where it died. Walk over it to claim it. Die and carried shards and purse coin go to your killer or outlaw, or wait on the ground for you; gear, materials and the bank stay safe, and you wake at the nearest lit shrine.
 - Sell what you carry at a stall, buy from its shelves, and read the merchant's reason on any price.
 - Bank coin at either counting house and walk away with a note the other house honours. Marked players are refused.
 - Trade hand to hand with another player; trade offers arrive on the same context key as the stalls.

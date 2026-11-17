@@ -101,7 +101,7 @@ The economy is what this track scores: one currency (CHROMA) plus materials, wit
 - **Training:** NPC masters charge to teach techniques
 - **Building upkeep** in CHROMA
 - **Awakening attempts** burn CHROMA
-- **Death:** you drop the materials you carry (never gear or your account), and part of them is destroyed
+- **Death:** you drop carried shards and purse coin (gear, materials and bank account stay untouched); a killer or outlaw holds them, or they wait on the ground for the fallen
 
 **Crafting rules:**
 
