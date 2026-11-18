@@ -105,6 +105,63 @@ test('Fault 6: no floating foundation - transformed merged geometry bottom <= gr
   }
 });
 
+test('Fault 2: top tread height equals sill and x equals door x in transformed geometry', () => {
+  for (const site of ROCK_HOUSE_SITES) {
+    if (site.access !== 'steps') continue;
+    const b = new WorldBuilder();
+    rockHouse(b, site, 0, seeded(42), groundHeight, { x: 0, y: 0, z: 0 });
+    const group = b.build(() => new MeshBasicMaterial());
+
+    const stepsMesh = group.children.find(c => c.name === 'worn_flagstones');
+    assert.ok(stepsMesh, `Site ${site.id} must produce a worn_flagstones mesh for steps`);
+
+    const pos = stepsMesh.geometry.getAttribute('position');
+    assert.ok(pos && pos.count > 0, `Site ${site.id} steps mesh must have vertices`);
+
+    // In site local frame: door is at x = site.door, top step is at z = site.d / 2 + stepTread / 2
+    const stepTread = 0.32;
+    const topStepCenterLocal = { lx: site.door, lz: site.d / 2 + stepTread / 2 };
+    const expectedWorld = siteToWorld(site, topStepCenterLocal.lx, topStepCenterLocal.lz);
+
+    let maxTreadY = -Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      const vy = pos.getY(i);
+      if (vy > maxTreadY) maxTreadY = vy;
+    }
+
+    // Top tread height must equal site.sill
+    assert.ok(
+      Math.abs(maxTreadY - site.sill) < 1e-3,
+      `Site ${site.id} top tread height (${maxTreadY.toFixed(3)}) must equal sill (${site.sill.toFixed(3)})`,
+    );
+
+    // Collect all vertices on the top tread surface (within 1mm of maxTreadY)
+    const topTreadVertices = [];
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i);
+      const vy = pos.getY(i);
+      const vz = pos.getZ(i);
+      if (Math.abs(vy - maxTreadY) < 1e-3) {
+        topTreadVertices.push({ x: vx, y: vy, z: vz });
+      }
+    }
+
+    assert.ok(topTreadVertices.length >= 4, `Site ${site.id} must have top tread face vertices`);
+
+    const avgX = topTreadVertices.reduce((sum, v) => sum + v.x, 0) / topTreadVertices.length;
+    const avgZ = topTreadVertices.reduce((sum, v) => sum + v.z, 0) / topTreadVertices.length;
+
+    assert.ok(
+      Math.abs(avgX - expectedWorld.x) < 1e-3,
+      `Site ${site.id} top tread world X (${avgX.toFixed(3)}) must match door X (${expectedWorld.x.toFixed(3)})`,
+    );
+    assert.ok(
+      Math.abs(avgZ - expectedWorld.z) < 1e-3,
+      `Site ${site.id} top tread world Z (${avgZ.toFixed(3)}) must match expected Z (${expectedWorld.z.toFixed(3)})`,
+    );
+  }
+});
+
 test('Detail 1 is far version with about a fifth of the triangles of detail 0', () => {
   for (const site of ROCK_HOUSE_SITES) {
     const b0 = new WorldBuilder();

@@ -117,12 +117,14 @@ export function rockHouse(
     }
 
     // 2. House: townHouse for the 2 floors, common rank, balcony on variant 3
+    // townHouse has an internal ground-floor plinth of P = 0.45 m; offset y by -P so the door sits at sill
+    const P = 0.45;
     townHouse(
       b,
       {
         x: site.x - ox,
         z: site.z - oz,
-        y: site.sill - oy,
+        y: site.sill - P - oy,
         yaw: site.yaw,
         w: site.w,
         d: site.d,
@@ -141,8 +143,8 @@ export function rockHouse(
     b.at(site.x - ox, site.z - oz, site.yaw, site.sill - oy);
 
     // 3. Chimneys: two chimneys on variant 1, one on other variants
-    const P = 0.45, G = 3.1, U = 2.4;
-    const top = P + G + U;
+    const G = 3.1, U = 2.4;
+    const top = G + U;
     const ch = 4.2;
     const chim1X = w / 2 - 0.9;
     const chim2X = -(w / 2 - 0.9);
@@ -164,14 +166,13 @@ export function rockHouse(
       const stepTread = 0.32;
       const stepW = 1.8;
       const run = numSteps * stepTread;
+      const treadThick = Math.min(actualRiser, 0.1);
 
       for (let i = 0; i < numSteps; i++) {
         const stepZ = frontZ + (i + 0.5) * stepTread;
-        const stepTop = -(i + 1) * actualRiser;
-        b.box('worn_flagstones', site.door, stepTop + 0.05, stepZ, stepW, 0.1, stepTread);
-        // Step nosing
-        b.box('ashlar_stone_blocks', site.door, stepTop + 0.02, stepZ + stepTread / 2 + 0.02, stepW + 0.04, 0.06, 0.06);
-        b.solid(site.door, stepTop + 0.05, stepZ, stepW, 0.1, stepTread);
+        const topY = -i * actualRiser;
+        b.box('worn_flagstones', site.door, topY - treadThick / 2, stepZ, stepW, treadThick, stepTread);
+        b.solid(site.door, topY - treadThick / 2, stepZ, stepW, treadThick, stepTread);
       }
 
       // Cheek walls flanking steps
@@ -218,13 +219,12 @@ export function rockHouse(
     }
 
     // 2. Simplified building envelope
-    const P = 0.45, G = 3.1, U = 2.4;
-    // Ground floor plinth & walls
-    b.box('basalt_rock_face', 0, P / 2, 0, w + 0.24, P, d + 0.24);
-    b.box('ashlar_stone_blocks', 0, P + G / 2, -0.12, w - 0.1, G, d - 0.24);
-    b.box('charred_timber_beams', site.door, P + 1.05, frontZ - 0.36, 1.1, 2.1, 0.08);
+    const G = 3.1, U = 2.4;
+    // Ground floor walls (base at sill y = 0)
+    b.box('ashlar_stone_blocks', 0, G / 2, -0.12, w - 0.1, G, d - 0.24);
+    b.box('charred_timber_beams', site.door, 1.05, frontZ - 0.36, 1.1, 2.1, 0.08);
 
-    let top = P + G;
+    let top = G;
     if (site.variant === 3) {
       // Balcony slab
       b.box('charred_timber_beams', 0, top + 0.03, frontZ + 0.45, w + 0.1, 0.08, 0.95);
