@@ -44,8 +44,8 @@ const VARIANTS: readonly { w: number; d: number; access: 'steps' | 'ramp' }[] = 
 ];
 
 const CINDERPIT = { x: 10500, z: 7000, pad: 740 } as const;
-/** The rim lane and the house fronts sit this far below the pad sill: 2 steps, or a one-metre ramp. */
-const RIM_LANE = 739.7;
+/** The rim lane stands at the pad, so it joins the precinct's central lane without a step. */
+const RIM_LANE = CINDERPIT.pad;
 
 /** `siteToWorld` for a site, with the one rotation convention. */
 export function siteToWorld(site: Pick<RockHouseSite, 'x' | 'z' | 'yaw'>, lx: number, lz: number): { x: number; z: number } {
