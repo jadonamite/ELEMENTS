@@ -832,41 +832,40 @@ async function main(): Promise<void> {
   const isNewArrival = !localStorage.getItem(introStorageKey);
   const shouldRunIntro = (params.has('intro') || isNewArrival) && !params.has('skipIntro');
 
-  if (shouldRunIntro && zone && lifeSystem) {
-    nationIntro = new NationIntroFlow({
-      scene,
-      loaders: assets,
-      nation: kitElement,
-      isDim: () => isDim,
-      controller,
-      shoulderCamera,
-      input,
-      combat,
-      fight,
-      sound,
-      leadManager: lifeSystem.leadManager,
-      waypointMarker: lifeSystem.waypointMarker,
-      applyTier,
-      onEquipStarterWeapon: () => {
-        applyKit();
-        setFightingStyle('weapon');
-        sword.draw(true);
-      },
-      beforeUnlock: async () => {
-        const held = getStoredDrawing();
-        const account = await saveProgressAtGate();
-        if (account && !forcedElement && !forcedHush && (account.role !== held?.role || account.element !== held?.element)) {
-          applyDrawing(account);
-          notice(account.role === 'Hush' ? 'Welcome back. You are Hush.' : `Welcome back, Shaper of ${account.element}.`);
-        }
-      },
-      onMissionComplete: (lead) => {
-        localStorage.setItem(introStorageKey, 'done');
-        if (townEconomy?.carried) townEconomy.carried.chroma += lead.rewardChroma;
-      },
-    });
-    cleanup.push(() => nationIntro?.dispose());
-  }
+  // Built when the opening closes, not now: the world loads during the film, before the Drawing names the player's nation.
+  const buildNationIntro = (life: SindrLifeSystem): NationIntroFlow => new NationIntroFlow({
+    scene,
+    loaders: assets,
+    nation: kitElement,
+    isDim: () => isDim,
+    controller,
+    shoulderCamera,
+    input,
+    combat,
+    fight,
+    sound,
+    leadManager: life.leadManager,
+    waypointMarker: life.waypointMarker,
+    applyTier,
+    onEquipStarterWeapon: () => {
+      applyKit();
+      setFightingStyle('weapon');
+      sword.draw(true);
+    },
+    beforeUnlock: async () => {
+      const held = getStoredDrawing();
+      const account = await saveProgressAtGate();
+      if (account && !forcedElement && !forcedHush && (account.role !== held?.role || account.element !== held?.element)) {
+        applyDrawing(account);
+        notice(account.role === 'Hush' ? 'Welcome back. You are Hush.' : `Welcome back, Shaper of ${account.element}.`);
+      }
+    },
+    onMissionComplete: (lead) => {
+      localStorage.setItem(introStorageKey, 'done');
+      if (townEconomy?.carried) townEconomy.carried.chroma += lead.rewardChroma;
+    },
+  });
+  cleanup.push(() => nationIntro?.dispose());
   input.onTargetTap = (x, y) => {
     const point = new Vector3(); let target: Enemy | null = null, nearest = 48;
     for (const foe of fight.enemies) {
@@ -1354,7 +1353,15 @@ async function main(): Promise<void> {
   }
 
   // The master walks up once the player can see the street: the loader has handed over and the Draw is closed.
-  if (nationIntro) void openingClosed.then(() => { if (!disposed) nationIntro?.start(); });
+  // The Drawing is applied first (its handler was registered earlier), so the intro gets the drawn nation's master.
+  if (shouldRunIntro && zone && lifeSystem) {
+    const life = lifeSystem;
+    void openingClosed.then(() => {
+      if (disposed) return;
+      nationIntro = buildNationIntro(life);
+      nationIntro.start();
+    });
+  }
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();
