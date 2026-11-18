@@ -1,4 +1,4 @@
-import { Group, LOD, type Material } from 'three';
+import { Group, LOD, type Camera, type Material } from 'three';
 import { LEGACY_SINDR_ORIGIN as ORIGIN, type Point3 } from '../../../shared/src/world/ignis/coordinates.js';
 import { groundHeight } from '../../../shared/src/world/ignis/ground.js';
 import {
@@ -303,7 +303,8 @@ export function rockHouse(
 }
 
 /**
- * Builds both detail levels of a rock house group into a THREE.LOD positioned at the group centre.
+ * Builds each rock house in a group with its own THREE.LOD positioned at its own footprint centre,
+ * so distance is measured per house rather than to the group centre.
  * Detail 1 begins at 160 m (110 m when low).
  */
 export function buildRockGroupLOD(
@@ -312,36 +313,55 @@ export function buildRockGroupLOD(
   material: (bucket: Bucket) => Material,
   groundAt: (x: number, z: number) => number = groundHeight,
   origin: Point3 = ORIGIN,
-): { lod: LOD; builder0: WorldBuilder; builder1: WorldBuilder } {
+): { lod: Group; lods: LOD[]; builder0: WorldBuilder; builder1: WorldBuilder } {
   const sites = ROCK_HOUSE_SITES.filter(s => s.group === group.id);
   const builder0 = new WorldBuilder({ low });
   const builder1 = new WorldBuilder({ low });
 
+  const container = new Group();
+  container.name = `rockhouses:${group.id}`;
+  const lods: LOD[] = [];
+
+  const switchDistance = low ? 110 : 160;
+
   for (const site of sites) {
     const rand0 = seeded(site.x + site.z + site.sill);
     const rand1 = seeded(site.x + site.z + site.sill);
+
+    // Group-wide builders collect physics colliders, emitters, and treads
     rockHouse(builder0, site, 0, rand0, groundAt, origin);
     rockHouse(builder1, site, 1, rand1, groundAt, origin);
+
+    // Each house gets its own builder output for each LOD level
+    const houseBuilder0 = new WorldBuilder({ low });
+    const houseBuilder1 = new WorldBuilder({ low });
+    rockHouse(houseBuilder0, site, 0, rand0, groundAt, origin);
+    rockHouse(houseBuilder1, site, 1, rand1, groundAt, origin);
+
+    const mesh0 = houseBuilder0.build(material);
+    const mesh1 = houseBuilder1.build(material);
+
+    const hx = site.x - origin.x;
+    const hy = site.sill - origin.y;
+    const hz = site.z - origin.z;
+
+    const houseLod = new LOD();
+    houseLod.name = `lod:${site.id}`;
+    houseLod.position.set(hx, hy, hz);
+
+    mesh0.position.set(-hx, -hy, -hz);
+    mesh1.position.set(-hx, -hy, -hz);
+
+    houseLod.addLevel(mesh0, 0);
+    houseLod.addLevel(mesh1, switchDistance);
+
+    lods.push(houseLod);
+    container.add(houseLod);
   }
 
-  const mesh0 = builder0.build(material);
-  const mesh1 = builder1.build(material);
+  (container as unknown as { update: (cam: Camera) => void }).update = (cam: Camera): void => {
+    for (const l of lods) l.update(cam);
+  };
 
-  const groupY = groundAt(group.x, group.z);
-  const gx = group.x - origin.x;
-  const gy = groupY - origin.y;
-  const gz = group.z - origin.z;
-
-  const lod = new LOD();
-  lod.name = `lod:${group.id}`;
-  lod.position.set(gx, gy, gz);
-
-  mesh0.position.set(-gx, -gy, -gz);
-  mesh1.position.set(-gx, -gy, -gz);
-
-  const switchDistance = low ? 110 : 160;
-  lod.addLevel(mesh0, 0);
-  lod.addLevel(mesh1, switchDistance);
-
-  return { lod, builder0, builder1 };
+  return { lod: container, lods, builder0, builder1 };
 }

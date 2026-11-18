@@ -135,55 +135,129 @@ test('Detail 1 is far version with about a fifth of the triangles of detail 0', 
   }
 });
 
-test('Exactly one LOD level visible at 20, 150, 170 and 400 m from each group centre', () => {
+test('LOD: distance is measured to each house footprint centre, not group centre', () => {
   for (const group of ROCK_HOUSE_GROUPS) {
-    const { lod } = buildRockGroupLOD(group, false, () => new MeshBasicMaterial(), groundHeight, ORIGIN);
+    const { lod, lods } = buildRockGroupLOD(group, false, () => new MeshBasicMaterial(), groundHeight, ORIGIN);
+    const sites = ROCK_HOUSE_SITES.filter(s => s.group === group.id);
     const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 1000);
 
-    const testDistances = [20, 150, 170, 400];
-    for (const dist of testDistances) {
-      camera.position.set(lod.position.x + dist, lod.position.y, lod.position.z);
+    // 1. Camera at each house's door: this house must show detail 0, even if group centre is far away
+    for (let i = 0; i < sites.length; i++) {
+      const site = sites[i];
+      const houseLod = lods[i];
+
+      // Position camera at the door of this house (local z = d/2 + 1, door offset x = site.door)
+      const doorWorld = siteToWorld(site, site.door, site.d / 2 + 1);
+      const camX = doorWorld.x - ORIGIN.x;
+      const camY = site.sill - ORIGIN.y + 1.6; // eye height
+      const camZ = doorWorld.z - ORIGIN.z;
+
+      camera.position.set(camX, camY, camZ);
       camera.updateMatrixWorld(true);
       lod.updateMatrixWorld(true);
       lod.update(camera);
 
-      const visibleLevels = lod.levels.filter(l => l.object.visible);
+      // Distance to this house is ~1m (< 160m), so it must show detail 0
+      const visibleLevels = houseLod.levels.filter(l => l.object.visible);
       assert.equal(
         visibleLevels.length,
         1,
-        `Group ${group.id} at ${dist}m must have exactly 1 visible LOD level, got ${visibleLevels.length}`,
+        `House ${site.id} at door must have exactly 1 visible level, got ${visibleLevels.length}`,
+      );
+      assert.equal(
+        houseLod.levels[0].object.visible,
+        true,
+        `House ${site.id} must show detail 0 when camera is at its door`,
+      );
+      assert.equal(
+        houseLod.levels[1].object.visible,
+        false,
+        `House ${site.id} must not show detail 1 when camera is at its door`,
+      );
+    }
+
+    // 2. Camera at group centre: houses standing > 160m away (e.g. Cinderpit rim) must show detail 1, NOT detail 0
+    const groupCamX = group.x - ORIGIN.x;
+    const groupCamY = groundHeight(group.x, group.z) - ORIGIN.y + 1.6;
+    const groupCamZ = group.z - ORIGIN.z;
+
+    camera.position.set(groupCamX, groupCamY, groupCamZ);
+    camera.updateMatrixWorld(true);
+    lod.updateMatrixWorld(true);
+    lod.update(camera);
+
+    for (let i = 0; i < sites.length; i++) {
+      const site = sites[i];
+      const houseLod = lods[i];
+      const distToCam = Math.hypot(site.x - group.x, site.z - group.z);
+
+      const visibleLevels = houseLod.levels.filter(l => l.object.visible);
+      assert.equal(
+        visibleLevels.length,
+        1,
+        `House ${site.id} from group centre must have exactly 1 visible level`,
       );
 
-      if (dist < 160) {
-        assert.equal(lod.levels[0].object.visible, true, `Group ${group.id} at ${dist}m must show detail 0`);
-        assert.equal(lod.levels[1].object.visible, false);
+      if (distToCam > 160) {
+        assert.equal(
+          houseLod.levels[0].object.visible,
+          false,
+          `House ${site.id} at ${distToCam.toFixed(1)}m from group centre must not show detail 0`,
+        );
+        assert.equal(
+          houseLod.levels[1].object.visible,
+          true,
+          `House ${site.id} at ${distToCam.toFixed(1)}m from group centre must show detail 1`,
+        );
       } else {
-        assert.equal(lod.levels[0].object.visible, false);
-        assert.equal(lod.levels[1].object.visible, true, `Group ${group.id} at ${dist}m must show detail 1`);
+        assert.equal(houseLod.levels[0].object.visible, true);
+        assert.equal(houseLod.levels[1].object.visible, false);
       }
     }
 
-    // Low quality switch threshold test (110m)
-    const { lod: lowLod } = buildRockGroupLOD(group, true, () => new MeshBasicMaterial(), groundHeight, ORIGIN);
-    for (const dist of testDistances) {
-      camera.position.set(lowLod.position.x + dist, lowLod.position.y, lowLod.position.z);
-      camera.updateMatrixWorld(true);
-      lowLod.updateMatrixWorld(true);
-      lowLod.update(camera);
+    // 3. Per-house LOD switch distances: 20, 150, 170, 400 m from house footprint centre
+    for (let i = 0; i < sites.length; i++) {
+      const houseLod = lods[i];
+      const testDistances = [20, 150, 170, 400];
 
-      const visibleLevels = lowLod.levels.filter(l => l.object.visible);
-      assert.equal(
-        visibleLevels.length,
-        1,
-        `Group ${group.id} (low) at ${dist}m must have exactly 1 visible level, got ${visibleLevels.length}`,
-      );
+      // Default quality: switch at 160m
+      for (const dist of testDistances) {
+        camera.position.set(houseLod.position.x + dist, houseLod.position.y, houseLod.position.z);
+        camera.updateMatrixWorld(true);
+        houseLod.updateMatrixWorld(true);
+        houseLod.update(camera);
 
-      if (dist < 110) {
-        assert.equal(lowLod.levels[0].object.visible, true);
-        assert.equal(lowLod.levels[1].object.visible, false);
-      } else {
-        assert.equal(lowLod.levels[0].object.visible, false);
-        assert.equal(lowLod.levels[1].object.visible, true);
+        const visibleLevels = houseLod.levels.filter(l => l.object.visible);
+        assert.equal(visibleLevels.length, 1);
+        if (dist < 160) {
+          assert.equal(houseLod.levels[0].object.visible, true);
+          assert.equal(houseLod.levels[1].object.visible, false);
+        } else {
+          assert.equal(houseLod.levels[0].object.visible, false);
+          assert.equal(houseLod.levels[1].object.visible, true);
+        }
+      }
+    }
+
+    // 4. Low quality switch distance: 110m
+    const { lods: lowLods } = buildRockGroupLOD(group, true, () => new MeshBasicMaterial(), groundHeight, ORIGIN);
+    for (const houseLod of lowLods) {
+      const testDistances = [20, 100, 120, 400];
+      for (const dist of testDistances) {
+        camera.position.set(houseLod.position.x + dist, houseLod.position.y, houseLod.position.z);
+        camera.updateMatrixWorld(true);
+        houseLod.updateMatrixWorld(true);
+        houseLod.update(camera);
+
+        const visibleLevels = houseLod.levels.filter(l => l.object.visible);
+        assert.equal(visibleLevels.length, 1);
+        if (dist < 110) {
+          assert.equal(houseLod.levels[0].object.visible, true);
+          assert.equal(houseLod.levels[1].object.visible, false);
+        } else {
+          assert.equal(houseLod.levels[0].object.visible, false);
+          assert.equal(houseLod.levels[1].object.visible, true);
+        }
       }
     }
   }

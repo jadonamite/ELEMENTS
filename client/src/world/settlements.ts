@@ -95,7 +95,7 @@ export class SettlementStream {
   private load(place: SettlementPrecinct): void {
     const builder = new WorldBuilder({ low: this.low });
     const lit = this.shrineLit(place);
-    let cinderpitLod: LOD | null = null;
+    let cinderpitLod: Group | null = null;
     let cinderpitRockBuilder: WorldBuilder | null = null;
 
     if (place.id === 'ignis:settlement:cinderpit') {
