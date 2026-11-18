@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import express from 'express';
+import { claimLootPile } from '../src/economy/index.js';
 import { DatabaseSync } from 'node:sqlite';
 import { setupApi } from '../src/api.js';
 import { setTokenVerifier } from '../src/auth.js';
@@ -114,7 +115,7 @@ test('Online money: a stall trade needs the player at the stall, and the outside
 
 test('Online money: a player who falls drops what they carry where the room has them', () => {
   const { db, world, econ, join } = setup();
-  addItems({ accountId: 'acct_a', from: 'test', stacks: [{ itemId: 'material_linen', quantity: 4 }], reason: 'loot' }, db);
+  addItems({ accountId: 'acct_a', from: 'test', stacks: [{ itemId: 'material_linen', quantity: 4 }, { itemId: 'shard_ignis', quantity: 3 }], reason: 'loot' }, db);
   const p = join('A', { accountId: 'acct_a', role: 'Shaper', element: 'IGNIS' }, 128, 4);
   p.hp = 1;
   let fell = false;
@@ -122,13 +123,36 @@ test('Online money: a player who falls drops what they carry where the room has 
     for (const e of world.step(0.05, t)) {
       if (e.type !== 'fell') continue;
       fell = true;
-      const out = econ.death(e.to);
-      const pile = (ofType(out, 'loot_new')[0]!.body as { pile: { x: number; z: number } }).pile;
+      assert.equal(e.by.kind, 'hound');
+      const out = econ.death(e.to, e.by);
+      const pile = (ofType(out, 'loot_new')[0]!.body as { pile: { x: number; z: number; ownerId: string } }).pile;
       assert.ok(Math.hypot(pile.x - p.x, pile.z - p.z) < 0.01, 'at the room position');
+      assert.equal(pile.ownerId, 'acct_a', 'a beast is nobody: the fallen keeps the first claim');
     }
   }
   assert.ok(fell, 'the hound felled the player');
-  assert.equal(getSatchel('acct_a', db).material_linen ?? 0, 0);
+  assert.equal(getSatchel('acct_a', db).shard_ignis ?? 0, 0);
+  assert.equal(getSatchel('acct_a', db).material_linen, 4, 'materials stay with the fallen');
+  econ.dispose();
+});
+
+test('Online money: a robber carries what he took until someone kills him, then it falls for his killer', () => {
+  const { db, world, econ, join } = setup();
+  addItems({ accountId: 'acct_a', from: 'test', stacks: [{ itemId: 'shard_ignis', quantity: 5 }], reason: 'loot' }, db);
+  join('A', { accountId: 'acct_a', role: 'Shaper', element: 'IGNIS' }, 128, 4);
+  join('B', { accountId: 'acct_b', role: 'Shaper', element: 'IGNIS' }, 130, 4);
+  const out = econ.death('A', { id: 'robber_1', kind: 'robber' });
+  assert.equal(ofType(out, 'loot_new').length, 0, 'what the robber holds is in his hands, not on the ground');
+  const held = db.prepare(`SELECT id, owner_id AS ownerId FROM loot_piles WHERE owner_id LIKE 'outlaw:%'`).get() as { id: string; ownerId: string };
+  assert.ok(held, 'the robber holds it');
+  assert.equal(listLootPiles({ zone: world.zone }, db).length, 0, 'nobody is shown it');
+  assert.throws(() => claimLootPile({ pileId: held.id, accountId: 'acct_a', x: 128, z: 4 }, db), 'not even the fallen can take it from him');
+
+  const kill = { zone: world.zone, worldId: world.id, enemyId: 'robber_1', kind: 'robber', x: 140, z: 6, killerAccountId: 'acct_b', damageBy: { acct_b: 100 }, at: 1 };
+  const freed = ofType(econ.kill(kill), 'loot_new').map(e => (e.body as { pile: { id: string; ownerId: string; x: number } }).pile);
+  const back = freed.find(f => f.id === held.id)!;
+  assert.equal(back.ownerId, 'acct_b', 'his killer has first claim');
+  assert.ok(Math.abs(back.x - 140) < 0.01, 'it falls where he fell');
   econ.dispose();
 });
 

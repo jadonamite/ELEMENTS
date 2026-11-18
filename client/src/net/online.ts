@@ -52,6 +52,12 @@ export interface OnlineGame {
   onNotice?: ((text: string) => void) | undefined;
   /** The server's fighting tier for this player, sent on joining. */
   onTier?: ((tier: number) => void) | undefined;
+  /** The shrines this player has lit, as the server holds them. */
+  onShrines?: ((lit: string[]) => void) | undefined;
+  /** A shrine the player just reached was lit. */
+  onShrineLit?: ((shrine: string) => void) | undefined;
+  /** The server stood the player up (a revive or a shrine trip) at a spot in this scene. */
+  onRevived?: ((position: Point3, facing: number | undefined, shrine: string | undefined) => void) | undefined;
   /** The outfit the server holds for this player, sent on joining. */
   onOutfit?: ((outfit: string) => void) | undefined;
 }
@@ -119,6 +125,29 @@ export class OnlineSession {
       this.clock.sample(p.c, performance.now() / 1000, p.t);
     });
     this.on('snap', (m) => this.applySnapshot(m as SnapMsg));
+    this.on('shrines', (m) => {
+      const lit = (m as { lit?: unknown }).lit;
+      if (Array.isArray(lit)) game.onShrines?.(lit.filter((x): x is string => typeof x === 'string'));
+    });
+    this.on('shrine_lit', (m) => {
+      const shrine = (m as { shrine?: unknown }).shrine;
+      if (typeof shrine === 'string') game.onShrineLit?.(shrine);
+    });
+    this.on('shrine_refused', (m) => {
+      const error = (m as { error?: unknown }).error;
+      if (typeof error === 'string') this.game.onNotice?.(error) ?? this.game.onStatus?.(error);
+    });
+    this.on('revived', (m) => {
+      const r = m as { x?: unknown; y?: unknown; z?: unknown; facing?: unknown; shrine?: unknown };
+      if (typeof r.x !== 'number' || typeof r.z !== 'number') return;
+      const position = this.fromNetwork({ x: r.x, y: typeof r.y === 'number' ? r.y : 0, z: r.z });
+      this.place(position);
+      game.onRevived?.(position, typeof r.facing === 'number' ? r.facing : undefined, typeof r.shrine === 'string' ? r.shrine : undefined);
+    });
+    this.on('shrine_jump', (m) => {
+      const zone = (m as { zone?: unknown }).zone;
+      if (typeof zone === 'string') void this.jump(zone);
+    });
     this.on('left', (m) => this.dropPlayer((m as { id: string }).id));
     this.on('notice', (m) => {
       const text = (m as { text?: unknown }).text;
@@ -295,6 +324,41 @@ export class OnlineSession {
     this.ready = true;
     if (typeof w.tier === 'number') this.game.onTier?.(w.tier);
     if (typeof w.outfit === 'string') this.game.onOutfit?.(w.outfit);
+  }
+
+  /** Asks the room to carry the player from the lit shrine they stand at to another lit one. */
+  travel(to: string): void {
+    if (this.ready && !this.pending) this.link.send('shrine_travel', { to });
+  }
+
+  /**
+   * The server moved the player to a shrine in another region: rejoin there as on a return visit. Its
+   * welcome places the player; the old room has already let them go.
+   */
+  private async jump(zone: string): Promise<void> {
+    const target = networkRegion(zone);
+    if (!target || this.pending || this.disposed) return;
+    const source = this.link;
+    this.ready = false;
+    this.game.onStatus?.('Travelling...');
+    try {
+      const link = await RoomLink.join(this.options.server, 'zone', {
+        zone, element: this.options.element, role: this.options.role,
+        forcedCarry: this.options.forcedCarry, night: this.options.night, clock: this.options.clock,
+      }, this.options.token, { delay: this.options.lag ?? 0 });
+      if (this.disposed || this.link !== source) { link.close(); return; }
+      this.link = link;
+      for (const [type, handlers] of this.handlers) for (const handler of handlers) this.listen(this.link, type, handler);
+      this.bindClose(this.link);
+      for (const id of [...this.players.keys()]) this.dropPlayer(id);
+      for (const enemy of this.enemies.values()) enemy.dispose();
+      this.enemies.clear();
+      source.close();
+      this.game.onStatus?.('');
+      this.ping();
+    } catch {
+      this.game.onStatus?.('The shrine could not carry you. Reload to return to the world.');
+    }
   }
 
   private async handoff(raw: unknown): Promise<void> {

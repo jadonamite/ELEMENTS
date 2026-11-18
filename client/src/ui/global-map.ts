@@ -1,5 +1,24 @@
-import { openMarketBoard } from '../economy/market-board.js';
+import {
+  FIRST_SHRINE,
+  LEGACY_SINDR_ORIGIN,
+  SHRINES,
+  litShrines,
+  shrineAt,
+} from '../../../shared/src/index.js';
+import type { ShrineState } from '../shrine-state.js';
+import type { WaypointDropTarget } from '../story/waypoint-marker.js';
 export type MapRegion = 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA' | 'CHROMARA';
+
+export interface GlobalMapOptions {
+  inTown: boolean;
+  navigateToSindr: () => void;
+  shrineState?: ShrineState | undefined;
+  getPlayerPosition?: (() => { x: number; y: number; z: number }) | undefined;
+  getDropTarget?: (() => WaypointDropTarget | null) | undefined;
+  travel?: ((shrineId: string) => void | string | Promise<void | string>) | undefined;
+  onNotice?: ((text: string) => void) | undefined;
+  close?: (() => void) | undefined;
+}
 
 const REGIONS: ReadonlyArray<{
   id: MapRegion;
@@ -44,7 +63,18 @@ export function globalMapMarkup(inTown: boolean): string {
         <div class="atlas-detail-top"><span class="atlas-kicker">World atlas</span><span class="atlas-status"></span></div>
         <h2 class="atlas-title"></h2>
         <p class="atlas-description"></p>
+        <div class="atlas-drop-wrap" hidden></div>
         <div class="atlas-places-wrap"><h3>Known places</h3><ul class="atlas-places"></ul></div>
+        <div class="atlas-shrines-wrap">
+          <h3>Shrines</h3>
+          <ul class="atlas-shrines"></ul>
+          <div class="atlas-travel-wrap" hidden>
+            <div class="atlas-travel-header">Fast Travel</div>
+            <p class="atlas-travel-error" hidden></p>
+            <ul class="atlas-travel-list"></ul>
+          </div>
+          <p class="atlas-travel-hint"></p>
+        </div>
         <button type="button" class="home-btn primary atlas-enter" hidden>Enter Sindr</button>
         <button type="button" class="home-btn atlas-market" hidden>Read Chromara’s market board</button>
         <p class="atlas-travel-note">Travel between regions is not available yet.</p>
@@ -52,12 +82,30 @@ export function globalMapMarkup(inTown: boolean): string {
     </section>`;
 }
 
-export function bindGlobalMap(root: ParentNode, inTown: boolean, navigateToSindr: () => void): void {
+export function bindGlobalMap(
+  root: ParentNode,
+  inTownOrOptions: boolean | GlobalMapOptions,
+  legacyNavigate?: () => void,
+): { refresh: () => void } {
+  const options: GlobalMapOptions = typeof inTownOrOptions === 'boolean'
+    ? { inTown: inTownOrOptions, navigateToSindr: legacyNavigate ?? (() => {}) }
+    : inTownOrOptions;
+  const inTown = options.inTown;
+  const navigateToSindr = options.navigateToSindr;
+
   const buttons = [...root.querySelectorAll<HTMLButtonElement>('.atlas-region')];
   const title = root.querySelector<HTMLElement>('.atlas-title');
   const description = root.querySelector<HTMLElement>('.atlas-description');
   const status = root.querySelector<HTMLElement>('.atlas-status');
   const places = root.querySelector<HTMLUListElement>('.atlas-places');
+  const dropWrap = root.querySelector<HTMLElement>('.atlas-drop-wrap');
+  const shrinesWrap = root.querySelector<HTMLElement>('.atlas-shrines-wrap');
+  const shrinesList = root.querySelector<HTMLUListElement>('.atlas-shrines');
+  const travelWrap = root.querySelector<HTMLElement>('.atlas-travel-wrap');
+  const travelHeader = root.querySelector<HTMLElement>('.atlas-travel-header');
+  const travelError = root.querySelector<HTMLElement>('.atlas-travel-error');
+  const travelList = root.querySelector<HTMLUListElement>('.atlas-travel-list');
+  const travelHint = root.querySelector<HTMLElement>('.atlas-travel-hint');
   const enter = root.querySelector<HTMLButtonElement>('.atlas-enter');
   const travelNote = root.querySelector<HTMLElement>('.atlas-travel-note');
   const map = root.querySelector<HTMLElement>('.atlas-map');
@@ -69,6 +117,7 @@ export function bindGlobalMap(root: ParentNode, inTown: boolean, navigateToSindr
   let scale = 1;
   let panX = 0;
   let panY = 0;
+  let currentSelected: MapRegion = inTown ? 'IGNIS' : 'CHROMARA';
   let drag: { pointerId: number; x: number; y: number; panX: number; panY: number } | undefined;
   const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
   const paint = (): void => {
@@ -117,6 +166,7 @@ export function bindGlobalMap(root: ParentNode, inTown: boolean, navigateToSindr
     paint();
   };
   const select = (id: MapRegion): void => {
+    currentSelected = id;
     const region = REGIONS.find(item => item.id === id);
     if (!region || !title || !description || !status || !places || !enter || !travelNote) return;
     buttons.forEach(button => {
@@ -135,6 +185,109 @@ export function bindGlobalMap(root: ParentNode, inTown: boolean, navigateToSindr
       item.textContent = name;
       return item;
     }));
+
+    if (dropWrap) {
+      const drop = options.getDropTarget?.();
+      if (drop && id === 'IGNIS') {
+        const remainingSec = Math.max(0, Math.round((drop.expiresAt - Date.now()) / 1000));
+        if (remainingSec > 0) {
+          dropWrap.hidden = false;
+          const pos = drop.getPosition();
+          const playerPos = options.getPlayerPosition?.() ?? { x: 0, y: 0, z: 0 };
+          const dist = Math.round(Math.hypot(pos.x - playerPos.x, pos.z - playerPos.z));
+          const mins = Math.floor(remainingSec / 60);
+          const secs = remainingSec % 60;
+          const countdown = `${mins}:${secs.toString().padStart(2, '0')}`;
+          dropWrap.innerHTML = `
+            <div class="atlas-drop-card">
+              <span class="atlas-drop-marker" aria-hidden="true"></span>
+              <div class="atlas-drop-info">
+                <span class="atlas-drop-title">${drop.title}</span>
+                <span class="atlas-drop-meta">${dist}m away · ${countdown}</span>
+              </div>
+            </div>
+          `;
+        } else {
+          dropWrap.hidden = true;
+          dropWrap.innerHTML = '';
+        }
+      } else {
+        dropWrap.hidden = true;
+        dropWrap.innerHTML = '';
+      }
+    }
+
+    if (shrinesWrap && shrinesList) {
+      if (id === 'IGNIS') {
+        shrinesWrap.hidden = false;
+        const litSet = options.shrineState?.lit ?? new Set([FIRST_SHRINE]);
+        shrinesList.replaceChildren(...SHRINES.map(s => {
+          const isLit = options.shrineState ? options.shrineState.isLit(s.id) : (s.id === FIRST_SHRINE);
+          const li = document.createElement('li');
+          li.className = `atlas-shrine-item ${isLit ? 'is-lit' : 'is-dim'}`;
+          const info = document.createElement('span');
+          info.className = 'atlas-shrine-info';
+          const marker = document.createElement('span');
+          marker.className = `atlas-shrine-marker ${isLit ? 'is-lit' : 'is-dim'}`;
+          marker.setAttribute('aria-hidden', 'true');
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'atlas-shrine-name';
+          nameSpan.textContent = s.name;
+          info.append(marker, nameSpan);
+          const tag = document.createElement('span');
+          tag.className = `atlas-shrine-tag ${isLit ? 'is-lit' : 'is-dim'}`;
+          tag.textContent = isLit ? 'Lit' : 'Unlit';
+          li.append(info, tag);
+          return li;
+        }));
+
+        const playerPos = options.getPlayerPosition?.();
+        const currentShrine = playerPos
+          ? shrineAt(litSet, playerPos.x + LEGACY_SINDR_ORIGIN.x, playerPos.z + LEGACY_SINDR_ORIGIN.z)
+          : null;
+
+        if (travelWrap && travelHeader && travelError && travelList && travelHint) {
+          if (currentShrine) {
+            travelWrap.hidden = false;
+            travelHeader.textContent = `Fast Travel from ${currentShrine.name}`;
+            travelError.hidden = true;
+            travelError.textContent = '';
+            const otherLit = litShrines(litSet).filter(s => s.id !== currentShrine.id);
+            if (otherLit.length === 0) {
+              travelList.innerHTML = '<li class="atlas-travel-empty">Light other shrines across Ignis to travel between them.</li>';
+            } else {
+              travelList.replaceChildren(...otherLit.map(target => {
+                const item = document.createElement('li');
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'atlas-travel-btn';
+                btn.textContent = `Travel to ${target.name}`;
+                btn.addEventListener('click', async () => {
+                  travelError.hidden = true;
+                  travelError.textContent = '';
+                  if (options.travel) {
+                    const res = await options.travel(target.id);
+                    if (typeof res === 'string') {
+                      travelError.textContent = res;
+                      travelError.hidden = false;
+                    }
+                  }
+                });
+                item.appendChild(btn);
+                return item;
+              }));
+            }
+            travelHint.textContent = '';
+          } else {
+            travelWrap.hidden = true;
+            travelHint.textContent = inTown ? 'Stand at a lit shrine to fast travel to other lit shrines.' : '';
+          }
+        }
+      } else {
+        shrinesWrap.hidden = true;
+      }
+    }
+
     enter.hidden = !region.ready || inTown;
     if (inTown && region.ready) enter.textContent = 'Current region';
     else enter.textContent = 'Enter Sindr';
@@ -175,6 +328,9 @@ export function bindGlobalMap(root: ParentNode, inTown: boolean, navigateToSindr
   map?.addEventListener('pointerup', endDrag);
   map?.addEventListener('pointercancel', endDrag);
   enter?.addEventListener('click', navigateToSindr);
-  root.querySelector('.atlas-market')?.addEventListener('click', openMarketBoard);
+  root.querySelector('.atlas-market')?.addEventListener('click', () => {
+    void import('../economy/market-board.js').then(m => m.openMarketBoard());
+  });
   select(inTown ? 'IGNIS' : 'CHROMARA');
+  return { refresh: () => select(currentSelected) };
 }

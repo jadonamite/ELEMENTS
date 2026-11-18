@@ -103,8 +103,19 @@
   letter-spacing: var(--letter-spacing-wide);
 }
 .lead-marker-badge.offscreen { opacity: 0.85; }
+.lead-marker-badge.drop-marker {
+  border-color: rgb(230 57 70 / .5);
+  background: rgb(20 10 12 / .85);
+  box-shadow: 0 0 12px rgb(230 57 70 / .3);
+}
 .lead-marker-title { font-weight: var(--font-weight-semibold); color: var(--control-key-light); }
 .lead-marker-dist { color: var(--control-key-face); }
+.lead-marker-time {
+  color: #f28b82;
+  font-weight: var(--font-weight-medium);
+  padding-left: 4px;
+  border-left: 1px solid rgb(255 255 255 / .2);
+}
 
 /* While talking, control lessons wait; the panel is the one prompt on screen. */
 body:has(.npc-talk:not([hidden])) .control-lesson { display: none; }

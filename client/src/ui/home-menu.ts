@@ -2,12 +2,19 @@ import './home-menu.css';
 import type { Controls } from '../controls/index.js';
 import { globalMapMarkup, bindGlobalMap } from './global-map.js';
 import { abilitiesMarkup, bindAbilities } from './abilities-screen.js';
+import type { ShrineState } from '../shrine-state.js';
+import type { WaypointDropTarget } from '../story/waypoint-marker.js';
 
 export interface HomeMenuOptions {
   inTown: boolean;
   getCharacterState: () => { element: string; isDim: boolean; tier: number };
   onOpenPicker: () => void;
   onOpenCreator: () => void;
+  shrineState?: ShrineState | undefined;
+  getPlayerPosition?: (() => { x: number; y: number; z: number }) | undefined;
+  getDropTarget?: (() => WaypointDropTarget | null) | undefined;
+  travel?: ((shrineId: string) => void | string | Promise<void | string>) | undefined;
+  onNotice?: ((text: string) => void) | undefined;
 }
 
 export class HomeMenu {
@@ -16,6 +23,7 @@ export class HomeMenu {
   private readonly lightbox: HTMLDivElement;
   private readonly lightboxImg: HTMLImageElement;
   private readonly lightboxCaption: HTMLParagraphElement;
+  private mapHandle?: { refresh: () => void };
   private isOpen = false;
   private readonly events = new AbortController();
   private returnFocus: HTMLElement | null = null;
@@ -180,7 +188,16 @@ export class HomeMenu {
     this.lightboxCaption = this.lightbox.querySelector('.ref-lightbox-caption')!;
 
     this.bindEvents();
-    bindGlobalMap(this.overlay, options.inTown, () => this.navigate({ town: '' }, ['arena']));
+    this.mapHandle = bindGlobalMap(this.overlay, {
+      inTown: options.inTown,
+      navigateToSindr: () => this.navigate({ town: '' }, ['arena']),
+      shrineState: options.shrineState,
+      getPlayerPosition: options.getPlayerPosition,
+      getDropTarget: options.getDropTarget,
+      travel: options.travel,
+      onNotice: options.onNotice,
+      close: () => this.close(),
+    });
     bindAbilities(this.overlay);
   }
 
@@ -206,6 +223,7 @@ export class HomeMenu {
         const pane = this.overlay.querySelector(`#pane-${target}`);
         pane?.classList.add('active');
         if (target === 'abilities') this.refreshAbilities();
+        if (target === 'map') this.mapHandle?.refresh();
       });
     }
 
@@ -282,6 +300,7 @@ export class HomeMenu {
     this.returnFocus = document.activeElement as HTMLElement;
     if (document.pointerLockElement) document.exitPointerLock();
     if (this.overlay.querySelector<HTMLButtonElement>('.home-nav-tab.active')?.dataset.tab === 'abilities') this.refreshAbilities();
+    this.mapHandle?.refresh();
     this.isOpen = true;
     this.overlay.inert = false;
     // The map picture is fetched the first time the menu opens, not while the game loads.

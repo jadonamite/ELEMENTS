@@ -11,31 +11,45 @@ import {
 } from 'three';
 import type { Lead } from '../../../shared/src/story/leads.js';
 
+export interface WaypointDropTarget {
+  kind: 'drop' | 'outlaw';
+  /** The loot pile this marker leads to. */
+  pileId: string;
+  title: string;
+  getPosition: () => { x: number; y: number; z: number };
+  expiresAt: number;
+  enemyId?: string | undefined;
+  onExpired?: (() => void) | undefined;
+}
+
 export class WaypointMarker {
   private group = new Group();
   private beaconMesh: Mesh;
   private ringMesh: Mesh;
+  private beaconMat: MeshBasicMaterial;
+  private ringMat: MeshBasicMaterial;
   private activeLead: Lead | null = null;
+  private dropTarget: WaypointDropTarget | null = null;
   private hudElement: HTMLElement;
 
   constructor(private scene: Scene) {
-    const beaconMat = new MeshBasicMaterial({
+    this.beaconMat = new MeshBasicMaterial({
       color: 0xffaa22,
       transparent: true,
       opacity: 0.55,
       side: DoubleSide,
     });
-    this.beaconMesh = new Mesh(new CylinderGeometry(0.12, 0.6, 24, 16), beaconMat);
+    this.beaconMesh = new Mesh(new CylinderGeometry(0.12, 0.6, 24, 16), this.beaconMat);
     this.beaconMesh.position.y = 12;
     this.group.add(this.beaconMesh);
 
-    const ringMat = new MeshBasicMaterial({
+    this.ringMat = new MeshBasicMaterial({
       color: 0xffc844,
       transparent: true,
       opacity: 0.8,
       side: DoubleSide,
     });
-    this.ringMesh = new Mesh(new RingGeometry(1.2, 1.8, 24).rotateX(-Math.PI / 2), ringMat);
+    this.ringMesh = new Mesh(new RingGeometry(1.2, 1.8, 24).rotateX(-Math.PI / 2), this.ringMat);
     this.ringMesh.position.y = 0.05;
     this.group.add(this.ringMesh);
 
@@ -52,7 +66,10 @@ export class WaypointMarker {
 
   setLead(lead: Lead | null): void {
     this.activeLead = lead;
+    if (this.dropTarget) return; // Drop target takes visual priority
     if (lead && !lead.completed) {
+      this.beaconMat.color.setHex(0xffaa22);
+      this.ringMat.color.setHex(0xffc844);
       this.group.position.set(lead.target.x, lead.target.y, lead.target.z);
       this.group.visible = true;
       this.hudElement.style.display = 'block';
@@ -62,7 +79,77 @@ export class WaypointMarker {
     }
   }
 
+  setDropTarget(target: WaypointDropTarget | null): void {
+    this.dropTarget = target;
+    if (target) {
+      this.beaconMat.color.setHex(0xe63946);
+      this.ringMat.color.setHex(0xf28b82);
+      const pos = target.getPosition();
+      this.group.position.set(pos.x, pos.y, pos.z);
+      this.group.visible = true;
+      this.hudElement.style.display = 'block';
+    } else if (this.activeLead && !this.activeLead.completed) {
+      this.setLead(this.activeLead);
+    } else {
+      this.group.visible = false;
+      this.hudElement.style.display = 'none';
+    }
+  }
+
+  get activeDropTarget(): WaypointDropTarget | null {
+    return this.dropTarget;
+  }
+
   update(delta: number, camera: Camera, playerPos: Vector3): void {
+    if (this.dropTarget) {
+      const remainingSec = Math.max(0, Math.round((this.dropTarget.expiresAt - Date.now()) / 1000));
+      if (remainingSec <= 0) {
+        const expired = this.dropTarget;
+        this.setDropTarget(null);
+        expired.onExpired?.();
+        return;
+      }
+      this.ringMesh.rotation.z += delta * 1.5;
+      const pos = this.dropTarget.getPosition();
+      this.group.position.set(pos.x, pos.y, pos.z);
+
+      const targetPos = new Vector3(pos.x, pos.y + 1.5, pos.z);
+      const dist = Math.round(playerPos.distanceTo(targetPos));
+      const mins = Math.floor(remainingSec / 60);
+      const secs = remainingSec % 60;
+      const countdown = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+      const screenPos = targetPos.clone().project(camera);
+      const isBehind = screenPos.z > 1.0;
+      const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-(screenPos.y * 0.5) + 0.5) * window.innerHeight;
+
+      if (!isBehind && screenPos.z < 1.0) {
+        this.hudElement.style.display = 'block';
+        this.hudElement.style.left = `${Math.max(20, Math.min(window.innerWidth - 180, x - 80))}px`;
+        this.hudElement.style.top = `${Math.max(40, Math.min(window.innerHeight - 80, y - 40))}px`;
+        this.hudElement.innerHTML = `
+          <div class="lead-marker-badge drop-marker">
+            <span class="lead-marker-title">${this.dropTarget.title}</span>
+            <span class="lead-marker-dist">${dist}m</span>
+            <span class="lead-marker-time">${countdown}</span>
+          </div>
+        `;
+      } else {
+        this.hudElement.style.display = 'block';
+        this.hudElement.style.left = `${window.innerWidth / 2 - 80}px`;
+        this.hudElement.style.top = '30px';
+        this.hudElement.innerHTML = `
+          <div class="lead-marker-badge drop-marker offscreen">
+            <span class="lead-marker-title">${this.dropTarget.title}</span>
+            <span class="lead-marker-dist">${dist}m</span>
+            <span class="lead-marker-time">${countdown}</span>
+          </div>
+        `;
+      }
+      return;
+    }
+
     if (!this.activeLead || this.activeLead.completed || !this.group.visible) {
       this.hudElement.style.display = 'none';
       return;

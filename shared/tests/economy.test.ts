@@ -43,6 +43,9 @@ import {
   villainDrop,
   deathDrop,
   calculateDeathDropResolution,
+  deathClaim,
+  outlawHolder,
+  isOutlawHolder,
   createEmptyShards,
   DROPS_CONFIG,
   DEATH_CONFIG,
@@ -817,33 +820,30 @@ test('World loot villain drops: villains drop all carried CHROMA and held materi
   assert.equal(loot.materials.linen_scrap, 5);
 });
 
-test('World loot death drop: dying drops materials and 25% of carried shards while coin stays with player', () => {
+test('World loot death drop: dying drops every carried shard and all carried coin; materials stay', () => {
   const carried = {
     chroma: 200,
     shards: { IGNIS: 8, AQUES: 4, TERRA: 2, AURA: 0 },
     materials: { iron_ore: 10, beast_hide: 4 },
   };
-
   const res = calculateDeathDropResolution(carried);
+  assert.equal(res.dropped.chroma, 200);
+  assert.equal(res.retained.chroma, 0);
+  assert.deepEqual(res.dropped.materials, {});
+  assert.deepEqual(res.retained.materials, { iron_ore: 10, beast_hide: 4 });
+  assert.deepEqual(res.dropped.shards, { IGNIS: 8, AQUES: 4, TERRA: 2, AURA: 0 });
+  assert.deepEqual(res.retained.shards, { IGNIS: 0, AQUES: 0, TERRA: 0, AURA: 0 });
+});
 
-  // Coin stays with player: pile gets 0 chroma, player retains 200
-  assert.equal(res.dropped.chroma, 0);
-  assert.equal(res.retained.chroma, 200);
-
-  // All materials drop into pile, player retains none
-  assert.equal(res.dropped.materials.iron_ore, 10);
-  assert.equal(res.dropped.materials.beast_hide, 4);
-  assert.deepEqual(res.retained.materials, {});
-
-  // 25% of carried shards drop: 8 * 0.25 = 2, 4 * 0.25 = 1, floor(2 * 0.25) = 0
-  assert.equal(res.dropped.shards.IGNIS, 2);
-  assert.equal(res.dropped.shards.AQUES, 1);
-  assert.equal(res.dropped.shards.TERRA, 0);
-  assert.equal(res.dropped.shards.AURA, 0);
-
-  // Player retains the remainder
-  assert.equal(res.retained.shards.IGNIS, 6);
-  assert.equal(res.retained.shards.AQUES, 3);
-  assert.equal(res.retained.shards.TERRA, 2);
-  assert.equal(res.retained.shards.AURA, 0);
+test('Death claim: a player killer holds the drop, an outlaw carries it, no killer leaves it to the fallen', () => {
+  const byPlayer = deathClaim({ kind: 'player', accountId: 'acc_k' }, 'acc_f');
+  assert.equal(byPlayer.ownerId, 'acc_k');
+  assert.equal(byPlayer.ownerSeconds, DEATH_CONFIG.killerMinutes * 60);
+  const byOutlaw = deathClaim({ kind: 'outlaw', id: 'robber_2' }, 'acc_f');
+  assert.equal(byOutlaw.ownerId, outlawHolder('robber_2'));
+  assert.ok(isOutlawHolder(byOutlaw.ownerId));
+  assert.equal(byOutlaw.expireMinutes, DEATH_CONFIG.outlawHoldMinutes);
+  const byNone = deathClaim({ kind: 'none' }, 'acc_f');
+  assert.equal(byNone.ownerId, 'acc_f');
+  assert.equal(byNone.ownerSeconds, byNone.expireMinutes * 60);
 });

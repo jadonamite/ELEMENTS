@@ -143,7 +143,8 @@ export class ClientRobberGang {
         this.space.standOff(this.feet, angle, spawnDist, new Vector3()),
         member.maxHealth,
         kind,
-        false
+        false,
+        member.id,
       );
 
       enemy.onKill = (k, pos) => {

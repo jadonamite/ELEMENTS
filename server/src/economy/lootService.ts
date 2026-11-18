@@ -7,7 +7,11 @@ import {
   type LootSource,
   canClaim as pureCanClaim,
   createLootPile as pureCreateLootPile,
+  deathClaim,
   deathDrop,
+  onGround,
+  outlawHolder,
+  type Killer,
   itemsFromLoot,
   satchelAsCarried,
   monsterDrop,
@@ -85,6 +89,8 @@ export interface CreateLootPileParams {
   ownerId?: string | null | undefined;
   sourceAccountId?: string | undefined;
   now?: number | undefined;
+  ownerSeconds?: number | undefined;
+  expireMinutes?: number | undefined;
 }
 
 export function createLootPile(
@@ -104,6 +110,8 @@ export function createLootPile(
     nation: params.nation,
     droppedAt: now,
     ownerId: params.ownerId ?? null,
+    ownerSeconds: params.ownerSeconds,
+    expireMinutes: params.expireMinutes,
   });
 
   if (params.source !== 'player_death' || !params.sourceAccountId) {
@@ -165,6 +173,8 @@ export interface CreateFightLootPileParams {
   zoneKind?: string | undefined;
   winnerId?: string | null | undefined;
   sourceAccountId?: string | undefined;
+  /** For a player's death: who caused it, which decides who may take the drop. */
+  killer?: Killer | undefined;
   now?: number | undefined;
   rng?: (() => number) | undefined;
   id?: string | undefined;
@@ -180,10 +190,11 @@ export function createLootPileFromFight(
   } else if (params.source === 'monster') {
     contents = monsterDrop(params.nation ?? 'IGNIS', params.zoneKind ?? 'nation', params.rng);
   } else if (params.sourceAccountId) {
-    // A player's death drops from what the server holds for them, never from what the client claims.
+    // A player's death drops from what the server holds for them, never from what the client claims:
+    // the coin in their purse (banked notes are not carried) and the shards in their satchel.
     contents = deathDrop({
-      chroma: 0,
-      ...satchelAsCarried(getSatchel(params.sourceAccountId, db)),
+      chroma: getAccountBalance(params.sourceAccountId, db),
+      shards: satchelAsCarried(getSatchel(params.sourceAccountId, db)).shards as Record<Colour, number>,
     });
   } else {
     contents = deathDrop(params.carried ?? { chroma: 0 });
@@ -228,13 +239,38 @@ export function createLootPileFromFight(
         contents,
         source: params.source,
         nation,
-        ownerId: params.winnerId ?? null,
+        ...(params.source === 'player_death' && params.sourceAccountId
+          ? deathClaim(params.killer ?? { kind: 'none' }, params.sourceAccountId)
+          : { ownerId: params.winnerId ?? null }),
         sourceAccountId: params.sourceAccountId,
         now: params.now,
       },
       db,
     );
   });
+}
+
+/**
+ * An outlaw who carried a fallen player's drop was killed: it falls where he fell, held a while for whoever
+ * killed him, then open to all until it expires. Returns the piles released.
+ */
+export function releaseOutlawHold(
+  enemyId: string,
+  at: { x: number; z: number },
+  winnerId: string,
+  now: number = Date.now(),
+  db: DatabaseSync = getDatabase(),
+): LootPile[] {
+  const rows = db
+    .prepare(
+      `SELECT id FROM loot_piles WHERE owner_id = ? AND claimed = 0 AND expired = 0 AND expires_at > ?`,
+    )
+    .all(outlawHolder(enemyId), now) as unknown as { id: string }[];
+  const ownerUntil = now + DROPS_CONFIG.ownerSeconds * 1000;
+  const expiresAt = now + DROPS_CONFIG.expireMinutes * 60 * 1000;
+  const update = db.prepare(`UPDATE loot_piles SET x = ?, z = ?, owner_id = ?, owner_until = ?, expires_at = ? WHERE id = ?`);
+  for (const row of rows) update.run(at.x, at.z, winnerId, ownerUntil, expiresAt, row.id);
+  return rows.map(r => getLootPileById(r.id, db)!).filter(Boolean);
 }
 
 export function getLootPileById(pileId: string, db: DatabaseSync = getDatabase()): LootPile | null {
@@ -281,6 +317,7 @@ export function listLootPiles(
     if (!params.includeExpired && (pile.expired || now >= pile.expiresAt)) {
       continue;
     }
+    if (!onGround(pile)) continue;
 
     if (params.x !== undefined && params.z !== undefined && params.radius !== undefined) {
       const dist = Math.hypot(pile.x - params.x, pile.z - params.z);

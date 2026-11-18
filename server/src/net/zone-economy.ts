@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { atPlace, isValidQuantity, type LootPile, placesFor, TRADE_REACH } from '@elements/shared';
+import { atPlace, isValidQuantity, type LootPile, onGround, placesFor, TRADE_REACH } from '@elements/shared';
 import { getActiveShopOwnership, getDatabase } from '../db.js';
 import {
   addItems,
@@ -21,7 +21,7 @@ import {
 } from '../economy/index.js';
 import { onKill, type KillReport } from './kill-hook.js';
 import { reportCrimeNear } from '../economy/agents/events/worldEvents.js';
-import { dropForDeath, dropForKill, isGuest, isOutsider, lockedPurse, tradeableChroma } from './money.js';
+import { dropForDeath, dropForKill, isGuest, isOutsider, killerFor, lockedPurse, releaseForKill, tradeableChroma } from './money.js';
 import type { ServerPlayer, ZoneWorld } from './world.js';
 import { networkPosition, persistentPosition } from './coordinates.js';
 
@@ -128,18 +128,29 @@ export class ZoneEconomy {
   }
 
   kill(k: KillReport): EconEvent[] {
+    const events: EconEvent[] = [];
+    // An outlaw carrying someone's drop lets it fall where he dies, for whoever killed him.
+    if (!isGuest(k.killerAccountId)) {
+      for (const pile of releaseForKill(k, this.clock(), this.db)) {
+        this.piles.set(pile.id, pile);
+        events.push({ type: 'loot_gone', body: { id: pile.id } }, { type: 'loot_new', body: { pile: this.pileView(pile) } });
+      }
+    }
     const pile = dropForKill(k, this.rng, this.db);
-    if (!pile) return [];
-    this.piles.set(pile.id, pile);
-    return [{ type: 'loot_new', body: { pile: this.pileView(pile) } }];
+    if (pile) {
+      this.piles.set(pile.id, pile);
+      events.push({ type: 'loot_new', body: { pile: this.pileView(pile) } });
+    }
+    return events;
   }
 
   /** The room saw this player fall: their carried goods drop where the room has them. */
-  death(id: string): EconEvent[] {
+  death(id: string, by?: { id: string; kind: string }): EconEvent[] {
     const p = this.world.players.get(id);
     if (!p) return [];
-    const pile = dropForDeath(p.accountId, this.world.zone, p.x, p.z, this.db);
+    const pile = dropForDeath(p.accountId, this.world.zone, p.x, p.z, killerFor(this.world.zone, by), this.db);
     if (!pile) return [];
+    if (!onGround(pile)) return this.purse(id);
     this.piles.set(pile.id, pile);
     return [{ type: 'loot_new', body: { pile: this.pileView(pile) } }, ...this.purse(id)];
   }

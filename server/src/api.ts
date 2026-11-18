@@ -4,7 +4,7 @@ import express, { type Application, type Request, type Response } from 'express'
 import { bindPlayerGrant } from './chain/grants.js';
 import { ARMOUR } from './economy/armourService.js';
 import { getDatabase } from './db.js';
-import type { SignedSessionGrant } from '@elements/shared';
+import { isOutlawKind, localOutlawKey, type Killer, type LootPile, type SignedSessionGrant } from '@elements/shared';
 import { verifyToken } from './auth.js';
 import { fastForwardWeek } from './economy/fastForwardRunner.js';
 import { chainSettler, itemsChainSettler, readChainConfig, worldAccount, worldHolders } from './chain/index.js';
@@ -12,6 +12,7 @@ import { createGuestRising, createOrGetAccount, createOrGetRising, getRising, ge
 import { isAccountAllowed, isIpAllowed } from './rate-limit.js';
 import { isOutsider } from './net/money.js';
 import { isInRoom, isZoneOnline } from './net/presence.js';
+import { litShrinesOf, reachShrine } from './net/shrines.js';
 import {
   getAccountBalance,
   grantPlayerStartingPurse,
@@ -40,6 +41,7 @@ import {
   removeItems,
   clientKillsAllowed,
   dropFromClientKill,
+  releaseOutlawHold,
   createLootPileFromFight,
   takeOffArmour,
   wearArmour,
@@ -575,7 +577,7 @@ export function setupApi(app: Application): void {
     const accountId = await requireAccount(req, res);
     if (!accountId) return;
     if (heldByRoom(accountId, res)) return;
-    const { kind, x, z, zone, nation } = req.body || {};
+    const { kind, x, z, zone, nation, enemyId } = req.body || {};
     if (typeof zone === 'string' && isZoneOnline(zone)) {
       res.status(409).json({ error: 'This zone is played online: its kills are judged by the game server' });
       return;
@@ -587,6 +589,10 @@ export function setupApi(app: Application): void {
       return;
     }
     try {
+      let releasedPiles: LootPile[] = [];
+      if (typeof enemyId === 'string' && enemyId) {
+        releasedPiles = releaseOutlawHold(localOutlawKey(accountId, enemyId), { x: numX, z: numZ }, accountId);
+      }
       const pile = dropFromClientKill({
         accountId,
         kind,
@@ -595,7 +601,7 @@ export function setupApi(app: Application): void {
         zone,
         nation: typeof nation === 'string' ? nation : undefined,
       });
-      res.json({ pile });
+      res.json({ pile, releasedPiles });
     } catch (err: unknown) {
       res.status(429).json({ error: err instanceof Error ? err.message : 'Drop failed' });
     }
@@ -606,7 +612,7 @@ export function setupApi(app: Application): void {
     const accountId = await requireAccount(req, res);
     if (!accountId) return;
     if (heldByRoom(accountId, res)) return;
-    const { x, z, zone } = req.body || {};
+    const { x, z, zone, killer } = req.body || {};
     const numX = Number(x);
     const numZ = Number(z);
     if (typeof zone !== 'string' || !Number.isFinite(numX) || !Number.isFinite(numZ)) {
@@ -615,6 +621,11 @@ export function setupApi(app: Application): void {
     }
     try {
       const rising = getRising(accountId);
+      // An outlaw the browser names holds only this player's own drop, so a made-up killer gains nothing.
+      const deathKiller: Killer = killer && typeof killer === 'object' && typeof killer.kind === 'string' && isOutlawKind(killer.kind)
+        && typeof killer.id === 'string' && killer.id
+        ? { kind: 'outlaw', id: localOutlawKey(accountId, killer.id) }
+        : { kind: 'none' };
       const pile = createLootPileFromFight({
         x: numX,
         z: numZ,
@@ -622,11 +633,36 @@ export function setupApi(app: Application): void {
         source: 'player_death',
         sourceAccountId: accountId,
         nation: rising?.element ?? undefined,
+        killer: deathKiller,
       });
       res.json({ pile });
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Death drop failed' });
     }
+  });
+
+  // Shrines: which shrines an account has lit.
+  app.get('/api/shrines', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    const lit = litShrinesOf(accountId);
+    res.json({ lit: [...lit] });
+  });
+
+  // Reaching a shrine outside a fight lights it for good.
+  app.post('/api/shrines/reach', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    const { x, z, inFight } = req.body || {};
+    const numX = Number(x);
+    const numZ = Number(z);
+    if (!Number.isFinite(numX) || !Number.isFinite(numZ)) {
+      res.status(400).json({ error: 'Missing x or z' });
+      return;
+    }
+    const lit = litShrinesOf(accountId);
+    const shrine = reachShrine(accountId, lit, numX, numZ, Boolean(inFight));
+    res.json({ shrine: shrine ? shrine.id : null, lit: [...lit] });
   });
 
   app.post('/api/economy/loot/:pileId/claim', async (req: Request, res: Response) => {

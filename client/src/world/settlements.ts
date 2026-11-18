@@ -1,21 +1,50 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Group, Mesh, type Material } from 'three';
+import { Group, InstancedBufferGeometry, InstancedMesh, Mesh, Points, type Material } from 'three';
 import { LEGACY_SINDR_ORIGIN as ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
 import { SETTLEMENT_PRECINCTS, settlementCells, type SettlementPrecinct } from '../../../shared/src/world/ignis/settlements.js';
-import { WorldBuilder, seeded, type Bucket } from './builder.js';
+import { SETTLEMENT_SHRINE, shrineOfPrecinct } from '../../../shared/src/net/places.js';
+import { WorldBuilder, seeded, type Bucket, type Emitter } from './builder.js';
+import { createEmbers, createFires } from './effects.js';
 import { townHouse } from './style-kit.js';
 import { addShells } from './town-physics.js';
 
-interface Resident { group: Group; colliders: RAPIER.Collider[]; builder: WorldBuilder }
+interface Resident { group: Group; colliders: RAPIER.Collider[]; builder: WorldBuilder; lit: boolean }
+
+/** Places a settlement's scanned props (the shrine's brazier) from the zone's shared models. */
+export type SettlementProps = (placements: WorldBuilder['props'], into: Group) => Promise<void>;
+
+/** Where a loaded settlement's brazier lights go: the zone's pool of nearest lights. */
+export interface SettlementLights { add(emitters: readonly Emitter[]): void; remove(emitters: readonly Emitter[]): void }
 
 /** Inhabited precincts follow the same nation-global cell ownership as near terrain collision. */
 export class SettlementStream {
   readonly group = new Group();
   private readonly resident = new Map<string, Resident>();
   private readonly owners = SETTLEMENT_PRECINCTS.map(place => ({ place, cells: settlementCells(place) }));
+  private lit: ReadonlySet<string> = new Set();
 
-  constructor(private readonly world: RAPIER.World, private readonly material: (bucket: Bucket) => Material, private readonly low: boolean) {
+  constructor(
+    private readonly world: RAPIER.World,
+    private readonly material: (bucket: Bucket) => Material,
+    private readonly low: boolean,
+    private readonly lights: SettlementLights,
+    private readonly props: SettlementProps = async () => {},
+  ) {
     this.group.name = 'ignis-settlements';
+  }
+
+  /** The shrines the player has lit; a loaded settlement whose shrine changed is rebuilt with its fire. */
+  setLit(lit: ReadonlySet<string>): void {
+    this.lit = new Set(lit);
+    for (const { place } of this.owners) {
+      const content = this.resident.get(place.id);
+      if (content && content.lit !== this.shrineLit(place)) { this.unload(place.id); this.load(place); }
+    }
+  }
+
+  private shrineLit(place: SettlementPrecinct): boolean {
+    const shrine = shrineOfPrecinct(place.id);
+    return shrine !== undefined && this.lit.has(shrine.id);
   }
 
   update(cells: ReadonlyMap<string, unknown>): void {
@@ -28,24 +57,41 @@ export class SettlementStream {
 
   private load(place: SettlementPrecinct): void {
     const builder = new WorldBuilder({ low: this.low });
-    buildSettlement(builder, place);
+    const lit = this.shrineLit(place);
+    buildSettlement(builder, place, lit);
     const group = builder.build(this.material);
     group.name = place.id;
+    if (builder.fires.length) group.add(createFires(builder.fires), createEmbers(builder.embers, this.low ? 6 : 14));
+    this.lights.add(builder.emitters);
+    // Prop models are shared with the town, so they sit apart and are never disposed with the settlement.
+    const props = new Group();
+    props.name = 'props';
+    group.add(props);
+    void this.props(builder.props, props);
     const colliders = builder.colliders.map(c => this.world.createCollider(
       RAPIER.ColliderDesc.cuboid(c.hx, c.hy, c.hz).setTranslation(c.x, c.y, c.z)
         .setRotation(c.q ?? { x: 0, y: Math.sin(c.yaw / 2), z: 0, w: Math.cos(c.yaw / 2) }),
     ));
     colliders.push(...addShells(this.world, builder.shells));
     this.group.add(group);
-    this.resident.set(place.id, { group, colliders, builder });
+    this.resident.set(place.id, { group, colliders, builder, lit });
   }
 
   private unload(id: string): void {
     const content = this.resident.get(id);
     if (!content) return;
     for (const collider of content.colliders) this.world.removeCollider(collider, false);
+    this.lights.remove(content.builder.emitters);
     content.group.removeFromParent();
-    content.group.traverse(object => { if (object instanceof Mesh) object.geometry.dispose(); });
+    const props = content.group.getObjectByName('props');
+    // Release each instance buffer; the shared model geometry stays for the next load.
+    props?.traverse(object => { if (object instanceof InstancedMesh) object.dispose(); });
+    props?.removeFromParent();
+    content.group.traverse(object => {
+      if (object instanceof Mesh || object instanceof Points) object.geometry.dispose();
+      // Fire and ember materials are the settlement's own; surfaces belong to the zone's shared library.
+      if ((object instanceof Mesh && object.geometry instanceof InstancedBufferGeometry) || object instanceof Points) (object.material as Material).dispose();
+    });
     // Materials belong to the zone's shared surface library.
     this.resident.delete(id);
   }
@@ -62,7 +108,7 @@ export class SettlementStream {
   dispose(): void { for (const id of [...this.resident.keys()]) this.unload(id); this.group.removeFromParent(); }
 }
 
-function buildSettlement(b: WorldBuilder, place: SettlementPrecinct): void {
+function buildSettlement(b: WorldBuilder, place: SettlementPrecinct, lit = false): void {
   const x = place.x - ORIGIN.x, z = place.z - ORIGIN.z, y = place.height - ORIGIN.y;
   const rand = seeded(place.x + place.z + place.height);
   const frame = (): void => { b.at(x, z, 0, y); };
@@ -83,6 +129,8 @@ function buildSettlement(b: WorldBuilder, place: SettlementPrecinct): void {
   townHouse(b, { x, z: z - 69, y, yaw: 0, w: 14, d: 11, floors: 1, rank: 'common',
     weeds: false, door: 0, room: { x: 0, w: 6, d: 6, kind: 'service' } }, rand);
   frame();
+  buildSettlementShrine(b, lit);
+  frame();
   b.box('worn_flagstones', 0, 0.025, -59, 6, 0.05, 9);
   switch (place.industry) {
     case 'mine': mineWorks(b); break;
@@ -94,6 +142,25 @@ function buildSettlement(b: WorldBuilder, place: SettlementPrecinct): void {
     case 'fort': fortWorks(b); break;
   }
   b.at(0, 0, 0);
+}
+
+/**
+ * A settlement's shrine, beside the repair room's approach: a stone ring and raised plinth carrying an iron brazier.
+ * Cold ash when unlit; glowing coals, flame and a warm light when lit.
+ */
+function buildSettlementShrine(b: WorldBuilder, lit: boolean): void {
+  const { x, z } = SETTLEMENT_SHRINE;
+  b.cylinder('ashlar_stone_blocks', x, 0.12, z, 2.8, 3.0, 0.24, 16);
+  b.cylinder('basalt_rock_face', x, 0.35, z, 1.4, 1.5, 0.3, 16);
+  b.prop('iron_brazier', x, z, 0, 1.1, 0.5);
+  b.solid(x, 0.7, z, 1.8, 1.4, 1.8);
+  if (lit) {
+    b.cylinder('lava', x, 1.32, z, 0.48, 0.48, 0.04, 16);
+    b.fire(x, 1.34, z, 0.9);
+    b.light(x, 2.4, z, 0xff7428, 28, 14, 0.3);
+  } else {
+    b.cylinder('ash_cinder_ground', x, 1.28, z, 0.48, 0.48, 0.04, 16);
+  }
 }
 
 /** Open sorting bays and hoist sit north of the village; the quarry is a separate atlas workplace. */

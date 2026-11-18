@@ -14,7 +14,7 @@ export interface FightLootResolution {
 }
 
 export function calculateWorldDeathDrop(carried: CarriedLoot): FightLootResolution {
-  // Dying out in the world: drop materials carried, keep coin and shards, wake at shrine
+  // Legacy helper. In the world death rule (worldLoot.ts), carried shards and purse coin drop; materials, food and gear stay; the fallen wake at the nearest lit shrine.
   return {
     transferredChroma: 0,
     transferredShards: 0,
