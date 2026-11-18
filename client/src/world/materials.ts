@@ -250,6 +250,7 @@ export class SurfaceLibrary {
 
 const n = new Vector3();
 const p = new Vector3();
+const a = new Vector3(), b = new Vector3(), c = new Vector3();
 
 /**
  * Box-projected UVs from world positions, so every wall, floor and roof shows the
@@ -259,9 +260,16 @@ export function worldUv(geometry: BufferGeometry, tile: number): BufferGeometry 
   const pos = geometry.getAttribute('position');
   const nor = geometry.getAttribute('normal');
   const uv = new Float32Array(pos.count * 2);
+  // Unindexed pieces pick one projection per triangle from its face, so a curved side never mixes two
+  // projections across one face (a smeared strip); shared-vertex geometry keeps its per-vertex choice.
+  const perFace = !geometry.index && pos.count % 3 === 0;
   for (let i = 0; i < pos.count; i++) {
     p.fromBufferAttribute(pos, i);
-    n.fromBufferAttribute(nor, i);
+    if (perFace && i % 3 === 0) {
+      a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2);
+      n.subVectors(c, b).cross(a.sub(b));
+      if (n.lengthSq() === 0) n.fromBufferAttribute(nor, i);
+    } else if (!perFace) n.fromBufferAttribute(nor, i);
     const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
     let u: number, v: number;
     if (ay >= ax && ay >= az) { u = p.x; v = p.z; }
