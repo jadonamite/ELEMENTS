@@ -28,6 +28,7 @@ export interface Projectile {
   end?: { at: Vector3; reason: 'world' | 'body' | 'spent' };
   /** Bodies it already hit, so a piercing shot never hits the same one twice. */
   readonly struck: Set<unknown>;
+  readonly shooter?: { id?: string; kind: string } | undefined;
 }
 
 export interface Body { feet: Vector3; height: number; radius: number }
@@ -41,6 +42,7 @@ export interface Throw {
   side: Projectile['side']; element: Element; move: string; damage: number;
   origin: Vector3; direction: Vector3; speed: number; radius: number; range: number;
   swingAt?: number; scale?: number; chained?: boolean; lit?: boolean;
+  shooter?: { id?: string; kind: string };
 }
 
 export function launch(t: Throw): Projectile {
@@ -51,6 +53,7 @@ export function launch(t: Throw): Projectile {
     velocity: t.direction.clone().normalize().multiplyScalar(speed),
     swingAt: t.swingAt ?? 0, scale: t.scale ?? 1, chained: t.chained ?? false, lit: t.lit ?? false,
     life: range / speed, done: false, struck: new Set(),
+    shooter: t.shooter,
   };
 }
 

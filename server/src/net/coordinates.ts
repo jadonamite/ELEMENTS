@@ -64,6 +64,14 @@ export function rememberNationalPosition(accountId: string, zone: string, local:
   if (nationalRegion(owner.id)) nationalPositions.set(accountId, { zone: owner.id, position });
 }
 
+/** Sets where an account resumes to a nation-global spot (a shrine): its region's room admits them there. */
+export function resumeAt(accountId: string, global: Point3): string | null {
+  const owner = regionFor(global);
+  if (!nationalRegion(owner.id)) return null;
+  nationalPositions.set(accountId, { zone: owner.id, position: { ...global } });
+  return owner.id;
+}
+
 export function lastNationalPosition(accountId: string): { zone: string; position: Point3 } | undefined {
   const saved = nationalPositions.get(accountId);
   return saved ? { zone: saved.zone, position: { ...saved.position } } : undefined;

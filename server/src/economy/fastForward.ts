@@ -322,12 +322,12 @@ export async function simulateWeek(seed = 1): Promise<FastForwardWeek> {
       if (day >= 2 && day <= 4 && clock === 15 && robberies < 3) {
         await happen(robberies === 2 ? 'bounty' : 'robbery', () => {
           addItems({ accountId: CARRIER, from: 'world', stacks: [{ itemId: 'shard_terra', quantity: 6 }], reason: 'loot_claim', now }, db);
-          const pile = dropForDeath(CARRIER, 'sindr', 120 + robberies, 40, db);
+          const pile = dropForDeath(CARRIER, 'sindr', 120 + robberies, 40, { kind: 'player', accountId: ROBBER }, db);
           if (!pile) return null;
           claimLootPile({ pileId: pile.id, accountId: ROBBER, x: pile.x, z: pile.z, now }, db);
           const flagged = flagFromRoom(ROBBER, 'robbery on the volcano road', db);
           robberies++;
-          const lead = 'A robber kills a TERRA player on the road and takes the shards in their satchel. Coin sealed at a counting house is never carried, so it cannot be robbed.';
+          const lead = 'A robber kills a TERRA player on the road and takes the shards and coin they carried. Coin sealed at a counting house is never carried, so it cannot be robbed.';
           if (flagged?.convertedToBounty) return `${lead} Third red flag: the robber now has a bounty of ${flagged.bounty?.rewardChroma ?? 0} CHROMA on their head.`;
           return `${lead} The robber earns red flag ${robberies}.`;
         });

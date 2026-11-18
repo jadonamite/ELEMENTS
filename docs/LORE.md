@@ -235,7 +235,7 @@ Recovering the element's banished true name through mastery.
 
 Agreed 29 Oct.
 - **Permanent growth has 7 tiers.** Each tier is harder to reach than the one before.
-- **Death out in the world:** you wake at your nation's shrine and drop the materials you were carrying.
+- **Death out in the world:** you wake at the nearest lit shrine and drop carried shards and purse coin (gear, materials and bank account stay untouched).
 
 ### What the tiers open (agreed 30 Oct)
 - Nobody learns new moves by levelling. The moves exist from the start; tiers decide what you are allowed to use.
@@ -263,7 +263,7 @@ Walk a town, talk to people and pick up a lead or a job, travel and get ambushed
 - Dungeon raids and some party fights are private: alone or with your own party.
 
 ### Losing
-- Dying out in the world: you wake at your nation's shrine and drop the materials you carried (section 7).
+- Dying out in the world: you wake at the nearest lit shrine and drop carried shards and purse coin (held by the killer, an outlaw, or waiting on the ground for you; gear, materials and the bank are kept).
 - Losing a story or private fight is more severe than a plain retry and less severe than losing all your loot. Proposed: you lose a quarter of the CHROMA and materials you carry, and your gear takes heavy wear. The exact share is tuned in play.
 
 ### Fight rules

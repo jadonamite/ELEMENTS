@@ -17,6 +17,7 @@ import {
   setDatabase,
 } from '../src/db.js';
 import { resetRateLimits } from '../src/rate-limit.js';
+import { shrineById } from '@elements/shared';
 
 interface TestServer {
   app: Application;
@@ -481,6 +482,117 @@ test('Guest caps key on the address the proxy saw, not one the browser wrote fir
     assert.ok(refused, 'a new forged first address each time still hits the cap for 7.7.7.7');
     assert.equal((await draw('7.7.7.7, 8.8.8.8')).status, 200, 'another real address is unaffected');
   } finally {
+    await ts.close();
+  }
+});
+
+test('HTTP API: shrines can be queried and reached by signed-in accounts', async () => {
+  const ts = await startTestServer();
+  const db = createDatabase(':memory:');
+  setDatabase(db);
+  resetRateLimits();
+  setTokenVerifier(async (token: string) => {
+    if (token === 'pilgrim') return { userId: 'did:privy:pilgrim' };
+    throw new Error('Invalid token');
+  });
+  try {
+    const unauth = await fetch(`${ts.baseUrl}/api/shrines`);
+    assert.equal(unauth.status, 401);
+
+    const getRes = await fetch(`${ts.baseUrl}/api/shrines`, {
+      headers: { Authorization: 'Bearer pilgrim' },
+    });
+    assert.equal(getRes.status, 200);
+    const body = (await getRes.json()) as { lit: string[] };
+    assert.ok(body.lit.includes('shrine_of_embers'));
+
+    // Reach Pinewatch shrine
+    const reachRes = await fetch(`${ts.baseUrl}/api/shrines/reach`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pilgrim' },
+      body: JSON.stringify({ x: shrineById('shrine_pinewatch')!.x, z: shrineById('shrine_pinewatch')!.z }),
+    });
+    assert.equal(reachRes.status, 200);
+    const reachBody = (await reachRes.json()) as { shrine: string | null; lit: string[] };
+    assert.equal(reachBody.shrine, 'shrine_pinewatch');
+    assert.ok(reachBody.lit.includes('shrine_pinewatch'));
+
+    // Second GET now returns the lit shrine
+    const getRes2 = await fetch(`${ts.baseUrl}/api/shrines`, {
+      headers: { Authorization: 'Bearer pilgrim' },
+    });
+    const body2 = (await getRes2.json()) as { lit: string[] };
+    assert.ok(body2.lit.includes('shrine_pinewatch'));
+  } finally {
+    setTokenVerifier(null);
+    await ts.close();
+  }
+});
+
+test('HTTP API: offline player killed by an outlaw has loot held under local key, released on kill', async () => {
+  const ts = await startTestServer();
+  const db = createDatabase(':memory:');
+  setDatabase(db);
+  resetRateLimits();
+  const accountId = 'did:privy:fallen';
+  setTokenVerifier(async (token: string) => {
+    if (token === 'fallen_token') return { userId: accountId };
+    throw new Error('Invalid token');
+  });
+
+  try {
+    // Grant player some starting funds in purse
+    db.prepare(`INSERT INTO accounts (id, role, element, created_at) VALUES (?, 'Shaper', 'IGNIS', ?)`).run(accountId, Date.now());
+    db.prepare(`INSERT INTO ledger_entries (id, sender, receiver, amount, reason, timestamp) VALUES (?, 'treasury', ?, 150, 'grant', ?)`).run('t1', accountId, Date.now());
+
+    // Die to robber_42
+    const deathRes = await fetch(`${ts.baseUrl}/api/economy/death`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fallen_token' },
+      body: JSON.stringify({
+        x: 100, z: 200, zone: 'sindr',
+        killer: { id: 'robber_42', kind: 'robber' },
+      }),
+    });
+    assert.equal(deathRes.status, 200);
+    const { pile } = (await deathRes.json()) as { pile: { id: string; ownerId: string; contents: { chroma: number } } };
+    assert.ok(pile);
+    assert.equal(pile.contents.chroma, 150);
+    assert.equal(pile.ownerId, `outlaw:local/${accountId}/robber_42`);
+
+    // Kill robber_42: releases the held pile
+    const killRes = await fetch(`${ts.baseUrl}/api/economy/loot/fight`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fallen_token' },
+      body: JSON.stringify({
+        kind: 'robber', x: 105, z: 205, zone: 'sindr', nation: 'IGNIS',
+        enemyId: 'robber_42',
+      }),
+    });
+    assert.equal(killRes.status, 200);
+    const killBody = (await killRes.json()) as { pile: unknown; releasedPiles: Array<{ id: string; ownerId: string; x: number; z: number }> };
+    assert.ok(killBody.releasedPiles.length >= 1);
+    const released = killBody.releasedPiles.find(p => p.id === pile.id);
+    assert.ok(released);
+    assert.equal(released.ownerId, accountId);
+    assert.equal(released.x, 105);
+    assert.equal(released.z, 205);
+
+    // A beast, or an outlaw the browser cannot name, leaves the drop to the fallen alone.
+    for (const killer of [{ kind: 'bull' }, { kind: 'hound' }, { kind: 'robber' }]) {
+      db.prepare(`INSERT INTO ledger_entries (id, sender, receiver, amount, reason, timestamp) VALUES (?, 'treasury', ?, 40, 'grant', ?)`).run(`t-${killer.kind}`, accountId, Date.now());
+      const res = await fetch(`${ts.baseUrl}/api/economy/death`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fallen_token' },
+        body: JSON.stringify({ x: 100, z: 200, zone: 'sindr', killer }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { pile: { ownerId: string; contents: { chroma: number } } | null };
+      assert.equal(body.pile?.contents.chroma, 40, killer.kind);
+      assert.equal(body.pile?.ownerId, accountId, killer.kind);
+    }
+  } finally {
+    setTokenVerifier(null);
     await ts.close();
   }
 });

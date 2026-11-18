@@ -11,7 +11,9 @@ import { ServerRobberGang } from '../net/outlaws.js';
 import { closeZone, enterRoom, leaveRoom, openZone } from '../net/presence.js';
 import { OPEN_TIER, ServerPlayer, ZoneWorld, type Identity, type WorldEvent } from '../net/world.js';
 import { ZoneEconomy, type EconEvent } from '../net/zone-economy.js';
-import { adjacentRegions, HANDOFF_SECONDS, nationalRegion, networkPosition, persistentPosition, REGION_OVERLAP, regionContains, RegionHandoffs, SPAWN_REGION, lastNationalPosition, rememberNationalPosition } from '../net/coordinates.js';
+import { litShrinesOf, reachShrine, resumeOf, travelCheck } from '../net/shrines.js';
+import { shrineById, type Shrine } from '@elements/shared';
+import { adjacentRegions, HANDOFF_SECONDS, nationalRegion, networkPosition, persistentPosition, REGION_OVERLAP, regionContains, RegionHandoffs, SPAWN_REGION, rememberNationalPosition, resumeAt } from '../net/coordinates.js';
 
 interface RegionTransfer {
   player: ServerPlayer;
@@ -148,8 +150,24 @@ export class ZoneRoom extends Room {
         if (p) client.send('correct', { x: p.x, y: p.y, z: p.z });
       } else {
         const p = this.world.players.get(client.sessionId);
-        if (p?.region) rememberNationalPosition(p.accountId, p.region.id, p);
+        if (p?.region) {
+          rememberNationalPosition(p.accountId, p.region.id, p);
+          const at = persistentPosition(this.world.zone, p);
+          const lit = reachShrine(p.accountId, p.lit, at.x, at.z, p.inFight);
+          if (lit) client.send('shrine_lit', { shrine: lit.id });
+        }
       }
+    });
+
+    // Travel from the lit shrine the player stands at to another they have lit.
+    this.onMessage('shrine_travel', (client: Client, message: unknown) => {
+      const p = this.world.players.get(client.sessionId);
+      const to = message && typeof message === 'object' ? (message as Record<string, unknown>).to : undefined;
+      if (!p?.region || !p.alive || typeof to !== 'string') { client.send('shrine_refused', { error: 'You cannot travel now' }); return; }
+      const at = persistentPosition(this.world.zone, p);
+      const check = travelCheck(p.accountId, p.lit, at.x, at.z, to, p.inFight);
+      if (!check.ok) { client.send('shrine_refused', { error: check.error }); return; }
+      this.moveToShrine(client, p, check.shrine);
     });
 
     this.onMessage('region_cross', (client: Client, message: unknown) => {
@@ -304,7 +322,7 @@ export class ZoneRoom extends Room {
         if (!crossings.accepts(options.handoff, who.accountId, this.world.zone, this.now())) throw new Error('Crossing expired or refused');
       } else {
         if (nationalAccounts.has(who.accountId)) throw new Error('This account is already in the nation');
-        const resume = lastNationalPosition(who.accountId)?.zone ?? SPAWN_REGION;
+        const resume = resumeOf(who.accountId)?.zone ?? SPAWN_REGION;
         if (this.world.zone !== resume) throw new Error(`Resume in ${resume}`);
       }
     }
@@ -325,7 +343,7 @@ export class ZoneRoom extends Room {
       position = networkPosition(region.id, persistentPosition(player.region!.id, player));
     } else {
       if (region && nationalAccounts.has(who.accountId)) throw new Error('This account is already in the nation');
-      const saved = region ? lastNationalPosition(who.accountId) : undefined;
+      const saved = region ? resumeOf(who.accountId) : undefined;
       if (region && this.world.zone !== (saved?.zone ?? SPAWN_REGION)) throw new Error(`Resume in ${saved?.zone ?? SPAWN_REGION}`);
       if (region && saved) {
         player = new ServerPlayer(client.sessionId, who, this.world.layout.respawn, this.now());
@@ -337,16 +355,37 @@ export class ZoneRoom extends Room {
       position = { x: player.x, y: player.y, z: player.z };
       if (region) {
         nationalAccounts.set(who.accountId, player);
+        player.lit = litShrinesOf(who.accountId);
         rememberNationalPosition(who.accountId, region.id, player);
       }
       if (!isGuest(who.accountId)) enterRoom(who.accountId);
     }
     client.send('welcome', { you: client.sessionId, t: this.now(), zone: this.world.zone, element: player.element, role: player.role, tier: player.tier, outfit: player.outfit, ...(region ? { origin: region.origin, overlap: REGION_OVERLAP, position } : {}) });
+    if (region) client.send('shrines', { lit: [...player.lit] });
     client.send('clock', { minute: this.clockMinute, speed: this.clockSpeed });
     if (!this.incoming.has(client.sessionId)) {
       client.send('snap', this.world.snapshot(this.now()));
       this.pay(this.economy.join(client.sessionId));
     }
+  }
+
+  /**
+   * Puts a player at a shrine's wake spot: in this region at once; in another, the account is set to resume
+   * there and the browser rejoins that region's room, as on a return visit.
+   */
+  private moveToShrine(client: Client, p: ServerPlayer, shrine: Shrine): void {
+    const global = { x: shrine.wake.x, y: shrine.y, z: shrine.wake.z };
+    const local = networkPosition(this.world.zone, global);
+    if (p.region && regionContains(p.region, local)) {
+      p.enterRegion(p.region, local, this.now());
+      p.facing = shrine.wake.facing;
+      rememberNationalPosition(p.accountId, p.region.id, p);
+      client.send('revived', { x: local.x, y: local.y, z: local.z, facing: shrine.wake.facing, shrine: shrine.id });
+      return;
+    }
+    this.detach(client.sessionId);
+    const zone = resumeAt(p.accountId, global);
+    client.send('shrine_jump', { zone, shrine: shrine.id });
   }
 
   override onLeave(client: Client): void {
@@ -421,8 +460,16 @@ export class ZoneRoom extends Room {
   /** Sends world events to the one player they concern, or to everyone. */
   private deliver(events: WorldEvent[]): void {
     for (const ev of events) {
-      // A fall the room saw drops what the player carries where the room has them.
-      if (ev.type === 'fell') this.pay(this.economy.death(ev.to));
+      // A fall the room saw drops what the player carries where the room has them, held for whoever caused it.
+      if (ev.type === 'fell') this.pay(this.economy.death(ev.to, ev.by));
+      // A shrine in another region: the player is moved there instead of standing up here.
+      if (ev.type === 'wake_away') {
+        const c = this.clients.find(x => x.sessionId === ev.to);
+        const p = this.world.players.get(ev.to);
+        const shrine = shrineById(ev.shrine);
+        if (c && p && shrine) this.moveToShrine(c, p, shrine);
+        continue;
+      }
       const { type, ...body } = ev;
       if ('to' in ev) {
         const { to, ...rest } = body as typeof body & { to: string };

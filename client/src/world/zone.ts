@@ -97,6 +97,8 @@ export interface Zone {
   sounds: { market: readonly Vector3[]; forge: readonly Vector3[] };
   /** What the ground is made of under feet at a spot; open land outside the town is ash and cinder. */
   surfaceAt(x: number, y: number, z: number): Surface;
+  /** Inhabited precincts streamed along the road network. */
+  settlements: SettlementStream;
   /** The point the shadows and the nearest lights follow, usually the hero. */
   follow(point: Vector3): void;
   groundStep(controller: { position: Vector3; place(x: number, y: number, z: number): void }): boolean;
@@ -316,7 +318,10 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
     window: createWindowMaterial(), forge: createForgeMaterial(), lava: createLavaMaterial(), ao: createAoMaterial(),
     wet: createWetMaterial(), water: createWaterMaterial(), fresh_water: createWaterMaterial('fresh'), paper: createPaperMaterial(),
   };
-  const settlements = new SettlementStream(world, bucket => glows[bucket] ?? lib.get(bucket as Surface), low);
+  // The nearest lights: the town's braziers and lamps, plus those of whichever settlements are loaded.
+  const pool = new LightPool(scene, builder.emitters, low ? 2 : 3);
+  const placeProps = propKit(renderer, low, lib.get('blackened_rusted_iron'));
+  const settlements = new SettlementStream(world, bucket => glows[bucket] ?? lib.get(bucket as Surface), low, pool, placeProps);
   scene.add(settlements.group);
   settlements.update(stream.near.cells);
   if (debug) Object.assign(map, { settlements });
@@ -341,12 +346,11 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   scene.add(fires, smoke, embers, steam);
   scene.add(createPlants(builder.plants, lib.get('charred_timber_beams'), low));
 
-  const pool = new LightPool(scene, builder.emitters, low ? 2 : 3);
 
   // Kit models placed as instances, one draw call per model part.
   // Entry waits for every level and surface before warming the completed scene.
   const props = new Group();
-  const ready = Promise.all([loadProps(renderer, builder.props, props, low, lib.get('blackened_rusted_iron')), lib.ready(), national.ready, landMap.ready, forestReady])
+  const ready = Promise.all([placeProps(builder.props, props), lib.ready(), national.ready, landMap.ready, forestReady])
     .then(() => { scene.add(props); map.ready = true; });
 
   // Post: sanitize first (stops NaN black frames), bloom only for what is brighter than sunlit ground (fire, lava, slag), grade, then anti-aliasing.
@@ -384,6 +388,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
 
   return {
     scene, camera, renderer, clock, ready, posts: builder.posts, browse: builder.browse,
+    settlements,
     surfaceAt: (x, y, z) => waterworks.surfaceAt(x, y, z) ?? quarry.surfaceAt(x, y, z) ?? settlements.surfaceAt(x, y, z) ?? builder.treads.at(x, y, z) ?? 'ash_cinder_ground',
     sounds: {
       market: [...builder.browse, ...builder.posts.filter(post => post.kind === 'keeper')].map(spot => new Vector3(spot.x, spot.y, spot.z)),
@@ -460,59 +465,72 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   };
 }
 
+/** Places scanned props as instanced cells into a group; each model loads once and is shared by every caller. */
+export type PlaceProps = (placements: WorldBuilder['props'], into: Group) => Promise<void>;
+
 /**
  * The scanned props, instanced per ground cell: the full model near, the low model past `near`, nothing
  * past the distance the haze swallows a thing of its size. On low quality only the low model is loaded.
+ * Models are fetched once; the town and every settlement that streams in share them.
  */
-async function loadProps(renderer: WebGLRenderer, placements: WorldBuilder['props'], into: Group, low: boolean, iron: Material): Promise<void> {
+function propKit(renderer: WebGLRenderer, low: boolean, iron: Material): PlaceProps {
   const loader = loaders(renderer).gltf;
-  const byId = new Map<string, WorldBuilder['props']>();
-  for (const p of placements) byId.set(p.id, [...(byId.get(p.id) ?? []), p]);
+  const cache = new Map<string, Promise<{ parts: Part[]; radius: number }>>();
   // The procedural iron pieces export without textures; they take the scanned blackened iron.
-  const partsOf = async (id: string, file: string): Promise<{ parts: Part[]; radius: number }> => {
-    const gltf = await loader.loadAsync(`/assets/env/ignis/models/${file}.glb`);
-    gltf.scene.updateMatrixWorld(true);
-    const forged = id === 'iron_brazier' || id === 'anvil';
-    const byMat = new Map<Material, BufferGeometry[]>();
-    let radius = 0;
-    gltf.scene.traverse((o) => {
-      const mesh = o as Mesh;
-      if (!mesh.isMesh) return;
-      let geometry = forged ? bakeIronUv(mesh.geometry, mesh.matrixWorld) : mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-      if (geometry.index) geometry = geometry.toNonIndexed();
-      const mat = forged ? iron : (mesh.material as Material);
-      if ((mat as MeshStandardMaterial).isMeshStandardMaterial) (mat as MeshStandardMaterial).envMapIntensity = 0.8;
-      geometry.computeBoundingSphere();
-      radius = Math.max(radius, geometry.boundingSphere!.radius);
-      const list = byMat.get(mat);
-      if (list) list.push(geometry); else byMat.set(mat, [geometry]);
-    });
-    const parts: Part[] = [];
-    for (const [material, list] of byMat) {
-      const merged = list.length === 1 ? list[0]! : mergeGeometries(list, false)!;
-      merged.computeBoundingSphere();
-      parts.push({
-        geometry: merged,
-        material,
-        castShadow: !low && (id === 'boulder_large' || id === 'boulder_huge' || id === 'dead_burnt_tree' || id === 'iron_brazier'),
-        name: id,
+  const partsOf = (id: string, file: string): Promise<{ parts: Part[]; radius: number }> => {
+    const cached = cache.get(file);
+    if (cached) return cached;
+    const loading = (async () => {
+      const gltf = await loader.loadAsync(`/assets/env/ignis/models/${file}.glb`);
+      gltf.scene.updateMatrixWorld(true);
+      const forged = id === 'iron_brazier' || id === 'anvil';
+      const byMat = new Map<Material, BufferGeometry[]>();
+      let radius = 0;
+      gltf.scene.traverse((o) => {
+        const mesh = o as Mesh;
+        if (!mesh.isMesh) return;
+        let geometry = forged ? bakeIronUv(mesh.geometry, mesh.matrixWorld) : mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+        if (geometry.index) geometry = geometry.toNonIndexed();
+        const mat = forged ? iron : (mesh.material as Material);
+        if ((mat as MeshStandardMaterial).isMeshStandardMaterial) (mat as MeshStandardMaterial).envMapIntensity = 0.8;
+        geometry.computeBoundingSphere();
+        radius = Math.max(radius, geometry.boundingSphere!.radius);
+        const list = byMat.get(mat);
+        if (list) list.push(geometry); else byMat.set(mat, [geometry]);
       });
-    }
-    return { parts, radius };
+      const parts: Part[] = [];
+      for (const [material, list] of byMat) {
+        const merged = list.length === 1 ? list[0]! : mergeGeometries(list, false)!;
+        merged.computeBoundingSphere();
+        parts.push({
+          geometry: merged,
+          material,
+          castShadow: !low && (id === 'boulder_large' || id === 'boulder_huge' || id === 'dead_burnt_tree' || id === 'iron_brazier'),
+          name: id,
+        });
+      }
+      return { parts, radius };
+    })();
+    cache.set(file, loading);
+    return loading;
   };
-  await Promise.all([...byId].map(async ([id, list]) => {
-    try {
-      const far = await partsOf(id, `${id}_low`);
-      const size = far.radius * Math.max(...list.map((p) => p.scale));
-      // A barrel (0.5 m) is gone at about 100 m, a cart at 250 m, a boulder or dead tree carries to 600 m.
-      const hideAt = low ? Math.min(180, Math.max(40, size * 50)) : Math.min(600, Math.max(100, size * 130));
-      const near = Math.max(6, size * 5);
-      const levels = low ? [{ from: 0, parts: far.parts }] : [{ from: 0, parts: (await partsOf(id, id)).parts }, { from: near, parts: far.parts }];
-      for (const lod of cellLods(list, levels, hideAt)) into.add(lod);
-    } catch (error) {
-      console.warn(`Prop ${id} failed to load:`, error);
-    }
-  }));
+  return async (placements, into) => {
+    const byId = new Map<string, WorldBuilder['props']>();
+    for (const p of placements) byId.set(p.id, [...(byId.get(p.id) ?? []), p]);
+    await Promise.all([...byId].map(async ([id, list]) => {
+      try {
+        const far = await partsOf(id, `${id}_low`);
+        const size = far.radius * Math.max(...list.map((p) => p.scale));
+        // A barrel (0.5 m) is gone at about 100 m, a cart at 250 m, a boulder or dead tree carries to 600 m.
+        const hideAt = low ? Math.min(180, Math.max(40, size * 50)) : Math.min(600, Math.max(100, size * 130));
+        const near = Math.max(6, size * 5);
+        const levels = low ? [{ from: 0, parts: far.parts }] : [{ from: 0, parts: (await partsOf(id, id)).parts }, { from: near, parts: far.parts }];
+        for (const lod of cellLods(list, levels, hideAt)) into.add(lod);
+      } catch (error) {
+        console.warn(`Prop ${id} failed to load:`, error);
+      }
+    }));
+  };
 }
 
 /** The procedural iron pieces have collapsed UVs: unpack them to floats in metres and project the iron scan on. */

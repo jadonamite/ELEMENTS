@@ -23,6 +23,13 @@ export function shardItemId(colour: string): string {
   return `${SHARD_PREFIX}${colour.toLowerCase()}`;
 }
 
+/** Every shard a satchel holds, of any colour. */
+export function shardCount(satchel: Satchel): number {
+  let n = 0;
+  for (const [itemId, count] of Object.entries(satchel)) if (itemId.startsWith(SHARD_PREFIX) && count > 0) n += count;
+  return n;
+}
+
 export function materialItemId(name: string): string {
   return name === 'material' || name.startsWith(MATERIAL_PREFIX) ? name : `${MATERIAL_PREFIX}${name}`;
 }

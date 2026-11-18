@@ -192,6 +192,13 @@ export function migrateDatabase(database: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_demand_merchant_item ON merchant_demand(merchant_id, item_type);
     CREATE INDEX IF NOT EXISTS idx_demand_timestamp ON merchant_demand(timestamp);
 
+    CREATE TABLE IF NOT EXISTS lit_shrines (
+      account_id TEXT NOT NULL,
+      shrine_id TEXT NOT NULL,
+      lit_at INTEGER NOT NULL,
+      PRIMARY KEY (account_id, shrine_id)
+    );
+
     CREATE TABLE IF NOT EXISTS loot_piles (
       id TEXT PRIMARY KEY,
       x REAL NOT NULL,

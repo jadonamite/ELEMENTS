@@ -112,12 +112,19 @@ export async function claimLoot(pileId: string, x: number, z: number): Promise<{
   });
 }
 
-export async function reportKill(kind: string, x: number, z: number, zone: string, nation: string): Promise<LootPile | null> {
-  const data = await call<{ pile: LootPile | null }>('/api/economy/loot/fight', {
+export async function reportKill(
+  kind: string,
+  x: number,
+  z: number,
+  zone: string,
+  nation: string,
+  enemyId?: string,
+): Promise<{ pile: LootPile | null; releasedPiles?: LootPile[] }> {
+  const data = await call<{ pile: LootPile | null; releasedPiles?: LootPile[] }>('/api/economy/loot/fight', {
     method: 'POST',
-    body: JSON.stringify({ kind, x, z, zone, nation }),
+    body: JSON.stringify({ kind, x, z, zone, nation, enemyId }),
   });
-  return data.pile;
+  return data;
 }
 
 /** Where the player stands with the town watch, as the server holds it. */
@@ -196,10 +203,15 @@ export async function reportSentrySaw(zone: string, x: number, z: number): Promi
   return call('/api/economy/crime/sentry-fine', { method: 'POST', body: JSON.stringify({ zone, x, z }) });
 }
 
-export async function reportDeath(x: number, z: number, zone: string): Promise<LootPile | null> {
+export async function reportDeath(
+  x: number,
+  z: number,
+  zone: string,
+  killer?: { id?: string; kind: string },
+): Promise<LootPile | null> {
   const data = await call<{ pile: LootPile | null }>('/api/economy/death', {
     method: 'POST',
-    body: JSON.stringify({ x, z, zone }),
+    body: JSON.stringify({ x, z, zone, killer }),
   });
   return data.pile;
 }
