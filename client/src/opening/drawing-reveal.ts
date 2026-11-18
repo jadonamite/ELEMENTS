@@ -164,8 +164,9 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
     dpr = Math.min(2, window.devicePixelRatio || 1);
     W = stage.clientWidth; H = stage.clientHeight;
     for (const c of [back, fore]) { c.width = W * dpr; c.height = H * dpr; c.style.width = `${W}px`; c.style.height = `${H}px`; }
-    const r = wrap.getBoundingClientRect(), s = stage.getBoundingClientRect();
-    cx = r.left - s.left + r.width / 2; cy = r.top - s.top + r.height / 2; cw = r.width; ch = r.height;
+    // Layout position, not the drawn one: the card is still mid-rise when this first runs.
+    cw = wrap.offsetWidth; ch = wrap.offsetHeight;
+    cx = wrap.offsetLeft + cw / 2; cy = wrap.offsetTop + ch / 2;
   };
   measure();
   const onResize = (): void => measure();
