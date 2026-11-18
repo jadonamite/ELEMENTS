@@ -1,5 +1,6 @@
 import { IGNIS } from './coordinates.js';
 import { groundHeight } from './ground.js';
+import { mineAt } from './mine-road.js';
 
 export type RockGroupId = 'cinderpit' | 'mine-hamlet';
 
@@ -68,6 +69,10 @@ export function checkRockHouseSite(site: RockHouseSite, groundAt: (x: number, z:
       const h = groundAt(p.x, p.z);
       if (!Number.isFinite(h)) return { ok: false, reason: `non-finite ground sample at (${p.x}, ${p.z})` };
       samples.push(h);
+      if (site.group === 'mine-hamlet') {
+        const road = mineAt(p.x, p.z);
+        if (road.distance < 6) return { ok: false, reason: `footprint sample within 6m of mine road: ${road.distance.toFixed(2)}m < 6m` };
+      }
     }
   }
   for (const lx of [-halfW, halfW]) {
@@ -76,6 +81,10 @@ export function checkRockHouseSite(site: RockHouseSite, groundAt: (x: number, z:
       const h = groundAt(p.x, p.z);
       if (!Number.isFinite(h)) return { ok: false, reason: 'non-finite ground sample at corner' };
       samples.push(h);
+      if (site.group === 'mine-hamlet') {
+        const road = mineAt(p.x, p.z);
+        if (road.distance < 6) return { ok: false, reason: `footprint corner within 6m of mine road: ${road.distance.toFixed(2)}m < 6m` };
+      }
     }
   }
 
@@ -103,7 +112,7 @@ export function checkRockHouseSite(site: RockHouseSite, groundAt: (x: number, z:
     if (numSteps > ROCK_HOUSE_RULES.maxSteps) {
       return { ok: false, reason: `too many steps: ${numSteps} > ${ROCK_HOUSE_RULES.maxSteps}` };
     }
-    run = numSteps * 0.3;
+    run = numSteps * 0.32;
   } else {
     run = drop / ROCK_HOUSE_RULES.maxRampGrade;
   }
@@ -153,50 +162,50 @@ export const ROCK_HOUSE_SITES: readonly RockHouseSite[] = [
     d: 7.0,
     variant: 0,
     door: 0,
-    sill: 740,
-    landing: 739.52,
+    sill: 739.0,
+    landing: 738.84,
     access: 'steps',
   },
   {
     id: 'ignis:rockhouse:cinderpit:1',
     group: 'cinderpit',
-    x: 10348,
-    z: 6848,
-    yaw: 2.356,
+    x: 10352,
+    z: 6852,
+    yaw: Math.PI / 4,
     w: 8.6,
     d: 8.0,
     variant: 1,
     door: 0,
-    sill: 740,
-    landing: 739.4,
+    sill: 739.3,
+    landing: 738.9,
     access: 'ramp',
   },
   {
     id: 'ignis:rockhouse:mine-hamlet:0',
     group: 'mine-hamlet',
-    x: 7565,
-    z: 8635,
-    yaw: -0.5,
+    x: 7567.7,
+    z: 8621.5,
+    yaw: 0.48,
     w: 7.2,
     d: 7.0,
     variant: 0,
     door: 0,
-    sill: 413,
-    landing: 412.52,
+    sill: 413.67,
+    landing: 413.35,
     access: 'steps',
   },
   {
     id: 'ignis:rockhouse:mine-hamlet:1',
     group: 'mine-hamlet',
-    x: 7610,
-    z: 8605,
-    yaw: -0.5,
+    x: 7622.9,
+    z: 8619.0,
+    yaw: -2.66,
     w: 8.6,
     d: 8.0,
     variant: 1,
     door: 0,
-    sill: 416,
-    landing: 415.5,
+    sill: 416.83,
+    landing: 416.43,
     access: 'ramp',
   },
 ];

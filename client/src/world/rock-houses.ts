@@ -5,6 +5,7 @@ import {
   ROCK_HOUSE_GROUPS,
   ROCK_HOUSE_RULES,
   ROCK_HOUSE_SITES,
+  checkRockHouseSite,
   siteToWorld,
   type RockHouseGroup,
   type RockHouseSite,
@@ -17,6 +18,7 @@ export {
   ROCK_HOUSE_GROUPS,
   ROCK_HOUSE_RULES,
   ROCK_HOUSE_SITES,
+  checkRockHouseSite,
   siteToWorld,
   type RockHouseGroup,
   type RockHouseSite,
@@ -52,6 +54,11 @@ export function rockHouse(
   groundAt: (x: number, z: number) => number = groundHeight,
   origin: Point3 = { x: 0, y: 0, z: 0 },
 ): void {
+  const check = checkRockHouseSite(site, groundAt);
+  if (!check.ok) {
+    throw new Error(`Cannot build invalid rock house site ${site.id}: ${check.reason}`);
+  }
+
   const ox = origin.x;
   const oy = origin.y;
   const oz = origin.z;

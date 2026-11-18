@@ -7,6 +7,7 @@ import { groundHeight } from '../../shared/dist/world/ignis/ground.js';
 import {
   ROCK_HOUSE_GROUPS,
   ROCK_HOUSE_SITES,
+  checkRockHouseSite,
   rockGroupCells,
   siteToWorld,
 } from '../../shared/dist/world/ignis/rock-houses.js';
@@ -14,6 +15,31 @@ import { SETTLEMENT_PRECINCTS, settlementCells } from '../../shared/dist/world/i
 import { WorldBuilder, seeded } from '../src/world/builder.js';
 import { buildRockGroupLOD, rockHouse } from '../src/world/rock-houses.js';
 import { SettlementStream } from '../src/world/settlements.js';
+
+test('Every ROCK_HOUSE_SITES entry passes checkRockHouseSite', () => {
+  assert.ok(ROCK_HOUSE_SITES.length > 0, 'ROCK_HOUSE_SITES must not be empty');
+  for (const site of ROCK_HOUSE_SITES) {
+    const result = checkRockHouseSite(site, groundHeight);
+    assert.equal(
+      result.ok,
+      true,
+      `Site ${site.id} must pass checkRockHouseSite, failed with: ${result.ok ? '' : result.reason}`,
+    );
+  }
+});
+
+test('rockHouse refuses to build an invalid site', () => {
+  const invalidSite = {
+    ...ROCK_HOUSE_SITES[0],
+    id: 'invalid:floating',
+    sill: 999,
+  };
+  const b = new WorldBuilder();
+  assert.throws(
+    () => rockHouse(b, invalidSite, 0, seeded(1), groundHeight),
+    /Cannot build invalid rock house site/,
+  );
+});
 
 test('Fault 1: for each site, footprint corners from siteToWorld match builder.world() after b.at(...)', () => {
   for (const site of ROCK_HOUSE_SITES) {
