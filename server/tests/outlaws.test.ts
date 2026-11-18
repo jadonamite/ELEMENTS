@@ -75,9 +75,10 @@ test('Outlaws sensing: street kinds, sentry safe distance, and clock nightness',
   assert.equal(sindrStreet(120, 0), 'open_street');
   assert.equal(sindrStreet(240, 2), 'road_out_of_town');
 
-  // Sentry distance: near shrine vs east market
-  assert.equal(sindrSentryDistance(20), 12);
-  assert.equal(sindrSentryDistance(100), 60);
+  // Sentry distance: to the nearest of the Sentries' market posts, (91, -4) and (141, -4)
+  assert.equal(sindrSentryDistance(91, -4), 0);
+  assert.ok(Math.abs(sindrSentryDistance(116, 12) - Math.hypot(25, 16)) < 1e-9);
+  assert.ok(sindrSentryDistance(20, 0) > 70);
 });
 
 test('ServerRobberGang: heavy purse at night in an alley triggers ambush sequence', () => {
@@ -86,8 +87,8 @@ test('ServerRobberGang: heavy purse at night in an alley triggers ambush sequenc
   // Player Alice in alley with 350 CHROMA
   createOrGetAccount('dev_alice');
   const alice = world.join('session_a', { accountId: 'dev_alice', role: 'Shaper', element: 'IGNIS', forcedCarry: 350 }, 0);
-  alice.x = 100;
-  alice.z = -12;
+  alice.x = 116;
+  alice.z = 12;
 
   // Gang starts idle
   assert.equal(gang.state.state, 'idle');
@@ -135,8 +136,8 @@ test('ServerRobberGang: defeating a robber drops loot through ZoneEconomy', () =
   const { world, econ, gang } = setup();
 
   const alice = world.join('session_a', { accountId: 'dev_alice', role: 'Shaper', element: 'IGNIS', forcedCarry: 350 }, 0);
-  alice.x = 100;
-  alice.z = -12;
+  alice.x = 116;
+  alice.z = 12;
 
   gang.spawnAmbush(alice, world);
 
@@ -175,8 +176,8 @@ test('ServerRobberGang: heavy casualties trigger flee state and record memory', 
   const { world, econ, gang } = setup();
 
   const alice = world.join('session_a', { accountId: 'dev_alice', role: 'Shaper', element: 'IGNIS', forcedCarry: 350 }, 0);
-  alice.x = 100;
-  alice.z = -12;
+  alice.x = 116;
+  alice.z = 12;
 
   gang.spawnAmbush(alice, world);
   assert.equal(gang.state.state, 'ambushing');
@@ -207,13 +208,13 @@ test('ServerRobberGang: heavy casualties trigger flee state and record memory', 
   assert.ok(mem.fearScore > 0);
 });
 
-test('ServerRobberGang: sentries near shrine prevent robbers attacking', () => {
+test('ServerRobberGang: a Sentry post nearby keeps robbers from attacking', () => {
   const { world, econ, gang } = setup();
 
-  // Player stands by shrine (x < 48) where sentries guard
+  // Player in the alley a few metres from the Sentries' west post (91, -4)
   const alice = world.join('session_a', { accountId: 'dev_alice', role: 'Shaper', element: 'IGNIS', forcedCarry: 500 }, 0);
-  alice.x = 24;
-  alice.z = 0;
+  alice.x = 95;
+  alice.z = -10;
 
   // Even at night with 500 CHROMA, guards hold robbers back
   gang.update(1.0, 1.0, world, econ, 18);

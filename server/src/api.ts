@@ -26,6 +26,7 @@ import {
   getOpenBounties,
   pardonBounty,
   addRedFlag,
+  fineOnSight,
   getStanding,
   listLootPiles,
   claimLootPile,
@@ -49,6 +50,7 @@ import {
   getTownsfolkMindState,
   getAgentRuntime,
 } from './economy/index.js';
+import { climbTerms, enrol, recordWin, trialWon } from './economy/climbService.js';
 
 function extractToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
@@ -534,6 +536,46 @@ export function setupApi(app: Application): void {
     res.json({ accountId, convertedToBounty: result.convertedToBounty, ...getStanding(accountId) });
   });
 
+  // The tier climb with the player's own master: where they stand, paying the fee, and the trial won.
+  app.get('/api/climb', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (accountId) res.json(climbTerms(accountId));
+  });
+  app.post('/api/climb/enrol', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (accountId) res.json(enrol(accountId, clientKillsAllowed()));
+  });
+  app.post('/api/climb/trial-won', async (req: Request, res: Response) => {
+    if (!clientKillsAllowed()) {
+      res.status(403).json({ error: 'Trials are judged by the game server here' });
+      return;
+    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    try {
+      res.json(trialWon(accountId));
+    } catch (err: unknown) {
+      res.status(409).json({ error: err instanceof Error ? err.message : 'No trial to win' });
+    }
+  });
+
+  // A Sentry at a post saw this player: each red flag not yet fined is fined once. The account comes from the token.
+  app.post('/api/economy/crime/sentry-fine', async (req: Request, res: Response) => {
+    if (!clientKillsAllowed()) {
+      res.status(403).json({ error: 'The game server judges what the Sentries see here' });
+      return;
+    }
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    const { zone, x, z } = req.body || {};
+    if (typeof zone !== 'string' || !Number.isFinite(x) || !Number.isFinite(z)) {
+      res.status(400).json({ error: 'Need zone, x and z' });
+      return;
+    }
+    const fine = fineOnSight(accountId, zone, x, z);
+    res.json({ accountId, ...fine, ...getStanding(accountId) });
+  });
+
   app.get('/api/economy/loot', (req: Request, res: Response) => {
     const zone = typeof req.query.zone === 'string' ? req.query.zone : '';
     if (!zone) {
@@ -587,6 +629,7 @@ export function setupApi(app: Application): void {
       return;
     }
     try {
+      recordWin(accountId);
       const pile = dropFromClientKill({
         accountId,
         kind,

@@ -794,6 +794,15 @@
       "bendScale": {
         "6": 1.25,
         "7": 1.5
+      },
+      "climb": {
+        "startTier": 1,
+        "winsToQualify": { "2": 5, "3": 10, "4": 20, "5": 35, "6": 55, "7": 80 },
+        "fee": { "2": 60, "3": 150, "4": 350, "5": 700, "6": 1400, "7": 2800 },
+        "feeWeeklyStep": 0.1,
+        "feeWeekHours": 168,
+        "trialKind": "bender",
+        "trialHealth": { "2": 160, "3": 200, "4": 240, "5": 280, "6": 320, "7": 360 }
       }
     },
     "situationalCounters": {
@@ -1168,7 +1177,9 @@
       "flagsToBounty": 3,
       "jailSeizureRate": 0.4,
       "jailBaseFine": 50,
-      "baseRobberyFlag": true
+      "baseRobberyFlag": true,
+      "sentryFinePerFlag": 25,
+      "sentrySightMetres": 10
     },
     "death": {
       "carriedShardLossRate": 0.25
@@ -2110,6 +2121,7 @@
   "speech": {
     "traffic": { "maxAmbient": 2, "maxAlerts": 2, "ambientGapSeconds": 3 },
     "hearRadius": 25,
-    "talk": { "reach": 3.5, "besideReach": 1.2, "minFacingDot": 0.35, "leaveDistance": 5.5, "noTalkNearFoeMetres": 12 }
+    "talk": { "reach": 3.5, "besideReach": 1.2, "minFacingDot": 0.35, "leaveDistance": 5.5, "noTalkNearFoeMetres": 12 },
+    "stall": { "priceMoved": 0.1, "keeperReach": 3 }
   }
 }

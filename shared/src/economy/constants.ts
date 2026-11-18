@@ -93,6 +93,10 @@ export const CRIME_CONFIG = {
   bountyStartingReward: 150,
   jailSeizureRate: economyBalance?.crime?.jailSeizureRate ?? 0.4,
   jailBaseFine: economyBalance?.crime?.jailBaseFine ?? 50,
+  /** What a Sentry takes for each red flag they see, once per flag, for the treasury. */
+  sentryFinePerFlag: economyBalance?.crime?.sentryFinePerFlag ?? 25,
+  /** How close a Sentry must be to see a red flag, metres. */
+  sentrySightMetres: economyBalance?.crime?.sentrySightMetres ?? 10,
 } as const;
 
 export const DEATH_CONFIG = {

@@ -7,6 +7,8 @@ export interface NationMasterConfig {
   title: string;
   greetingBark: string;
   look: string;
+  /** Where the master keeps their post in the nation's town after the intro, town metres; none where the town is not built. */
+  post?: { x: number; z: number; facing: number };
 }
 
 export interface NationFirstMission {
@@ -78,6 +80,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
       title: 'Master of IGNIS',
       greetingBark: 'Easy. On your feet.',
       look: 'master-ignis',
+      post: { x: 11, z: 3.5, facing: Math.PI },
     },
     starterWeapon: 'sword',
     dialogue: introLines('master_ignis'),

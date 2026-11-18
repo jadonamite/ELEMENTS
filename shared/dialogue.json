@@ -27,7 +27,9 @@
       "theft_seen": "Shouting, sharp and indignant.",
       "red_flag_raised": "Pointed and disapproving.",
       "loot_dropped": "Casual, a little envious.",
-      "flee": "Terrified, voice shaking, running away."
+      "flee": "Terrified, voice shaking, running away.",
+      "bought_from_player": "Businesslike, counting out coin.",
+      "going_broke": "Tired and frank, a little embarrassed."
     }
   },
   "merchant_ignis": {
@@ -50,7 +52,7 @@
       "Demand's up. Price goes with it. That's the deal.",
       "Everyone wants Crimson shards right now. Everyone pays for Crimson shards right now.",
       "I don't set the world. I price to it. Take it or leave it.",
-      "The boss shifted again. Half the city's after counter-element stock. You do the counting.",
+      "Fighters are buying faster than the caravans bring it in. You do the counting.",
       "Supply's thin. Thin supply, honest price."
     ],
     "prices_falling": [
@@ -68,11 +70,11 @@
       "I wish I had it. I don't."
     ],
     "going_broke": [
-      "I'll be straight with you: coin is short. I'm buying, not selling.",
+      "Coin's short. I'll sell you what's on the rack, but I'm not buying today.",
       "Don't mistake a quiet counter for a wealthy one. I'm stretched.",
-      "If you've got goods to sell, now is a good time. If you're here to buy, come back when the treasury's been kinder.",
+      "Keep your goods. My purse can't take them this week. The rack's still open.",
       "Lean month. Very lean month.",
-      "Trade's been rough. Make me a fair offer on what you're carrying and we'll both come out ahead."
+      "I can sell. I can't buy. Not until the purse fills up again."
     ],
     "sale_made": [
       "Good doing business.",
@@ -80,6 +82,13 @@
       "Paid, and it's yours. Pleasure.",
       "Done. Don't let it wear out too fast.",
       "Smart pick. Crimson stock doesn't sit long."
+    ],
+    "bought_from_player": [
+      "I'll take it. Coin's on the counter.",
+      "Fair enough. That goes on my rack now.",
+      "Done. Bring me more like that.",
+      "Rough, but it'll sell. Here's your coin.",
+      "Taken. Don't spend it all at once."
     ]
   },
   "merchant_aques": {
@@ -101,7 +110,7 @@
     "prices_rising": [
       "The demand's moved faster than the supply. I'm pricing to what I have.",
       "Azure shards are short this week. I'm sorry. The price is what it is.",
-      "The boss changed element two nights ago. Half the city wants what I carry now.",
+      "Everyone came for Azure stock at once this week. Half the street wants what I carry now.",
       "I'll be honest: the price is high. It's high for me too when I restock.",
       "I'd rather charge less and have more to sell. I can only price to what the market gives me."
     ],
@@ -120,11 +129,11 @@
       "I don't have it right now. I wish I did."
     ],
     "going_broke": [
-      "Margins have been bad. I'm buying more than I'm selling this week.",
-      "I'll tell you honestly: I can't afford to restock well right now. What I have is what you see.",
-      "Lean times. If you're selling, I'm interested. If you're buying, the selection's limited.",
-      "The treasury's quiet and so is my register. I'm working through it.",
-      "A merchant who pretends to be fine when he's not is fooling no one. I'm stretched. Come back in a few days."
+      "Margins have been bad. I can sell you what I have, but I can't buy from you this week.",
+      "I'll tell you honestly: I can't afford to restock right now. What I have is what you see.",
+      "Lean times. I'm selling, not buying. Bring your goods back when my purse recovers.",
+      "My register is quiet. I'm working through it.",
+      "A merchant who pretends to be fine when he's not is fooling no one. I'm stretched. I can only sell for now."
     ],
     "sale_made": [
       "There. Good trade.",
@@ -132,6 +141,13 @@
       "Done. Take care with that. It's worth the price.",
       "Paid in full. Fair exchange.",
       "Good. Come back when you need more."
+    ],
+    "bought_from_player": [
+      "Thank you. That will find a good home.",
+      "I'll take it. A fair price for honest goods.",
+      "Done. Your coin, counted twice.",
+      "Good work. I'll put it on the shelf.",
+      "That's settled. Bring more when you can."
     ]
   },
   "merchant_terra": {
@@ -173,9 +189,9 @@
     ],
     "going_broke": [
       "Slow month. Very slow.",
-      "I'm buying right now, not selling. You have anything worth trading?",
-      "Stock's thin and so is my coin. What are you carrying?",
-      "I'll be plain: times are hard. Selling to me is a better idea than buying from me this week.",
+      "I'm selling right now, not buying. Keep what you carry.",
+      "Stock's thin and so is my coin. I can't pay for more.",
+      "I'll be plain: times are hard. I won't buy from you this week.",
       "Every merchant has bad seasons. This is one of mine."
     ],
     "sale_made": [
@@ -184,6 +200,13 @@
       "Paid. Fair.",
       "There. Don't waste it.",
       "Pleasure."
+    ],
+    "bought_from_player": [
+      "Taken.",
+      "It'll do. Here's your coin.",
+      "Solid. I'll have it.",
+      "Paid. Bring more.",
+      "Fair. Done."
     ]
   },
   "merchant_aura": {
@@ -204,7 +227,7 @@
     ],
     "prices_rising": [
       "The Pale stock's in demand again. Honestly, I'm not sorry.",
-      "Prices are up. Supply's down and the boss didn't help matters.",
+      "Prices are up. Supply's down and the buyers keep coming.",
       "The whole city's scrambling for counter-element gear. We just happen to have it.",
       "I know it's steep. It won't last. The market always levels.",
       "Demand set this price, not me."
@@ -224,11 +247,11 @@
       "Sold the last one an hour ago. Painful timing."
     ],
     "going_broke": [
-      "Rough stretch, I'll admit. If you're selling, I'm interested. If you're buying, pick carefully. The selection's what it is.",
+      "Rough stretch, I'll admit. Buy if you like, but I can't take anything off you right now.",
       "I've been in leaner spots. This is lean, though.",
-      "Coin's thin. If you've got surplus stock, let's talk price.",
+      "Coin's thin. I'm not buying until it fills back up.",
       "Business goes in cycles. I'm in a trough. I'll climb out.",
-      "Not the week to be a merchant. What are you carrying?"
+      "Not the week to be a merchant. I'm selling, not buying."
     ],
     "sale_made": [
       "There we go. Pleasure.",
@@ -236,6 +259,13 @@
       "Paid. Good pick.",
       "Nice doing business. Genuinely.",
       "Good deal for both of us. Safe travels."
+    ],
+    "bought_from_player": [
+      "Ooh, that'll move fast. Here you go.",
+      "Sold to me. Pleasure.",
+      "I'll take it. Nice find.",
+      "Done. Come back with more of that.",
+      "Good stuff. Your coin's on the counter."
     ]
   },
   "merchant_chromara": {
@@ -257,7 +287,7 @@
     "prices_rising": [
       "Cross-nation demand is up. That always moves the Chromara price.",
       "When the nations are buying hard, this counter feels it first.",
-      "The boss has been unsettled. Everyone's stocking up. You understand the price.",
+      "The roads have been unsettled. Everyone's stocking up. You understand the price.",
       "I don't enjoy saying it, but the market is the market.",
       "Shortages in the nations push buyers here. The price reflects that."
     ],
@@ -276,11 +306,11 @@
       "Empty shelf, I'm afraid. Check back in a few days."
     ],
     "going_broke": [
-      "If you're selling, I'd rather be buying right now.",
+      "I'm sorry. I'm not in a position to buy right now. I can still sell.",
       "This market goes up and down. I'm in a down spell. The selection is thinner than I'd like.",
-      "Coin is tight at the centre right now. The imbalance events haven't helped.",
+      "Coin is tight at the centre right now. I'm not buying for a while.",
       "I've seen worse. Not much worse, but worse. I'll be back on my feet.",
-      "Slow season. I'm more interested in what you're carrying than in what you need."
+      "Slow season. Look at what I have, but don't ask me to buy what you carry."
     ],
     "sale_made": [
       "Done. Good dealing with you.",
@@ -288,6 +318,13 @@
       "That's settled. Come back when you need the next thing.",
       "Good trade. Safe travelling.",
       "That's good for both of us. Thank you."
+    ],
+    "bought_from_player": [
+      "Accepted. Your coin is on the counter.",
+      "A fair piece. I'll take it.",
+      "That's settled. Thank you.",
+      "I can use that. Good dealing with you.",
+      "Done. Bring me more when you find it."
     ],
     "first_visit_chromara": [
       "First time through the gates? Then let me tell you what this place is. Four nations, one city, one set of rules. The Edict holds here. Keep your old names to yourself.",
@@ -375,7 +412,7 @@
     "fee_rising": [
       "More students have been coming in, and my time is what it is. The fee has gone up.",
       "The rate has gone up. I don't enjoy raising it, but I have to be honest about the demand.",
-      "When the boss shifts to a counter element, everyone wants AQUES techniques. The fee moves with the season.",
+      "When the fighting turns hard, everyone wants AQUES techniques. The fee moves with the season.",
       "The fee's higher now. I'll tell you plainly what changed and why, if you want to know.",
       "It's gone up. I'm sorry."
     ],
@@ -491,7 +528,7 @@
       "You'd hold the others back. That's not a slight. It's just where you are. Build up, then come back."
     ],
     "fee_rising": [
-      "More people want AURA training when the boss is on a different element. Makes sense. Price went up.",
+      "More people want AURA training this season. Makes sense. Price went up.",
       "New rate. I don't make apologies for pricing to demand.",
       "Fee's up. Supply and demand, same as the merchants.",
       "When everyone's scrambling for Pale techniques, my rate goes up. That's the deal.",
@@ -534,7 +571,14 @@
     }
   },
   "sentry": {
-    "_note": "Lord's Sentries in Chromara. Enforce the Edict of Unnaming. Formal, measured, a little cold. They take no pleasure in the work. They do it anyway.",
+    "_note": "Lord's Sentries in Chromara, and a small watch of them in Sindr beside the town guards. Enforce the Edict of Unnaming and fine red-flagged players on sight. Formal, measured, a little cold. They take no pleasure in the work. They do it anyway.",
+    "greeting_local": [
+      "Keep moving. The watch has nothing to say to you.",
+      "The Lord keeps the peace here. See that you keep it too.",
+      "State your business, or move along.",
+      "I'm on duty. Talk to the townsfolk.",
+      "Nothing to report. That's how I like it."
+    ],
     "catching_edict_breaker": [
       "You spoke a banished name in Chromara. The Edict applies. Your fine is due to the treasury.",
       "I heard it. You're in Chromara, and the Edict holds here. Pay the fine.",
@@ -556,8 +600,24 @@
       "New to Chromara? The Edict banishes the old names. You'll want to learn the new ones.",
       "A warning, not a fine. This once. The Edict is posted at every gate. Read it."
     ],
+    "red_flag_fined": [
+      "Hold. You carry a red mark. The Lord's fine is due, and I'm collecting it.",
+      "Stop there. That mark over your head costs you. The fine goes to the treasury.",
+      "Hold. The town watch flagged you. The Lord's Sentries collect what that costs.",
+      "I don't enjoy this. But you carry a red mark, and the fine is mine to take.",
+      "Hold. A brawler under the Lord's eye pays for it. Here and now."
+    ],
+    "red_flag_fine_paid": [
+      "Paid. The treasury has it. Keep your hands to yourself.",
+      "That's settled. The mark stays until it fades. The fine won't be taken twice.",
+      "Received. Don't give me a reason to stop you again.",
+      "The fine is recorded. You're free to go.",
+      "Done. Next time, keep the peace and keep your coin."
+    ],
     "_delivery": {
-      "catching_edict_breaker": "Stern and official, stating a rule."
+      "catching_edict_breaker": "Stern and official, stating a rule.",
+      "red_flag_fined": "Stern and official, stopping someone in the street.",
+      "red_flag_fine_paid": "Cold and formal, closing the matter."
     }
   },
   "rival_guild": {

@@ -7,6 +7,7 @@ import './threat-arrows.css';
 import balance from '../../shared/balance.json';
 import dialogueData from '../../shared/dialogue.json';
 import { dialogueRules } from '../../shared/src/story/dialogue.js';
+import { stallFacts } from '../../shared/src/story/stall-talk.js';
 import { SpeechMemory } from '../../shared/src/story/speech.js';
 import { createArena, disposeObject, loadProps } from './scene.js';
 import { loaders } from './assets/loaders.js';
@@ -49,6 +50,9 @@ import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
 import { NationIntroFlow } from './story/nation-intro-flow.js';
 import { playerPerson } from './life/crowd.js';
+import { MasterPost } from './story/master-post.js';
+import { getNationIntroConfig } from '../../shared/src/story/nation-intro.js';
+import { enrolClimb, fetchClimb, reportTrialWon } from './economy/api.js';
 import { Group, Vector3 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { ClientRobberGang } from './agents/outlaws/robberGang.js';
@@ -466,6 +470,8 @@ async function main(): Promise<void> {
         hasBounty: townEconomy?.standing.hasBounty ?? false,
       }),
       onNotice: (msg) => notice(msg),
+      redFlags: () => townEconomy?.standing.redFlags ?? 0,
+      sentrySaw: (at) => townEconomy?.sentrySaw(at) ?? Promise.resolve(null),
       warm: zone.warm,
       loaders: assets,
       getThreats: () => {
@@ -489,8 +495,11 @@ async function main(): Promise<void> {
     cleanup.push(() => lifeSystem?.dispose());
   }
 
+  // The town's master keeps a post in the shrine court once the intro is done: where a fighter climbs the tiers.
+  let masterPost: MasterPost | null = null;
   // The context key: what is offered where the player stands, shown over that thing.
   const contextAction = new ContextAction([
+    () => masterPost?.contextOffer(controller.position) ?? null,
     () => streetChallenges?.contextOffer() ?? null,
     () => townEconomy?.contextOffer() ?? null,
     () => lifeSystem?.contextOffer() ?? null,
@@ -706,6 +715,10 @@ async function main(): Promise<void> {
     },
     lootDropped: (x, z) => lifeSystem?.witness('loot_dropped', new Vector3(x, controller.position.y, z)),
     talkToKeeper: (merchantId) => { lifeSystem?.talkToKeeper(merchantId); },
+    // The keeper behind the counter greets the player, or speaks of a short purse, a bare shelf or moving prices, and closes each trade.
+    stallOpened: (m, quotes) => void lifeSystem?.stallSays(m.id, m.nation, 'talk', stallFacts(m, quotes, balance.speech.stall.priceMoved)),
+    stallBought: (m) => void lifeSystem?.stallSays(m.id, m.nation, 'sale_made'),
+    stallSold: (m) => void lifeSystem?.stallSays(m.id, m.nation, 'bought_from_player'),
     wornChanged: (worn) => {
       void hero.switchOutfit(parseOutfit(worn.outfit));
       fight.setHeroArmour(worn.armour);
@@ -788,6 +801,21 @@ async function main(): Promise<void> {
       },
     });
     cleanup.push(() => nationIntro?.dispose());
+  }
+  const townMaster = getNationIntroConfig('IGNIS').master;
+  if (zone && lifeSystem && townMaster.post) {
+    const life = lifeSystem;
+    masterPost = new MasterPost({
+      scene, loaders: assets, nation: 'IGNIS', master: { ...townMaster, post: townMaster.post }, voices: life.voices, memory: life.dialogueMemory.speech,
+      tierNames: balance.combat.tiers.names, reach: balance.speech.talk.reach,
+      climb: { terms: fetchClimb, enrol: enrolClimb, trialWon: reportTrialWon },
+      spawnTrial: (at, kind, health) => fight.spawnVillain(at, kind, health),
+      heroAlive: () => fight.heroAlive,
+      applyTier,
+      notice,
+      hidden: () => nationIntro?.isRunning ?? false,
+    });
+    cleanup.push(() => masterPost?.dispose());
   }
   input.onTargetTap = (x, y) => {
     const point = new Vector3(); let target: Enemy | null = null, nearest = 48;
@@ -1396,7 +1424,7 @@ async function main(): Promise<void> {
           alive: fight.heroAlive,
         };
 
-        const sentryDistance = sindrSentryDistance(controller.position.x);
+        const sentryDistance = sindrSentryDistance(controller.position.x, controller.position.z);
         const sentryNearShrine = sentryDistance < 25;
 
         const senses: OutlawSenses = {
@@ -1634,6 +1662,7 @@ async function main(): Promise<void> {
     threatArrows.update(controller.position, fight.enemies, camera);
     hero.model.visible = camera.position.distanceTo(shoulderCamera.target) > balance.camera.hideHeroDistance;
     lifeSystem?.update(delta);
+    masterPost?.update(delta, controller.position);
     contextAction.update();
     const remoteNearby = onlineSession ? [...onlineSession.enemies.values()].filter(foe => foe.view.hp > 0 && foe.model.position.distanceTo(controller.position) < 6) : [];
     const nearby = fight.enemies.filter(foe => foe.alive && foe.controller.position.distanceTo(controller.position) < 6);
