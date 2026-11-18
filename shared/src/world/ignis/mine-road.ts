@@ -51,12 +51,16 @@ export function minePointAt(s: number): RoadPoint {
   return { x: a.x + (b.x - a.x) * t, y: mineHeight(s), z: a.z + (b.z - a.z) * t, s };
 }
 
-// Corridor lookup touches only nearby segments, including both sides of every cell boundary.
+/**
+ * Corridor lookup touches every segment within this reach, including both sides of every cell boundary. The reach
+ * covers the rock bank, which stands up to 73 m off the centre line; the road carve only asks about 14 m.
+ */
+const CORRIDOR_REACH = 96;
 const bins = new Map<string, number[]>();
 for (let i = 1; i < points.length; i++) {
   const a = points[i - 1]!, b = points[i]!;
-  for (let x = Math.floor((Math.min(a.x, b.x) - 32) / 128); x <= Math.floor((Math.max(a.x, b.x) + 32) / 128); x++) {
-    for (let z = Math.floor((Math.min(a.z, b.z) - 32) / 128); z <= Math.floor((Math.max(a.z, b.z) + 32) / 128); z++) {
+  for (let x = Math.floor((Math.min(a.x, b.x) - CORRIDOR_REACH) / 128); x <= Math.floor((Math.max(a.x, b.x) + CORRIDOR_REACH) / 128); x++) {
+    for (let z = Math.floor((Math.min(a.z, b.z) - CORRIDOR_REACH) / 128); z <= Math.floor((Math.max(a.z, b.z) + CORRIDOR_REACH) / 128); z++) {
       const key = `${x}:${z}`, list = bins.get(key);
       if (list) list.push(i); else bins.set(key, [i]);
     }
