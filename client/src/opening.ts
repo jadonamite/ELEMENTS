@@ -1,11 +1,8 @@
 import {
-  BODY_PRESET_OPTIONS,
   type CharacterConfig,
-  CreatorView,
-  getStoredCharacter,
-  HAIR_COLOR_PRESETS,
-  HAIR_STYLE_OPTIONS,
-  SKIN_TONE_PRESETS,
+  getDefaultCharacterConfig,
+  saveStoredCharacter,
+  type Sex,
 } from './creator/index.js';
 import {
   clearGuestTicket,
@@ -18,19 +15,17 @@ import {
   postRising,
   postSession,
 } from './auth/index.js';
-import { roll } from '../../shared/src/rising/roll.js';
-import { isTownMode } from './world-mode.js';
+import { drawNation, roll } from '../../shared/src/rising/roll.js';
+import type { RisingResult } from '../../shared/src/rising/types.js';
+import { playDrawingReveal } from './opening/drawing-reveal.js';
 
 /**
- * Opening sequence: Age verification gate, character creation studio,
- * fake storefront purchase, reality glitch, and the Drawing raffle ceremony
- * (85% Shaper across the four elements, 15% Hush). With a game server a new player plays as a
- * guest: the server holds their Drawing, and they sign in at Sindr's gate (auth/save-progress.ts).
+ * Opening sequence, from Play Now: the age check, the opening film, the Drawing (85% Shaper across the four
+ * elements, 15% Hush, who draw again for a nation), then the player chooses who rises. With a game server a new
+ * player plays as a guest: the server holds their Drawing, and they sign in at Sindr's gate (auth/save-progress.ts).
  */
 
-export type DrawingResult =
-  | { role: 'Hush'; element?: never }
-  | { role: 'Shaper'; element: 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA' };
+export type DrawingResult = RisingResult;
 
 const STORAGE_AGE_KEY = 'elements_age_gate';
 const STORAGE_DRAWING_KEY = 'elements_drawing_result';
@@ -38,7 +33,14 @@ const STORAGE_DRAWING_KEY = 'elements_drawing_result';
 export function getStoredDrawing(): DrawingResult | null {
   try {
     const raw = localStorage.getItem(STORAGE_DRAWING_KEY);
-    return raw ? (JSON.parse(raw) as DrawingResult) : null;
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as DrawingResult;
+    if (saved.role === 'Hush' && !saved.element) {
+      // A Hush saved before the nation draw existed draws it once and keeps it.
+      saved.element = drawNation();
+      localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(saved));
+    }
+    return saved;
   } catch {
     return null;
   }
@@ -82,7 +84,8 @@ export class OpeningFlow {
   private readonly container: HTMLDivElement;
   private readonly onComplete: (result: DrawingResult) => void;
   private readonly onCharacter: (config: CharacterConfig) => void;
-  private activeCreatorView: CreatorView | null = null;
+  private music: HTMLAudioElement | null = null;
+  private rising: Promise<{ result: DrawingResult; offline: boolean }> | null = null;
   private activeLoginIsland: { unmount: () => void } | null = null;
   private authToken: string | null = null;
   private accountId: string | null = null;
@@ -100,10 +103,6 @@ export class OpeningFlow {
   }
 
   private cleanupSubviews(): void {
-    if (this.activeCreatorView) {
-      this.activeCreatorView.dispose();
-      this.activeCreatorView = null;
-    }
     if (this.activeLoginIsland) {
       this.activeLoginIsland.unmount();
       this.activeLoginIsland = null;
@@ -277,24 +276,6 @@ export class OpeningFlow {
     });
   }
 
-  private proceedAfterLogin(): void {
-    const char = getStoredCharacter();
-    if (!char) {
-      this.renderCharacterCreator();
-    } else {
-      this.renderStorefront();
-    }
-  }
-
-  private renderCharacterCreator(): void {
-    this.cleanupSubviews();
-    this.activeCreatorView = new CreatorView(this.container, (config) => {
-      this.activeCreatorView = null;
-      this.onCharacter(config);
-      this.renderStorefront();
-    });
-  }
-
   private renderAgeBlocked(): void {
     this.cleanupSubviews();
     this.container.innerHTML = `
@@ -310,135 +291,112 @@ export class OpeningFlow {
     `;
   }
 
-  private renderStorefront(): void {
-    this.cleanupSubviews();
-    this.container.innerHTML = `
-      <div class="opening-modal storefront">
-        <div class="store-badge">New release</div>
-        <h1 class="store-title">ELEMENTS</h1>
-        <p class="store-tagline">Four nations, four elements, and a world that decides which one is yours.</p>
-        <div class="store-details">
-          <div class="store-card">
-            <div class="store-edition">Standard edition</div>
-            <div class="store-price">$0.00 <span>Free while in early access</span></div>
-            <ul class="store-perks">
-              <li>Fight with fire, water, earth or air</li>
-              <li>Four nations to cross, each with its own masters</li>
-              <li>Plays in your browser, nothing to install</li>
-            </ul>
-            <button type="button" id="buy-button" class="opening-button primary">Get the game</button>
-          </div>
-        </div>
-        <div class="opening-footer">
-          <span>By getting the game you agree to the <a href="/legal/terms.html" target="_blank">Terms</a> and <a href="/legal/privacy.html" target="_blank">Privacy Policy</a>.</span>
-        </div>
-      </div>
-    `;
-
-    const button = this.container.querySelector<HTMLButtonElement>('#buy-button')!;
-    button.addEventListener('click', () => {
-      this.triggerGlitchTransition();
-    });
+  private proceedAfterLogin(): void {
+    this.rising = this.drawRising();
+    this.renderFilm();
   }
 
-  private triggerGlitchTransition(): void {
-    this.cleanupSubviews();
-    this.container.innerHTML = `
-      <div class="glitch-screen">
-        <div class="glitch-layer"></div>
-        <div class="glitch-text">REALITY DESYNCHRONIZED...</div>
-      </div>
-    `;
-
-    setTimeout(() => {
-      void this.renderDrawingCeremony();
-    }, 1200);
-  }
-
-  private async renderDrawingCeremony(): Promise<void> {
-    this.cleanupSubviews();
-    this.container.innerHTML = `
-      <div class="opening-modal drawing-ceremony">
-        <div class="ceremony-badge">The Lord's Drawing</div>
-        <h2>Awakening...</h2>
-        <p class="opening-subtitle">Your rising is being drawn.</p>
-        <div class="login-loading-spinner"></div>
-      </div>
-    `;
-
-    let result: DrawingResult;
-    let isOfflineNotice = false;
-
-    if (this.isOffline || isOfflineMode()) {
-      result = performDrawingRoll();
-      isOfflineNotice = true;
-    } else {
-      try {
-        const token = this.authToken ?? getStoredAuthToken();
-        result = token ? await postRising(token, getGuestTicket()) : await postGuestRising();
-        if (token) clearGuestTicket();
-        isOfflineNotice = false;
-      } catch {
-        // Fallback when server cannot be reached
-        result = performDrawingRoll();
-        isOfflineNotice = true;
-      }
+  /** The server rolls a guest's or account's Drawing; offline, or if it cannot be reached, the browser rolls it. */
+  private async drawRising(): Promise<{ result: DrawingResult; offline: boolean }> {
+    if (this.isOffline || isOfflineMode()) return { result: performDrawingRoll(), offline: true };
+    try {
+      const token = this.authToken ?? getStoredAuthToken();
+      const result = token ? await postRising(token, getGuestTicket()) : await postGuestRising();
+      if (token) clearGuestTicket();
+      return { result, offline: false };
+    } catch {
+      return { result: performDrawingRoll(), offline: true };
     }
-
-    localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(result));
-    this.displayDrawingResult(result, isOfflineNotice);
   }
 
-  private displayDrawingResult(result: DrawingResult, isOfflineNotice: boolean): void {
-    const title =
-      result.role === 'Shaper'
-        ? `You have awakened as a Shaper of ${result.element}`
-        : 'You are Hush';
-
-    const desc =
-      result.role === 'Shaper'
-        ? `Born with the innate gift of ${result.element}. Channel your elemental bending in armed combat and martial arts katas.`
-        : 'Born without an element. Forge masterworks and relics from the shards of fallen beasts to arm the Lit.';
-
-    const char = getStoredCharacter();
-    const skinPreset = SKIN_TONE_PRESETS.find((p) => p.id === char?.skinToneId);
-    const skinName = skinPreset?.name ?? 'Warm Bronze';
-    const skinHex = skinPreset?.hex ?? '#956344';
-    const hairStyle =
-      HAIR_STYLE_OPTIONS.find((h) => h.id === char?.hairStyleId)?.name ?? 'Parted';
-    const hairColor =
-      HAIR_COLOR_PRESETS.find((c) => c.id === char?.hairColorId)?.name ??
-      'Espresso Brown';
-    const bodyPreset =
-      BODY_PRESET_OPTIONS.find((b) => b.id === char?.bodyPreset)?.name ?? 'Average';
-
+  /** The opening film, start to finish. It hands over to the Drawing as the elements surge. */
+  private renderFilm(): void {
+    this.cleanupSubviews();
+    const small = window.matchMedia('(max-width: 900px)').matches;
     this.container.innerHTML = `
-      <div class="opening-modal drawing-ceremony">
-        <div class="ceremony-badge">The Lord's Drawing</div>
-        ${
-          isOfflineNotice
-            ? '<p class="ceremony-offline-note">offline: progress is not saved</p>'
-            : ''
-        }
-        <div class="drawing-character-card">
-          <div class="drawing-char-avatar" style="border-color: ${skinHex};">
-            <span class="drawing-avatar-sex">${char?.sex === 'female' ? 'Female' : 'Male'}</span>
-          </div>
-          <div class="drawing-char-meta">
-            <div class="drawing-char-archetype">${char?.sex === 'female' ? 'Female' : 'Male'} Hero · ${bodyPreset} Build</div>
-            <div class="drawing-char-traits">${skinName} · ${hairStyle} · ${hairColor}</div>
-          </div>
-        </div>
-        <h2 class="ceremony-result ${result.role === 'Shaper' ? result.element.toLowerCase() : 'hush'}">${title}</h2>
-        <p class="ceremony-desc">${desc}</p>
-        <button type="button" id="enter-arena-button" class="opening-button primary">${isTownMode(new URLSearchParams(window.location.search)) ? 'Enter Sindr' : 'Enter the arena'}</button>
-      </div>
-    `;
+      <div class="opening-film">
+        <video class="opening-film-video" playsinline preload="auto" src="/assets/film/opening-${small ? 960 : 1470}.mp4" aria-label="The opening film"></video>
+        <button type="button" class="opening-button opening-film-begin" hidden>Begin</button>
+      </div>`;
+    this.container.classList.add('is-film');
+    const video = this.container.querySelector<HTMLVideoElement>('video')!;
+    const begin = this.container.querySelector<HTMLButtonElement>('.opening-film-begin')!;
+    let handed = false;
+    const handOver = (): void => {
+      if (handed) return;
+      handed = true;
+      this.container.classList.remove('is-film');
+      void this.renderDrawing();
+    };
+    video.addEventListener('ended', handOver, { once: true });
+    // A film that cannot load never strands the player before their Drawing.
+    video.addEventListener('error', handOver, { once: true });
+    const play = (): void => {
+      video.play().then(() => { begin.hidden = true; }).catch(() => {
+        // The browser wants a fresh tap before sound plays.
+        begin.hidden = false;
+        begin.focus({ preventScroll: true });
+      });
+    };
+    begin.addEventListener('click', play);
+    play();
+  }
 
-    const enterBtn = this.container.querySelector<HTMLButtonElement>('#enter-arena-button')!;
-    enterBtn.addEventListener('click', () => {
-      this.close(result);
+  private async renderDrawing(): Promise<void> {
+    this.cleanupSubviews();
+    const { result, offline } = await (this.rising ?? this.drawRising());
+    localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(result));
+    this.music = new Audio('/assets/audio/music/drawing.m4a');
+    this.music.volume = 0.8;
+    void this.music.play().catch(() => {});
+    await playDrawingReveal(this.container, result, {
+      reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      sound: (name, volume = 0.8) => {
+        const a = new Audio(`/assets/audio/${name}.ogg`);
+        a.volume = volume;
+        void a.play().catch(() => {});
+      },
     });
+    this.renderRiseChoice(result, offline);
+  }
+
+  /** Who rises: a default man or woman for now; the full creator comes back later. */
+  private renderRiseChoice(result: DrawingResult, offline: boolean): void {
+    const after = this.container.querySelector<HTMLElement>('.draw-after');
+    if (!after) return;
+    after.innerHTML = `
+      <div class="rise-choice" role="group" aria-labelledby="rise-choice-label">
+        <p class="opening-kicker" id="rise-choice-label">Who rises</p>
+        <div class="rise-choice-buttons">
+          <button type="button" class="opening-button" data-sex="male">A man</button>
+          <button type="button" class="opening-button" data-sex="female">A woman</button>
+        </div>
+        ${offline ? '<p class="opening-subtext">Offline: this Drawing is not saved.</p>' : ''}
+      </div>`;
+    after.querySelector<HTMLButtonElement>('button')!.focus({ preventScroll: true });
+    after.querySelectorAll<HTMLButtonElement>('button[data-sex]').forEach(button => {
+      button.addEventListener('click', () => {
+        const config = getDefaultCharacterConfig(button.dataset.sex as Sex);
+        saveStoredCharacter(config);
+        this.onCharacter(config);
+        this.container.querySelector('.draw-stage')?.classList.add('leaving');
+        this.fadeMusic(3000);
+        setTimeout(() => this.close(result), 1200);
+      }, { once: true });
+    });
+  }
+
+  private fadeMusic(ms: number): void {
+    const music = this.music;
+    if (!music) return;
+    const from = music.volume, start = performance.now();
+    const step = (now: number): void => {
+      const k = Math.min(1, (now - start) / ms);
+      music.volume = from * (1 - k);
+      if (k < 1) requestAnimationFrame(step);
+      else music.pause();
+    };
+    requestAnimationFrame(step);
   }
 
   private close(result: DrawingResult): void {
@@ -452,6 +410,7 @@ export class OpeningFlow {
 
   dispose(): void {
     this.cleanupSubviews();
+    this.music?.pause();
     this.container.remove();
   }
 }

@@ -23,7 +23,7 @@ test('performDrawingRoll distributes between Shaper (85%) and Hush (15%)', () =>
     const res = performDrawingRoll();
     if (res.role === 'Hush') {
       counts.Hush++;
-      assert.equal(res.element, undefined);
+      assert.ok(['IGNIS', 'AQUES', 'TERRA', 'AURA'].includes(res.element), 'a Hush draws a nation');
     } else {
       counts.Shaper++;
       assert.ok(res.element);

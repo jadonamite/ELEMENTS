@@ -5,6 +5,7 @@ import { reconcileItemLedger } from './economy/satchelService.js';
 import { randomBytes, randomInt } from 'node:crypto';
 import {
   roll,
+  drawNation,
   type Element,
   type RisingRole,
   createGenesisEntries,
@@ -412,6 +413,12 @@ export function getRising(accountId: string, db: DatabaseSync = getDatabase()): 
     .get(accountId) as { account_id: string; role: string; element: string | null; created_at: number; tier: number } | undefined;
 
   if (!row) return null;
+  if (row.role === 'Hush' && !row.element) {
+    // A Hush who rose before the nation draw existed draws it once, now, and keeps it.
+    row.element = drawNation(secureRandom);
+    db.prepare('UPDATE risings SET element = ? WHERE account_id = ? AND element IS NULL').run(row.element, accountId);
+    db.prepare('UPDATE accounts SET element = ? WHERE id = ? AND element IS NULL').run(row.element, accountId);
+  }
   return {
     account_id: row.account_id,
     role: row.role as RisingRole,
@@ -480,6 +487,8 @@ export function createOrGetRising(
         .get(accountId, now, guestTicket) as { role: RisingRole; element: Element | null } | undefined
     : undefined;
   const rolled: { role: RisingRole; element?: Element | null } = claim ?? roll(rand);
+  // A guest ticket rolled before the nation draw existed: its Hush draws the nation now.
+  if (rolled.role === 'Hush' && !rolled.element) rolled.element = drawNation(rand);
 
   try {
     db.prepare('INSERT INTO risings (account_id, role, element, created_at) VALUES (?, ?, ?, ?)').run(

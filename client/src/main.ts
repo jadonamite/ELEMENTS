@@ -2,6 +2,7 @@ import './ui/tokens.css';
 import './ui/loader.css';
 import './style.css';
 import './opening.css';
+import './opening/drawing-reveal.css';
 import './story/nation-intro.css';
 import './threat-arrows.css';
 import balance from '../../shared/balance.json';
@@ -31,13 +32,14 @@ import { SwordStance } from './sword.js';
 import { SoundManager } from './audio.js';
 import { BendingEffects, type BendingType } from './bending-fx.js';
 import { OpeningFlow, getStoredDrawing, type DrawingResult } from './opening.js';
+import type { CharacterConfig } from './creator/index.js';
 import { saveProgressAtGate } from './auth/save-progress.js';
 import { ConsentBanner } from './consent.js';
 import type { Enemy } from './enemy.js';
 import { createCombatRules, ELEMENTS, isBendMove, NIGHT_FROM, sindrSentryDistance, sindrStreet, type BendMoveId, type CombatBalance, type Element, type Kit, type MoveId } from '../../shared/src/index.js';
 import { BendState, type BendRefusal } from './bend-state.js';
 import { ElementEffects } from './fx/elements.js';
-import { FighterSelect, lastFighter } from './ui/fighter-select.js';
+import { FighterSelect, lastFighter, type FighterChoice } from './ui/fighter-select.js';
 import { heroWeaponFor, STAFF_WEAPON, SWORD_WEAPON } from './weapon.js';
 import { TownEconomy } from './economy/town-economy.js';
 import { talkToAgent } from './economy/api.js';
@@ -86,6 +88,22 @@ async function main(): Promise<void> {
   if (!canvas) throw new Error('Game canvas is missing.');
   canvas.tabIndex = 0;
   canvas.setAttribute('aria-label', `${inTown ? 'Sindr' : 'Arena'}. WASD to move. Shift to run. Click to capture the mouse.`);
+
+  // The opening starts with Play Now: the age check, then the film plays while the world loads behind it.
+  let openingResult: DrawingResult | null = null;
+  let chosenCharacter: CharacterConfig | null = null;
+  let onOpeningCharacter: ((character: CharacterConfig) => void) | null = null;
+  /** Settles when the opening (the Draw) has closed, or at once when there is none. */
+  let openingClosed: Promise<void> = Promise.resolve();
+  if (!params.has('skipIntro')) {
+    openingClosed = new Promise(resolve => {
+      const opening = new OpeningFlow((res) => { openingResult = res; resolve(); }, (character) => {
+        chosenCharacter = character;
+        onOpeningCharacter?.(character);
+      });
+      cleanup.push(() => opening.dispose());
+    });
+  }
 
   const panel = document.createElement('section');
   panel.id = 'hero-hud';
@@ -193,10 +211,11 @@ async function main(): Promise<void> {
   const tier = Math.max(1, Math.min(7, Number(params.get('tier')) || 5));
   /** The element a Hush's shards carry; a Shaper's own element otherwise. */
   let kitElement: Element = 'IGNIS';
-  const applyDrawing = (res: DrawingResult | null): void => {
+  /** A Drawing, or the fighter picker's choice, whose Hush may not name a nation. */
+  const applyDrawing = (res: DrawingResult | FighterChoice | null): void => {
     isDim = forcedHush || (!forcedElement && res?.role === 'Hush');
-    kitElement = forcedElement ?? (res?.element as Element | undefined) ?? 'IGNIS';
-    if (isDim) kitElement = ELEMENTS[Math.floor(Math.random() * ELEMENTS.length)]!;
+    // A Hush's kit carries their nation's shards; the picker's Hush keeps the nation they already have.
+    kitElement = forcedElement ?? (res && 'element' in res && res.element ? res.element : null) ?? getStoredDrawing()?.element ?? 'IGNIS';
     heroElement = isDim ? 'HUSH' : kitElement;
     isLit = false;
     hero.setElemental(isLit, heroElement);
@@ -206,18 +225,13 @@ async function main(): Promise<void> {
   applyDrawing(forcedElement || forcedHush ? getStoredDrawing() : lastFighter() ?? getStoredDrawing());
 
   const fps = new URLSearchParams(window.location.search).has('debug') ? new FpsCounter() : null;
-  /** Settles when the opening (the Draw) has closed, or at once when there is none. */
-  let openingClosed: Promise<void> = Promise.resolve();
-  if (!params.has('skipIntro')) {
-    let closed!: () => void;
-    openingClosed = new Promise(resolve => { closed = resolve; });
-    const opening = new OpeningFlow((res) => {
-      closed();
-      applyDrawing(forcedElement || forcedHush ? res : lastFighter() ?? res);
-      if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });
-    }, (character) => { void hero.redress(character); });
-    cleanup.push(() => opening.dispose());
-  }
+  onOpeningCharacter = (character) => { void hero.redress(character); };
+  if (chosenCharacter) void hero.redress(chosenCharacter);
+  void openingClosed.then(() => {
+    if (disposed || !openingResult) return;
+    applyDrawing(forcedElement || forcedHush ? openingResult : lastFighter() ?? openingResult);
+    if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });
+  });
   const consent = new ConsentBanner();
   cleanup.push(() => consent.dispose());
   let lifeSystem: SindrLifeSystem | null = null;

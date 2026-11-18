@@ -20,6 +20,7 @@ export default defineConfig({
         hound: resolve(import.meta.dirname, 'hound.html'),
         fastForward: resolve(import.meta.dirname, 'fast-forward.html'),
         loader: resolve(import.meta.dirname, 'loader.html'),
+        drawing: resolve(import.meta.dirname, 'drawing.html'),
       },
     },
   },
