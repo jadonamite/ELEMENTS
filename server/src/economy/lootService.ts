@@ -514,7 +514,7 @@ export function dropFromClientKill(
   }
   const odds = calculateVillainDrop(params.kind);
   const shards: Record<string, number> = rng() < odds.shardChance ? { [nation]: 1 } : {};
-  const gear = rollArmourDrop(armour, rng);
+  const gear = rollArmourDrop(armour, nation, rng);
   return createLootPileFromFight(
     {
       x: params.x,

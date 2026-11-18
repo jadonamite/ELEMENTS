@@ -110,9 +110,12 @@ export function armourOf(catalogue: ArmourCatalogue, itemId: string | null | und
  */
 export function rollArmourDrop(
   catalogue: ArmourCatalogue,
+  nation: string,
   rng: () => number = Math.random,
 ): Record<string, number> {
+  // Only a foe of the piece's own nation carries it.
   for (const piece of Object.values(catalogue.pieces).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+    if (piece.nation !== nation.toUpperCase()) continue;
     if (piece.dropChance > 0 && rng() < piece.dropChance) return { [piece.id]: 1 };
   }
   return {};

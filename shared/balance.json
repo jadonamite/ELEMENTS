@@ -1218,6 +1218,22 @@
           "nation": "IGNIS",
           "set": "shaper",
           "dropChance": 0.04
+        },
+        "armour_shaper_aques": {
+          "name": "AQUES Shaper armour",
+          "outfit": "shaper_aques",
+          "armour": 40,
+          "nation": "AQUES",
+          "set": "shaper",
+          "dropChance": 0.04
+        },
+        "armour_shaper_aura": {
+          "name": "AURA Shaper armour",
+          "outfit": "shaper_aura",
+          "armour": 40,
+          "nation": "AURA",
+          "set": "shaper",
+          "dropChance": 0.04
         }
       }
     },
@@ -1480,6 +1496,16 @@
               "stock": 8,
               "maxStock": 16,
               "basePrice": 60
+            },
+            "armour_shaper_aques": {
+              "stock": 4,
+              "maxStock": 8,
+              "basePrice": 90
+            },
+            "armour_shaper_aura": {
+              "stock": 4,
+              "maxStock": 8,
+              "basePrice": 90
             }
           }
         }

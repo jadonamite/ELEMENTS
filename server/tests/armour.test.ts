@@ -131,3 +131,30 @@ test('Armour: the room draws the wearer in the worn outfit and takes its share o
   assert.ok(armoured < unarmoured, `${armoured} is not less than ${unarmoured}`);
   assert.equal(armoured, 12 / (1 + balance.economy.armour.pieces[PIECE].armour / balance.combat.rules.armourScale));
 });
+
+test('Armour: a shelf added to a merchant that already trades opens once, its stock ledgered from the world', async () => {
+  const { getMerchant, saveMerchant } = await import('../src/economy/merchantService.js');
+  const db = freshDb();
+  // The saved shop as it stood before the AQUES and AURA shelves were added.
+  const shop = getMerchant('sindr_bright', db)!;
+  delete shop.inventory['armour_shaper_aques'];
+  delete shop.inventory['armour_shaper_aura'];
+  saveMerchant(shop, db);
+  db.prepare("DELETE FROM item_ledger WHERE to_id = 'sindr_bright' AND item_id IN ('armour_shaper_aques', 'armour_shaper_aura')").run();
+
+  ensureSindrMerchants(db, 0);
+  ensureSindrMerchants(db, 0);
+  const after = getMerchant('sindr_bright', db)!;
+  assert.equal(after.inventory['armour_shaper_aques']?.stock, 4);
+  assert.equal(after.inventory['armour_shaper_aura']?.basePrice, 90);
+  const ledgered = db.prepare("SELECT item_id, SUM(quantity) AS q FROM item_ledger WHERE from_id = 'world' AND to_id = 'sindr_bright' AND item_id IN ('armour_shaper_aques', 'armour_shaper_aura') GROUP BY item_id").all() as Array<{ item_id: string; q: number }>;
+  assert.deepEqual(ledgered.map(r => [r.item_id, r.q]).sort(), [['armour_shaper_aques', 4], ['armour_shaper_aura', 4]], 'opened once, not twice');
+});
+
+test('Armour: an IGNIS foe never drops river or sky armour', () => {
+  const db = freshDb();
+  for (let i = 0; i < 3; i++) {
+    const pile = dropForKill({ killerAccountId: 'p1', zone: 'sindr', kind: 'robber', x: 100, z: 0 } as never, () => 0, db);
+    assert.deepEqual(pile?.contents.gear, { armour_shaper_ignis: 1 }, 'with every roll a hit, the foe carries its own nation\'s piece and no other');
+  }
+});
