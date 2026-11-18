@@ -557,7 +557,7 @@ export class Fight {
         position: hero.position, alive: this.heroAlive,
         takeHit: (damage, source) => {
           if (this.space.clear(chest(source), chest(hero.position), 0.15)) {
-            this.strikeHero(source, damage, undefined, combat, hero, null, { kind: 'monster' });
+            this.strikeHero(source, damage, undefined, combat, hero, null, { kind: 'bull' });
           }
         },
       });
@@ -895,8 +895,10 @@ export class Fight {
     this.heroState = rules.createActionState();
     this.attacker = null;
     this.lastStriker = null;
+    // In town the world carries on: whoever killed you, and anything he holds of yours, is still out there.
+    if (!this.waves) return;
 
-    // Restart the current round attempt
+    // In the arena a fall restarts the current round attempt.
     this.clearPacks();
     for (const enemy of this.enemies) enemy.dispose();
     this.enemies.length = 0;

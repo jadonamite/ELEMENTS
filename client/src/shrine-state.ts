@@ -8,15 +8,22 @@ import {
 } from '../../shared/src/index.js';
 import { getServerUrl, getStoredAuthToken, hasGameServer } from './auth/server-api.js';
 
-const STORAGE_SHRINES_KEY = 'elements_lit_shrines';
+/** A guest's lit shrines, kept in this browser only. Signed-in players keep theirs on the server. */
+const GUEST_SHRINES_KEY = 'elements_lit_shrines';
 
 export interface ShrineStateEvents {
-  onLit?: (shrine: Shrine) => void;
+  /** The lit set grew: from loading, the online room, or reaching a shrine. */
+  onChange?: (lit: ReadonlySet<string>) => void;
   onNotice?: (text: string) => void;
 }
 
+/**
+ * The shrines this player has lit. Online the room is the source; offline a signed-in player's come from the
+ * server and a guest's from this browser. Positions passed in are scene metres (nation-global minus the origin).
+ */
 export class ShrineState {
   private readonly litIds = new Set<string>([FIRST_SHRINE]);
+  private readonly signedIn = Boolean(getStoredAuthToken()) && hasGameServer();
   private checkCooldown = 0;
 
   constructor(private readonly events: ShrineStateEvents = {}) {
@@ -28,126 +35,88 @@ export class ShrineState {
   }
 
   isLit(shrineId: string): boolean {
-    return shrineId === FIRST_SHRINE || this.litIds.has(shrineId);
+    return this.litIds.has(shrineId);
   }
 
-  /** Populated online from OnlineSession onShrines. */
-  setOnlineLit(ids: string[]): void {
-    for (const id of ids) {
-      if (shrineById(id)) this.litIds.add(id);
-    }
-    this.saveGuest();
+  /** The room's list when joining online. */
+  setOnlineLit(ids: readonly string[]): void {
+    this.add(ids);
   }
 
-  /** Populated online from OnlineSession onShrineLit. */
+  /** The room lit one for this player online. */
   onOnlineShrineLit(shrineId: string): void {
     const shrine = shrineById(shrineId);
-    if (!shrine) return;
-    if (!this.litIds.has(shrineId)) {
-      this.litIds.add(shrineId);
-      this.events.onLit?.(shrine);
-      this.events.onNotice?.(`${shrine.name} lit`);
-      this.saveGuest();
-    }
+    if (shrine && this.add([shrineId])) this.events.onNotice?.(`${shrine.name} lit`);
   }
 
-  /** Load lit shrines on startup: from server if signed in, from localStorage for guests. */
-  async load(): Promise<void> {
-    try {
-      const raw = localStorage.getItem(STORAGE_SHRINES_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          for (const id of parsed) {
-            if (typeof id === 'string' && shrineById(id)) this.litIds.add(id);
-          }
-        }
-      }
-    } catch {
-      // Storage may be unavailable.
-    }
-
-    const token = getStoredAuthToken();
-    if (token && hasGameServer()) {
+  private async load(): Promise<void> {
+    if (!this.signedIn) {
       try {
-        const res = await fetch(`${getServerUrl()}/api/shrines`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const body = (await res.json()) as { lit?: string[] };
-          if (Array.isArray(body.lit)) {
-            for (const id of body.lit) {
-              if (shrineById(id)) this.litIds.add(id);
-            }
-          }
-        }
+        const parsed: unknown = JSON.parse(localStorage.getItem(GUEST_SHRINES_KEY) ?? '[]');
+        if (Array.isArray(parsed)) this.add(parsed.filter((id): id is string => typeof id === 'string'));
       } catch {
-        // Network unavailable: local state stands.
+        // Storage may be unavailable.
       }
+      return;
     }
-  }
-
-  private saveGuest(): void {
     try {
-      localStorage.setItem(STORAGE_SHRINES_KEY, JSON.stringify([...this.litIds]));
+      const res = await fetch(`${getServerUrl()}/api/shrines`, { headers: { Authorization: `Bearer ${getStoredAuthToken()}` } });
+      if (!res.ok) return;
+      const body = (await res.json()) as { lit?: unknown };
+      if (Array.isArray(body.lit)) this.add(body.lit.filter((id): id is string => typeof id === 'string'));
     } catch {
-      // Storage may be unavailable.
+      // Network unavailable: the first shrine stands.
     }
   }
 
-  /**
-   * Check if player standing at local scene position reached an unlit shrine.
-   * Coordinates are nation-global minus LEGACY_SINDR_ORIGIN.
-   */
-  checkReach(scenePos: { x: number; z: number }, inFight: boolean): Shrine | null {
-    if (inFight) return null;
-    const globalX = scenePos.x + LEGACY_SINDR_ORIGIN.x;
-    const globalZ = scenePos.z + LEGACY_SINDR_ORIGIN.z;
-    const shrine = shrineToLight(this.litIds, globalX, globalZ);
+  /** Adds known shrines; true when any was new. */
+  private add(ids: readonly string[]): boolean {
+    let grew = false;
+    for (const id of ids) {
+      if (!shrineById(id) || this.litIds.has(id)) continue;
+      this.litIds.add(id);
+      grew = true;
+    }
+    if (!grew) return false;
+    if (!this.signedIn) {
+      try { localStorage.setItem(GUEST_SHRINES_KEY, JSON.stringify([...this.litIds])); } catch { /* Storage may be unavailable. */ }
+    }
+    this.events.onChange?.(this.litIds);
+    return true;
+  }
+
+  /** Lights the unlit shrine a player outside a fight has reached, offline. */
+  private checkReach(scenePos: { x: number; z: number }): Shrine | null {
+    const x = scenePos.x + LEGACY_SINDR_ORIGIN.x;
+    const z = scenePos.z + LEGACY_SINDR_ORIGIN.z;
+    const shrine = shrineToLight(this.litIds, x, z);
     if (!shrine) return null;
-
-    this.litIds.add(shrine.id);
-    this.events.onLit?.(shrine);
+    this.add([shrine.id]);
     this.events.onNotice?.(`${shrine.name} lit`);
-
-    const token = getStoredAuthToken();
-    if (token && hasGameServer()) {
+    if (this.signedIn) {
       fetch(`${getServerUrl()}/api/shrines/reach`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ x: globalX, z: globalZ, inFight: false }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getStoredAuthToken()}` },
+        body: JSON.stringify({ x, z, inFight: false }),
       }).catch(() => {
-        // Retry or offline.
+        // Lit for this session; the server records it the next time the shrine is reached.
       });
-    } else {
-      this.saveGuest();
     }
-
     return shrine;
   }
 
-  /**
-   * Periodic update: throttles offline shrine check to once every half second outside a fight.
-   */
+  /** Offline, checks for a shrine to light twice a second, outside a fight. Online the room does this. */
   update(dt: number, scenePos: { x: number; z: number }, inFight: boolean, playingOnline: boolean): void {
     if (playingOnline) return;
     this.checkCooldown -= dt;
-    if (this.checkCooldown <= 0) {
-      this.checkCooldown = 0.5;
-      if (!inFight) {
-        this.checkReach(scenePos, false);
-      }
-    }
+    if (this.checkCooldown > 0) return;
+    this.checkCooldown = 0.5;
+    if (!inFight) this.checkReach(scenePos);
   }
 
-  /**
-   * Where a fallen player wakes: the lit shrine nearest where they fell.
-   * Coordinates in local scene space.
-   */
+  /** Where a body that fell at a scene position wakes: the lit shrine nearest the fall, in scene metres. */
   wakeSpot(fallScenePos: { x: number; z: number }): { x: number; y: number; z: number; facing: number; shrine: Shrine } {
-    const globalFallX = fallScenePos.x + LEGACY_SINDR_ORIGIN.x;
-    const globalFallZ = fallScenePos.z + LEGACY_SINDR_ORIGIN.z;
-    const shrine = wakeShrine(this.litIds, globalFallX, globalFallZ);
+    const shrine = wakeShrine(this.litIds, fallScenePos.x + LEGACY_SINDR_ORIGIN.x, fallScenePos.z + LEGACY_SINDR_ORIGIN.z);
     return {
       x: shrine.wake.x - LEGACY_SINDR_ORIGIN.x,
       y: shrine.y - LEGACY_SINDR_ORIGIN.y,

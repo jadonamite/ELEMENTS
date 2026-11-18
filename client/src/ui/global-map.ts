@@ -14,7 +14,6 @@ export interface GlobalMapOptions {
   navigateToSindr: () => void;
   shrineState?: ShrineState | undefined;
   getPlayerPosition?: (() => { x: number; y: number; z: number }) | undefined;
-  getTravelState?: (() => { inFight: boolean; bounty: boolean; shards: number; coin: number }) | undefined;
   getDropTarget?: (() => WaypointDropTarget | null) | undefined;
   travel?: ((shrineId: string) => void | string | Promise<void | string>) | undefined;
   onNotice?: ((text: string) => void) | undefined;

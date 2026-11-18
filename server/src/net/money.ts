@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import {
   calculateVillainDrop,
+  isOutlawKind,
   rollArmourDrop,
   type Killer,
   type LootPile,
@@ -99,7 +100,7 @@ export const outlawKey = (zone: string, enemyId: string): string => `${zone}/${e
 
 /** Who a room enemy counts as when it ends a player: a beast is nobody's hand, a robber or villain an outlaw. */
 export const killerFor = (zone: string, enemy: { id: string; kind: string } | undefined): Killer =>
-  !enemy || enemy.kind === 'hound' ? { kind: 'none' } : { kind: 'outlaw', id: outlawKey(zone, enemy.id) };
+  !enemy || !isOutlawKind(enemy.kind) ? { kind: 'none' } : { kind: 'outlaw', id: outlawKey(zone, enemy.id) };
 
 /** An outlaw the room saw killed gives up what he carried, where he fell, to whoever killed him. */
 export function releaseForKill(kill: KillReport, now = Date.now(), db: DatabaseSync = getDatabase()): LootPile[] {

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { atPlace, isValidQuantity, type LootPile, placesFor, TRADE_REACH } from '@elements/shared';
+import { atPlace, isValidQuantity, type LootPile, onGround, placesFor, TRADE_REACH } from '@elements/shared';
 import { getActiveShopOwnership, getDatabase } from '../db.js';
 import {
   addItems,
@@ -150,6 +150,7 @@ export class ZoneEconomy {
     if (!p) return [];
     const pile = dropForDeath(p.accountId, this.world.zone, p.x, p.z, killerFor(this.world.zone, by), this.db);
     if (!pile) return [];
+    if (!onGround(pile)) return this.purse(id);
     this.piles.set(pile.id, pile);
     return [{ type: 'loot_new', body: { pile: this.pileView(pile) } }, ...this.purse(id)];
   }

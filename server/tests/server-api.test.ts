@@ -16,6 +16,7 @@ import {
   setDatabase,
 } from '../src/db.js';
 import { resetRateLimits } from '../src/rate-limit.js';
+import { shrineById } from '@elements/shared';
 
 interface TestServer {
   app: Application;
@@ -508,7 +509,7 @@ test('HTTP API: shrines can be queried and reached by signed-in accounts', async
     const reachRes = await fetch(`${ts.baseUrl}/api/shrines/reach`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pilgrim' },
-      body: JSON.stringify({ x: 4500, z: 5430 }),
+      body: JSON.stringify({ x: shrineById('shrine_pinewatch')!.x, z: shrineById('shrine_pinewatch')!.z }),
     });
     assert.equal(reachRes.status, 200);
     const reachBody = (await reachRes.json()) as { shrine: string | null; lit: string[] };
@@ -575,6 +576,20 @@ test('HTTP API: offline player killed by an outlaw has loot held under local key
     assert.equal(released.ownerId, accountId);
     assert.equal(released.x, 105);
     assert.equal(released.z, 205);
+
+    // A beast, or an outlaw the browser cannot name, leaves the drop to the fallen alone.
+    for (const killer of [{ kind: 'bull' }, { kind: 'hound' }, { kind: 'robber' }]) {
+      db.prepare(`INSERT INTO ledger_entries (id, sender, receiver, amount, reason, timestamp) VALUES (?, 'treasury', ?, 40, 'grant', ?)`).run(`t-${killer.kind}`, accountId, Date.now());
+      const res = await fetch(`${ts.baseUrl}/api/economy/death`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fallen_token' },
+        body: JSON.stringify({ x: 100, z: 200, zone: 'sindr', killer }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { pile: { ownerId: string; contents: { chroma: number } } | null };
+      assert.equal(body.pile?.contents.chroma, 40, killer.kind);
+      assert.equal(body.pile?.ownerId, accountId, killer.kind);
+    }
   } finally {
     setTokenVerifier(null);
     await ts.close();

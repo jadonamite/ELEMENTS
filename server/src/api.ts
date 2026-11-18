@@ -4,7 +4,7 @@ import express, { type Application, type Request, type Response } from 'express'
 import { bindPlayerGrant } from './chain/grants.js';
 import { ARMOUR } from './economy/armourService.js';
 import { getDatabase } from './db.js';
-import type { Killer, LootPile, SignedSessionGrant } from '@elements/shared';
+import { isOutlawKind, localOutlawKey, type Killer, type LootPile, type SignedSessionGrant } from '@elements/shared';
 import { verifyToken } from './auth.js';
 import { fastForwardWeek } from './economy/fastForwardRunner.js';
 import { chainSettler, itemsChainSettler, readChainConfig, worldAccount, worldHolders } from './chain/index.js';
@@ -591,7 +591,7 @@ export function setupApi(app: Application): void {
     try {
       let releasedPiles: LootPile[] = [];
       if (typeof enemyId === 'string' && enemyId) {
-        releasedPiles = releaseOutlawHold(`local/${accountId}/${enemyId}`, { x: numX, z: numZ }, accountId);
+        releasedPiles = releaseOutlawHold(localOutlawKey(accountId, enemyId), { x: numX, z: numZ }, accountId);
       }
       const pile = dropFromClientKill({
         accountId,
@@ -621,15 +621,11 @@ export function setupApi(app: Application): void {
     }
     try {
       const rising = getRising(accountId);
-      let deathKiller: Killer = { kind: 'none' };
-      if (killer && typeof killer === 'object') {
-        if (killer.kind === 'hound') {
-          deathKiller = { kind: 'none' };
-        } else if (killer.kind) {
-          const enemyId = typeof killer.id === 'string' && killer.id ? killer.id : 'unknown';
-          deathKiller = { kind: 'outlaw', id: `local/${accountId}/${enemyId}` };
-        }
-      }
+      // An outlaw the browser names holds only this player's own drop, so a made-up killer gains nothing.
+      const deathKiller: Killer = killer && typeof killer === 'object' && typeof killer.kind === 'string' && isOutlawKind(killer.kind)
+        && typeof killer.id === 'string' && killer.id
+        ? { kind: 'outlaw', id: localOutlawKey(accountId, killer.id) }
+        : { kind: 'none' };
       const pile = createLootPileFromFight({
         x: numX,
         z: numZ,

@@ -392,5 +392,12 @@ export class LightPool {
     });
   }
 
+  /** Lights of a streamed place join the pool while it is loaded. */
+  add(emitters: readonly Emitter[]): void { this.order.push(...emitters); }
+  remove(emitters: readonly Emitter[]): void {
+    const gone = new Set(emitters);
+    for (let i = this.order.length - 1; i >= 0; i--) if (gone.has(this.order[i]!)) this.order.splice(i, 1);
+  }
+
   dispose(): void { for (const l of this.lights) l.removeFromParent(); }
 }

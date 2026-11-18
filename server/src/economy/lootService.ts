@@ -9,6 +9,7 @@ import {
   createLootPile as pureCreateLootPile,
   deathClaim,
   deathDrop,
+  onGround,
   outlawHolder,
   type Killer,
   itemsFromLoot,
@@ -316,6 +317,7 @@ export function listLootPiles(
     if (!params.includeExpired && (pile.expired || now >= pile.expiresAt)) {
       continue;
     }
+    if (!onGround(pile)) continue;
 
     if (params.x !== undefined && params.z !== undefined && params.radius !== undefined) {
       const dist = Math.hypot(pile.x - params.x, pile.z - params.z);

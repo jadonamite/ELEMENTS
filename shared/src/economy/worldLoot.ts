@@ -120,6 +120,12 @@ export function deathDrop(carried: CarriedLootInput): LootContents {
   return { chroma: Math.max(0, Math.floor(carried.chroma ?? 0)), shards, materials: {} };
 }
 
+/** Beasts end a player by nobody's hand; every other body (robber, villain, deserter) is an outlaw. */
+export const BEAST_KINDS: readonly string[] = ['hound', 'bull'];
+export const isOutlawKind = (kind: string): boolean => !BEAST_KINDS.includes(kind);
+/** The key an outlaw in a game played offline holds a player's drop under: that player's own fight, that enemy. */
+export const localOutlawKey = (accountId: string, enemyId: string): string => `local/${accountId}/${enemyId}`;
+
 /** Who ended a player: another player, an in-game outlaw (robber or villain), or nobody (a fall, lava, a beast). */
 export type Killer = { kind: 'player'; accountId: string } | { kind: 'outlaw'; id: string } | { kind: 'none' };
 
@@ -140,6 +146,8 @@ export function deathClaim(killer: Killer, fallenId: string): { ownerId: string;
 /** The owner id an outlaw holds a pile under; nobody can claim it while he lives. */
 export const outlawHolder = (enemyId: string): string => `outlaw:${enemyId}`;
 export const isOutlawHolder = (ownerId: string | null): boolean => ownerId?.startsWith('outlaw:') ?? false;
+/** A pile an outlaw holds is in his hands, not on the ground: nobody sees it or can pick it up until he falls. */
+export const onGround = (pile: { ownerId: string | null }): boolean => !isOutlawHolder(pile.ownerId);
 
 /**
  * Calculates both dropped loot and retained loot upon player death.

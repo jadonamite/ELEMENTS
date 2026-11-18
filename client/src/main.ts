@@ -60,7 +60,8 @@ import { hasGameServer } from './auth/server-api.js';
 import type { OnlineSession } from './net/online.js';
 import { ShrineState } from './shrine-state.js';
 import type { WaypointDropTarget } from './story/waypoint-marker.js';
-import { LEGACY_SINDR_ORIGIN, regionFor, SINDR_SPAWN, shrineById, toGlobal, travelRefusal } from '../../shared/src/index.js';
+import { isOutlawHolder, LEGACY_SINDR_ORIGIN, regionFor, shardCount, shrineTravel, SINDR_SPAWN, toGlobal, TRAVEL_CONFIG } from '../../shared/src/index.js';
+import type { LootPile } from './economy/api.js';
 import type { NetEnemy } from './net/puppets.js';
 import { isTownMode } from './world-mode.js';
 import './controls/controls.css';
@@ -379,38 +380,6 @@ async function main(): Promise<void> {
       reviveIn = balance.hero.respawnSeconds;
       fallPosition = controller.position.clone();
       townEconomy?.heroDied(controller.position.clone(), killer);
-
-      const isOutlaw = killer && (killer.kind === 'robber' || killer.kind === 'villain');
-      const robber = isOutlaw && killer?.id ? fight.enemies.find(e => e.id === killer.id && e.alive) : null;
-      if (robber && killer?.id) {
-        const holdDuration = (balance.economy?.death?.outlawHoldMinutes ?? 10) * 60 * 1000;
-        const targetRobber = robber;
-        activeDropTarget = {
-          kind: 'outlaw',
-          title: 'Hunt Outlaw: Recover Drop',
-          enemyId: killer.id,
-          getPosition: () => ({ x: targetRobber.controller.position.x, y: targetRobber.controller.position.y, z: targetRobber.controller.position.z }),
-          expiresAt: Date.now() + holdDuration,
-          onExpired: () => {
-            activeDropTarget = null;
-            lifeSystem?.waypointMarker.setDropTarget(null);
-          },
-        };
-      } else {
-        const claimDuration = (balance.economy?.death?.ownerlessMinutes ?? 5) * 60 * 1000;
-        const dropPos = controller.position.clone();
-        activeDropTarget = {
-          kind: 'drop',
-          title: 'Recover Drop',
-          getPosition: () => ({ x: dropPos.x, y: dropPos.y, z: dropPos.z }),
-          expiresAt: Date.now() + claimDuration,
-          onExpired: () => {
-            activeDropTarget = null;
-            lifeSystem?.waypointMarker.setDropTarget(null);
-          },
-        };
-      }
-      lifeSystem?.waypointMarker.setDropTarget(activeDropTarget);
     },
     heroParried() {
       sustain.parried();
@@ -434,22 +403,6 @@ async function main(): Promise<void> {
       else bending.spawnImpact(pos, sword.armed);
       fightHud.showDamage(pos, damage, isCrit || isHeavy);
       if (killed && zone) townEconomy?.enemyKilled(_enemy.kind, _enemy.controller.position.clone(), _enemy.element, _enemy.id);
-      if (killed && activeDropTarget?.kind === 'outlaw' && activeDropTarget.enemyId === _enemy.id) {
-        const dropPos = _enemy.controller.position.clone();
-        const claimDuration = (balance.economy?.death?.ownerlessMinutes ?? 5) * 60 * 1000;
-        activeDropTarget = {
-          kind: 'drop',
-          title: 'Recover Drop',
-          getPosition: () => ({ x: dropPos.x, y: dropPos.y, z: dropPos.z }),
-          expiresAt: Date.now() + claimDuration,
-          onExpired: () => {
-            activeDropTarget = null;
-            lifeSystem?.waypointMarker.setDropTarget(null);
-          },
-        };
-        lifeSystem?.waypointMarker.setDropTarget(activeDropTarget);
-        notice('Outlaw fell: collect your goods');
-      }
       if (killed) markKill(fight.allDead);
       else if (combat.current === 'ultimate') {
         slowMotion = Math.max(slowMotion, ULTIMATE_SLOW_SECONDS);
@@ -738,15 +691,29 @@ async function main(): Promise<void> {
     status(text);
     hudLine(text, 1600);
   };
-  const shrineState = new ShrineState({
-    onNotice: notice,
-    onLit: (shrine) => {
-      zone?.settlements.setLit(shrine.id, true);
-    },
-  });
-  if (zone) {
-    zone.settlements.isLit = (id) => shrineState.isLit(id);
-  }
+  const shrineState = new ShrineState({ onNotice: notice, onChange: (lit) => zone?.settlements.setLit(lit) });
+  zone?.settlements.setLit(shrineState.lit);
+  /** In a fight, for shrines: a living foe within the stance's engage radius, as the server judges it online. */
+  const heroInFight = (): boolean => fight.nearestDistance(controller.position) < balance.stance.engageRadius;
+  /** The death marker follows the pile the server made: the outlaw holding it while he lives, else the pile. */
+  const showDrop = (target: WaypointDropTarget | null): void => {
+    activeDropTarget = target;
+    lifeSystem?.waypointMarker.setDropTarget(target);
+  };
+  const markDrop = (pile: LootPile, y: number): void => {
+    const onExpired = (): void => { activeDropTarget = null; };
+    if (isOutlawHolder(pile.ownerId)) {
+      // Held under outlaw:local/<account>/<enemy id>.
+      const enemyId = pile.ownerId!.replace(/^outlaw:local\/[^/]+\//, '');
+      const robber = fight.enemies.find(e => e.id === enemyId && e.alive);
+      if (!robber) return showDrop(null);
+      const at = robber.controller.position;
+      return showDrop({ kind: 'outlaw', pileId: pile.id, title: 'Taken by an outlaw', enemyId,
+        getPosition: () => ({ x: at.x, y: at.y, z: at.z }), expiresAt: pile.expiresAt, onExpired });
+    }
+    showDrop({ kind: 'drop', pileId: pile.id, title: 'Your goods',
+      getPosition: () => ({ x: pile.x, y, z: pile.z }), expiresAt: pile.expiresAt, onExpired });
+  };
   // Street villains speak through the same speech rules as the townsfolk, in their body's voice.
   const streetSpeech = new SpeechMemory();
   const villainSay = (speaker: Enemy, concept: string): void => {
@@ -768,9 +735,11 @@ async function main(): Promise<void> {
     },
     lootDropped: (x, z) => lifeSystem?.witness('loot_dropped', new Vector3(x, controller.position.y, z)),
     talkToKeeper: (merchantId) => { lifeSystem?.talkToKeeper(merchantId); },
-    lootClaimed: () => {
-      activeDropTarget = null;
-      lifeSystem?.waypointMarker.setDropTarget(null);
+    lootClaimed: (pileId) => { if (activeDropTarget?.pileId === pileId) showDrop(null); },
+    deathDropped: (pile) => markDrop(pile, (fallPosition ?? controller.position).y),
+    dropReleased: (pile) => {
+      markDrop(pile, controller.position.y);
+      notice('The outlaw fell: your goods lie where he dropped');
     },
     wornChanged: (worn) => {
       void hero.switchOutfit(parseOutfit(worn.outfit));
@@ -813,48 +782,30 @@ async function main(): Promise<void> {
     shrineState,
     getDropTarget: () => activeDropTarget,
     getPlayerPosition: () => ({ x: controller.position.x, y: controller.position.y, z: controller.position.z }),
-    getTravelState: () => {
-      const inFight = sword.engaged || (combat.current !== null && combat.current !== 'dodge') || fight.nearestDistance(controller.position) < balance.stance.engageRadius;
-      const bounty = townEconomy?.standing.hasBounty ?? false;
-      let shards = 0;
-      if (townEconomy) {
-        for (const [k, v] of Object.entries(townEconomy.satchelItems)) {
-          if (k.startsWith('shard_')) shards += v;
-        }
-      }
-      const coin = townEconomy?.carried?.chroma ?? 0;
-      return { inFight, bounty, shards, coin };
-    },
-    travel: (targetShrineId) => {
-      const target = shrineById(targetShrineId);
-      if (!target) return;
+    travel: (to) => {
       if (playingOnline && onlineSession) {
-        onlineSession.travel(target.id);
+        onlineSession.travel(to);
         homeMenu.close();
         return;
       }
-      const inFight = sword.engaged || (combat.current !== null && combat.current !== 'dodge') || fight.nearestDistance(controller.position) < balance.stance.engageRadius;
-      const bounty = townEconomy?.standing.hasBounty ?? false;
-      let shards = 0;
-      if (townEconomy) {
-        for (const [k, v] of Object.entries(townEconomy.satchelItems)) {
-          if (k.startsWith('shard_')) shards += v;
-        }
+      const state = {
+        inFight: heroInFight(),
+        bounty: townEconomy?.standing.hasBounty ?? false,
+        shards: shardCount(townEconomy?.satchelItems ?? {}),
+        coin: townEconomy?.carried?.chroma ?? 0,
+      };
+      const here = toGlobal(controller.position, LEGACY_SINDR_ORIGIN);
+      const result = shrineTravel(shrineState.lit, here.x, here.z, to, state, TRAVEL_CONFIG.coinAllowance);
+      if (!result.ok) {
+        notice(result.error);
+        return result.error;
       }
-      const coin = townEconomy?.carried?.chroma ?? 0;
-      const refusal = travelRefusal({ inFight, bounty, shards, coin }, 25);
-      if (refusal) {
-        notice(refusal);
-        return refusal;
-      }
-      const wakeX = target.wake.x - LEGACY_SINDR_ORIGIN.x;
-      const wakeZ = target.wake.z - LEGACY_SINDR_ORIGIN.z;
-      const wakeY = target.y - LEGACY_SINDR_ORIGIN.y;
-      controller.place(wakeX, wakeY, wakeZ);
-      controller.facing = target.wake.facing;
-      shoulderCamera.yaw = target.wake.facing + Math.PI;
+      const { shrine } = result;
+      controller.place(shrine.wake.x - LEGACY_SINDR_ORIGIN.x, shrine.y - LEGACY_SINDR_ORIGIN.y, shrine.wake.z - LEGACY_SINDR_ORIGIN.z);
+      controller.facing = shrine.wake.facing;
+      shoulderCamera.yaw = shrine.wake.facing + Math.PI;
       homeMenu.close();
-      notice(`Travelled to ${target.name}`);
+      notice(`Travelled to ${shrine.name}`);
     },
     onNotice: notice,
   });
@@ -928,7 +879,7 @@ async function main(): Promise<void> {
     lockedEnemy = target === lockedEnemy ? null : target;
     return true;
   };
-  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges, sustain });
+  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges, sustain, shrineState });
   /** Whether this element keeps its current weapon in hand while bending. */
   const bendsArmed = (): boolean => rules.canBendWithWeapon(fight.kit);
   const setBending = (on: boolean): void => {
@@ -1297,14 +1248,8 @@ async function main(): Promise<void> {
       onNotice: notice,
       onTier: applyTier,
       onOutfit: (outfit) => { void hero.switchOutfit(parseOutfit(outfit)); },
-      onShrines: (lit) => {
-        shrineState.setOnlineLit(lit);
-        if (zone) for (const id of lit) zone.settlements.setLit(id, true);
-      },
-      onShrineLit: (shrineId) => {
-        shrineState.onOnlineShrineLit(shrineId);
-        zone?.settlements.setLit(shrineId, true);
-      },
+      onShrines: (lit) => shrineState.setOnlineLit(lit),
+      onShrineLit: (shrineId) => shrineState.onOnlineShrineLit(shrineId),
       onRevived: (_position, facing) => {
         fight.reviveHero();
         combat.reset();
@@ -1471,9 +1416,9 @@ async function main(): Promise<void> {
       fight.healHero(mending.perSecond * step);
     }
     const inLightning = performance.now() < lightningBareUntil;
-    const threatened = !heldCalm && fight.nearestDistance(controller.position) < balance.stance.engageRadius;
     if (fightingStyle === 'weapon' && !inLightning) {
       // Stay drawn while fighting or with a villain close by; sheathe after a quiet spell.
+      const threatened = !heldCalm && fight.nearestDistance(controller.position) < balance.stance.engageRadius;
       if ((combat.current && combat.current !== 'dodge') || combat.blocking || pending || threatened) {
         calmIn = balance.stance.calmAfterSeconds;
       }
@@ -1505,8 +1450,7 @@ async function main(): Promise<void> {
         shoulderCamera.yaw = spot.facing + Math.PI;
       }
     }
-    const inFight = threatened || sword.engaged || (combat.current !== null && combat.current !== 'dodge');
-    shrineState.update(delta, controller.position, inFight, playingOnline);
+    shrineState.update(delta, controller.position, heroInFight(), playingOnline);
     if (!picking) nationalEncounters?.update(delta, controller.position, nightness.value);
     if (zone) {
       const yardDist = Math.hypot(controller.position.x - 124, controller.position.z - -36);

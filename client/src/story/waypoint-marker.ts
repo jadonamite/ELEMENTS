@@ -13,6 +13,8 @@ import type { Lead } from '../../../shared/src/story/leads.js';
 
 export interface WaypointDropTarget {
   kind: 'drop' | 'outlaw';
+  /** The loot pile this marker leads to. */
+  pileId: string;
   title: string;
   getPosition: () => { x: number; y: number; z: number };
   expiresAt: number;

@@ -53,6 +53,8 @@ export interface Shrine extends Place {
   /** Floor height, nation-global metres: picks the region's altitude band. */
   y: number;
   wake: { x: number; z: number; facing: number };
+  /** The settlement precinct it belongs to; none for the Shrine of Embers. */
+  precinct?: string;
 }
 
 /** Sindr's Shrine of Embers is lit for everyone: where every rising begins. */
@@ -61,9 +63,12 @@ export const FIRST_SHRINE = 'shrine_of_embers';
 /** Metres from a shrine's centre at which reaching it lights it. */
 export const SHRINE_REACH = 6;
 
-/** A settlement's shrine stands at the south end of its lane, clear of the houses, its wake spot toward them. */
-const SHRINE_SOUTH = 70;
-const WAKE_STEP = 6;
+/**
+ * Where a settlement's shrine stands, metres from its precinct centre: east of the lane's south end, beside the
+ * repair room's approach and clear of the houses. A body wakes on the lane side, facing north up the lane.
+ */
+export const SETTLEMENT_SHRINE = { x: 13, z: -60 } as const;
+const WAKE_STEP = 5;
 
 export const SHRINES: readonly Shrine[] = [
   {
@@ -72,13 +77,14 @@ export const SHRINES: readonly Shrine[] = [
     wake: { x: LEGACY_SINDR_ORIGIN.x + SINDR_SPAWN.x, z: LEGACY_SINDR_ORIGIN.z + SINDR_SPAWN.z, facing: SINDR_SPAWN.facing },
   },
   ...SETTLEMENT_PRECINCTS.map((p): Shrine => ({
-    id: `shrine_${p.id.split(':').pop()!.replaceAll('-', '_')}`, kind: 'shrine', name: `${p.name} Shrine`,
-    x: p.x, y: p.height, z: p.z - SHRINE_SOUTH,
-    wake: { x: p.x, z: p.z - SHRINE_SOUTH + WAKE_STEP, facing: 0 },
+    id: `shrine_${p.id.split(':').pop()!.replaceAll('-', '_')}`, kind: 'shrine', name: `${p.name} Shrine`, precinct: p.id,
+    x: p.x + SETTLEMENT_SHRINE.x, y: p.height, z: p.z + SETTLEMENT_SHRINE.z,
+    wake: { x: p.x + SETTLEMENT_SHRINE.x - WAKE_STEP, z: p.z + SETTLEMENT_SHRINE.z, facing: 0 },
   })),
 ];
 
 export const shrineById = (id: string): Shrine | undefined => SHRINES.find(s => s.id === id);
+export const shrineOfPrecinct = (precinctId: string): Shrine | undefined => SHRINES.find(s => s.precinct === precinctId);
 
 /** The shrines a player has lit, always with the first one, in list order. */
 export function litShrines(lit: Iterable<string>): Shrine[] {
@@ -118,6 +124,25 @@ export function travelRefusal(state: { inFight: boolean; bounty: boolean; shards
   if (state.shards > 0) return 'Shards travel by road: bank them or carry them';
   if (state.coin > coinAllowance) return `Bank your coin first (up to ${coinAllowance} travels with you)`;
   return null;
+}
+
+/**
+ * Whether a player at nation-global (x, z) may travel to `to`: they stand at a lit shrine, the target is lit and
+ * another, and `travelRefusal` allows it. The one check for the server and the browser played offline.
+ */
+export function shrineTravel(
+  lit: Iterable<string>, x: number, z: number, to: string,
+  state: { inFight: boolean; bounty: boolean; shards: number; coin: number }, coinAllowance: number,
+): { ok: true; from: Shrine; shrine: Shrine } | { ok: false; error: string } {
+  const ids = new Set(lit);
+  ids.add(FIRST_SHRINE);
+  const from = shrineAt(ids, x, z);
+  if (!from) return { ok: false, error: 'Stand at a lit shrine to travel' };
+  const shrine = shrineById(to);
+  if (!shrine || !ids.has(to)) return { ok: false, error: 'You have not lit that shrine' };
+  if (shrine.id === from.id) return { ok: false, error: 'You are already here' };
+  const error = travelRefusal(state, coinAllowance);
+  return error ? { ok: false, error } : { ok: true, from, shrine };
 }
 
 export const placesFor = (zone: string): { stalls: Place[]; countingHouses: Place[]; noticeBoard: Place | null } =>

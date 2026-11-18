@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { FIRST_SHRINE, shrineAt, shrineById, shrineToLight, travelRefusal, TRAVEL_CONFIG, wakeShrine, type Shrine } from '@elements/shared';
+import { FIRST_SHRINE, shardCount, shrineById, shrineToLight, shrineTravel, TRAVEL_CONFIG, wakeShrine, type Shrine } from '@elements/shared';
 import { getDatabase } from '../db.js';
 import { getAccountBalance, getSatchel, hasActiveBounty } from '../economy/index.js';
 import { isGuest } from './money.js';
@@ -42,18 +42,9 @@ export function travelCheck(
   accountId: string, lit: Set<string>, x: number, z: number, to: string, inFight: boolean, db: DatabaseSync = getDatabase(),
 ): { ok: true; shrine: Shrine } | { ok: false; error: string } {
   if (isGuest(accountId)) return { ok: false, error: 'Sign in to travel between shrines' };
-  const from = shrineAt(lit, x, z);
-  if (!from) return { ok: false, error: 'Stand at a lit shrine to travel' };
-  const shrine = shrineById(to);
-  if (!shrine || !lit.has(to)) return { ok: false, error: 'You have not lit that shrine' };
-  if (shrine.id === from.id) return { ok: false, error: 'You are already here' };
-  const satchel = getSatchel(accountId, db);
-  const shards = Object.entries(satchel).filter(([id]) => id.startsWith('shard_')).reduce((a, [, n]) => a + n, 0);
-  const error = travelRefusal(
-    { inFight, bounty: hasActiveBounty(accountId, db), shards, coin: getAccountBalance(accountId, db) },
-    TRAVEL_CONFIG.coinAllowance,
-  );
-  return error ? { ok: false, error } : { ok: true, shrine };
+  const state = { inFight, bounty: hasActiveBounty(accountId, db), shards: shardCount(getSatchel(accountId, db)), coin: getAccountBalance(accountId, db) };
+  const result = shrineTravel(lit, x, z, to, state, TRAVEL_CONFIG.coinAllowance);
+  return result.ok ? { ok: true, shrine: result.shrine } : result;
 }
 
 /**

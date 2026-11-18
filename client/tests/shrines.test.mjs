@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { FIRST_SHRINE, LEGACY_SINDR_ORIGIN, SHRINES, shrineById } from '../../shared/src/index.js';
+import { FIRST_SHRINE, LEGACY_SINDR_ORIGIN, SHRINES, shrineById, shrineTravel, isOutlawKind, shardCount } from '../../shared/src/index.js';
 import { ShrineState } from '../src/shrine-state.ts';
 
 test('ShrineState begins with Shrine of Embers lit', () => {
@@ -11,8 +11,10 @@ test('ShrineState begins with Shrine of Embers lit', () => {
 
 test('ShrineState: reaching an unlit shrine lights it outside a fight, notices, and updates wake spot', () => {
   const notices = [];
+  let changes = 0;
   const state = new ShrineState({
     onNotice: (msg) => notices.push(msg),
+    onChange: () => { changes++; },
   });
 
   const pinewatch = SHRINES.find(s => s.name === 'Pinewatch Shrine');
@@ -23,14 +25,19 @@ test('ShrineState: reaching an unlit shrine lights it outside a fight, notices, 
   const sceneZ = pinewatch.z - LEGACY_SINDR_ORIGIN.z;
 
   // Mid fight: does not light
-  assert.equal(state.checkReach({ x: sceneX, z: sceneZ }, true), null);
+  state.update(0.6, { x: sceneX, z: sceneZ }, true, false);
   assert.ok(!state.isLit(pinewatch.id));
 
-  // Outside fight: lights it
-  const lit = state.checkReach({ x: sceneX, z: sceneZ }, false);
-  assert.equal(lit?.id, pinewatch.id);
+  // Online the room lights shrines, not the browser
+  state.update(0.6, { x: sceneX, z: sceneZ }, false, true);
+  assert.ok(!state.isLit(pinewatch.id));
+
+  // Outside a fight: lights it, once
+  state.update(0.6, { x: sceneX, z: sceneZ }, false, false);
   assert.ok(state.isLit(pinewatch.id));
-  assert.ok(notices.includes('Pinewatch Shrine lit'));
+  state.update(0.6, { x: sceneX, z: sceneZ }, false, false);
+  assert.deepEqual(notices, ['Pinewatch Shrine lit']);
+  assert.ok(changes >= 1);
 
   // Falling near Pinewatch revives at Pinewatch's wake spot
   const wake = state.wakeSpot({ x: sceneX + 2, z: sceneZ + 2 });
@@ -59,20 +66,42 @@ test('ShrineState: falling near Sindr with multiple lit shrines still wakes at t
   assert.equal(pwWake.shrine.id, pinewatch.id);
 });
 
-test('SettlementStream tracks lit state of precinct shrines', async () => {
-  const { SettlementStream } = await import('../src/world/settlements.ts');
+test('settlement shrines stand clear of the lane, the repair room and the houses', async () => {
   const { SETTLEMENT_PRECINCTS } = await import('../../shared/src/world/ignis/settlements.js');
-  const pinewatch = SETTLEMENT_PRECINCTS.find(p => p.name === 'Pinewatch');
-  assert.ok(pinewatch);
+  const ringRadius = 3;
+  for (const place of SETTLEMENT_PRECINCTS) {
+    const shrine = SHRINES.find(s => s.precinct === place.id);
+    assert.ok(shrine, place.id);
+    const x = shrine.x - place.x, z = shrine.z - place.z;
+    // The six-metre lane, and the 14 x 11 repair room at z -69.
+    assert.ok(Math.abs(x) - ringRadius > 3, `${place.id} on the lane`);
+    assert.ok(Math.abs(x) - ringRadius > 7 || Math.abs(z + 69) - ringRadius > 5.5, `${place.id} in the repair room`);
+    for (const h of place.houses) {
+      const clear = Math.abs(x - h.x) - ringRadius > h.d / 2 || Math.abs(z - h.z) - ringRadius > h.w / 2;
+      assert.ok(clear, `${place.id} in a house`);
+    }
+    // The wake spot is off the plinth and within reach to light the shrine again.
+    const wake = Math.hypot(shrine.wake.x - shrine.x, shrine.wake.z - shrine.z);
+    assert.ok(wake > 1.8 && wake <= 6, `${place.id} wake ${wake}`);
+  }
+});
 
-  const stream = new SettlementStream(null, () => null, false);
-  assert.equal(stream.isShrineLit(pinewatch), false);
+test('shrine travel: from a lit shrine to another lit one, by the same rules everywhere', () => {
+  const pinewatch = SHRINES.find(s => s.name === 'Pinewatch Shrine');
+  const embers = shrineById(FIRST_SHRINE);
+  const calm = { inFight: false, bounty: false, shards: 0, coin: 10 };
+  const lit = [pinewatch.id];
+  assert.deepEqual(shrineTravel(lit, embers.x, embers.z, pinewatch.id, calm, 25).ok, true);
+  assert.equal(shrineTravel(lit, embers.x + 40, embers.z, pinewatch.id, calm, 25).error, 'Stand at a lit shrine to travel');
+  assert.equal(shrineTravel([], embers.x, embers.z, pinewatch.id, calm, 25).error, 'You have not lit that shrine');
+  assert.equal(shrineTravel(lit, pinewatch.x, pinewatch.z, pinewatch.id, calm, 25).error, 'You are already here');
+  assert.equal(shrineTravel(lit, embers.x, embers.z, pinewatch.id, { ...calm, shards: 1 }, 25).error, 'Shards travel by road: bank them or carry them');
+  assert.equal(shardCount({ shard_ignis: 2, shard_aura: 1, material_linen: 4, potion: 1 }), 3);
+});
 
-  stream.setLit('shrine_pinewatch', true);
-  assert.equal(stream.isShrineLit(pinewatch), true);
-
-  stream.setLit('shrine_pinewatch', false);
-  assert.equal(stream.isShrineLit(pinewatch), false);
+test('killers: beasts are nobody\'s hand, every villain body is an outlaw', () => {
+  for (const kind of ['hound', 'bull']) assert.equal(isOutlawKind(kind), false, kind);
+  for (const kind of ['brawler', 'armed', 'bender', 'husk', 'robber', 'deserter']) assert.equal(isOutlawKind(kind), true, kind);
 });
 
 test('globalMapMarkup includes shrines and fast travel markup', async () => {
@@ -108,14 +137,15 @@ test('WaypointMarker tracks death drop target and outlaw holder', async () => {
     let expiredCalled = false;
     marker.setDropTarget({
       kind: 'outlaw',
-      title: 'Hunt Outlaw: Recover Drop',
+      pileId: 'pile_1',
+      title: 'Taken by an outlaw',
       getPosition: () => ({ x: 10, y: 0, z: 20 }),
       expiresAt: Date.now() + 600000,
       onExpired: () => { expiredCalled = true; },
     });
 
     assert.ok(marker.activeDropTarget);
-    assert.equal(marker.activeDropTarget.title, 'Hunt Outlaw: Recover Drop');
+    assert.equal(marker.activeDropTarget.title, 'Taken by an outlaw');
 
     const camera = new Camera();
     marker.update(0.016, camera, new Vector3(0, 0, 0));

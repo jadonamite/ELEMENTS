@@ -25,7 +25,7 @@ import { NoticeBoardWindow } from './notice-board-window.js';
 import { SatchelWindow } from './satchel-window.js';
 import { ShopWindow } from './shop-window.js';
 import { TradeWindow } from './trade-window.js';
-import { placesFor, PLACE_REACH, TRADE_REACH, SINDR_MERCHANTS } from '../../../shared/src/index.js';
+import { isOutlawHolder, onGround, placesFor, PLACE_REACH, TRADE_REACH, SINDR_MERCHANTS } from '../../../shared/src/index.js';
 import { stallsShut } from '../../../shared/src/net/clock.js';
 import { WorldLoot } from './world-loot.js';
 
@@ -59,6 +59,10 @@ export interface TownEconomyEvents {
   talkToKeeper?(merchantId: string): void;
   /** A loot pile was claimed. */
   lootClaimed?(pileId: string): void;
+  /** The hero's death left a pile: on the ground, or held by the outlaw who killed them. */
+  deathDropped?(pile: LootPile): void;
+  /** The outlaw holding the hero's drop was killed; it now lies where he fell. */
+  dropReleased?(pile: LootPile): void;
 }
 
 export class TownEconomy {
@@ -426,11 +430,10 @@ export class TownEconomy {
           this.loot?.add(res.pile);
           this.events.lootDropped?.(res.pile.x, res.pile.z);
         }
-        if (res.releasedPiles) {
-          for (const p of res.releasedPiles) {
-            this.loot?.add(p);
-            this.events.lootDropped?.(p.x, p.z);
-          }
+        for (const p of res.releasedPiles ?? []) {
+          this.loot?.add(p);
+          this.events.lootDropped?.(p.x, p.z);
+          this.events.dropReleased?.(p);
         }
       })
       .catch(() => {
@@ -443,9 +446,14 @@ export class TownEconomy {
     reportDeath(at.x, at.z, this.zone, killer)
       .then((pile) => {
         if (!pile) return this.refresh();
-        this.loot?.add(pile);
-        const lost = Object.values(pile.contents.shards).reduce((a, b) => a + b, 0) + Object.values(pile.contents.materials).reduce((a, b) => a + b, 0);
-        if (lost > 0) this.events.notice('What you carried lies where you fell');
+        if (onGround(pile)) this.loot?.add(pile);
+        const lost = pile.contents.chroma + Object.values(pile.contents.shards).reduce((a, b) => a + b, 0);
+        if (lost > 0) {
+          this.events.deathDropped?.(pile);
+          this.events.notice(isOutlawHolder(pile.ownerId)
+            ? 'Your killer took what you carried: hunt him down'
+            : 'What you carried lies where you fell');
+        }
         return this.refresh();
       })
       .catch(() => undefined);

@@ -12,7 +12,6 @@ export interface HomeMenuOptions {
   onOpenCreator: () => void;
   shrineState?: ShrineState | undefined;
   getPlayerPosition?: (() => { x: number; y: number; z: number }) | undefined;
-  getTravelState?: (() => { inFight: boolean; bounty: boolean; shards: number; coin: number }) | undefined;
   getDropTarget?: (() => WaypointDropTarget | null) | undefined;
   travel?: ((shrineId: string) => void | string | Promise<void | string>) | undefined;
   onNotice?: ((text: string) => void) | undefined;
@@ -194,7 +193,6 @@ export class HomeMenu {
       navigateToSindr: () => this.navigate({ town: '' }, ['arena']),
       shrineState: options.shrineState,
       getPlayerPosition: options.getPlayerPosition,
-      getTravelState: options.getTravelState,
       getDropTarget: options.getDropTarget,
       travel: options.travel,
       onNotice: options.onNotice,

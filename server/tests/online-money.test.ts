@@ -142,8 +142,10 @@ test('Online money: a robber carries what he took until someone kills him, then 
   join('A', { accountId: 'acct_a', role: 'Shaper', element: 'IGNIS' }, 128, 4);
   join('B', { accountId: 'acct_b', role: 'Shaper', element: 'IGNIS' }, 130, 4);
   const out = econ.death('A', { id: 'robber_1', kind: 'robber' });
-  const held = (ofType(out, 'loot_new')[0]!.body as { pile: { id: string; ownerId: string } }).pile;
-  assert.ok(held.ownerId.startsWith('outlaw:'), 'the robber holds it');
+  assert.equal(ofType(out, 'loot_new').length, 0, 'what the robber holds is in his hands, not on the ground');
+  const held = db.prepare(`SELECT id, owner_id AS ownerId FROM loot_piles WHERE owner_id LIKE 'outlaw:%'`).get() as { id: string; ownerId: string };
+  assert.ok(held, 'the robber holds it');
+  assert.equal(listLootPiles({ zone: world.zone }, db).length, 0, 'nobody is shown it');
   assert.throws(() => claimLootPile({ pileId: held.id, accountId: 'acct_a', x: 128, z: 4 }, db), 'not even the fallen can take it from him');
 
   const kill = { zone: world.zone, worldId: world.id, enemyId: 'robber_1', kind: 'robber', x: 140, z: 6, killerAccountId: 'acct_b', damageBy: { acct_b: 100 }, at: 1 };
