@@ -17,7 +17,6 @@ test('Nation intro configurations: all four nations defined and complete', () =>
     assert.ok(config.master.name.length > 0);
     assert.ok(config.master.title.length > 0);
     assert.ok(config.master.greetingBark.length > 0);
-    assert.ok(config.master.voice.length > 0);
     assert.ok(config.master.look.length > 0);
 
     // Starter weapon

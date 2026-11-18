@@ -38,6 +38,8 @@ export interface ShopWindowEvents {
   opened?(merchant: Merchant, buyQuotes: readonly (Quote | null)[]): void;
   /** The player bought from the stall. */
   bought?(merchant: Merchant): void;
+  /** The stall bought from the player. */
+  sold?(merchant: Merchant): void;
 }
 
 function escape(text: string): string {
@@ -340,6 +342,7 @@ export class ShopWindow {
       } else {
         const r = await this.events.trade('sell', id, item);
         note = `Sold ${itemName(item)} for ${r.totalPrice} CHROMA.`;
+        if (this.merchant?.id === id) this.events.sold?.(this.merchant);
       }
       await this.events.changed();
     } catch (err) {

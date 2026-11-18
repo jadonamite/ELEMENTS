@@ -187,7 +187,7 @@ export class NpcDialogueUI {
   }
 
   close(): void {
-    if (this.currentNpc) this.voices.end(this.currentNpc);
+    if (this.currentNpc) this.voices.end(this.currentNpc.data.id);
     this.open = false;
     this.el.hidden = true;
   }

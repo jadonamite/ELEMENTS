@@ -15,7 +15,7 @@ export interface TownsfolkBody {
 /** What each trade does with its hands standing still. */
 export const IDLE: Record<TownsfolkRole, string> = {
   smith: 'fold_arms', trader: 'talk', innkeeper: 'talk', guard: 'fold_arms',
-  worshipper: 'idle', porter: 'idle', child: 'idle',
+  worshipper: 'idle', porter: 'idle', child: 'idle', sentry: 'fold_arms',
 };
 
 /** Everyday walks; each person keeps one, so no two neighbours move alike. */

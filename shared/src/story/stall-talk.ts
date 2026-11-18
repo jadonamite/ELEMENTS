@@ -3,6 +3,8 @@ import type { Facts } from './speech.js';
 /** The parts of a stall the keeper talks about, as the shop reads them from the server. */
 export interface StallState {
   nation: string;
+  /** 'open', 'broke_buying_paused' (short of coin: still sells, buys nothing from players) or 'closed'. */
+  status: string;
   inventory: Record<string, { stock: number }>;
 }
 
@@ -20,7 +22,7 @@ export function merchantRole(nation: string): string {
 }
 
 /**
- * Facts about a stall for its keeper's "talk" rules: whether a shelf is bare, and whether trade has pushed the
+ * Facts about a stall for its keeper's "talk" rules: whether the purse is too short to buy, whether a shelf is bare, and whether trade has pushed the
  * buy prices up or down by more than `priceMoved` (0.1 = 10%) on average over the stocked shelves.
  */
 export function stallFacts(stall: StallState, buyQuotes: readonly (StallQuote | null)[], priceMoved: number): Facts {
@@ -35,6 +37,7 @@ export function stallFacts(stall: StallState, buyQuotes: readonly (StallQuote | 
   });
   const mean = n > 0 ? sum / n : 1;
   return {
+    'stall.short': stall.status === 'broke_buying_paused',
     'stall.emptyShelf': shelves.some(s => s.stock <= 0),
     'stall.prices': mean >= 1 + priceMoved ? 'rising' : mean <= 1 - priceMoved ? 'falling' : 'steady',
   };

@@ -1,4 +1,4 @@
-import { normalizeControlProgress, mergeControlProgress, type ControlProgress } from '@elements/shared';
+import { CLIMB, normalizeControlProgress, mergeControlProgress, type ControlProgress } from '@elements/shared';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { randomInt } from 'node:crypto';
@@ -196,6 +196,25 @@ export function migrateDatabase(database: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_loot_piles_expires ON loot_piles(expires_at);
     CREATE INDEX IF NOT EXISTS idx_loot_piles_claimed ON loot_piles(claimed);
   `);
+  // A Sentry fines each red flag once; the flag itself still fades on its own time.
+  // The tier climb: wins toward the next tier and a paid trial per fighter; each master's fee and how many students climbed.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS tier_climb (
+      account_id TEXT PRIMARY KEY,
+      wins INTEGER NOT NULL DEFAULT 0,
+      paid_for INTEGER,
+      fee_seen INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS master_fees (
+      master_id TEXT PRIMARY KEY,
+      multiplier REAL NOT NULL DEFAULT 1,
+      week INTEGER NOT NULL,
+      climbs_this INTEGER NOT NULL DEFAULT 0,
+      climbs_last INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  const flagColumns = database.prepare('PRAGMA table_info(red_flags)').all() as Array<{ name: string }>;
+  if (!flagColumns.some((c) => c.name === 'fined_at')) database.exec('ALTER TABLE red_flags ADD COLUMN fined_at INTEGER');
   const lootPileCols = database.prepare('PRAGMA table_info(loot_piles)').all() as Array<{ name: string }>;
   if (!lootPileCols.some((c) => c.name === 'nation')) {
     database.exec('ALTER TABLE loot_piles ADD COLUMN nation TEXT');
@@ -404,11 +423,13 @@ export function createOrGetRising(
   const now = Date.now();
 
   try {
-    db.prepare('INSERT INTO risings (account_id, role, element, created_at) VALUES (?, ?, ?, ?)').run(
+    // A new character starts at the bottom of the climb; only a master's trial raises it.
+    db.prepare('INSERT INTO risings (account_id, role, element, created_at, tier) VALUES (?, ?, ?, ?, ?)').run(
       accountId,
       rolled.role,
       rolled.element ?? null,
       now,
+      CLIMB.startTier,
     );
     db.prepare('UPDATE accounts SET role = ?, element = ? WHERE id = ?').run(
       rolled.role,
@@ -420,6 +441,7 @@ export function createOrGetRising(
       role: rolled.role,
       element: rolled.element ?? null,
       created_at: now,
+      tier: CLIMB.startTier,
     };
   } catch {
     const current = getRising(accountId, db);
@@ -467,11 +489,12 @@ export function saveAccount(
   }
 
   try {
-    db.prepare('INSERT OR IGNORE INTO risings (account_id, role, element, created_at) VALUES (?, ?, ?, ?)').run(
+    db.prepare('INSERT OR IGNORE INTO risings (account_id, role, element, created_at, tier) VALUES (?, ?, ?, ?, ?)').run(
       id,
       role,
       element ?? null,
       created_at,
+      CLIMB.startTier,
     );
   } catch {
     // If rising already exists, ignore

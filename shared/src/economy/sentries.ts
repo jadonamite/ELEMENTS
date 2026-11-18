@@ -1,3 +1,5 @@
+import { CRIME_CONFIG } from './constants.js';
+
 export interface SentryEncounterResult {
   action: 'ignore' | 'fine' | 'arrest';
   fineAmount: number;
@@ -26,7 +28,7 @@ export function evaluateSentryAction(params: {
   if (params.activeRedFlagsCount > 0) {
     return {
       action: 'fine',
-      fineAmount: 25 * params.activeRedFlagsCount,
+      fineAmount: CRIME_CONFIG.sentryFinePerFlag * params.activeRedFlagsCount,
       reason: 'Civil breach in protected Sentry precinct; fine payable to the Lord Treasury',
     };
   }

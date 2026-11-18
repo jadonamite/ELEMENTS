@@ -22,6 +22,7 @@ import balance from '../../../shared/balance.json';
 
 const TALK = balance.speech.talk;
 const STALL = balance.speech.stall;
+const SENTRY_SIGHT = balance.economy.crime.sentrySightMetres;
 const { traffic: TRAFFIC, hearRadius: HEAR_RADIUS } = balance.speech;
 /** People wandering the streets beside the named townsfolk and the keepers of posts, and how many looks they share. */
 const CROWD_PEOPLE = 110;
@@ -56,6 +57,10 @@ export interface SindrLifeOptions {
   browse?: readonly Browse[];
   /** Shows a line someone in the street said, under their name, for `seconds`. */
   subtitle: (name: string, line: string, seconds: number) => void;
+  /** Red flags the player carries now, as the server last said. */
+  redFlags?: () => number;
+  /** A Sentry sees the player at `at`; the server fines each red flag not yet fined. Null when nothing could be asked. */
+  sentrySaw?: (at: Vector3) => Promise<{ action: string; amount: number; flags: number } | null>;
 }
 
 export class SindrLifeSystem {
@@ -80,8 +85,11 @@ export class SindrLifeSystem {
   private getThreats: () => readonly Vector3[];
   /** Where fights were first seen this frame, by whom. */
   private readonly alarms: Array<{ person: LiveTownsperson; at: Vector3 }> = [];
+  /** The Sentry and flag count last asked about, so one sighting asks the server once. */
+  private sentryAsked: string | null = null;
+  private sentryBusy = false;
 
-  constructor(options: SindrLifeOptions) {
+  constructor(private readonly options: SindrLifeOptions) {
     this.scene = options.scene;
     this.camera = options.camera;
     this.controller = options.controller;
@@ -126,8 +134,8 @@ export class SindrLifeSystem {
     const named = ownLooks(SINDR_TOWNSFOLK).filter(drawnInTown);
     const cast = SINDR_TOWNSFOLK.filter(p => p.look || named.some(l => l.id === p.id));
     const keepers = staffPosts(options.posts ?? [], crowd, cast);
-    const people = [...cast, ...keepers, ...crowd.people];
-    const looks = [...named, ...crowd.looks];
+    const people = [...cast, ...keepers.people, ...crowd.people];
+    const looks = [...named, ...crowd.looks, ...keepers.looks];
     const children = new Set(people.filter(p => p.role === 'child').map(p => p.look ?? p.id));
     this.ready = loadLookBodies(looks, children, undefined, options.warm).then(async (bodies) => {
       if (!this.disposed) await this.townManager.init(bodies, people, SINDR_STREETS, SINDR_WALK, options.browse ?? [], options.posts ?? []);
@@ -141,6 +149,7 @@ export class SindrLifeSystem {
     // 1. Update townsfolk routines and locomotion
     this.townManager.update(delta, minute, heroPos, this.getThreats(), this.camera);
     this.speakAlarms();
+    this.watchSentries();
 
     // 2. Update active waypoint marker & check lead completion
     this.waypointMarker.update(delta, this.camera, heroPos);
@@ -165,7 +174,7 @@ export class SindrLifeSystem {
 
   /**
    * The keeper of stall `stallId` speaks to the player dealing with them: `concept` 'talk' when the stall opens
-   * (with the stall's facts), 'sale_made' when the player buys. They speak as a merchant of the stall's nation,
+   * (with the stall's facts), 'sale_made' when the player buys, 'bought_from_player' when the player sells. They speak as a merchant of the stall's nation,
    * in the voice of their own body's sex, with a subtitle, through the same traffic as everyone else.
    * Resolves to the keeper's id, or null when nobody stands behind the counter or no rule matches.
    */
@@ -192,6 +201,34 @@ export class SindrLifeSystem {
       if (d <= bestD) { best = p; bestD = d; }
     }
     return best;
+  }
+
+  /**
+   * Sentries at their posts watch the street. When the player carries a red flag and comes within a Sentry's
+   * sight, the server is asked once (again only if the flags change or the player leaves sight and returns);
+   * if it fined anything, that Sentry stops the player with the fine and closes the matter when it is paid.
+   */
+  private watchSentries(): void {
+    const flags = this.options.redFlags?.() ?? 0;
+    const hero = this.controller.position;
+    const seen = flags > 0 ? this.townManager.townsfolk.find(p => p.data.role === 'sentry' && !p.fleeing &&
+      Math.hypot(p.position.x - hero.x, p.position.z - hero.z) <= SENTRY_SIGHT) : undefined;
+    const key = seen ? `${seen.data.id}:${flags}` : null;
+    if (key === this.sentryAsked || !seen || this.sentryBusy || !this.options.sentrySaw) {
+      if (!seen) this.sentryAsked = null;
+      return;
+    }
+    this.sentryAsked = key;
+    this.sentryBusy = true;
+    void this.options.sentrySaw(hero.clone()).then((fine) => {
+      if (!fine || fine.action !== 'fine' || fine.flags === 0) return;
+      return this.sentrySays(seen, 'red_flag_fined', () => void this.sentrySays(seen, 'red_flag_fine_paid'));
+    }).finally(() => { this.sentryBusy = false; });
+  }
+
+  private async sentrySays(sentry: LiveTownsperson, concept: string, ended?: () => void): Promise<void> {
+    const said = this.voices.rules.speak({ concept, speakerId: sentry.data.id, facts: { who: sentry.data.dialogueRole } }, this.dialogueMemory.speech, this.voices.now());
+    if (said) await this.voices.say(sentry, said.line, said.tier, { subtitle: true, ended });
   }
 
   /** A fight newly seen this frame: someone near it calls it out, and one of those running shouts as they go. */

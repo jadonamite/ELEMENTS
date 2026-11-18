@@ -12,10 +12,11 @@ import {
   fetchWornArmour,
   isGuestSession,
   reportBrawlSeen,
+  reportSentrySaw,
   reportDeath,
   reportKill,
 } from './api.js';
-import type { LootPile, Merchant, Quote, Standing } from './api.js';
+import type { LootPile, Merchant, Quote, SentryFine, Standing } from './api.js';
 import { CountingHouseWindow } from './counting-house-window.js';
 import { httpDoor, RoomDoor, type MoneyDoor, type RoomChannel, type TradeState } from './door.js';
 import { itemName } from './items.js';
@@ -57,6 +58,8 @@ export interface TownEconomyEvents {
   stallOpened?(merchant: Merchant, buyQuotes: readonly (Quote | null)[]): void;
   /** The player bought from a stall. */
   stallBought?(merchant: Merchant): void;
+  /** A stall bought from the player. */
+  stallSold?(merchant: Merchant): void;
 }
 
 export class TownEconomy {
@@ -135,6 +138,7 @@ export class TownEconomy {
         : this.door.trade(action, merchantId, item, 1),
       opened: (merchant, quotes) => events.stallOpened?.(merchant, quotes),
       bought: (merchant) => events.stallBought?.(merchant),
+      sold: (merchant) => events.stallSold?.(merchant),
     });
     this.countingHouse = new CountingHouseWindow({
       coin: () => this.coin,
@@ -417,6 +421,22 @@ export class TownEconomy {
         this.setStanding(result);
       })
       .catch(() => undefined);
+  }
+
+  /** A Sentry sees the player at `at`: any red flag not yet fined is fined, and the purse and standing refresh. */
+  async sentrySaw(at: Vector3): Promise<SentryFine | null> {
+    if (!this.enabled || isGuestSession()) return null;
+    try {
+      const result = await reportSentrySaw(this.zone, at.x, at.z);
+      this.setStanding(result);
+      if (result.action === 'fine') {
+        this.events.notice(result.amount > 0 ? `A Sentry fined you ${result.amount} CHROMA for the treasury` : 'A Sentry fined you, but you had nothing to pay');
+        await this.refresh();
+      }
+      return { action: result.action, amount: result.amount, flags: result.flags };
+    } catch {
+      return null;
+    }
   }
 
   dispose(): void {

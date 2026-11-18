@@ -8,7 +8,8 @@ export type TownsfolkRole =
   | 'guard'
   | 'worshipper'
   | 'porter'
-  | 'child';
+  | 'child'
+  | 'sentry';
 
 export type RoutineActivity = 'work' | 'market' | 'inn' | 'home';
 

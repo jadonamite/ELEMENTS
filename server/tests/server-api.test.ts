@@ -1,3 +1,4 @@
+import { CLIMB } from '@elements/shared';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -380,8 +381,8 @@ test('Character controls: authenticated, per-character, bounded, merged across d
     assert.deepEqual(await write.json(), { progress: { strike: { uses: 3, shown: 1 } } });
     const stale = await call('learner-a', { strike: { uses: 0, shown: 2 } });
     assert.deepEqual(await stale.json(), { progress: { strike: { uses: 3, shown: 2 } } });
-    assert.deepEqual(await (await call('learner-b')).json(), { progress: {}, tier: 5 });
+    assert.deepEqual(await (await call('learner-b')).json(), { progress: {}, tier: CLIMB.startTier });
     migrateDatabase(db);
-    assert.deepEqual(await (await call('learner-a')).json(), { progress: { strike: { uses: 3, shown: 2 } }, tier: 5 });
+    assert.deepEqual(await (await call('learner-a')).json(), { progress: { strike: { uses: 3, shown: 2 } }, tier: CLIMB.startTier });
   } finally { setTokenVerifier(null); await ts.close(); db.close(); }
 });

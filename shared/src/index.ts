@@ -11,3 +11,4 @@ export * from './raids/index.js';
 export * from './social/index.js';
 export * from './world/ignis/coordinates.js';
 export * from './controls/index.js';
+export * from './growth/climb.js';

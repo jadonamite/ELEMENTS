@@ -16,7 +16,7 @@ const local: PlayerDialogueContext = { name: 'K', isLit: true, role: 'Shaper', e
 const outsider: PlayerDialogueContext = { name: 'K', isLit: true, role: 'Shaper', element: 'AQUES' };
 const hush: PlayerDialogueContext = { name: 'K', isLit: false, role: 'Hush', element: 'IGNIS' };
 
-const stall = (stock: number[]) => ({ nation: 'IGNIS', inventory: Object.fromEntries(stock.map((s, i) => [`shelf${i}`, { stock: s }])) });
+const stall = (stock: number[], status = 'open') => ({ nation: 'IGNIS', status, inventory: Object.fromEntries(stock.map((s, i) => [`shelf${i}`, { stock: s }])) });
 const quote = (demand: number, colour = 0) => ({ steps: [{ rule: 'scarcity', effect: 1 }, { rule: 'recent_demand', effect: demand }, { rule: 'color_balance', effect: colour }, { rule: 'outsider', effect: 0.2 }] });
 
 function situation(player: PlayerDialogueContext, facts: Record<string, string | number | boolean>, concept = 'talk'): string {
@@ -27,7 +27,8 @@ function situation(player: PlayerDialogueContext, facts: Record<string, string |
 }
 
 test('Stall facts: a bare shelf, and prices moved by trade, not by the stall level or the outsider rate', () => {
-  assert.deepEqual(stallFacts(stall([100, 50]), [quote(0), quote(0)], 0.1), { 'stall.emptyShelf': false, 'stall.prices': 'steady' });
+  assert.deepEqual(stallFacts(stall([100, 50]), [quote(0), quote(0)], 0.1), { 'stall.short': false, 'stall.emptyShelf': false, 'stall.prices': 'steady' });
+  assert.equal(stallFacts(stall([100, 50], 'broke_buying_paused'), [quote(0), quote(0)], 0.1)['stall.short'], true);
   assert.equal(stallFacts(stall([0, 50]), [null, quote(0)], 0.1)['stall.emptyShelf'], true);
   assert.equal(stallFacts(stall([100, 50]), [quote(0.3), quote(0.1)], 0.1)['stall.prices'], 'rising');
   assert.equal(stallFacts(stall([100, 50]), [quote(-0.2, -0.1), quote(0)], 0.1)['stall.prices'], 'falling');
@@ -43,17 +44,46 @@ test('Opening a stall: the keeper greets a local or an outsider, and a bare shel
   assert.equal(situation(outsider, { ...steady, 'stall.prices': 'rising' }), 'merchant_ignis/prices_rising');
   assert.equal(situation(local, { ...steady, 'stall.prices': 'falling' }), 'merchant_ignis/prices_falling');
   assert.equal(situation(local, { 'stall.emptyShelf': true, 'stall.prices': 'rising' }), 'merchant_ignis/out_of_stock');
+  // A purse too short to buy from the player is said first: it changes what the player can do here.
+  assert.equal(situation(local, { 'stall.short': true, 'stall.emptyShelf': true, 'stall.prices': 'rising' }), 'merchant_ignis/going_broke');
 });
 
-test('A sale is part of the exchange at the counter, said at conversation priority', () => {
-  const said = rules.speak({ concept: 'sale_made', speakerId: 'keeper', facts: { who: 'merchant_ignis' } });
-  assert.equal(said?.rule.id, 'merchant_ignis/sale_made');
-  assert.equal(said?.tier, 'conversation');
+test('A sale either way is part of the exchange at the counter, said at conversation priority', () => {
+  for (const concept of ['sale_made', 'bought_from_player']) {
+    const said = rules.speak({ concept, speakerId: 'keeper', facts: { who: 'merchant_ignis' } });
+    assert.equal(said?.rule.id, `merchant_ignis/${concept}`);
+    assert.equal(said?.tier, 'conversation');
+  }
+});
+
+test('A Sentry stops a flagged player at alert priority and closes the matter', () => {
+  for (const concept of ['red_flag_fined', 'red_flag_fine_paid']) {
+    const said = rules.speak({ concept, speakerId: 'sentry_1', facts: { who: 'sentry' } });
+    assert.equal(said?.tier, 'alert');
+  }
+});
+
+test('Every line a Sentry, a master in the intro or a stall keeper can say has a recording in both voices', () => {
+  const groups: Record<string, string[]> = {
+    sentry: ['greeting_local', 'red_flag_fined', 'red_flag_fine_paid'],
+    master_ignis: [], master_aques: [], master_terra: [], master_aura: [],
+  };
+  for (const m of ['master_ignis', 'master_aques', 'master_terra', 'master_aura']) groups[m] = Object.keys(table[m]).filter(k => k.startsWith('intro_'));
+  for (const [role, situations] of Object.entries(groups)) {
+    assert.ok(situations.length > 0, role);
+    for (const situationName of situations) {
+      for (const line of table[role][situationName] as string[]) {
+        for (const sex of ['male', 'female'] as const) {
+          assert.ok(manifest[voiceId(role, sex)]?.[lineKey(line)], `${role} ${sex} has no recording of "${line}"`);
+        }
+      }
+    }
+  }
 });
 
 test('Every line a stall keeper can say has a recording in both voices', () => {
   const role = merchantRole('IGNIS');
-  for (const situationName of ['greeting_local', 'greeting_outsider', 'prices_rising', 'prices_falling', 'out_of_stock', 'sale_made']) {
+  for (const situationName of ['greeting_local', 'greeting_outsider', 'prices_rising', 'prices_falling', 'out_of_stock', 'going_broke', 'sale_made', 'bought_from_player']) {
     for (const line of table[role][situationName] as string[]) {
       for (const sex of ['male', 'female'] as const) {
         assert.ok(manifest[voiceId(role, sex)]?.[lineKey(line)], `${role} ${sex} has no recording of "${line}"`);
