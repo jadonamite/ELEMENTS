@@ -49,7 +49,8 @@ export function performDrawingRoll(): DrawingResult {
 }
 
 export function calculateAge(dobString: string, referenceDate = new Date()): number {
-  const birth = new Date(dobString);
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dobString);
+  const birth = parts ? new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])) : new Date(dobString);
   if (isNaN(birth.getTime())) return -1;
   let age = referenceDate.getFullYear() - birth.getFullYear();
   const m = referenceDate.getMonth() - birth.getMonth();
@@ -57,6 +58,24 @@ export function calculateAge(dobString: string, referenceDate = new Date()): num
     age--;
   }
   return age;
+}
+
+export type BirthDate =
+  | { ok: true; iso: string }
+  | { ok: false; field: 'day' | 'month' | 'year'; message: string };
+
+/** Day, month and year as typed into the age check; a real date that has already happened. */
+export function parseBirthDate(day: string, month: string, year: string, today = new Date()): BirthDate {
+  const d = Number(day), m = Number(month), y = Number(year);
+  if (!day && !month && !year) return { ok: false, field: 'day', message: 'Enter your date of birth.' };
+  if (!d || d < 1 || d > 31) return { ok: false, field: 'day', message: 'Enter the day of the month.' };
+  if (!m || m < 1 || m > 12) return { ok: false, field: 'month', message: 'Choose a month.' };
+  if (!/^\d{4}$/.test(year) || y < 1900 || y > today.getFullYear()) return { ok: false, field: 'year', message: 'Enter the year as four digits.' };
+  const date = new Date(y, m - 1, d);
+  if (date.getDate() !== d || date.getMonth() !== m - 1) return { ok: false, field: 'day', message: 'That day isn\'t in that month.' };
+  if (date > today) return { ok: false, field: 'year', message: 'That date hasn\'t happened yet.' };
+  const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return { ok: true, iso };
 }
 
 export class OpeningFlow {
@@ -162,40 +181,66 @@ export class OpeningFlow {
 
   private renderAgeGate(): void {
     this.cleanupSubviews();
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     this.container.innerHTML = `
-      <div class="opening-modal age-gate">
-        <h2>Welcome to ELEMENTS</h2>
-        <p class="opening-subtitle">Please enter your date of birth to continue.</p>
-        <form id="age-form" class="opening-form">
-          <div class="form-group">
-            <label for="dob">Date of Birth</label>
-            <input type="date" id="dob" required max="2026-10-29" />
-          </div>
-          <button type="submit" class="opening-button">Continue</button>
+      <div class="opening-modal age-gate" role="dialog" aria-modal="true" aria-labelledby="age-title">
+        <p class="opening-kicker">Before you enter</p>
+        <h2 id="age-title">When were you born?</h2>
+        <p class="opening-subtitle">We only keep whether you can play, never the date.</p>
+        <form id="age-form" class="opening-form" novalidate>
+          <fieldset class="opening-date">
+            <legend>Date of birth</legend>
+            <div class="form-group">
+              <label for="dob-day">Day</label>
+              <input id="dob-day" name="day" inputmode="numeric" autocomplete="bday-day" maxlength="2" placeholder="DD" required />
+            </div>
+            <div class="form-group">
+              <label for="dob-month">Month</label>
+              <select id="dob-month" name="month" autocomplete="bday-month" required>
+                <option value="" selected disabled>Month</option>
+                ${months.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="dob-year">Year</label>
+              <input id="dob-year" name="year" inputmode="numeric" autocomplete="bday-year" maxlength="4" placeholder="YYYY" required />
+            </div>
+          </fieldset>
           <p id="age-error" class="opening-error" role="alert"></p>
+          <button type="submit" class="opening-button primary">Continue</button>
         </form>
-        <div class="opening-footer">
-          <a href="/legal/terms.html" target="_blank">Terms</a>
-          <a href="/legal/privacy.html" target="_blank">Privacy</a>
-          <a href="/legal/cookies.html" target="_blank">Cookies</a>
-        </div>
+        <nav class="opening-footer" aria-label="Legal">
+          <a href="/legal/terms.html" target="_blank" rel="noopener">Terms</a>
+          <a href="/legal/privacy.html" target="_blank" rel="noopener">Privacy</a>
+          <a href="/legal/cookies.html" target="_blank" rel="noopener">Cookies</a>
+        </nav>
       </div>
     `;
 
     const form = this.container.querySelector<HTMLFormElement>('#age-form')!;
-    const input = this.container.querySelector<HTMLInputElement>('#dob')!;
+    const day = this.container.querySelector<HTMLInputElement>('#dob-day')!;
+    const month = this.container.querySelector<HTMLSelectElement>('#dob-month')!;
+    const year = this.container.querySelector<HTMLInputElement>('#dob-year')!;
     const error = this.container.querySelector<HTMLParagraphElement>('#age-error')!;
+    const digitsOnly = (input: HTMLInputElement): void => { input.value = input.value.replace(/\D/g, ''); };
+    day.addEventListener('input', () => { digitsOnly(day); if (day.value.length === 2) month.focus(); });
+    month.addEventListener('change', () => year.focus());
+    year.addEventListener('input', () => digitsOnly(year));
+    day.focus({ preventScroll: true });
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const val = input.value;
-      if (!val) return;
-      const age = calculateAge(val);
-      if (age < 0) {
-        error.textContent = 'Please enter a valid date.';
+      const dob = parseBirthDate(day.value, month.value, year.value);
+      const fields: Array<[HTMLInputElement | HTMLSelectElement, boolean]> = [
+        [day, !dob.ok && dob.field === 'day'], [month, !dob.ok && dob.field === 'month'], [year, !dob.ok && dob.field === 'year'],
+      ];
+      for (const [field, bad] of fields) field.setAttribute('aria-invalid', String(bad));
+      if (!dob.ok) {
+        error.textContent = dob.message;
+        fields.find(([, bad]) => bad)?.[0].focus();
         return;
       }
-      if (age < 13) {
+      if (calculateAge(dob.iso) < 13) {
         localStorage.setItem(STORAGE_AGE_KEY, 'under');
         this.renderAgeBlocked();
       } else {
@@ -253,10 +298,14 @@ export class OpeningFlow {
   private renderAgeBlocked(): void {
     this.cleanupSubviews();
     this.container.innerHTML = `
-      <div class="opening-modal age-blocked">
-        <h2>Access Restricted</h2>
-        <p>You do not meet the minimum age requirement (13) to play ELEMENTS.</p>
-        <p class="opening-subtext">This check is permanent for this device.</p>
+      <div class="opening-modal age-blocked" role="dialog" aria-modal="true" aria-labelledby="age-blocked-title">
+        <p class="opening-kicker">ELEMENTS</p>
+        <h2 id="age-blocked-title">Not yet</h2>
+        <p class="opening-subtitle">ELEMENTS isn't available to you on this device.</p>
+        <nav class="opening-footer" aria-label="Legal">
+          <a href="/legal/terms.html" target="_blank" rel="noopener">Terms</a>
+          <a href="/legal/privacy.html" target="_blank" rel="noopener">Privacy</a>
+        </nav>
       </div>
     `;
   }

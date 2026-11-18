@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateAge, performDrawingRoll } from '../src/opening.js';
+import { calculateAge, parseBirthDate, performDrawingRoll } from '../src/opening.js';
 
 test('calculateAge determines age accurately without date leakage', () => {
   const today = new Date('2026-10-29T12:00:00Z');
@@ -43,4 +43,16 @@ test('performDrawingRoll distributes between Shaper (85%) and Hush (15%)', () =>
   assert.ok(counts.AQUES > 0);
   assert.ok(counts.TERRA > 0);
   assert.ok(counts.AURA > 0);
+});
+
+test('parseBirthDate accepts real past dates and names the field that is wrong', () => {
+  const today = new Date(2026, 10, 18);
+  assert.deepEqual(parseBirthDate('7', '3', '1999', today), { ok: true, iso: '1999-03-07' });
+  assert.equal(parseBirthDate('31', '2', '2000', today).field, 'day');
+  assert.equal(parseBirthDate('29', '2', '2000', today).ok, true);
+  assert.equal(parseBirthDate('1', '', '2000', today).field, 'month');
+  assert.equal(parseBirthDate('1', '1', '99', today).field, 'year');
+  assert.equal(parseBirthDate('1', '12', '2026', today).field, 'year');
+  assert.equal(calculateAge(parseBirthDate('18', '11', '2013', today).iso, today), 13);
+  assert.equal(calculateAge(parseBirthDate('19', '11', '2013', today).iso, today), 12);
 });

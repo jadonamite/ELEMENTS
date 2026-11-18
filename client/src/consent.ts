@@ -21,10 +21,10 @@ export class ConsentBanner {
       <div class="consent-content">
         <p>ELEMENTS uses only strictly necessary local storage to manage your game state and preferences. No third-party tracking or advertising cookies are used.</p>
         <div class="consent-actions">
-          <a href="/legal/privacy.html" target="_blank">Privacy</a>
-          <a href="/legal/cookies.html" target="_blank">Cookies</a>
+          <a href="/legal/privacy.html" target="_blank" rel="noopener">Privacy</a>
+          <a href="/legal/cookies.html" target="_blank" rel="noopener">Cookies</a>
           <button type="button" id="consent-accept-btn" class="consent-btn">Accept</button>
-          <button type="button" id="consent-decline-btn" class="consent-btn">Decline optional cookies</button>
+          <button type="button" id="consent-decline-btn" class="consent-btn">Decline optional</button>
         </div>
       </div>
     `;
