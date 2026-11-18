@@ -148,6 +148,12 @@
   filter: contrast(1.05);
   mix-blend-mode: multiply;
 }
+.draw-hush-mark {
+  bottom: 27%;
+  width: 72%;
+  fill: #16120e;
+  mix-blend-mode: normal;
+}
 .draw-card.is-hush .draw-plate { filter: grayscale(1) opacity(.35); transition: filter 1.2s var(--ease-out); }
 .draw-front.nation-set .draw-plate { filter: contrast(1.05); }
 

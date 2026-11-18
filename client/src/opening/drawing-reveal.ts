@@ -1,6 +1,6 @@
 import type { Element } from '../../../shared/src/index.js';
 import type { RisingResult } from '../../../shared/src/rising/types.js';
-import { EMBLEM_PATHS, EMBLEM_RING, GLYPH_ELEMENTS } from '../ui/loader-turn.js';
+import { EMBLEM_PATHS, EMBLEM_RING, GLYPH_ELEMENTS, HUSH_EMBLEM_PATH } from '../ui/loader-turn.js';
 
 /**
  * The Drawing reveal. It plays itself: the card rises face down, the four elements circle it, then either the drawn
@@ -44,6 +44,9 @@ const T = {
   done: { Shaper: 17.2, Hush: 21.6 },
 } as const;
 
+/** Whole turns the Hush's nation wheel makes before it rests on the drawn nation. */
+const WHEEL_TURNS = 2;
+
 const emblemIndex = (e: Element): number => GLYPH_ELEMENTS.indexOf(e as (typeof GLYPH_ELEMENTS)[number]);
 const emblemPath = (e: Element): string => EMBLEM_PATHS[emblemIndex(e)]!;
 
@@ -69,12 +72,15 @@ function cardBack(): string {
 }
 
 function cardFront(result: RisingResult): string {
-  const plate = `/assets/ui/loader/pictures/${result.role === 'Hush' ? 'hush' : 'shaper'}-${result.element.toLowerCase()}.webp`;
+  // A Shaper's card carries their nation's Shaper plate; the Hush's carries the forge mark, no person.
+  const plate = result.role === 'Hush'
+    ? `<svg class="draw-plate draw-hush-mark" viewBox="0 0 64 64" aria-hidden="true"><path fill-rule="evenodd" d="${EMBLEM_RING}"/><path fill-rule="evenodd" d="${HUSH_EMBLEM_PATH}"/></svg>`
+    : `<img class="draw-plate" src="/assets/ui/loader/pictures/shaper-${result.element.toLowerCase()}.webp" alt="" width="667" height="1000" decoding="async">`;
   const name = result.role === 'Hush' ? 'The Hush' : `Shaper of ${result.element}`;
   const line = result.role === 'Hush' ? 'You forge from raw shards' : NATION_POWER[result.element];
   return `<div class="draw-face draw-front">
     <div class="draw-front-frame"></div>
-    <img class="draw-plate" src="${plate}" alt="" width="667" height="1000" decoding="async">
+    ${plate}
     <div class="draw-medallion">${emblemSvg(result.element, 'draw-emblem')}</div>
     <div class="draw-front-name"><span>${name}</span><small>${line}</small></div>
   </div>`;
@@ -177,7 +183,7 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
     tilt: [-0.16, 0.12, -0.06, 0.2][i]!, trail: [],
   }));
   const particles: Particle[] = [];
-  const nationOrbit = { active: false, angle: 0, speed: 0, alpha: 0, chosenAt: -1 };
+  const nationOrbit = { active: false, angle: 0, alpha: 0, chosenAt: -1 };
 
   const orbitPoint = (o: Orbiter): { x: number; y: number; front: boolean } => {
     const rx = cw * 0.78 * o.radius, ry = ch * 0.2 * o.radius;
@@ -320,7 +326,7 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
         });
         once('words', T.words, t, finalWords);
       } else {
-        once('wheel', T.nationDraw, t, () => { nationOrbit.active = true; nationOrbit.speed = 7; });
+        once('wheel', T.nationDraw, t, () => { nationOrbit.active = true; });
         once('pick', T.nationPick, t, () => { nationOrbit.chosenAt = t; });
         once('nation', T.nationPick + 1.2, t, () => { front.classList.add('burned', 'nation-set'); stage.style.setProperty('--draw-colour', NATION_COLOUR[result.element]); finalWords(); });
       }
@@ -349,11 +355,10 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
 
       if (nationOrbit.active) {
         nationOrbit.alpha = Math.min(1, nationOrbit.alpha + dt * 2);
-        const toStop = T.nationPick - t;
-        // Slows to rest exactly as the pick lands: the chosen emblem ends at the front.
-        nationOrbit.speed = toStop > 0 ? Math.max(0, 7 * Math.min(1, toStop / 2.6)) : 0;
-        if (toStop > 0) nationOrbit.angle += nationOrbit.speed * dt;
-        else nationOrbit.angle = Math.round(nationOrbit.angle / (Math.PI * 2)) * Math.PI * 2;
+        // The angle is a function of time, not summed per frame: two whole turns, slowing to rest exactly as the pick
+        // lands, so the drawn emblem eases into the front at any frame rate.
+        const k = Math.min(1, Math.max(0, (t - T.nationDraw) / (T.nationPick - T.nationDraw)));
+        nationOrbit.angle = WHEEL_TURNS * Math.PI * 2 * (1 - (1 - k) * (1 - k));
       }
 
       for (let i = particles.length - 1; i >= 0; i--) {
