@@ -43,6 +43,18 @@ export function siteToWorld(site: Pick<RockHouseSite, 'x' | 'z' | 'yaw'>, lx: nu
   };
 }
 
+/** Nation-global (x, z) to local (lx, lz) of a site, inverse of siteToWorld. */
+export function worldToSite(site: Pick<RockHouseSite, 'x' | 'z' | 'yaw'>, x: number, z: number): { lx: number; lz: number } {
+  const cos = Math.cos(site.yaw);
+  const sin = Math.sin(site.yaw);
+  const dx = x - site.x;
+  const dz = z - site.z;
+  return {
+    lx: dx * cos - dz * sin,
+    lz: dx * sin + dz * cos,
+  };
+}
+
 /** 256 m cell keys ('ix:iz') a group covers; same form as settlementCells. */
 export function rockGroupCells(group: RockHouseGroup): readonly string[] {
   const keys: string[] = [];

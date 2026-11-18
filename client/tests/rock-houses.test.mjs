@@ -10,6 +10,7 @@ import {
   checkRockHouseSite,
   rockGroupCells,
   siteToWorld,
+  worldToSite,
 } from '../../shared/dist/world/ignis/rock-houses.js';
 import { SETTLEMENT_PRECINCTS, settlementCells } from '../../shared/dist/world/ignis/settlements.js';
 import { WorldBuilder, seeded } from '../src/world/builder.js';
@@ -72,6 +73,46 @@ test('Fault 1: for each site, footprint corners from siteToWorld match builder.w
         `Site ${site.id} corner Y: expected ${site.sill}, got ${builderPos.y}`,
       );
     }
+  }
+});
+
+test('Fault 4: siteToWorld and worldToSite round-trip across angles and offsets', () => {
+  const testAngles = [0, 0.48, Math.PI / 4, Math.PI / 2, 2.356, Math.PI, -Math.PI / 3, -2.66];
+  const testPoints = [
+    { lx: 0, lz: 0 },
+    { lx: 3.5, lz: 4.0 },
+    { lx: -4.2, lz: 2.1 },
+    { lx: 10.5, lz: -7.8 },
+  ];
+
+  for (const yaw of testAngles) {
+    const site = { x: 8000, z: 7500, yaw };
+    for (const p of testPoints) {
+      const world = siteToWorld(site, p.lx, p.lz);
+      const local = worldToSite(site, world.x, world.z);
+
+      assert.ok(
+        Math.abs(local.lx - p.lx) < 1e-6,
+        `lx round-trip at yaw ${yaw}: expected ${p.lx}, got ${local.lx}`,
+      );
+      assert.ok(
+        Math.abs(local.lz - p.lz) < 1e-6,
+        `lz round-trip at yaw ${yaw}: expected ${p.lz}, got ${local.lz}`,
+      );
+    }
+  }
+
+  // Also test all actual ROCK_HOUSE_SITES
+  for (const site of ROCK_HOUSE_SITES) {
+    const worldCenter = siteToWorld(site, 0, 0);
+    const localCenter = worldToSite(site, worldCenter.x, worldCenter.z);
+    assert.ok(Math.abs(localCenter.lx) < 1e-6);
+    assert.ok(Math.abs(localCenter.lz) < 1e-6);
+
+    const worldFront = siteToWorld(site, site.door, site.d / 2);
+    const localFront = worldToSite(site, worldFront.x, worldFront.z);
+    assert.ok(Math.abs(localFront.lx - site.door) < 1e-6);
+    assert.ok(Math.abs(localFront.lz - site.d / 2) < 1e-6);
   }
 });
 

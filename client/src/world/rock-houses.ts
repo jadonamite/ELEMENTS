@@ -7,6 +7,7 @@ import {
   ROCK_HOUSE_SITES,
   checkRockHouseSite,
   siteToWorld,
+  worldToSite,
   type RockHouseGroup,
   type RockHouseSite,
 } from '../../../shared/src/world/ignis/rock-houses.js';
@@ -20,6 +21,7 @@ export {
   ROCK_HOUSE_SITES,
   checkRockHouseSite,
   siteToWorld,
+  worldToSite,
   type RockHouseGroup,
   type RockHouseSite,
 };
@@ -29,12 +31,7 @@ export {
  */
 export function rockHouseClear(x: number, z: number, margin = 2): boolean {
   for (const site of ROCK_HOUSE_SITES) {
-    const cos = Math.cos(site.yaw);
-    const sin = Math.sin(site.yaw);
-    const dx = x - site.x;
-    const dz = z - site.z;
-    const lx = dx * cos - dz * sin;
-    const lz = dx * sin + dz * cos;
+    const { lx, lz } = worldToSite(site, x, z);
     if (Math.abs(lx) <= site.w / 2 + margin && Math.abs(lz) <= site.d / 2 + margin) {
       return false;
     }
