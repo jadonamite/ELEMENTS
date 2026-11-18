@@ -154,10 +154,30 @@
     "recipe": "925f967ec8325a79",
     "output": "d26cba54fa0d1ab4"
   },
+  "client/public/assets/characters/outfits/hd/shaper_aques_female.glb": {
+    "source": "3e4cd2fed90074a9",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "d89ce792f0140f8f"
+  },
+  "client/public/assets/characters/outfits/hd/shaper_aura_female.glb": {
+    "source": "ef4a1c70de015a97",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "7b99afaefcb43761"
+  },
   "client/public/assets/characters/outfits/hd/shaper_ignis_male.glb": {
     "source": "d44bb77c12622155",
     "recipe": "dc46c9c805f3ca48",
     "output": "9c2b331dae11a674"
+  },
+  "client/public/assets/characters/outfits/shaper_aques_female.glb": {
+    "source": "3e4cd2fed90074a9",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "d564a7c9ae86b631"
+  },
+  "client/public/assets/characters/outfits/shaper_aura_female.glb": {
+    "source": "ef4a1c70de015a97",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "a5504cf56e4612a6"
   },
   "client/public/assets/characters/outfits/shaper_ignis_male.glb": {
     "source": "d44bb77c12622155",
