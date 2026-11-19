@@ -1,5 +1,6 @@
 import { IGNIS } from './coordinates.js';
 import { LAKE, shapedLand } from './land-form.js';
+import { CINDERPIT_CONTENT_REACH } from './rock-sites.js';
 
 export const SETTLEMENTS = [
   // Map pins. Sindr and Cinderpit are surveyed pads; the other heights are nominal and each precinct takes its
@@ -46,7 +47,10 @@ function precinct(name: typeof SETTLEMENTS[number]['name'], industry: Settlement
   }
   return { ...anchor, anchor: { x: anchor.x, z: anchor.z }, x, z, height,
     id: `ignis:settlement:${name.toLowerCase().replaceAll(' ', '-')}`, radius, shoulder,
-    contentReach: industry === 'fishing' ? 160 : industry === 'fort' ? 150 : industry === 'port' ? 290 : 110, industry, houses: homes(count) };
+    contentReach: name === 'Cinderpit' ? CINDERPIT_CONTENT_REACH
+      : industry === 'fishing' ? 160 : industry === 'fort' ? 150 : industry === 'port' ? 290 : 110,
+    // Cinderpit's eight plain houses are replaced by the rim rock houses, which the rock-house group owns.
+    industry, houses: name === 'Cinderpit' ? [] : homes(count) };
 }
 export const SETTLEMENT_PRECINCTS: readonly SettlementPrecinct[] = [
   precinct('Cinderpit', 'mine', 8), precinct('Pinewatch', 'forestry', 6),

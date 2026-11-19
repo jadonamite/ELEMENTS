@@ -1,14 +1,32 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Group, InstancedBufferGeometry, InstancedMesh, Mesh, Points, type Material } from 'three';
+import { BatchedMesh, Group, InstancedBufferGeometry, InstancedMesh, Mesh, Points, type Camera, type Material, type LOD } from 'three';
 import { LEGACY_SINDR_ORIGIN as ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
+import { groundHeight } from '../../../shared/src/world/ignis/ground.js';
+import {
+  ROCK_HOUSE_GROUPS,
+  rockGroupCells,
+  type RockHouseGroup,
+} from '../../../shared/src/world/ignis/rock-houses.js';
 import { SETTLEMENT_PRECINCTS, settlementCells, type SettlementPrecinct } from '../../../shared/src/world/ignis/settlements.js';
 import { SETTLEMENT_SHRINE, shrineOfPrecinct } from '../../../shared/src/net/places.js';
 import { WorldBuilder, seeded, type Bucket, type Emitter } from './builder.js';
 import { createEmbers, createFires } from './effects.js';
+import { buildRockGroupLOD, type RockGroupLOD } from './rock-houses.js';
 import { townHouse } from './style-kit.js';
 import { addShells } from './town-physics.js';
 
-interface Resident { group: Group; colliders: RAPIER.Collider[]; builder: WorldBuilder; lit: boolean }
+interface Resident {
+  group: Group;
+  colliders: RAPIER.Collider[];
+  builder: WorldBuilder;
+  lit: boolean;
+  extraBuilders?: WorldBuilder[] | undefined;
+  lod?: RockGroupLOD | undefined;
+}
+
+type StreamOwner =
+  | { kind: 'precinct'; id: string; place: SettlementPrecinct; cells: readonly string[] }
+  | { kind: 'rock-group'; id: string; group: RockHouseGroup; cells: readonly string[] };
 
 /** Places a settlement's scanned props (the shrine's brazier) from the zone's shared models. */
 export type SettlementProps = (placements: WorldBuilder['props'], into: Group) => Promise<void>;
@@ -20,7 +38,20 @@ export interface SettlementLights { add(emitters: readonly Emitter[]): void; rem
 export class SettlementStream {
   readonly group = new Group();
   private readonly resident = new Map<string, Resident>();
-  private readonly owners = SETTLEMENT_PRECINCTS.map(place => ({ place, cells: settlementCells(place) }));
+  private readonly owners: StreamOwner[] = [
+    ...SETTLEMENT_PRECINCTS.map(place => ({
+      kind: 'precinct' as const,
+      id: place.id,
+      place,
+      cells: settlementCells(place),
+    })),
+    ...ROCK_HOUSE_GROUPS.filter(g => g.id === 'mine-hamlet').map(group => ({
+      kind: 'rock-group' as const,
+      id: group.id,
+      group,
+      cells: rockGroupCells(group),
+    })),
+  ];
   private lit: ReadonlySet<string> = new Set();
 
   constructor(
@@ -36,9 +67,13 @@ export class SettlementStream {
   /** The shrines the player has lit; a loaded settlement whose shrine changed is rebuilt with its fire. */
   setLit(lit: ReadonlySet<string>): void {
     this.lit = new Set(lit);
-    for (const { place } of this.owners) {
-      const content = this.resident.get(place.id);
-      if (content && content.lit !== this.shrineLit(place)) { this.unload(place.id); this.load(place); }
+    for (const owner of this.owners) {
+      if (owner.kind !== 'precinct') continue;
+      const content = this.resident.get(owner.place.id);
+      if (content && content.lit !== this.shrineLit(owner.place)) {
+        this.unload(owner.place.id);
+        this.load(owner.place);
+      }
     }
   }
 
@@ -50,17 +85,46 @@ export class SettlementStream {
   update(cells: ReadonlyMap<string, unknown>): void {
     for (const owner of this.owners) {
       const wanted = owner.cells.some(key => cells.has(key));
-      if (wanted && !this.resident.has(owner.place.id)) this.load(owner.place);
-      if (!wanted) this.unload(owner.place.id);
+      if (wanted && !this.resident.has(owner.id)) {
+        if (owner.kind === 'precinct') this.load(owner.place);
+        else this.loadRockGroup(owner.group);
+      }
+      if (!wanted) this.unload(owner.id);
+    }
+  }
+
+  updateCamera(camera: Camera): void {
+    for (const res of this.resident.values()) {
+      if (res.lod) res.lod.update(camera);
     }
   }
 
   private load(place: SettlementPrecinct): void {
     const builder = new WorldBuilder({ low: this.low });
     const lit = this.shrineLit(place);
+    let cinderpitLod: RockGroupLOD | null = null;
+    let cinderpitRockBuilder: WorldBuilder | null = null;
+
+    if (place.id === 'ignis:settlement:cinderpit') {
+      const cinderpitGroup = ROCK_HOUSE_GROUPS.find(g => g.id === 'cinderpit');
+      if (cinderpitGroup) {
+        const built = buildRockGroupLOD(cinderpitGroup, this.low, this.material);
+        cinderpitLod = built.lod;
+        cinderpitRockBuilder = built.builder0;
+      }
+    }
+
     buildSettlement(builder, place, lit);
     const group = builder.build(this.material);
     group.name = place.id;
+
+    if (cinderpitLod && cinderpitRockBuilder) {
+      group.add(cinderpitLod);
+      builder.colliders.push(...cinderpitRockBuilder.colliders);
+      builder.emitters.push(...cinderpitRockBuilder.emitters);
+      builder.shells.push(...cinderpitRockBuilder.shells);
+    }
+
     if (builder.fires.length) group.add(createFires(builder.fires), createEmbers(builder.embers, this.low ? 6 : 14));
     this.lights.add(builder.emitters);
     // Prop models are shared with the town, so they sit apart and are never disposed with the settlement.
@@ -74,7 +138,35 @@ export class SettlementStream {
     ));
     colliders.push(...addShells(this.world, builder.shells));
     this.group.add(group);
-    this.resident.set(place.id, { group, colliders, builder, lit });
+    this.resident.set(place.id, {
+      group,
+      colliders,
+      builder,
+      lit,
+      extraBuilders: cinderpitRockBuilder ? [cinderpitRockBuilder] : undefined,
+      lod: cinderpitLod ?? undefined,
+    });
+  }
+
+  private loadRockGroup(group: RockHouseGroup): void {
+    const { lod, builder0 } = buildRockGroupLOD(group, this.low, this.material);
+    const container = new Group();
+    container.name = group.id;
+    container.add(lod);
+    this.lights.add(builder0.emitters);
+    const colliders = builder0.colliders.map(c => this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(c.hx, c.hy, c.hz).setTranslation(c.x, c.y, c.z)
+        .setRotation(c.q ?? { x: 0, y: Math.sin(c.yaw / 2), z: 0, w: Math.cos(c.yaw / 2) }),
+    ));
+    colliders.push(...addShells(this.world, builder0.shells));
+    this.group.add(container);
+    this.resident.set(group.id, {
+      group: container,
+      colliders,
+      builder: builder0,
+      lit: false,
+      lod,
+    });
   }
 
   private unload(id: string): void {
@@ -82,16 +174,24 @@ export class SettlementStream {
     if (!content) return;
     for (const collider of content.colliders) this.world.removeCollider(collider, false);
     this.lights.remove(content.builder.emitters);
+    if (content.extraBuilders) {
+      for (const b of content.extraBuilders) this.lights.remove(b.emitters);
+    }
     content.group.removeFromParent();
     const props = content.group.getObjectByName('props');
     // Release each instance buffer; the shared model geometry stays for the next load.
     props?.traverse(object => { if (object instanceof InstancedMesh) object.dispose(); });
     props?.removeFromParent();
     content.group.traverse(object => {
-      if (object instanceof Mesh || object instanceof Points) object.geometry.dispose();
+      if (object instanceof BatchedMesh) {
+        if ((object as unknown as { _matricesTexture?: unknown })._matricesTexture) object.dispose();
+      } else if (object instanceof Mesh || object instanceof Points) {
+        object.geometry.dispose();
+      }
       // Fire and ember materials are the settlement's own; surfaces belong to the zone's shared library.
       if ((object instanceof Mesh && object.geometry instanceof InstancedBufferGeometry) || object instanceof Points) (object.material as Material).dispose();
     });
+    content.lod?.dispose();
     // Materials belong to the zone's shared surface library.
     this.resident.delete(id);
   }
@@ -100,6 +200,12 @@ export class SettlementStream {
     for (const content of this.resident.values()) {
       const surface = content.builder.treads.at(x, y, z);
       if (surface) return surface;
+      if (content.extraBuilders) {
+        for (const b of content.extraBuilders) {
+          const s = b.treads.at(x, y, z);
+          if (s) return s;
+        }
+      }
     }
     return undefined;
   }
@@ -123,6 +229,26 @@ function buildSettlement(b: WorldBuilder, place: SettlementPrecinct, lit = false
     frame();
     const side = Math.sign(h.x), from = side * 3, to = h.x - side * h.d / 2;
     b.box('worn_flagstones', (from + to) / 2, 0.025, h.z, Math.abs(to - from), 0.05, 3);
+  }
+  if (place.id === 'ignis:settlement:cinderpit') {
+    const cinderpitGroup = ROCK_HOUSE_GROUPS.find(g => g.id === 'cinderpit');
+    if (cinderpitGroup && cinderpitGroup.lane.length > 1) {
+      for (let i = 0; i < cinderpitGroup.lane.length - 1; i++) {
+        const p0 = cinderpitGroup.lane[i]!;
+        const p1 = cinderpitGroup.lane[i + 1]!;
+        const dx = p1.x - p0.x;
+        const dz = p1.z - p0.z;
+        const len = Math.hypot(dx, dz);
+        if (len < 0.1) continue;
+        const yaw = Math.atan2(dx, dz);
+        const midX = (p0.x + p1.x) / 2 - ORIGIN.x;
+        const midZ = (p0.z + p1.z) / 2 - ORIGIN.z;
+        const midY = (groundHeight(p0.x, p0.z) + groundHeight(p1.x, p1.z)) / 2 - ORIGIN.y;
+        b.inside(midX, midZ, yaw, midY + 0.035, () => {
+          b.box('packed_dirt_road', 0, 0, 0, 3.5, 0.05, len);
+        });
+      }
+    }
   }
   frame();
   // Walk-in repair room at the end of the lane, with level ground-floor access.

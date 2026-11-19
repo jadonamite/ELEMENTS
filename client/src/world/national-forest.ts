@@ -11,6 +11,7 @@ import { LAND_COUNT, landAt, landDraw, type LandType } from '../../../shared/src
 import { nationalRoadAt } from '../../../shared/src/world/ignis/routes.js';
 import { SETTLEMENT_PRECINCTS } from '../../../shared/src/world/ignis/settlements.js';
 import { seeded, type Part } from './builder.js';
+import { rockHouseClear } from './rock-houses.js';
 import { terrainAir } from './national-view.js';
 import { existingTree } from './trees.js';
 
@@ -90,6 +91,7 @@ export function nationalForestCell(ix: number, iz: number): readonly ForestSpot[
     if (mineAt(x, z).distance < 30 || nationalRoadAt(x, z) !== null || riverAt(x, z).distance < 42) continue;
     if (SETTLEMENTS.some(p => Math.hypot(x - p.x, z - p.z) < p.radius + 65)) continue;
     if (SETTLEMENT_PRECINCTS.some(p => Math.hypot(x - p.x, z - p.z) < p.contentReach + 40)) continue;
+    if (!rockHouseClear(x, z, 6)) continue;
     const water = waterHeight(x, z);
     if (water !== null && water > height - 1.5) continue;
     if (Math.hypot(groundHeight(x + 3, z) - height, groundHeight(x, z + 3) - height) / 3 > 0.58) continue;

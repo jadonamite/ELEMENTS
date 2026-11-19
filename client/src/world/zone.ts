@@ -434,7 +434,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
       // Debug only: a fixed photographer's camera for comparison shots (window.elementsShotCam = [px, py, pz, tx, ty, tz]).
       const shot = debug ? (window as unknown as { elementsShotCam?: number[] }).elementsShotCam : undefined;
       if (shot && shot.length === 6) { camera.position.set(shot[0]!, shot[1]!, shot[2]!); camera.lookAt(shot[3]!, shot[4]!, shot[5]!); }
-      camera.updateMatrixWorld(); national.update(camera, residentCells);
+      camera.updateMatrixWorld(); national.update(camera, residentCells); settlements.updateCamera(camera);
       national.sky.position.copy(camera.position);
       composer.render();
     },

@@ -55,3 +55,20 @@ export function nextFeeMultiplier(multiplier: number, climbsLastWeek: number, cl
 export function masterFor(role: string, element: string | null | undefined): string | null {
   return role === 'Shaper' && element ? `master_${element.toLowerCase()}` : null;
 }
+
+/** Why a master turns a fighter away: no master of theirs here, already at the top, too few wins, short of the fee, no trials yet. */
+export type ClimbRefusal = 'no_master' | 'top' | 'not_qualified' | 'short' | 'no_trials';
+
+/**
+ * The dialogue situation a master answers a refusal with, so the line always gives the real reason. `no_master`
+ * splits on who asked: a Hush (no master of their own) or a Shaper of another nation.
+ */
+export function refusalSituation(reason: ClimbRefusal, askerHasMaster: boolean): string {
+  if (reason === 'no_master') return askerHasMaster ? 'refuse_foreign' : 'refuse_hush';
+  return `refuse_${reason}`;
+}
+
+/** The dialogue situation a master takes a fighter on with, naming the tier they will fight for (accept_armiger). */
+export function acceptSituation(tierName: string): string {
+  return `accept_${tierName.toLowerCase()}`;
+}

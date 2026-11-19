@@ -10,6 +10,7 @@ import { nationalRoadAt } from '../../../shared/src/world/ignis/routes.js';
 import { SETTLEMENT_PRECINCTS } from '../../../shared/src/world/ignis/settlements.js';
 import { seeded } from './builder.js';
 import { worldTime } from './effects.js';
+import { rockHouseClear } from './rock-houses.js';
 
 /** Sheet cells: 0 short grass, 1 tall seeded grass, 2 reeds, 3 flower spikes. */
 type Sheet = 0 | 1 | 2 | 3;
@@ -138,6 +139,7 @@ export function createGroundCover(options: { ground(x: number, z: number): numbe
     const town = SETTLEMENTS[0];
     if (Math.hypot(x - town.x, z - town.z) < town.radius + 30) return;
     if (SETTLEMENT_PRECINCTS.some(p => Math.hypot(x - p.x, z - p.z) < p.radius - 8)) return;
+    if (!rockHouseClear(x, z, 1)) return;
     const water = waterHeight(x, z);
     if (water !== null && water > y + origin.y + (cover.sheet === 2 ? 0.5 : 0.05)) return;
     const height = cover.low + rand() * (cover.high - cover.low), width = cover.width * (0.8 + rand() * 0.5);
