@@ -92,12 +92,12 @@ test('Fault 4: siteToWorld and worldToSite round-trip across angles and offsets'
       const local = worldToSite(site, world.x, world.z);
 
       assert.ok(
-        Math.abs(local.lx - p.lx) < 1e-6,
-        `lx round-trip at yaw ${yaw}: expected ${p.lx}, got ${local.lx}`,
+        Math.abs(local.x - p.lx) < 1e-6,
+        `lx round-trip at yaw ${yaw}: expected ${p.lx}, got ${local.x}`,
       );
       assert.ok(
-        Math.abs(local.lz - p.lz) < 1e-6,
-        `lz round-trip at yaw ${yaw}: expected ${p.lz}, got ${local.lz}`,
+        Math.abs(local.z - p.lz) < 1e-6,
+        `lz round-trip at yaw ${yaw}: expected ${p.lz}, got ${local.z}`,
       );
     }
   }
@@ -106,13 +106,13 @@ test('Fault 4: siteToWorld and worldToSite round-trip across angles and offsets'
   for (const site of ROCK_HOUSE_SITES) {
     const worldCenter = siteToWorld(site, 0, 0);
     const localCenter = worldToSite(site, worldCenter.x, worldCenter.z);
-    assert.ok(Math.abs(localCenter.lx) < 1e-6);
-    assert.ok(Math.abs(localCenter.lz) < 1e-6);
+    assert.ok(Math.abs(localCenter.x) < 1e-6);
+    assert.ok(Math.abs(localCenter.z) < 1e-6);
 
     const worldFront = siteToWorld(site, site.door, site.d / 2);
     const localFront = worldToSite(site, worldFront.x, worldFront.z);
-    assert.ok(Math.abs(localFront.lx - site.door) < 1e-6);
-    assert.ok(Math.abs(localFront.lz - site.d / 2) < 1e-6);
+    assert.ok(Math.abs(localFront.x - site.door) < 1e-6);
+    assert.ok(Math.abs(localFront.z - site.d / 2) < 1e-6);
   }
 });
 

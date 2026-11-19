@@ -139,7 +139,7 @@ export function createGroundCover(options: { ground(x: number, z: number): numbe
     const town = SETTLEMENTS[0];
     if (Math.hypot(x - town.x, z - town.z) < town.radius + 30) return;
     if (SETTLEMENT_PRECINCTS.some(p => Math.hypot(x - p.x, z - p.z) < p.radius - 8)) return;
-    if (!rockHouseClear(x, z, 1.5)) return;
+    if (!rockHouseClear(x, z, 1)) return;
     const water = waterHeight(x, z);
     if (water !== null && water > y + origin.y + (cover.sheet === 2 ? 0.5 : 0.05)) return;
     const height = cover.low + rand() * (cover.high - cover.low), width = cover.width * (0.8 + rand() * 0.5);

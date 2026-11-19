@@ -91,7 +91,7 @@ export function nationalForestCell(ix: number, iz: number): readonly ForestSpot[
     if (mineAt(x, z).distance < 30 || nationalRoadAt(x, z) !== null || riverAt(x, z).distance < 42) continue;
     if (SETTLEMENTS.some(p => Math.hypot(x - p.x, z - p.z) < p.radius + 65)) continue;
     if (SETTLEMENT_PRECINCTS.some(p => Math.hypot(x - p.x, z - p.z) < p.contentReach + 40)) continue;
-    if (!rockHouseClear(x, z, 5)) continue;
+    if (!rockHouseClear(x, z, 6)) continue;
     const water = waterHeight(x, z);
     if (water !== null && water > height - 1.5) continue;
     if (Math.hypot(groundHeight(x + 3, z) - height, groundHeight(x, z + 3) - height) / 3 > 0.58) continue;

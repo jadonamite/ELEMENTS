@@ -6,6 +6,7 @@ import {
   ROCK_HOUSE_RULES,
   ROCK_HOUSE_SITES,
   checkRockHouseSite,
+  rockHouseClear,
   siteToWorld,
   worldToSite,
   type RockHouseGroup,
@@ -20,24 +21,12 @@ export {
   ROCK_HOUSE_RULES,
   ROCK_HOUSE_SITES,
   checkRockHouseSite,
+  rockHouseClear,
   siteToWorld,
   worldToSite,
   type RockHouseGroup,
   type RockHouseSite,
 };
-
-/**
- * Checks whether a given world coordinate (x, z) is clear of rock house footprints with margin.
- */
-export function rockHouseClear(x: number, z: number, margin = 2): boolean {
-  for (const site of ROCK_HOUSE_SITES) {
-    const { lx, lz } = worldToSite(site, x, z);
-    if (Math.abs(lx) <= site.w / 2 + margin && Math.abs(lz) <= site.d / 2 + margin) {
-      return false;
-    }
-  }
-  return true;
-}
 
 /**
  * Procedural rock house recipe: cliff-founded, two storeys, battered basalt foundation,
