@@ -7,6 +7,7 @@ const STORAGE_CONSENT_KEY = 'elements_consent_accepted';
 
 export class ConsentBanner {
   private element: HTMLDivElement | null = null;
+  private resize: ResizeObserver | null = null;
 
   constructor() {
     if (typeof window === 'undefined') return;
@@ -30,22 +31,32 @@ export class ConsentBanner {
     `;
 
     document.body.appendChild(this.element);
+    // Full-screen layers end above the banner while it is up, so it never covers their buttons.
+    this.resize = new ResizeObserver(() => {
+      if (this.element) document.documentElement.style.setProperty('--consent-h', `${this.element.offsetHeight}px`);
+    });
+    this.resize.observe(this.element);
 
     const btn = this.element.querySelector<HTMLButtonElement>('#consent-accept-btn');
     btn?.addEventListener('click', () => {
       localStorage.setItem(STORAGE_CONSENT_KEY, 'true');
-      this.element?.remove();
-      this.element = null;
+      this.close();
     });
     this.element.querySelector('#consent-decline-btn')?.addEventListener('click', () => {
       localStorage.setItem(STORAGE_CONSENT_KEY, 'declined');
-      this.element?.remove();
-      this.element = null;
+      this.close();
     });
   }
 
-  dispose(): void {
+  private close(): void {
+    this.resize?.disconnect();
+    this.resize = null;
     this.element?.remove();
     this.element = null;
+    document.documentElement.style.removeProperty('--consent-h');
+  }
+
+  dispose(): void {
+    this.close();
   }
 }

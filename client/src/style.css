@@ -403,8 +403,6 @@ button.purse-coin:hover { filter: brightness(1.2); }
   font: var(--font-size-xs)/var(--line-height-normal) var(--font-family-body);
   color: #c2c0b8;
 }
-/* Keep the opening's plate clear of the banner while it is up. */
-body:has(#consent-banner) #opening-overlay { padding-bottom: 11rem; }
 .consent-content {
   max-width: 960px;
   margin: 0 auto;

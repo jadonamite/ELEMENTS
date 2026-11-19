@@ -7,7 +7,7 @@
   --opening-plate: rgb(11 9 8 / 0.72);
   --opening-alert: #f2a48c;
   position: fixed;
-  inset: 0;
+  inset: 0 0 var(--consent-h, 0px);
   z-index: 1000;
   display: flex;
   align-items: center;
