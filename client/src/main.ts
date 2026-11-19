@@ -919,7 +919,9 @@ async function main(): Promise<void> {
     lockedEnemy = target === lockedEnemy ? null : target;
     return true;
   };
-  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges, sustain, shrineState, get nationIntro() { return nationIntro; } });
+  if (fps) Object.assign((window as unknown as { elements: object }).elements, { controls, homeMenu, contextAction, streetChallenges, sustain, shrineState });
+  // The intro is built once the opening closes, so the handle reads it live (Object.assign would copy today's null).
+  if (fps) Object.defineProperty((window as unknown as { elements: object }).elements, 'nationIntro', { get: () => nationIntro, configurable: true });
   /** Whether this element keeps its current weapon in hand while bending. */
   const bendsArmed = (): boolean => rules.canBendWithWeapon(fight.kit);
   const setBending = (on: boolean): void => {
