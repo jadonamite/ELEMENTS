@@ -1,223 +1,108 @@
-import { IGNIS } from './coordinates.js';
 import { groundHeight } from './ground.js';
 import { mineAt } from './mine-road.js';
+import { ROCK_HOUSE_GROUPS, ROCK_HOUSE_SITES, rockGroupCells, siteToWorld } from './rock-sites.js';
+import type { RockGroupId, RockHouseGroup, RockHouseSite } from './rock-sites.js';
+import { rockHouseClear } from './rock-bank.js';
 
-export type RockGroupId = 'cinderpit' | 'mine-hamlet';
+export type { RockGroupId, RockHouseGroup, RockHouseSite };
+export { ROCK_HOUSE_SITES, ROCK_HOUSE_GROUPS, siteToWorld, rockGroupCells, rockHouseClear };
 
-export interface RockHouseSite {
-  id: string;            // 'ignis:rockhouse:cinderpit:0' ... 'ignis:rockhouse:mine-hamlet:7'
-  group: RockGroupId;
-  x: number; z: number;  // nation-global metres: centre of the ground-floor footprint
-  yaw: number;           // WorldBuilder/Three rotation.y; the front (door side) faces local +z
-  w: number; d: number;  // footprint: frontage (local x) and depth (local z), metres
-  variant: 0 | 1 | 2 | 3 | 4 | 5;
-  door: number;          // door offset along local x
-  sill: number;          // door sill height, metres above sea level (ground floor level)
-  landing: number;       // height of the lane/road where the steps or ramp land, metres ASL
-  access: 'steps' | 'ramp';
-}
+/** The one set of placement rules for both groups. */
+export const ROCK_HOUSE_RULES: { maxFoundation: 8; maxBuried: 3.4; stepRise: 0.16; maxSteps: 6; maxRampGrade: 0.25 } =
+  { maxFoundation: 8, maxBuried: 3.4, stepRise: 0.16, maxSteps: 6, maxRampGrade: 0.25 };
 
-export interface RockHouseGroup {
-  id: RockGroupId;
-  name: string;
-  x: number; z: number;  // nation-global centre, used for the detail switch and cell ownership
-  reach: number;         // metres from the centre that cover every house, lane and bank
-  lane: readonly { x: number; z: number }[]; // nation-global centre line of the foot lane the doors land on (empty for the hamlet: the doors land on the mine road)
-}
+const SAMPLES_ROAD_CLEAR = 6;
 
-export const ROCK_HOUSE_RULES = {
-  maxFoundation: 8,
-  maxBuried: 3.4,
-  stepRise: 0.16,
-  maxSteps: 6,
-  maxRampGrade: 0.25,
-} as const;
-
-/** Local (lx, lz) of a site to nation-global (x, z), with the WorldBuilder convention above. The only place that turns a site. */
-export function siteToWorld(site: Pick<RockHouseSite, 'x' | 'z' | 'yaw'>, lx: number, lz: number): { x: number; z: number } {
-  const cos = Math.cos(site.yaw);
-  const sin = Math.sin(site.yaw);
-  return {
-    x: site.x + lx * cos + lz * sin,
-    z: site.z - lx * sin + lz * cos,
-  };
-}
-
-/** Nation-global (x, z) to local (lx, lz) of a site, inverse of siteToWorld. */
-export function worldToSite(site: Pick<RockHouseSite, 'x' | 'z' | 'yaw'>, x: number, z: number): { lx: number; lz: number } {
-  const cos = Math.cos(site.yaw);
-  const sin = Math.sin(site.yaw);
-  const dx = x - site.x;
-  const dz = z - site.z;
-  return {
-    lx: dx * cos - dz * sin,
-    lz: dx * sin + dz * cos,
-  };
-}
-
-/** 256 m cell keys ('ix:iz') a group covers; same form as settlementCells. */
-export function rockGroupCells(group: RockHouseGroup): readonly string[] {
-  const keys: string[] = [];
-  const reach = group.reach;
-  for (let x = Math.floor((group.x - reach) / IGNIS.cellSize); x <= Math.floor((group.x + reach) / IGNIS.cellSize); x++) {
-    for (let z = Math.floor((group.z - reach) / IGNIS.cellSize); z <= Math.floor((group.z + reach) / IGNIS.cellSize); z++) {
-      keys.push(`${x}:${z}`);
-    }
+/** Every number and every sampled height must be finite; NaN must never reach a transform. */
+const finiteSite = (site: RockHouseSite): string | null => {
+  for (const key of ['x', 'z', 'yaw', 'w', 'd', 'door', 'sill', 'landing'] as const) {
+    if (!Number.isFinite(site[key])) return `non-finite ${key}`;
   }
-  return keys;
-}
+  if (site.w <= 0 || site.d <= 0) return 'non-positive footprint';
+  return null;
+};
 
-/** Every check below; returns the first failure. Every input and every sampled height must be finite. */
-export function checkRockHouseSite(site: RockHouseSite, groundAt: (x: number, z: number) => number = groundHeight): { ok: true } | { ok: false; reason: string } {
-  for (const [k, v] of Object.entries(site)) {
-    if (typeof v === 'number' && !Number.isFinite(v)) return { ok: false, reason: `non-finite ${k}` };
-  }
-  const halfW = site.w / 2;
-  const halfD = site.d / 2;
-  const samples: number[] = [];
-  for (let lx = -halfW; lx <= halfW; lx += 1) {
-    for (let lz = -halfD; lz <= halfD; lz += 1) {
-      const p = siteToWorld(site, lx, lz);
-      const h = groundAt(p.x, p.z);
-      if (!Number.isFinite(h)) return { ok: false, reason: `non-finite ground sample at (${p.x}, ${p.z})` };
-      samples.push(h);
-      if (site.group === 'mine-hamlet') {
-        const road = mineAt(p.x, p.z);
-        if (road.distance < 6) return { ok: false, reason: `footprint sample within 6m of mine road: ${road.distance.toFixed(2)}m < 6m` };
-      }
-    }
-  }
-  for (const lx of [-halfW, halfW]) {
-    for (const lz of [-halfD, halfD]) {
-      const p = siteToWorld(site, lx, lz);
-      const h = groundAt(p.x, p.z);
-      if (!Number.isFinite(h)) return { ok: false, reason: 'non-finite ground sample at corner' };
-      samples.push(h);
-      if (site.group === 'mine-hamlet') {
-        const road = mineAt(p.x, p.z);
-        if (road.distance < 6) return { ok: false, reason: `footprint corner within 6m of mine road: ${road.distance.toFixed(2)}m < 6m` };
-      }
-    }
-  }
-
-  const minGround = Math.min(...samples);
-  const maxGround = Math.max(...samples);
-
-  if (site.sill - minGround > ROCK_HOUSE_RULES.maxFoundation) {
-    return { ok: false, reason: `foundation too tall: ${site.sill - minGround} > ${ROCK_HOUSE_RULES.maxFoundation}` };
-  }
-  if (maxGround - site.sill > ROCK_HOUSE_RULES.maxBuried) {
-    return { ok: false, reason: `buried too deep: ${maxGround - site.sill} > ${ROCK_HOUSE_RULES.maxBuried}` };
-  }
-
-  const thresh = siteToWorld(site, site.door, halfD);
-  const threshGround = groundAt(thresh.x, thresh.z);
-  if (!Number.isFinite(threshGround)) return { ok: false, reason: 'non-finite threshold ground' };
-  if (threshGround > site.sill) {
-    return { ok: false, reason: `door threshold ground (${threshGround}) > sill (${site.sill})` };
-  }
-
+/** The horizontal run of the door access, or why the sill cannot reach the landing. */
+function accessRun(site: RockHouseSite): { run: number } | { reason: string } {
   const drop = site.sill - site.landing;
-  let run = 0;
+  if (drop < 0) return { reason: 'door below the landing' };
   if (site.access === 'steps') {
-    const numSteps = Math.round(drop / ROCK_HOUSE_RULES.stepRise);
-    if (numSteps > ROCK_HOUSE_RULES.maxSteps) {
-      return { ok: false, reason: `too many steps: ${numSteps} > ${ROCK_HOUSE_RULES.maxSteps}` };
+    const steps = Math.ceil(drop / ROCK_HOUSE_RULES.stepRise - 1e-9);
+    if (steps > ROCK_HOUSE_RULES.maxSteps) return { reason: `sill needs ${steps} steps` };
+    return { run: Math.max(0.3, steps * 0.3) };
+  }
+  if (drop / ROCK_HOUSE_RULES.maxRampGrade > 60) return { reason: 'ramp longer than its approach' };
+  return { run: Math.max(1, drop / ROCK_HOUSE_RULES.maxRampGrade) };
+}
+
+/** Whether two footprints, each widened by a metre, overlap: separating-axis test on both houses' axes. */
+function overlaps(a: RockHouseSite, b: RockHouseSite): boolean {
+  const axes: [number, number][] = [];
+  for (const site of [a, b]) {
+    const c = Math.cos(site.yaw), s = Math.sin(site.yaw);
+    axes.push([c, -s], [s, c]);
+  }
+  const dx = b.x - a.x, dz = b.z - a.z;
+  for (const [ax, az] of axes) {
+    const half = (site: RockHouseSite): number => {
+      const c = Math.cos(site.yaw), s = Math.sin(site.yaw);
+      return Math.abs(ax * c - az * s) * (site.w / 2 + 1) + Math.abs(ax * s + az * c) * (site.d / 2 + 1);
+    };
+    if (Math.abs(dx * ax + dz * az) > half(a) + half(b)) return false;
+  }
+  return true;
+}
+
+/**
+ * Every placement rule for one site. Returns the first failure, with a "non-finite ..." reason whenever an input
+ * or a sampled height is not a number. `groundAt` defaults to the national field both the server and client use.
+ */
+export function checkRockHouseSite(site: RockHouseSite, groundAt: (x: number, z: number) => number = groundHeight):
+  { ok: true } | { ok: false; reason: string } {
+  const bad = finiteSite(site);
+  if (bad) return { ok: false, reason: bad };
+  const access = accessRun(site);
+  if ('reason' in access) return { ok: false, reason: access.reason };
+  const run = access.run;
+
+  // The footprint on a 1 m grid through both corners, then the door threshold and the access foot.
+  const nx = Math.max(1, Math.ceil(site.w)), nz = Math.max(1, Math.ceil(site.d));
+  let min = Infinity, max = -Infinity, nearRoad = false;
+  const samples: { x: number; z: number }[] = [];
+  for (let i = 0; i <= nx; i++) {
+    for (let j = 0; j <= nz; j++) {
+      const p = siteToWorld(site, -site.w / 2 + (i * site.w) / nx, -site.d / 2 + (j * site.d) / nz);
+      samples.push(p);
+      const h = groundAt(p.x, p.z);
+      if (!Number.isFinite(h)) return { ok: false, reason: 'non-finite ground under the footprint' };
+      min = Math.min(min, h); max = Math.max(max, h);
+      if (mineAt(p.x, p.z).distance < SAMPLES_ROAD_CLEAR) nearRoad = true;
     }
-    run = numSteps * 0.32;
-  } else {
-    run = drop / ROCK_HOUSE_RULES.maxRampGrade;
   }
+  if (nearRoad) return { ok: false, reason: 'footprint within 6 m of the mine road' };
 
-  const foot = siteToWorld(site, site.door, halfD + run);
+  const threshold = siteToWorld(site, site.door, site.d / 2);
+  const thresholdGround = groundAt(threshold.x, threshold.z);
+  if (!Number.isFinite(thresholdGround)) return { ok: false, reason: 'non-finite ground at the door' };
+  const foot = siteToWorld(site, site.door, site.d / 2 + run);
   const footGround = groundAt(foot.x, foot.z);
-  if (!Number.isFinite(footGround)) return { ok: false, reason: 'non-finite access foot ground' };
-  if (Math.abs(footGround - site.landing) > 0.15) {
-    return { ok: false, reason: `access foot ground (${footGround}) does not match landing (${site.landing}) within 0.15m` };
-  }
+  if (!Number.isFinite(footGround)) return { ok: false, reason: 'non-finite ground at the access foot' };
 
+  // Nothing floats: the foundation is drawn to this lowest point.
+  if (site.sill - min > ROCK_HOUSE_RULES.maxFoundation) {
+    return { ok: false, reason: `foundation ${(site.sill - min).toFixed(2)} m below the sill` };
+  }
+  // Nothing is buried past the stone ground storey.
+  if (max - site.sill > ROCK_HOUSE_RULES.maxBuried) {
+    return { ok: false, reason: `rear ground ${(max - site.sill).toFixed(2)} m above the sill` };
+  }
+  // The door lands: its threshold is never buried, and the foot of the access meets the lane or shoulder.
+  if (thresholdGround > site.sill + 1e-9) return { ok: false, reason: 'door threshold above the sill' };
+  if (Math.abs(footGround - site.landing) > 0.15) {
+    return { ok: false, reason: `landing ${site.landing.toFixed(2)} does not meet the ground at the access foot (${footGround.toFixed(2)})` };
+  }
+  for (const other of ROCK_HOUSE_SITES) {
+    if (other.id !== site.id && overlaps(site, other)) return { ok: false, reason: `overlaps ${other.id}` };
+  }
   return { ok: true };
 }
-
-export const ROCK_HOUSE_GROUPS: readonly RockHouseGroup[] = [
-  {
-    id: 'cinderpit',
-    name: 'Cinderpit Rim',
-    x: 10500,
-    z: 7000,
-    reach: 240,
-    lane: [
-      { x: 10300, z: 7000 },
-      { x: 10320, z: 6900 },
-      { x: 10400, z: 6820 },
-      { x: 10500, z: 6800 },
-    ],
-  },
-  {
-    id: 'mine-hamlet',
-    name: 'Mine Road Hamlet',
-    x: 7600,
-    z: 8613,
-    reach: 140,
-    lane: [],
-  },
-];
-
-export const ROCK_HOUSE_SITES: readonly RockHouseSite[] = [
-  {
-    id: 'ignis:rockhouse:cinderpit:0',
-    group: 'cinderpit',
-    x: 10285,
-    z: 7000,
-    yaw: Math.PI / 2,
-    w: 7.2,
-    d: 7.0,
-    variant: 0,
-    door: 0,
-    sill: 739.0,
-    landing: 738.84,
-    access: 'steps',
-  },
-  {
-    id: 'ignis:rockhouse:cinderpit:1',
-    group: 'cinderpit',
-    x: 10352,
-    z: 6852,
-    yaw: Math.PI / 4,
-    w: 8.6,
-    d: 8.0,
-    variant: 1,
-    door: 0,
-    sill: 739.3,
-    landing: 738.9,
-    access: 'ramp',
-  },
-  {
-    id: 'ignis:rockhouse:mine-hamlet:0',
-    group: 'mine-hamlet',
-    x: 7567.7,
-    z: 8621.5,
-    yaw: 0.48,
-    w: 7.2,
-    d: 7.0,
-    variant: 0,
-    door: 0,
-    sill: 413.67,
-    landing: 413.35,
-    access: 'steps',
-  },
-  {
-    id: 'ignis:rockhouse:mine-hamlet:1',
-    group: 'mine-hamlet',
-    x: 7622.9,
-    z: 8619.0,
-    yaw: -2.66,
-    w: 8.6,
-    d: 8.0,
-    variant: 1,
-    door: 0,
-    sill: 416.83,
-    landing: 416.43,
-    access: 'ramp',
-  },
-];
