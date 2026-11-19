@@ -1,13 +1,15 @@
 import type { AnimationClip, Group, Mesh, Object3D, SkinnedMesh } from 'three';
+import { AnimationPlayer } from '../anim/player.js';
 import type { Loaders } from '../assets/loaders.js';
 import { bodyKit, markRest, type OutfitId } from '../body.js';
 import { sanitizeCharacterConfig } from '../creator/creator-types.js';
 
 /**
  * A nation's master as drawn: one body for the intro and for the master's post in town, built from the close-up
- * set. The body kit marks the model's sex, which is the voice the master speaks in.
+ * set, with the player that moves it (feet kept on the floor, as every walking body's are). The body kit marks the
+ * model's sex, which is the voice the master speaks in.
  */
-export async function buildMasterBody(loaders: Loaders, nation: string): Promise<{ model: Group; clips: AnimationClip[] }> {
+export async function buildMasterBody(loaders: Loaders, nation: string): Promise<{ model: Group; clips: AnimationClip[]; anim: AnimationPlayer }> {
   const townSets = await Promise.all(
     ['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(name => loaders.model(`/assets/characters/${name}.glb`)),
   );
@@ -24,7 +26,7 @@ export async function buildMasterBody(loaders: Loaders, nation: string): Promise
     model.traverse(node => {
       if ('isMesh' in node && node.isMesh) { node.castShadow = true; node.receiveShadow = true; }
     });
-    return { model, clips };
+    return { model, clips, anim: new AnimationPlayer(model, clips, { defaultFadeDuration: 0.25, plantFeet: true }) };
   } catch (error) {
     releaseMaster(model);
     throw error;

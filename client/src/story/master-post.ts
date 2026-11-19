@@ -1,6 +1,6 @@
 import { type Group, type Scene, Vector3 } from 'three';
-import { AnimationPlayer } from '../anim/player.js';
 import type { Loaders } from '../assets/loaders.js';
+import type { AnimationPlayer } from '../anim/player.js';
 import { buildMasterBody, releaseMaster } from './master-body.js';
 import type { Enemy, VillainKind } from '../enemy.js';
 import type { TownVoices } from '../life/town-voices.js';
@@ -48,13 +48,13 @@ export class MasterPost {
   constructor(private readonly o: MasterPostOptions) {
     const p = o.master.post;
     this.at = new Vector3(p.x, 0, p.z);
-    void buildMasterBody(o.loaders, o.nation).then(({ model, clips }) => {
+    void buildMasterBody(o.loaders, o.nation).then(({ model, clips, anim }) => {
       if (this.disposed) { releaseMaster(model); return; }
       model.position.copy(this.at);
       model.rotation.y = p.facing;
       this.model = model;
       o.scene.add(model);
-      this.anim = new AnimationPlayer(model, clips, { defaultFadeDuration: 0.25 });
+      this.anim = anim;
       const idle = clips.find(c => /fold_arms/i.test(c.name)) ?? clips.find(c => /idle/i.test(c.name));
       if (idle) this.anim.play(idle.name, 0);
     }).catch(console.error);
