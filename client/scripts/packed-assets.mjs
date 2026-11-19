@@ -10,7 +10,7 @@ export const CHARACTER_TEXTURE_SIZE = 1024;
 export const NORMAL_TEXTURE_SIZE = 512;
 
 /** The close-up set (the player's hero, the masters, the creator preview): colour and packed maps, then normals. */
-export const CLOSE_UP_TEXTURE_SIZE = 2048;
+export const CLOSE_UP_TEXTURE_SIZE = 4096;
 export const CLOSE_UP_NORMAL_SIZE = 1024;
 
 const glb = (kind) => ({ source: /\.glb$/, out: (name) => name, kind, glb: true });

@@ -10,6 +10,7 @@
  *   npm run assets:pack            pack what changed
  *   npm run assets:pack -- --force pack everything again
  *   npm run assets:pack -- --size 2048 --normal-size 512 --out <dir>   trial sizes written to <dir> (no manifest)
+ *   npm run assets:pack -- --closeup-color 'uastc 2 rdo 1.5 zstd 18' --only <name> --out <dir>   trial close-up colour encoding
  */
 
 import { createHash } from 'node:crypto';
@@ -38,6 +39,7 @@ const size = Number(flag('--size') ?? CHARACTER_TEXTURE_SIZE);
 const normalSize = Number(flag('--normal-size') ?? NORMAL_TEXTURE_SIZE);
 const outDir = flag('--out');
 const only = flag('--only');
+const closeUpColour = flag('--closeup-color') ?? 'etc1s q255 c2';
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex').slice(0, 16);
 const toktxVersion = execFileSync('toktx', ['--version']).toString().trim();
@@ -46,7 +48,7 @@ const toktxVersion = execFileSync('toktx', ['--version']).toString().trim();
 const RECIPES = {
   body: { v: 1, size, normalSize, color: 'etc1s q255 c2', normal: 'uastc 2 rdo 1.5 zstd 18', positions: 'scene volume' },
   far: { v: 1, textures: 'kept', positions: 'float' },
-  closeup: { v: 1, size: CLOSE_UP_TEXTURE_SIZE, normalSize: CLOSE_UP_NORMAL_SIZE, color: 'etc1s q255 c2', normal: 'uastc 2 rdo 1.5 zstd 18', positions: 'scene volume' },
+  closeup: { v: 1, size: CLOSE_UP_TEXTURE_SIZE, normalSize: CLOSE_UP_NORMAL_SIZE, color: closeUpColour, normal: 'uastc 2 rdo 1.5 zstd 18', positions: 'scene volume' },
   weapon: { v: 1, normalSize, color: 'etc1s q255 c2', normal: 'uastc 2 rdo 1.5 zstd 18', positions: 'float' },
   image: { v: 1, mode: 'etc1s q255 c2 mipmaps srgb' },
   atlas: { v: 1, mode: 'uastc 2 rdo 1.5 zstd 18 srgb flip no-mipmaps' },
@@ -61,6 +63,18 @@ const io = new NodeIO()
 const GENERIC = /^(TEXCOORD|JOINTS|WEIGHTS|COLOR)(_\d+)?$/;
 const WITH_POSITION = /^(POSITION|TEXCOORD|JOINTS|WEIGHTS|COLOR)(_\d+)?$/;
 
+/** The colour maps' encoder, as the recipe names it: 'etc1s q<quality> c<compression>' or 'uastc <level> rdo <lambda> zstd <level>'. */
+function colourEncoder(recipe) {
+  const [mode, ...rest] = recipe.split(' ');
+  const slots = /^(?!normalTexture$).*/;
+  if (mode === 'uastc') {
+    const [level, , rdoLambda, , zstd] = rest.map(Number);
+    return toktx({ mode: Mode.UASTC, slots, level, rdo: true, rdoLambda, zstd });
+  }
+  const [quality, compression] = rest.map(part => Number(part.slice(1)));
+  return toktx({ mode: Mode.ETC1S, slots, quality, compression });
+}
+
 async function packGlb(source, output, kind) {
   await MeshoptEncoder.ready;
   const doc = await io.read(source);
@@ -71,7 +85,7 @@ async function packGlb(source, output, kind) {
       // WebP is decoded to PNG first (toktx reads PNG, not WebP); weapons keep their own colour size.
       textureCompress({ encoder: sharp, targetFormat: 'png', slots: /^normalTexture$/, resize: [normalMax, normalMax] }),
       textureCompress({ encoder: sharp, targetFormat: 'png', slots: /^(?!normalTexture$).*/, ...(kind === 'weapon' ? {} : { resize: [colourMax, colourMax] }) }),
-      toktx({ mode: Mode.ETC1S, slots: /^(?!normalTexture$).*/, quality: 255, compression: 2 }),
+      colourEncoder(RECIPES[kind].color),
       toktx({ mode: Mode.UASTC, slots: /^normalTexture$/, level: 2, rdo: true, rdoLambda: 1.5, zstd: 18 }),
     );
   }
