@@ -101,7 +101,33 @@ function setupDom() {
   };
 }
 
-test('NationIntroFlow: initializes at level 0 and steps through interactive training (IGNIS Shaper)', () => {
+/** Winds the line timers forward until the intro reaches `step` (the greeting and lore lines play out). */
+async function windUntil(t, intro, step) {
+  for (let i = 0; i < 200 && intro.step !== step; i++) {
+    t.mock.timers.tick(500);
+    for (let k = 0; k < 6; k++) await Promise.resolve();
+  }
+  assert.equal(intro.step, step);
+}
+
+/**
+ * A finished step is acknowledged before the next starts: the step reads 'heard' and shows the master's
+ * acknowledgement, and the next step starts only after the line has been heard out (timers wound forward).
+ */
+async function heardThen(t, intro, index, next) {
+  assert.equal(intro.step, 'heard', `step ${index + 1} done: the master acknowledges it first`);
+  for (let i = 0; i < 40 && intro.step === 'heard'; i++) {
+    t.mock.timers.tick(500);
+    for (let k = 0; k < 6; k++) await Promise.resolve();
+    if (intro.step === 'heard' && intro['dialogueLine'].textContent === intro.config.stepHeard[index]) intro['ackShown'] = true;
+  }
+  assert.ok(intro['ackShown'], `the acknowledgement "${intro.config.stepHeard[index]}" is shown before the next step`);
+  intro['ackShown'] = false;
+  assert.equal(intro.step, next);
+}
+
+test('NationIntroFlow: initializes at level 0 and steps through interactive training (IGNIS Shaper)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const restoreDom = setupDom();
   try {
     let currentTier = -1;
@@ -149,38 +175,44 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
     intro.start();
     assert.equal(intro.step, 'approach');
 
-    intro['startTraining']();
+    await windUntil(t, intro, 'step_move');
     assert.equal(intro.step, 'step_move');
 
     // 3. Movement test: Player moves 2.5 meters
     mockController.position.set(11, 0, 0);
     intro.update(0.016);
-    assert.equal(intro.step, 'step_sprint_jump');
+    // While acknowledged, play is not read: sprinting now does not count for the next step.
+    runningState = true; mockController.grounded = false;
+    intro.update(0.016);
+    runningState = false; mockController.grounded = true;
+    await heardThen(t, intro, 0, 'step_sprint_jump');
+    intro.update(0.016);
+    assert.equal(intro.step, 'step_sprint_jump', 'a sprint during the acknowledgement does not count');
 
-    // 4. Sprint & Jump test
+    // 4. Sprint & Jump test: both in one frame
     runningState = true;
     mockController.grounded = false;
     intro.update(0.016);
-    assert.equal(intro.step, 'step_weapon');
+    await heardThen(t, intro, 1, 'step_weapon');
     assert.equal(starterWeaponEquipped, 'sword', 'IGNIS starter weapon must be sword');
 
     // 5. Draw Weapon test
     mockCombat.fightingStyle = 'weapon';
     intro.update(0.016);
-    assert.equal(intro.step, 'step_attacks');
+    await heardThen(t, intro, 2, 'step_attacks');
 
     // 6. Light & Heavy Attack test
     mockCombat.current = 'light_1';
     intro.update(0.016);
     mockCombat.current = 'heavy_1';
     intro.update(0.016);
-    assert.equal(intro.step, 'step_defense');
+    await heardThen(t, intro, 3, 'step_defense');
 
     // 7. Guard & Dodge test
     mockCombat.blocking = true;
     mockCombat.current = 'dodge';
     intro.update(0.016);
-    assert.equal(intro.step, 'lore_and_mission');
+    await heardThen(t, intro, 4, 'lore_and_mission');
 
     // 8. Dispatch first mission
     intro['dispatchFirstMission']();
@@ -204,7 +236,8 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
   }
 });
 
-test('NationIntroFlow: modular across AURA and HUSH role', () => {
+test('NationIntroFlow: modular across AURA and HUSH role', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const restoreDom = setupDom();
   try {
     let currentTier = -1;
@@ -239,22 +272,26 @@ test('NationIntroFlow: modular across AURA and HUSH role', () => {
     assert.equal(intro.config.master.name, 'Master Zephyr');
 
     intro.start();
-    intro['startTraining']();
+    await windUntil(t, intro, 'step_move');
 
     // Trigger step moves
     mockController.position.set(5, 0, 0);
-    intro.update(0.016); // to step_sprint_jump
-    intro.update(0.016); // to step_weapon
+    intro.update(0.016);
+    await heardThen(t, intro, 0, 'step_sprint_jump');
+    intro.update(0.016);
+    await heardThen(t, intro, 1, 'step_weapon');
     assert.equal(starterWeaponEquipped, 'staff', 'AURA equips staff');
 
-    mockCombat.fightingStyle = 'weapon';
-    intro.update(0.016); // to step_attacks
+    intro.update(0.016);
+    await heardThen(t, intro, 2, 'step_attacks');
     mockCombat.current = 'light_1';
     intro.update(0.016);
     mockCombat.current = 'heavy_1';
-    intro.update(0.016); // to step_defense
+    intro.update(0.016);
+    await heardThen(t, intro, 3, 'step_defense');
     mockCombat.current = 'dodge';
-    intro.update(0.016); // to lore_and_mission
+    intro.update(0.016);
+    await heardThen(t, intro, 4, 'lore_and_mission');
 
     intro['dispatchFirstMission']();
     assert.equal(intro.step, 'active_mission');

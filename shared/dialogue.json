@@ -357,6 +357,13 @@
     "intro_defense": [
       "Guard up. Let the blade meet yours. Then step clear."
     ],
+    "intro_heard": [
+      "Your feet know the ground. That'll do.",
+      "You landed well. Not bad for a first day.",
+      "You drew it clean. Keep that hand steady.",
+      "That second blow had weight behind it. Good.",
+      "You stepped clear in time. You'll live a while yet."
+    ],
     "intro_shaper": [
       "The Draw marked you Crimson. Use it before you learn to master it and you'll burn hollow by dusk. Keep your blade ready."
     ],
@@ -466,6 +473,13 @@
     "intro_defense": [
       "Brace your guard against the blow, then glide out of its arc."
     ],
+    "intro_heard": [
+      "Steady feet. The planks didn't move you.",
+      "You landed with your weight forward. That's what keeps you on the pier.",
+      "You drew without looking at your hand. Good.",
+      "The heavy stroke carried through. That's the undertow I wanted.",
+      "You were out of its arc before it landed. That will keep you alive."
+    ],
     "intro_shaper": [
       "The Azure answers your pulse. But an undisciplined river drowns its own banks. Master your stance first."
     ],
@@ -525,6 +539,13 @@
     "intro_defense": [
       "Lock your shield guard against impact, then roll clear when the hammer falls."
     ],
+    "intro_heard": [
+      "You've got your weight down. Good.",
+      "That was a clean landing.",
+      "You're holding it firm. Right.",
+      "That one hit hard.",
+      "You held, then you moved. That's enough."
+    ],
     "intro_shaper": [
       "Stone sleeps in your marrow. But rock unhewn breaks under pressure. Learn the discipline of iron before stone."
     ],
@@ -583,6 +604,13 @@
     ],
     "intro_defense": [
       "Raise the staff to deflect, then drift backward into open space."
+    ],
+    "intro_heard": [
+      "Light enough. The gusts didn't take you.",
+      "You cleared it with room to spare. Show-off.",
+      "Both hands. You were listening.",
+      "Wide and quick. The staff likes you.",
+      "You let it pass you by. That's the whole trick."
     ],
     "intro_shaper": [
       "The Pale heeds your breath. But breath without center is merely storm and folly. Master the staff first."

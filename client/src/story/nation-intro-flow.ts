@@ -15,6 +15,7 @@ import { WALK_SPEED } from '../life/town-manager.js';
 import {
   getNationIntroConfig,
   type NationIntroConfig,
+  type NationIntroDialogue,
 } from '../../../shared/src/story/nation-intro.js';
 
 export type IntroStep =
@@ -26,6 +27,8 @@ export type IntroStep =
   | 'step_weapon'
   | 'step_attacks'
   | 'step_defense'
+  /** A training step is done: the master acknowledges it before the next instruction. */
+  | 'heard'
   | 'lore_and_mission'
   | 'active_mission'
   | 'completed';
@@ -52,6 +55,20 @@ export interface NationIntroOptions {
   beforeUnlock?: () => Promise<void>;
 }
 
+/** One training step: the master's instruction, the prompt card, and the check that it has been done. */
+interface TrainingStep {
+  step: IntroStep;
+  line: keyof NationIntroDialogue;
+  kicker: string;
+  prompt: string;
+  /** Runs as the instruction starts. */
+  begin?: () => void;
+  /** Reads this frame's play; true once the step is done. May update the prompt card on partial progress. */
+  done: () => boolean;
+}
+
+const key = (label: string): string => `<span class="nation-intro-key">${label}</span>`;
+
 export class NationIntroFlow {
   readonly config: NationIntroConfig;
   private currentStep: IntroStep = 'idle';
@@ -76,6 +93,10 @@ export class NationIntroFlow {
   private masterDispatched = false;
   private disposed = false;
   private pendingTimers: any[] = [];
+  private readonly training: TrainingStep[];
+  private trainingIndex = -1;
+  /** Settles once the line now showing has been heard out (its recording, or its reading time). */
+  private lineHeard: Promise<void> = Promise.resolve();
 
   // Camera staging and smooth-blend
   private cameraMode: 'cinematic' | 'blending' | 'released' = 'cinematic';
@@ -134,6 +155,62 @@ export class NationIntroFlow {
 
     // Start player at Level 0 (Uninitiated: bending inactive)
     this.opts.applyTier(0);
+    this.training = this.trainingSteps();
+  }
+
+  private trainingSteps(): TrainingStep[] {
+    const { controller, input, combat } = this.opts;
+    return [
+      {
+        step: 'step_move', line: 'stepFooting', kicker: 'Footing',
+        prompt: `${key('W')} ${key('A')} ${key('S')} ${key('D')} Move · Move mouse to look`,
+        done: () => (this.hasMoved ||= controller.position.distanceTo(this.startPosition) >= 2.2),
+      },
+      {
+        step: 'step_sprint_jump', line: 'stepSprintJump', kicker: 'Mobility',
+        prompt: `${key('Shift')} Sprint · ${key('Space')} Jump`,
+        done: () => {
+          if (input.read().running) this.hasSprinted = true;
+          if (!controller.grounded) this.hasJumped = true;
+          return this.hasSprinted && this.hasJumped;
+        },
+      },
+      {
+        step: 'step_weapon', line: 'weaponHandoff', kicker: 'Armament',
+        prompt: `${key('1')} Draw Weapon`,
+        begin: () => this.opts.onEquipStarterWeapon(this.config.starterWeapon),
+        done: () => (this.hasEquippedWeapon ||= combat.fightingStyle === 'weapon'),
+      },
+      {
+        step: 'step_attacks', line: 'stepAttacks', kicker: 'Striking',
+        prompt: `${key('Left Click')} Light Attack · ${key('Right Click')} Heavy Attack`,
+        done: () => {
+          const cur = combat.current;
+          if (cur && (cur.includes('light') || cur.includes('strike') || cur.includes('slash'))) this.hasLightAttacked = true;
+          if (cur && cur.includes('heavy')) this.hasHeavyAttacked = true;
+          if (this.hasLightAttacked !== this.hasHeavyAttacked) {
+            this.showStepPrompt('Striking', this.hasLightAttacked
+              ? `Light attack completed · ${key('Right Click')} Heavy Attack`
+              : `Heavy attack completed · ${key('Left Click')} Light Attack`);
+          }
+          return this.hasLightAttacked && this.hasHeavyAttacked;
+        },
+      },
+      {
+        step: 'step_defense', line: 'stepDefense', kicker: 'Defense',
+        prompt: `${key('Hold R')} Guard · ${key('Left Alt')} Dodge`,
+        done: () => {
+          if (combat.blocking) this.hasGuarded = true;
+          if (combat.current === 'dodge') this.hasDodged = true;
+          if (this.hasGuarded !== this.hasDodged) {
+            this.showStepPrompt('Defense', this.hasGuarded
+              ? `Guard completed · ${key('Left Alt')} Dodge`
+              : `Dodge completed · ${key('Hold R')} Guard`);
+          }
+          return this.hasGuarded && this.hasDodged;
+        },
+      },
+    ];
   }
 
   get step(): IntroStep {
@@ -221,10 +298,13 @@ export class NationIntroFlow {
     this.dialogueLine.textContent = text;
     if (!this.masterApproaching && !this.masterDispatched) this.playMasterPose('talk', 'gesture', 'idle');
     const shown = performance.now();
-    void this.speakLine(text).then(seconds => {
-      // The next beat waits for the line to be heard out, and never comes sooner than its reading time.
-      if (onDone && !this.disposed) this.schedule(onDone, Math.max(timeoutMs, seconds * 1000 + 500) - (performance.now() - shown));
+    this.lineHeard = new Promise<void>(heard => {
+      void this.speakLine(text).then(seconds => {
+        // The next beat waits for the line to be heard out, and never comes sooner than its reading time.
+        if (!this.disposed) this.schedule(heard, Math.max(timeoutMs, seconds * 1000 + 500) - (performance.now() - shown));
+      });
     });
+    if (onDone) void this.lineHeard.then(onDone);
   }
 
   /**
@@ -310,14 +390,56 @@ export class NationIntroFlow {
   }
 
   private startTraining(): void {
-    this.playMasterPose('fold_arms', 'idle');
     this.beginCameraBlend();
-    this.setStep('step_move');
-    this.showDialogue(this.config.dialogue.stepFooting);
-    this.showStepPrompt(
-      'Footing',
-      '<span class="nation-intro-key">W</span> <span class="nation-intro-key">A</span> <span class="nation-intro-key">S</span> <span class="nation-intro-key">D</span> Move · Move mouse to look',
-    );
+    this.beginStep(0);
+  }
+
+  private beginStep(index: number): void {
+    const step = this.training[index];
+    if (!step) return;
+    this.trainingIndex = index;
+    this.setStep(step.step);
+    step.begin?.();
+    this.playMasterPose('fold_arms', 'idle');
+    this.showDialogue(this.config.dialogue[step.line]);
+    this.showStepPrompt(step.kicker, step.prompt);
+  }
+
+  /**
+   * The step just done is acknowledged before anything else is asked: checks stop and the card goes, the master
+   * finishes the line he was saying, nods through his acknowledgement, and the next step starts once it is heard out.
+   */
+  private stepHeard(): void {
+    const index = this.trainingIndex;
+    this.setStep('heard');
+    this.hideStepPrompt();
+    void this.lineHeard.then(() => {
+      if (this.disposed) return;
+      this.showDialogue(this.config.stepHeard[index] ?? '', () => {
+        if (index + 1 < this.training.length) this.beginStep(index + 1);
+        else this.finishTraining();
+      }, 1800);
+      this.nodMaster();
+    });
+  }
+
+  /** The master nods once (holding its last frame); without a nod clip he keeps talking. */
+  private nodMaster(): void {
+    const nod = this.masterClipNames.find(name => name.toLowerCase() === 'nod');
+    if (!this.masterAnim || !nod) return;
+    this.masterAnim.play(nod, 0.2, false);
+    this.masterPose = nod;
+  }
+
+  private finishTraining(): void {
+    this.setStep('lore_and_mission');
+    this.hideStepPrompt();
+    const roleLine = this.opts.isDim() ? this.config.dialogue.hushRole : this.config.dialogue.shaperRole;
+    this.showDialogue(roleLine, () => {
+      this.schedule(() => {
+        this.dispatchFirstMission();
+      }, 1000);
+    }, 4500);
   }
 
   private showStepPrompt(kicker: string, promptHtml: string): void {
@@ -350,110 +472,15 @@ export class NationIntroFlow {
       } else {
         this.masterModel.rotation.y = Math.atan2(heroPos.x - this.masterModel.position.x, heroPos.z - this.masterModel.position.z);
         if (this.masterDispatched) this.playMasterPose('point', 'gesture', 'talk', 'idle');
-        else if (this.dialogueBox.style.display !== 'none' && this.currentStep !== 'step_move' && this.currentStep !== 'step_sprint_jump' && this.currentStep !== 'step_weapon' && this.currentStep !== 'step_attacks' && this.currentStep !== 'step_defense') this.playMasterPose('talk', 'gesture', 'idle');
+        else if (this.currentStep === 'heard') { /* the acknowledgement's nod plays out */ }
         else if (this.currentStep.startsWith('step_')) this.playMasterPose('fold_arms', 'idle');
+        else if (this.dialogueBox.style.display !== 'none') this.playMasterPose('talk', 'gesture', 'idle');
       }
     }
 
-    // Interactive step validations
+    if (this.currentStep.startsWith('step_') && this.training[this.trainingIndex]?.done()) this.stepHeard();
+
     switch (this.currentStep) {
-      case 'step_move': {
-        const movedDist = heroPos.distanceTo(this.startPosition);
-        if (movedDist >= 2.2) {
-          this.hasMoved = true;
-          this.setStep('step_sprint_jump');
-          this.showDialogue(this.config.dialogue.stepSprintJump);
-          this.showStepPrompt(
-            'Mobility',
-            '<span class="nation-intro-key">Shift</span> Sprint · <span class="nation-intro-key">Space</span> Jump',
-          );
-        }
-        break;
-      }
-
-      case 'step_sprint_jump': {
-        if (this.opts.input.read().running) this.hasSprinted = true;
-        if (!this.opts.controller.grounded) this.hasJumped = true;
-
-        if (this.hasSprinted && this.hasJumped) {
-          this.setStep('step_weapon');
-          this.opts.onEquipStarterWeapon(this.config.starterWeapon);
-          this.showDialogue(this.config.dialogue.weaponHandoff);
-          this.showStepPrompt('Armament', '<span class="nation-intro-key">1</span> Draw Weapon');
-        }
-        break;
-      }
-
-      case 'step_weapon': {
-        if (this.opts.combat.fightingStyle === 'weapon') {
-          this.hasEquippedWeapon = true;
-          this.setStep('step_attacks');
-          this.showDialogue(this.config.dialogue.stepAttacks);
-          this.showStepPrompt(
-            'Striking',
-            '<span class="nation-intro-key">Left Click</span> Light Attack · <span class="nation-intro-key">Right Click</span> Heavy Attack',
-          );
-        }
-        break;
-      }
-
-      case 'step_attacks': {
-        const cur = this.opts.combat.current;
-        if (cur && (cur.includes('light') || cur.includes('strike') || cur.includes('slash'))) this.hasLightAttacked = true;
-        if (cur && cur.includes('heavy')) this.hasHeavyAttacked = true;
-
-        if (this.hasLightAttacked && this.hasHeavyAttacked) {
-          this.setStep('step_defense');
-          this.showDialogue(this.config.dialogue.stepDefense);
-          this.showStepPrompt(
-            'Defense',
-            '<span class="nation-intro-key">Hold R</span> Guard · <span class="nation-intro-key">Left Alt</span> Dodge',
-          );
-        } else if (this.hasLightAttacked && !this.hasHeavyAttacked) {
-          this.showStepPrompt(
-            'Striking',
-            'Light attack completed · <span class="nation-intro-key">Right Click</span> Heavy Attack',
-          );
-        } else if (!this.hasLightAttacked && this.hasHeavyAttacked) {
-          this.showStepPrompt(
-            'Striking',
-            'Heavy attack completed · <span class="nation-intro-key">Left Click</span> Light Attack',
-          );
-        }
-        break;
-      }
-
-      case 'step_defense': {
-        if (this.opts.combat.blocking) this.hasGuarded = true;
-        if (this.opts.combat.current === 'dodge') this.hasDodged = true;
-
-        if (this.hasGuarded && this.hasDodged) {
-          this.setStep('lore_and_mission');
-          this.hideStepPrompt();
-
-          const roleLine = this.opts.isDim()
-            ? this.config.dialogue.hushRole
-            : this.config.dialogue.shaperRole;
-
-          this.showDialogue(roleLine, () => {
-            this.schedule(() => {
-              this.dispatchFirstMission();
-            }, 1000);
-          }, 4500);
-        } else if (this.hasGuarded && !this.hasDodged) {
-          this.showStepPrompt(
-            'Defense',
-            'Guard completed · <span class="nation-intro-key">Left Alt</span> Dodge',
-          );
-        } else if (!this.hasGuarded && this.hasDodged) {
-          this.showStepPrompt(
-            'Defense',
-            'Dodge completed · <span class="nation-intro-key">Hold R</span> Guard',
-          );
-        }
-        break;
-      }
-
       case 'active_mission': {
         // Check if player has reached the gateway landmark
         if (this.activeMissionLead) {

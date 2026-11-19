@@ -39,6 +39,8 @@ test('Nation intro configurations: all four nations defined and complete', () =>
     assert.ok(config.dialogue.shaperRole.length > 0);
     assert.ok(config.dialogue.hushRole.length > 0);
     assert.ok(config.dialogue.missionBrief.length > 0);
+    assert.equal(config.stepHeard.length, 5, `${nation} acknowledges each of the five training steps`);
+    assert.equal(new Set(config.stepHeard).size, 5, `${nation} says something different after each step`);
 
     // First mission gateway
     assert.ok(config.firstMission.id.length > 0);
@@ -66,7 +68,8 @@ test('Every intro line is recorded in its master\'s own voice, the sex their bod
   const manifest = JSON.parse(readFileSync(new URL('../../client/public/assets/voice/manifest.json', import.meta.url), 'utf8')) as Record<string, Record<string, number>>;
   for (const config of Object.values(NATION_INTROS)) {
     const voice = voiceId(config.master.id, config.master.sex);
-    for (const [step, line] of Object.entries(config.dialogue)) {
+    const heard = config.stepHeard.map((line, i) => [`acknowledgement ${i + 1}`, line] as const);
+    for (const [step, line] of [...Object.entries(config.dialogue), ...heard]) {
       assert.ok(manifest[voice]?.[lineKey(line)], `${voice} has no recording of ${step}: ${line}`);
     }
   }

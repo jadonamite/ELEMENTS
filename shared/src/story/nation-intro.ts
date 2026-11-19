@@ -49,6 +49,8 @@ export interface NationIntroConfig {
   master: NationMasterConfig;
   starterWeapon: 'sword' | 'staff';
   dialogue: NationIntroDialogue;
+  /** What the master says once each training step is done, in step order, before the next instruction. */
+  stepHeard: readonly string[];
   firstMission: NationFirstMission;
 }
 
@@ -71,6 +73,18 @@ function introLines(masterId: string): NationIntroDialogue {
   return out;
 }
 
+/** Training steps in the order the intro teaches them: footing, sprint and jump, weapon, attacks, defence. */
+export const TRAINING_STEPS = 5;
+
+/** A master's acknowledgements, one for each training step (intro_heard in their block of dialogue.json). */
+function heardLines(masterId: string): string[] {
+  const lines = (dialogue as unknown as Record<string, Record<string, unknown>>)[masterId]?.intro_heard;
+  if (!Array.isArray(lines) || lines.length !== TRAINING_STEPS || lines.some(line => typeof line !== 'string')) {
+    throw new Error(`dialogue.json ${masterId}.intro_heard needs ${TRAINING_STEPS} lines, one per training step`);
+  }
+  return lines as string[];
+}
+
 export const NATION_INTROS: Record<Element, NationIntroConfig> = {
   IGNIS: {
     nation: 'IGNIS',
@@ -87,6 +101,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
     },
     starterWeapon: 'sword',
     dialogue: introLines('master_ignis'),
+    stepHeard: heardLines('master_ignis'),
     firstMission: {
       id: 'first_mission_ignis_gate',
       title: 'First Steps to Sindr',
@@ -118,6 +133,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
     },
     starterWeapon: 'sword',
     dialogue: introLines('master_aques'),
+    stepHeard: heardLines('master_aques'),
     firstMission: {
       id: 'first_mission_aques_arch',
       title: 'First Steps in Varda',
@@ -149,6 +165,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
     },
     starterWeapon: 'sword',
     dialogue: introLines('master_terra'),
+    stepHeard: heardLines('master_terra'),
     firstMission: {
       id: 'first_mission_terra_bastion',
       title: 'Ascent to the Bastion',
@@ -180,6 +197,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
     },
     starterWeapon: 'staff',
     dialogue: introLines('master_aura'),
+    stepHeard: heardLines('master_aura'),
     firstMission: {
       id: 'first_mission_aura_arch',
       title: 'Span of the Spires',
