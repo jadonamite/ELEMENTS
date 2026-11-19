@@ -1,3 +1,6 @@
+import { MissionEncounter, townPosition } from '../story/missionEncounter.js';
+import { missionChoice } from '../story/missionService.js';
+import type { MissionEvent } from '@elements/shared';
 import type { DatabaseSync } from 'node:sqlite';
 import { atPlace, isValidQuantity, type LootPile, placesFor, TRADE_REACH } from '@elements/shared';
 import { getActiveShopOwnership, getDatabase } from '../db.js';
@@ -67,6 +70,7 @@ export class ZoneEconomy {
   private readonly stopKills: () => void;
   /** Events raised outside a message (a kill), waiting for the room to send them. */
   private pending: EconEvent[] = [];
+  readonly missionEncounter: MissionEncounter;
 
   constructor(
     private readonly world: ZoneWorld,
@@ -74,6 +78,7 @@ export class ZoneEconomy {
     private readonly clock: () => number = Date.now,
     private readonly rng: () => number = Math.random,
   ) {
+    this.missionEncounter = new MissionEncounter(world, db);
     for (const p of listLootPiles({ zone: world.zone, now: clock() }, db)) this.piles.set(p.id, p);
     // Kills reach the economy only through the server's kill hook, and only this world's.
     this.stopKills = onKill((k) => { if (k.worldId === world.id) this.pending.push(...this.kill(k)); });
@@ -86,6 +91,7 @@ export class ZoneEconomy {
 
   dispose(): void {
     this.stopKills();
+    this.missionEncounter.dispose();
   }
 
   /** Events raised since the last call, for the room to deliver. */
@@ -101,6 +107,8 @@ export class ZoneEconomy {
   }
 
   leave(id: string): EconEvent[] {
+    const p = this.world.players.get(id);
+    if (p) this.missionEncounter.abandon(p.accountId);
     return this.cancelTrade(id);
   }
 
@@ -128,7 +136,7 @@ export class ZoneEconomy {
   }
 
   kill(k: KillReport): EconEvent[] {
-    const pile = dropForKill(k, this.rng, this.db);
+    const pile = withSavepoint(this.db, () => this.missionEncounter.killed(k, this.missionEncounter.isSpar(k.enemyId) ? null : dropForKill(k, this.rng, this.db)));
     if (!pile) return [];
     this.piles.set(pile.id, pile);
     return [{ type: 'loot_new', body: { pile: this.pileView(pile) } }];
@@ -138,10 +146,30 @@ export class ZoneEconomy {
   death(id: string): EconEvent[] {
     const p = this.world.players.get(id);
     if (!p) return [];
+    const practice = this.missionEncounter.isSparring(p.accountId);
+    this.missionEncounter.abandon(p.accountId);
+    if (practice) return this.purse(id);
     const pile = dropForDeath(p.accountId, this.world.zone, p.x, p.z, this.db);
     if (!pile) return [];
     this.piles.set(pile.id, pile);
     return [{ type: 'loot_new', body: { pile: this.pileView(pile) } }, ...this.purse(id)];
+  }
+
+  story(id: string, raw: unknown): EconEvent[] {
+    const p = this.world.players.get(id);
+    const m = asRecord(raw);
+    const reply = (body: Record<string, unknown>): EconEvent[] => [{ to: id, type: 'mission_reply', body: { operationId: m.operationId, ...body } }];
+    if (!p || isGuest(p.accountId) || !p.alive || p.transferUntil > 0) return reply({ error: 'Sign in and stand beside the person to continue' });
+    try {
+      const at = townPosition(this.world.zone, p);
+      const result = m.event === 'start_ambush' || m.event === 'start_spar'
+        ? { ...this.missionEncounter.start(p.accountId, at, m.event === 'start_spar' ? 'spar' : 'ambush'), applied: true }
+        : missionChoice(p.accountId, m.event as MissionEvent, m.operationId as string, at, this.db);
+      p.tier = result.tier;
+      p.arrivalRegistered = result.state.flags.mission_1_complete;
+      if (m.event === 'eat_meal' && result.applied) p.stamina.fill();
+      return [...reply({ result }), ...this.purse(id)];
+    } catch (err) { return reply({ error: err instanceof Error ? err.message : 'Mission unavailable' }); }
   }
 
   /** "Pick up pile N": checked against where the room has the player. */

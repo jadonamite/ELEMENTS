@@ -1,3 +1,4 @@
+import { collectMissionTicket } from '../story/missionEncounter.js';
 import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import {
@@ -342,6 +343,7 @@ export function claimLootPile(
   }
 
   withSavepoint(db, () => {
+    collectMissionTicket(params.accountId, pile.id, db);
     db.prepare(
       `UPDATE loot_piles SET claimed = 1, claimed_by = ?, claimed_at = ? WHERE id = ?`,
     ).run(params.accountId, now, pile.id);

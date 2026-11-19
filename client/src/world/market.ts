@@ -4,7 +4,7 @@ import type { PostKind, WorldBuilder } from './builder.js';
 import { rectArea, type Area, type Rect } from './levels.js';
 import { stairRun, stairs } from './stairs.js';
 import { streetMarket, lampPost, lanternString, paveStreet, parkedCart, goodsTable } from './street.js';
-import { marketStall, noticeBoard, townHouse, type FrontRoom } from './style-kit.js';
+import { homeMealStall, marketStall, noticeBoard, townHouse, type FrontRoom } from './style-kit.js';
 import { dressTerrace, retainingWall, terraceTop } from './walls.js';
 import { archBridge, balustrade, canal } from './water-works.js';
 
@@ -198,6 +198,8 @@ const POST_KIND: Partial<Record<SlicePost['role'], PostKind>> = { crew: 'crew', 
 /** The merchants' stalls, the notice board, the cart bay, and the watch, porter and sluice crew at their posts. */
 function stallsAndPosts(b: WorldBuilder, rand: () => number): void {
   for (const a of SINDR_ANCHORS.filter((k) => k.kind === 'stall' && k.y === 0)) marketStall(b, a.x, a.z, a.y, a.yaw, rand);
+  const meal = SINDR_ANCHORS.find((a) => a.id === 'stall_food');
+  if (meal?.seat) homeMealStall(b, meal.x, meal.z, meal.y, meal.yaw, meal.seat);
   const nb = SINDR_ANCHORS.find((k) => k.kind === 'notice_board')!;
   noticeBoard(b, nb.x, nb.z, nb.y, nb.yaw, rand);
   const porter = M.posts.find((p) => p.role === 'porter')!;
@@ -218,6 +220,8 @@ function stallsAndPosts(b: WorldBuilder, rand: () => number): void {
     [porter.x - 4, porter.x + 0.6],
     ...M.exits.filter((e) => e.z > M.street.stalls.z1).map((e): [number, number] => [e.x - 4, e.x + 5]),
   ];
+  const mealStall = SINDR_ANCHORS.find((k) => k.id === 'stall_food');
+  if (mealStall) taken.push([mealStall.x - 3.2, mealStall.x + 3.2]);
   for (let x = M.street.x0 + 2; x < M.street.x1 - 1.5; x += 0.5) {
     if (taken.some(([a, c]) => x + 1.5 > a && x - 1.5 < c)) continue;
     b.at(x, band, Math.PI, M.street.y);

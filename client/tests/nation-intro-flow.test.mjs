@@ -101,7 +101,7 @@ function setupDom() {
   };
 }
 
-test('NationIntroFlow: initializes at level 0 and steps through interactive training (IGNIS Shaper)', () => {
+test('NationIntroFlow: initializes at level 0 and steps through interactive training (IGNIS Shaper)', async () => {
   const restoreDom = setupDom();
   try {
     let currentTier = -1;
@@ -137,6 +137,7 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
       waypointMarker: mockWaypointMarker,
       applyTier: (t) => { currentTier = t; mockFight.tier = t; },
       onEquipStarterWeapon: (w) => { starterWeaponEquipped = w; },
+      beforeUnlock: async () => {},
       onMissionComplete: () => { missionCompletedCalled = true; },
     });
 
@@ -192,6 +193,7 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
     mockController.position.set(52, 0, 0); // West Gate coordinates
     intro.update(0.016);
 
+    await new Promise((r) => setTimeout(r, 0));
     assert.equal(intro.step, 'completed');
     assert.equal(currentTier, 1, 'Reaching first mission target transfers player to Level 1');
     assert.equal(missionCompletedCalled, true, 'onMissionComplete must be called');
@@ -203,7 +205,7 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
   }
 });
 
-test('NationIntroFlow: modular across AURA and HUSH role', () => {
+test('NationIntroFlow: modular across AURA and HUSH role', async () => {
   const restoreDom = setupDom();
   try {
     let currentTier = -1;
@@ -231,6 +233,7 @@ test('NationIntroFlow: modular across AURA and HUSH role', () => {
       waypointMarker: mockWaypointMarker,
       applyTier: (t) => { currentTier = t; mockFight.tier = t; },
       onEquipStarterWeapon: (w) => { starterWeaponEquipped = w; },
+      beforeUnlock: async () => {},
     });
 
     assert.equal(intro.config.starterWeapon, 'staff');
@@ -262,6 +265,7 @@ test('NationIntroFlow: modular across AURA and HUSH role', () => {
     mockController.position.set(48, 0, -8);
     intro.update(0.016);
 
+    await new Promise((r) => setTimeout(r, 0));
     assert.equal(intro.step, 'completed');
     assert.equal(currentTier, 1, 'Hush promoted to Level 1 Wayfarer upon reaching goal');
 
@@ -298,7 +302,7 @@ test('NationIntroFlow: the gate sign-in runs before the level is granted, and th
     const lead = mockWaypointMarker.activeLead;
     intro['completeFirstMission'](lead);
     await new Promise((r) => setTimeout(r, 0));
-    assert.equal(intro.step, 'completed');
+    assert.equal(intro.step, 'awaiting_gate');
     assert.equal(currentTier, 0, 'no level while the sign-in is open');
 
     releaseSignIn();
@@ -310,4 +314,59 @@ test('NationIntroFlow: the gate sign-in runs before the level is granted, and th
   } finally {
     restoreDom();
   }
+});
+
+
+test('NationIntroFlow: failed registration leaves the mission and tier locked, with an explicit retry', async () => {
+  const restoreDom = setupDom();
+  let intro;
+  try {
+    let tier = -1, fail = true;
+    const marker = { activeLead: null, setLead(lead) { this.activeLead = lead; } };
+    intro = new NationIntroFlow({
+      nation: 'IGNIS', isDim: () => false,
+      controller: { position: new Vector3(49, 0, 0), facing: 0, grounded: true },
+      shoulderCamera: {}, input: { read: () => ({ running: false }) }, combat: {}, fight: {}, sound: {},
+      leadManager: new LeadManager([]), waypointMarker: marker,
+      applyTier: value => { tier = value; }, onEquipStarterWeapon: () => {},
+      beforeUnlock: async () => { if (fail) throw new Error('cancelled'); },
+    });
+    intro['dispatchFirstMission']();
+    intro.update(0.016);
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(tier, 0);
+    assert.equal(intro.step, 'awaiting_gate');
+    assert.equal(marker.activeLead.completed, false);
+    intro.update(0.016);
+    assert.equal(tier, 0, 'remaining in the gate radius cannot unlock after a failure');
+    fail = false;
+    intro.retryGate();
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(intro.step, 'completed');
+    assert.equal(tier, 1);
+  } finally { intro?.dispose(); restoreDom(); }
+});
+
+
+test('NationIntroFlow: saved training resumes the gate objective without replaying training or unlocking', () => {
+  const restoreDom = setupDom();
+  let intro;
+  try {
+    let tier = -1, weapon = null, trained = false;
+    const marker = { lead: null, setLead(lead) { this.lead = lead; } };
+    intro = new NationIntroFlow({
+      nation: 'IGNIS', isDim: () => false,
+      controller: { position: new Vector3(8, 0, 0), facing: 0, grounded: true },
+      shoulderCamera: {}, input: { read: () => ({ running: false }) }, combat: {}, fight: {}, sound: {},
+      leadManager: new LeadManager([]), waypointMarker: marker,
+      applyTier: value => { tier = value; }, onEquipStarterWeapon: value => { weapon = value; },
+      onTrainingComplete: () => { trained = true; }, beforeUnlock: async () => {},
+    });
+    intro.resumeAtGate();
+    assert.equal(intro.step, 'active_mission');
+    assert.equal(tier, 0);
+    assert.equal(weapon, 'sword');
+    assert.equal(trained, true);
+    assert.equal(marker.lead.id, 'first_mission_ignis_gate');
+  } finally { intro?.dispose(); restoreDom(); }
 });

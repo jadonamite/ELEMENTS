@@ -106,6 +106,8 @@ export class ServerEnemy {
   /** The clip a strike plays, chosen when it starts. */
   clip = '';
   target: string | null = null;
+  storyOwner: string | null = null;
+  storyY: number | null = null;
   readonly history = new PoseHistory(1);
   private timer = 0;
   private length = 0;

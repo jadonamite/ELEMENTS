@@ -383,9 +383,9 @@ test('Character controls: authenticated, per-character, bounded, merged across d
     assert.deepEqual(await write.json(), { progress: { strike: { uses: 3, shown: 1 } } });
     const stale = await call('learner-a', { strike: { uses: 0, shown: 2 } });
     assert.deepEqual(await stale.json(), { progress: { strike: { uses: 3, shown: 2 } } });
-    assert.deepEqual(await (await call('learner-b')).json(), { progress: {}, tier: 5 });
+    assert.deepEqual(await (await call('learner-b')).json(), { progress: {}, tier: 0 });
     migrateDatabase(db);
-    assert.deepEqual(await (await call('learner-a')).json(), { progress: { strike: { uses: 3, shown: 2 } }, tier: 5 });
+    assert.deepEqual(await (await call('learner-a')).json(), { progress: { strike: { uses: 3, shown: 2 } }, tier: 0 });
   } finally { setTokenVerifier(null); await ts.close(); db.close(); }
 });
 

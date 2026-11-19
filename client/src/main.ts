@@ -1,3 +1,5 @@
+import { seatedPose } from './story/mission-actor.js';
+import { MissionFlow } from './story/mission-flow.js';
 import './ui/tokens.css';
 import './ui/loader.css';
 import './style.css';
@@ -31,7 +33,6 @@ import { SwordStance } from './sword.js';
 import { SoundManager } from './audio.js';
 import { BendingEffects, type BendingType } from './bending-fx.js';
 import { OpeningFlow, getStoredDrawing, type DrawingResult } from './opening.js';
-import { saveProgressAtGate } from './auth/save-progress.js';
 import { ConsentBanner } from './consent.js';
 import type { Enemy } from './enemy.js';
 import { createCombatRules, ELEMENTS, isBendMove, NIGHT_FROM, sindrSentryDistance, sindrStreet, type BendMoveId, type CombatBalance, type Element, type Kit, type MoveId } from '../../shared/src/index.js';
@@ -217,6 +218,8 @@ async function main(): Promise<void> {
   }
   const consent = new ConsentBanner();
   cleanup.push(() => consent.dispose());
+  let storyMission: MissionFlow | null = null;
+  let missionAccess = !inTown;
   let lifeSystem: SindrLifeSystem | null = null;
   let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.
@@ -446,7 +449,6 @@ async function main(): Promise<void> {
     ? new NationalEncounterManager(fight, physics.world, renderer, true, params.get('ambush'), (msg) => notice(msg))
     : null;
   cleanup.push(() => nationalEncounters?.dispose());
-  let yardSpawned = false;
   if (zone) {
     loader.setProgress(0.70, 'Waking the crowd');
     lifeSystem = new SindrLifeSystem({
@@ -491,6 +493,7 @@ async function main(): Promise<void> {
 
   // The context key: what is offered where the player stands, shown over that thing.
   const contextAction = new ContextAction([
+    () => storyMission?.contextOffer() ?? null,
     () => streetChallenges?.contextOffer() ?? null,
     () => townEconomy?.contextOffer() ?? null,
     () => lifeSystem?.contextOffer() ?? null,
@@ -534,8 +537,9 @@ async function main(): Promise<void> {
   cleanup.push(() => fight.dispose());
   /** The fighting tier decides which moves are ready and shown; online the room's figure wins. */
   const applyTier = (t: number): void => {
-    fight.tier = t;
-    bend.tier = t;
+    const availableTier = missionAccess ? t : 0;
+    fight.tier = availableTier;
+    bend.tier = availableTier;
   };
   applyTier(tier);
   controls = new Controls(input, canvas, {
@@ -750,45 +754,53 @@ async function main(): Promise<void> {
   homeMenu.mountControls(controls!);
 
   let nationIntro: NationIntroFlow | null = null;
-  const introStorageKey = 'elements_intro_v1_completed';
-  const isNewArrival = !localStorage.getItem(introStorageKey);
-  const shouldRunIntro = (params.has('intro') || isNewArrival) && !params.has('skipIntro');
-
-  if (shouldRunIntro && zone && lifeSystem) {
-    nationIntro = new NationIntroFlow({
-      scene,
-      loaders: assets,
-      nation: kitElement,
-      isDim: () => isDim,
-      controller,
-      shoulderCamera,
-      input,
-      combat,
-      fight,
-      sound,
-      leadManager: lifeSystem.leadManager,
-      waypointMarker: lifeSystem.waypointMarker,
-      applyTier,
-      onEquipStarterWeapon: () => {
-        applyKit();
-        setFightingStyle('weapon');
-        sword.draw(true);
-      },
-      beforeUnlock: async () => {
+  if (zone && lifeSystem) {
+    storyMission = new MissionFlow({
+      scene, world: physics.world, loaders: assets, controller, notice,
+      accountDrawing: account => {
         const held = getStoredDrawing();
-        const account = await saveProgressAtGate();
-        if (account && !forcedElement && !forcedHush && (account.role !== held?.role || account.element !== held?.element)) {
-          applyDrawing(account);
-          notice(account.role === 'Hush' ? 'Welcome back. You are Hush.' : `Welcome back, Shaper of ${account.element}.`);
-        }
+        if (account.role !== held?.role || account.element !== held?.element) applyDrawing(account);
       },
-      onMissionComplete: (lead) => {
-        localStorage.setItem(introStorageKey, 'done');
-        if (townEconomy?.carried) townEconomy.carried.chroma += lead.rewardChroma;
+      changed: snapshot => {
+        missionAccess = snapshot.state.flags.mission_1_complete;
+        applyTier(snapshot.tier);
+        void townEconomy?.refresh();
       },
+      ate: () => sustain.reset(),
+      reach: () => { hero.anim.playOnce('cast'); },
+      retryGate: () => nationIntro?.retryGate(),
+      zone: () => 'sindr',
+      unavailable: () => { nationIntro?.dispose(); nationIntro = null; },
+    });
+    cleanup.push(() => storyMission?.dispose());
+  }
+  const startNationIntro = async (): Promise<void> => {
+    if (!zone || !lifeSystem || !storyMission) return;
+    await openingClosed;
+    await storyMission.ready;
+    if (disposed) return;
+    if (!storyMission.supported) { storyMission.showUnavailable(); return; }
+    if (storyMission.complete) {
+      missionAccess = true;
+      applyTier(storyMission.api.snapshot!.tier);
+      return;
+    }
+    nationIntro = new NationIntroFlow({
+      scene, loaders: assets, nation: 'IGNIS', isDim: () => isDim,
+      controller, shoulderCamera, input, combat, fight, sound,
+      leadManager: lifeSystem.leadManager, waypointMarker: lifeSystem.waypointMarker,
+      applyTier: tier => applyTier(storyMission?.api.snapshot?.tier ?? tier),
+      onEquipStarterWeapon: () => {
+        applyKit(); setFightingStyle('weapon'); sword.draw(true);
+      },
+      onTrainingComplete: () => { if (storyMission) storyMission.trainingReady = true; },
+      beforeUnlock: () => storyMission!.gate(),
     });
     cleanup.push(() => nationIntro?.dispose());
-  }
+    if (storyMission.trainingReady) nationIntro.resumeAtGate();
+    else nationIntro.start();
+  };
+  void startNationIntro();
   input.onTargetTap = (x, y) => {
     const point = new Vector3(); let target: Enemy | null = null, nearest = 48;
     for (const foe of fight.enemies) {
@@ -1133,7 +1145,8 @@ async function main(): Promise<void> {
   // --- Online: ?online joins this zone's room on the game server. ---
   if (playingOnline) {
     const online = await import('./net/online.js');
-    const { getServerUrl, getStoredAuthToken } = await import('./auth/server-api.js');
+    const { getServerUrl, getStoredAuthToken, getStoredAccountId } = await import('./auth/server-api.js');
+    const roomIdentity = { accountId: getStoredAccountId(), token: getStoredAuthToken() };
     const { loadHoundTemplate } = await import('./monsters/hound.js');
     const lagMs = Number(new URLSearchParams(window.location.search).get('lag')) || 0;
     online.OnlineSession.connect({
@@ -1197,6 +1210,7 @@ async function main(): Promise<void> {
     }).then((session) => {
       onlineSession = session;
       cleanup.push(() => session.dispose());
+      storyMission?.api.bind(session.channel, roomIdentity);
       townEconomy?.goOnline(session.channel, () => {
         const list: Array<{ id: string; name: string; position: Vector3 }> = [];
         for (const [id, rp] of session.players) {
@@ -1207,7 +1221,7 @@ async function main(): Promise<void> {
         return list;
       });
       if (fps) Object.assign((window as unknown as { elements: object }).elements, { online: session });
-    }).catch((error: unknown) => status(`Playing offline: ${(error as Error).message}`));
+    }).catch((error: unknown) => status(`World connection failed. Reload to retry: ${(error as Error).message}`));
   }
   // --- End online ---
 
@@ -1262,7 +1276,6 @@ async function main(): Promise<void> {
   }
 
   // The master walks up once the player can see the street: the loader has handed over and the Draw is closed.
-  if (nationIntro) void openingClosed.then(() => { if (!disposed) nationIntro?.start(); });
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();
@@ -1275,7 +1288,7 @@ async function main(): Promise<void> {
       timeScale = 0.25;
     }
     // The fight and the combat clock stand still together while the fighter picker or home menu is open.
-    const picking = document.body.classList.contains('selecting') || document.body.classList.contains('home-open') || document.body.classList.contains('shop-open');
+    const picking = storyMission?.seated || document.body.classList.contains('selecting') || document.body.classList.contains('home-open') || document.body.classList.contains('shop-open') || document.body.classList.contains('mission-open');
     const delta = rawDelta * timeScale;
 
     // Validate lock-on target
@@ -1286,6 +1299,7 @@ async function main(): Promise<void> {
     shoulderCamera.lockTarget = remoteLock?.model.position ?? lockedEnemy?.controller.position ?? null;
 
     const alive = fight.heroAlive;
+    storyMission?.update(rawDelta, alive);
     nationIntro?.update(rawDelta);
     townEconomy?.update(rawDelta, controller.position);
     for (const action of alive ? input.takeActions() : []) {
@@ -1366,23 +1380,14 @@ async function main(): Promise<void> {
       sustain.reset();
       fightHud.say('');
       if (zone) {
-        controller.place(SPAWN.x, 0, SPAWN.z);
+        const checkpoint = storyMission?.checkpoint ?? SPAWN;
+        controller.place(checkpoint.x, checkpoint.y, checkpoint.z);
         controller.facing = SPAWN.facing;
         shoulderCamera.yaw = SPAWN.facing + Math.PI;
       }
     }
     if (!picking) nationalEncounters?.update(delta, controller.position, nightness.value);
     if (zone) {
-      const yardDist = Math.hypot(controller.position.x - 124, controller.position.z - -36);
-      if (!playingOnline && yardDist < 12 && !yardSpawned && fight.villainsReady && fight.enemies.filter(e => e.alive).length === 0) {
-        yardSpawned = true;
-        fight.spawnVillain({ x: 121, z: -38 }, 'brawler', 100);
-        fight.spawnVillain({ x: 127, z: -34 }, 'armed', 110);
-        notice("Master's Sparring Yard: Defeat the challengers! (K: summon partner)");
-      } else if (yardDist > 24) {
-        yardSpawned = false;
-      }
-
       streetChallenges?.update(delta, controller.position, alive, controller.facing);
 
       // --- [creatures: outlaw encounter evaluation in Sindr] ---
@@ -1491,6 +1496,8 @@ async function main(): Promise<void> {
         turnStep = null;
         hero.anim.play('jump', 0.12);
         hero.anim.setSpeed('jump', 1.0);
+      } else if (storyMission?.acting) {
+        hero.anim.play('cast', 0.2, false);
       } else if (!combat.current && performance.now() > techniqueClipUntil) {
         const now = performance.now() / 1000;
         const pace = locomotionForSpeed(controller.speed);
@@ -1549,6 +1556,7 @@ async function main(): Promise<void> {
       }
     }
     hero.anim.update(animDelta);
+    if (storyMission?.seated) seatedPose(hero.model, drawn.y);
     sword.update(animDelta);
     if (bend.windskiffActive || performance.now() < lightningBareUntil) {
       if (sword.phase === 'armed') sword.forceSheathe();

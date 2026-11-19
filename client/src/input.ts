@@ -133,7 +133,7 @@ export class GameInput {
     this.onDeviceChange?.(device);
   }
   get paused(): boolean {
-    return !!document.body?.matches('.home-open, .selecting, .shop-open') ||
+    return !!document.body?.matches('.home-open, .selecting, .shop-open, .mission-open') ||
       !!document.getElementById?.('opening-overlay') || !!document.getElementById?.('elements-loader') || document.hidden === true;
   }
   /** Public action entry point for touch and future controllers. */

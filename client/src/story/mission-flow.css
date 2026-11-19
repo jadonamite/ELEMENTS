@@ -1,0 +1,48 @@
+.mission-dialogue {
+  position: fixed;
+  inset: auto max(var(--space-4), env(safe-area-inset-right)) max(var(--space-6), env(safe-area-inset-bottom));
+  margin: 0 auto;
+  width: min(36rem, calc(100% - 2rem));
+  box-sizing: border-box;
+  max-height: 70vh;
+  overflow: auto;
+  z-index: 120;
+  padding: var(--space-6);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-lg);
+  font: var(--font-size-base)/var(--line-height-normal) var(--font-family-body);
+}
+.mission-dialogue h2 { margin: 0 0 var(--space-3); font: 700 var(--font-size-lg)/var(--line-height-tight) var(--font-family-display); }
+.mission-dialogue p { margin: 0 0 var(--space-4); }
+.mission-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.mission-choice {
+  pointer-events: auto;
+  min-height: var(--target-min-height);
+  min-width: var(--target-min-width);
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-raised);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+.mission-choice:hover { background: var(--color-bg-overlay); }
+.mission-choice:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: 3px; }
+.mission-choice:disabled { cursor: wait; opacity: 0.7; }
+.mission-error { color: var(--color-text-primary); border-left: 3px solid var(--color-status-error); padding-left: var(--space-3); }
+.nation-intro-step-card { min-width: 0; max-width: calc(100vw - 2rem); }
+.nation-intro-overlay .mission-choices { margin-top: var(--space-4); }
+@media (prefers-reduced-motion: reduce) { .mission-choice, .nation-intro-overlay, .nation-mission-banner { animation: none; transition: none; } }
+
+.mission-invitation {
+  position: fixed; right: max(var(--space-4), env(safe-area-inset-right)); top: 6rem;
+  z-index: 90; min-height: var(--target-min-height); padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
+  color: var(--color-text-primary); background: var(--color-bg-surface); font: inherit; cursor: pointer;
+}
+.mission-invitation:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: 3px; }
+.mission-invitation[hidden], .mission-open .mission-invitation { display: none; }

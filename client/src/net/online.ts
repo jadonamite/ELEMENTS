@@ -160,7 +160,7 @@ export class OnlineSession {
       if ([s.v, s.cap, s.w].every(n => typeof n === 'number' && Number.isFinite(n))) game.onStamina?.(s.v, s.cap, s.w);
     });
     this.on('correct', (m) => {
-      if (this.region && finitePoint(m)) this.place(this.fromNetwork(m));
+      if (finitePoint(m)) this.place(this.fromNetwork(m));
     });
     this.on('region_handoff', (m) => { void this.handoff(m); });
     this.on('region_refused', () => {
@@ -290,6 +290,7 @@ export class OnlineSession {
       this.place(this.fromNetwork(w.position));
       this.game.onRegion?.(region);
     }
+    if (!region && finitePoint(w.position)) this.place(w.position);
     this.you = w.you;
     this.sourceAttached = true;
     this.ready = true;

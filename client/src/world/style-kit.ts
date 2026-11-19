@@ -418,6 +418,51 @@ export function stall(b: WorldBuilder, x: number, z: number, y: number, yaw: num
   b.at(0, 0, 0);
 }
 
+/** A home meal stall with a visible bowl sign, cookware, steam and a nearby customer bench. */
+export function homeMealStall(b: WorldBuilder, x: number, z: number, y: number, yaw: number, seat: { x: number; y: number; z: number }): void {
+  b.at(x, z, yaw, y);
+  for (const px of [-2.2, 2.2]) for (const pz of [-1.3, 1.3]) {
+    b.box('charred_timber_beams', px, 1.3, pz, 0.16, 2.6, 0.16);
+  }
+  b.box('indigo_cloth', 0, 2.75, 0.2, 5.2, 0.08, 3.6, { x: 0.18 });
+  b.box('red_lacquer', 0, 2.42, 2.02, 5.2, 0.32, 0.08);
+
+  for (const sx of [-1.4, 1.4]) {
+    b.box('charred_timber_beams', sx, 0.95, 1.2, 1.6, 0.12, 0.9);
+    b.box('charred_timber_beams', sx, 0.5, 1.45, 1.6, 0.9, 0.08);
+    b.solid(sx, 0.55, 1.2, 1.6, 1.1, 0.9);
+  }
+
+  b.box('charred_timber_beams', 0, 3.38, 2.08, 1.45, 0.95, 0.14);
+  b.box('red_lacquer', 0, 3.38, 2.17, 1.3, 0.8, 0.05);
+  b.box('pale_stone', 0, 3.63, 2.21, 0.78, 0.09, 0.06);
+  b.box('pale_stone', -0.31, 3.43, 2.21, 0.09, 0.36, 0.06, { z: 0.5 });
+  b.box('pale_stone', 0.31, 3.43, 2.21, 0.09, 0.36, 0.06, { z: -0.5 });
+  b.box('pale_stone', 0, 3.24, 2.21, 0.18, 0.08, 0.06);
+  for (const sx of [-0.16, 0, 0.16]) b.box('gold_trim', sx, 3.86, 2.21, 0.05, 0.2, 0.06, { z: sx * 1.1 });
+
+  b.box('charred_timber_beams', 0, 0.48, -0.55, 1.3, 0.92, 0.9);
+  b.cylinder('terracotta', 0, 1.12, -0.55, 0.38, 0.31, 0.38, 12);
+  b.cylinder('gold_trim', 0, 1.34, -0.55, 0.42, 0.42, 0.07, 16);
+  for (const sx of [-1.25, 1.25]) {
+    b.cylinder('terracotta', sx, 1.08, 1.18, 0.2, 0.25, 0.14, 12);
+    b.cylinder('pale_stone', sx, 1.16, 1.18, 0.23, 0.23, 0.035, 12);
+  }
+  b.steam.push(b.world(0, 1.62, -0.55));
+
+  const dx = seat.x - x, dz = seat.z - z;
+  const localX = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+  const localZ = dx * Math.sin(yaw) + dz * Math.cos(yaw);
+  const localY = seat.y - y;
+  b.box('charred_timber_beams', localX, localY + 0.52, localZ, 1.7, 0.14, 0.58);
+  for (const sx of [-0.64, 0.64]) for (const sz of [-0.18, 0.18]) {
+    b.box('charred_timber_beams', localX + sx, localY + 0.25, localZ + sz, 0.12, 0.5, 0.12);
+  }
+  b.box('charred_timber_beams', localX, localY + 0.23, localZ, 1.36, 0.1, 0.12);
+  b.browseAt(0, 2.65, Math.PI, 0);
+  b.at(0, 0, 0);
+}
+
 /**
  * A merchant's stall: four posts, a sloping cloth roof with a valance, a counter of goods across the front, stock
  * crated behind, and the keeper standing between the two. Open at the sides, so the keeper walks in and out.

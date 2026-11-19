@@ -1,3 +1,4 @@
+import { saveMissionTraining, missionSnapshot } from './story/missionService.js';
 import { marketBoard } from './chain/market.js';
 import { prepareGuestClaim } from './chain/guest-claim.js';
 import express, { type Application, type Request, type Response } from 'express';
@@ -14,7 +15,6 @@ import { isOutsider } from './net/money.js';
 import { isInRoom, isZoneOnline } from './net/presence.js';
 import {
   getAccountBalance,
-  grantPlayerStartingPurse,
   getAllMerchants,
   getMerchant,
   quoteMerchantTrade,
@@ -271,7 +271,7 @@ export function setupApi(app: Application): void {
     if (!isAccountAllowed(accountId)) { res.status(429).json({ error: 'Too many requests' }); return; }
     const rising = getRising(accountId);
     if (!rising) { res.status(409).json({ error: 'Create your character first' }); return; }
-    res.json({ progress: getControlProgress(accountId), tier: rising.tier ?? 5 });
+    res.json({ progress: getControlProgress(accountId), tier: missionSnapshot(accountId).tier });
   });
   app.post('/api/character/controls', async (req: Request, res: Response) => {
     const accountId = await requireAccount(req, res);
@@ -314,6 +314,24 @@ export function setupApi(app: Application): void {
     } });
   });
 
+  app.get('/api/story/mission', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId) return;
+    try { res.json(missionSnapshot(accountId)); }
+    catch (err) { res.status(409).json({ error: err instanceof Error ? err.message : 'Mission unavailable' }); }
+  });
+  app.post('/api/story/mission', async (req: Request, res: Response) => {
+    const accountId = await requireAccount(req, res);
+    if (!accountId || heldByRoom(accountId, res)) return;
+    if (!isAccountAllowed(accountId)) { res.status(429).json({ error: 'Too many requests' }); return; }
+    try {
+      if (req.body?.event !== 'training_complete') {
+        res.status(409).json({ error: 'Connect to the shared world to continue this mission' }); return;
+      }
+      res.json(saveMissionTraining(accountId, req.body?.operationId));
+    } catch (err) { res.status(409).json({ error: err instanceof Error ? err.message : 'Mission could not continue' }); }
+  });
+
   // --- Economy endpoints (M5) ---
 
   // Your own balance only. Robbers and Sentries read the ledger on the server, not through here.
@@ -331,9 +349,7 @@ export function setupApi(app: Application): void {
     const accountId = await requireAccount(req, res);
     if (!accountId) return;
 
-    const grant = grantPlayerStartingPurse(accountId);
-    const balance = getAccountBalance(accountId);
-    res.json({ accountId: accountId, granted: !!grant, balance, grant });
+    res.status(410).json({ error: 'Take your arrival pouch from the registrar' });
   });
 
   // A week of Sindr trading on a throwaway copy of the economy, for watching prices move. Never touches the live ledger.
