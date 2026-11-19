@@ -825,7 +825,7 @@ export class SoundManager {
   }
 
   private voiceIndex(): Promise<Record<string, Record<string, number>> | null> {
-    this.voiceManifest ??= fetch('/assets/voice/manifest.json').then(r => (r.ok ? r.json() : null)).catch(() => null);
+    this.voiceManifest ??= fetch('/assets/voice/manifest.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
     return this.voiceManifest;
   }
 
