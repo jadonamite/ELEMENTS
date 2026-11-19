@@ -112,7 +112,9 @@
     "pixelRatioStep": 0.25,
     "msaaSamples": 4,
     "slowFrameMs": 18,
-    "fastFrameMs": 11
+    "fastFrameMs": 11,
+    "sharpen": 0.5,
+    "shadowRadius": 1
   },
   "combat": {
     "fade": 0.08,

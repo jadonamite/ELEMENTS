@@ -42,7 +42,7 @@ import { FXAAPass } from 'three/examples/jsm/postprocessing/FXAAPass.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { loaders } from '../assets/loaders.js';
 import balance from '../../../shared/balance.json';
-import { SANITIZE_SHADER } from '../env/postprocessing.js';
+import { SANITIZE_SHADER, SHADOW_RADIUS, SharpenPass } from '../env/postprocessing.js';
 import type { PhysicsWorld } from '../physics.js';
 import { cellLods, createAoMaterial, WorldBuilder, type Browse, type Bucket, type Part, type Post } from './builder.js';
 import { skyUniforms, WorldClock } from './clock.js';
@@ -180,7 +180,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   const s = sun.shadow.camera;
   const shadowSpan = low ? 25 : 32;
   s.left = -shadowSpan; s.right = shadowSpan; s.top = shadowSpan; s.bottom = -shadowSpan; s.near = 1; s.far = 260;
-  sun.shadow.radius = 3;
+  sun.shadow.radius = SHADOW_RADIUS;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
   scene.add(sun, sun.target);
@@ -381,6 +381,9 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   composer.addPass(new OutputPass());
   const aa = low ? new FXAAPass() : new SMAAPass();
   composer.addPass(aa);
+  const sharpen = new SharpenPass();
+  composer.addPass(sharpen);
+  if (debug) Object.assign((win.elements as { post: object }).post, { sharpen });
 
   const focus = new Vector3();
   let last = performance.now();

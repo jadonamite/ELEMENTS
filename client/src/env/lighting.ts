@@ -26,6 +26,7 @@ import type { QualityProfile } from './types.js';
 
 import type { Element } from '../../../shared/src/index.js';
 import { getNationGeography } from './nations.js';
+import { SHADOW_RADIUS } from './postprocessing.js';
 
 /** Sun horizontal coordinate in evening_road_01_puresky_1k.hdr. */
 export const SKY_SUN_U = 0.6074;
@@ -100,7 +101,7 @@ export class LightingSystem {
       light.color.copy(this.sunColor);
       light.shadow.bias = -0.00035;
       light.shadow.normalBias = 0.035;
-      light.shadow.radius = 2.2;
+      light.shadow.radius = SHADOW_RADIUS;
     }
 
     this.sun = this.csm.lights[0] ?? new DirectionalLight(this.sunColor, met.sunIntensity);

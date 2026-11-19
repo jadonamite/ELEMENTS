@@ -45,6 +45,63 @@ export const SANITIZE_SHADER = {
   `,
 };
 
+/**
+ * How far a shadow edge is filtered, in shadow-map texels. three's PCF turns its five taps by a per-pixel noise meant
+ * to be averaged over frames by temporal anti-aliasing; with none here, a wider radius leaves that noise as a fixed dot
+ * grid on soft shadows (skin, cloth), which sharpening then lifts. At 1 the noise stays inside the hardware's own 2x2 filter.
+ */
+export const SHADOW_RADIUS = look.shadowRadius ?? 1;
+
+/**
+ * Contrast-adaptive sharpening (AMD FidelityFX CAS): each pixel is pushed away from its four neighbours by an amount
+ * that shrinks where the local contrast is already high, so flat detail (skin, cloth, stone) sharpens and edges do not
+ * ring. Runs on display colour, last in the chain. `sharpness` 0..1 from balance.json look.sharpen.
+ */
+const CAS_SHADER = {
+  uniforms: { tDiffuse: { value: null }, resolution: { value: new Vector2(1, 1) }, sharpness: { value: 0.5 } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec2 resolution;
+    uniform float sharpness;
+    varying vec2 vUv;
+    vec3 at(float x, float y) { return texture2D(tDiffuse, vUv + vec2(x, y) / resolution).rgb; }
+    void main() {
+      vec4 centre = texture2D(tDiffuse, vUv);
+      vec3 a = at(-1.0, -1.0), b = at(0.0, -1.0), c = at(1.0, -1.0);
+      vec3 d = at(-1.0, 0.0), e = centre.rgb, f = at(1.0, 0.0);
+      vec3 g = at(-1.0, 1.0), h = at(0.0, 1.0), i = at(1.0, 1.0);
+      // Soft minimum and maximum: the cross plus the full 3x3 ring, so the range is 0..2.
+      vec3 lo = min(min(min(d, e), min(f, b)), h);
+      lo += min(lo, min(min(a, c), min(g, i)));
+      vec3 hi = max(max(max(d, e), max(f, b)), h);
+      hi += max(hi, max(max(a, c), max(g, i)));
+      vec3 amp = sqrt(clamp(min(lo, 2.0 - hi) / max(hi, vec3(1e-4)), 0.0, 1.0));
+      vec3 w = amp * (-1.0 / mix(8.0, 5.0, sharpness));
+      vec3 sharp = ((b + d + f + h) * w + e) / (1.0 + 4.0 * w);
+      gl_FragColor = vec4(clamp(sharp, 0.0, 1.0), centre.a);
+    }
+  `,
+};
+
+/** The sharpening pass; the composer hands it the drawn size in pixels, which is the size it samples at. */
+export class SharpenPass extends ShaderPass {
+  constructor(sharpness = look.sharpen ?? 0.5) {
+    super(CAS_SHADER);
+    this.uniforms['sharpness']!.value = sharpness;
+  }
+
+  override setSize(width: number, height: number): void {
+    (this.uniforms['resolution']!.value as Vector2).set(width, height);
+  }
+}
+
 export class PostProcessingPipeline {
   readonly composer: EffectComposer;
   readonly renderPass: RenderPass;
@@ -56,6 +113,7 @@ export class PostProcessingPipeline {
   readonly smaaPass: SMAAPass | null = null;
   readonly fxaaPass: FXAAPass | null = null;
   readonly outputPass: OutputPass;
+  readonly sharpenPass = new SharpenPass();
 
   private width = 1;
   private height = 1;
@@ -141,6 +199,8 @@ export class PostProcessingPipeline {
       this.fxaaPass = new FXAAPass();
       this.composer.addPass(this.fxaaPass);
     }
+    // 9. Sharpening, on the anti-aliased image
+    this.composer.addPass(this.sharpenPass);
   }
 
   setSize(w: number, h: number): void {
@@ -208,5 +268,6 @@ export class PostProcessingPipeline {
     this.vignettePass.dispose();
     this.smaaPass?.dispose();
     this.fxaaPass?.dispose();
+    this.sharpenPass.dispose();
   }
 }

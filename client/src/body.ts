@@ -219,6 +219,23 @@ function rebind(src: SkinnedMesh, rig: Skeleton, geometry = src.geometry): Skinn
   return mesh;
 }
 
+/** Anisotropic filtering on a body's maps; three caps it at what the GPU allows. Clones share these textures. */
+const BODY_ANISOTROPY = 8;
+const BODY_MAPS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const;
+
+/** A body's maps stay sharp where its surface turns away from the camera (cheeks, arms, the sides of armour). */
+function filterSharply(scene: Object3D): void {
+  scene.traverse(node => {
+    const material = (node as Mesh).material as MeshStandardMaterial | MeshStandardMaterial[] | undefined;
+    for (const mat of material ? [material].flat() : []) {
+      for (const slot of BODY_MAPS) {
+        const tex = mat[slot];
+        if (tex && tex.anisotropy !== BODY_ANISOTROPY) { tex.anisotropy = BODY_ANISOTROPY; tex.needsUpdate = true; }
+      }
+    }
+  });
+}
+
 /** Loads the creator's bodies and hair once; fighters are cloned from these. */
 export class BodyKit {
   private readonly scenes = new Map<string, Promise<Object3D>>();
@@ -248,6 +265,7 @@ export class BodyKit {
       const file = detailFile(path, this.detail);
       pending = this.loaders.model(file).then(({ scene }) => {
         if (OUTFIT_FILES.has(path)) joinByMaterial(scene);
+        filterSharply(scene);
         return scene;
       });
       this.scenes.set(path, pending);
