@@ -83,10 +83,13 @@ test('Database migration: safely migrates existing accounts table and keeps exis
   assert.equal(shaperRising.role, 'Shaper');
   assert.equal(shaperRising.element, 'AURA');
 
+  // A Hush from before the nation draw draws it on first read, and keeps it on the rising and the account.
   const hushRising = getRising('legacy_hush', db);
   assert.ok(hushRising);
   assert.equal(hushRising.role, 'Hush');
-  assert.equal(hushRising.element, null);
+  assert.ok(['IGNIS', 'AQUES', 'TERRA', 'AURA'].includes(hushRising.element ?? ''));
+  assert.equal(getRising('legacy_hush', db)?.element, hushRising.element);
+  assert.equal(getAccount('legacy_hush', db)?.element, hushRising.element);
 });
 
 test('HTTP API: rejects missing or bad tokens with 401', async () => {
@@ -202,11 +205,8 @@ test('HTTP API: first /api/rising stores a result, second call returns same resu
 
     assert.equal(data1.accountId, 'did:privy:user_roll_test');
     assert.ok(data1.role === 'Shaper' || data1.role === 'Hush');
-    if (data1.role === 'Shaper') {
-      assert.ok(['IGNIS', 'AQUES', 'TERRA', 'AURA'].includes(data1.element!));
-    } else {
-      assert.equal(data1.element, null);
-    }
+    // Shaper or Hush, every rising carries a nation.
+    assert.ok(['IGNIS', 'AQUES', 'TERRA', 'AURA'].includes(data1.element!));
 
     // Second call: must return the exact same result
     const res2 = await fetch(`${ts.baseUrl}/api/rising`, {

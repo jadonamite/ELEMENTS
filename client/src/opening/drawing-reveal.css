@@ -1,0 +1,205 @@
+/* The Drawing reveal: a heavy metal card centre stage, the drawn element behind it, words above, the choice below. */
+.draw-stage {
+  /* Sized against the stage itself. */
+  --card-w: min(64cqw, 26rem, 38cqh);
+  container-type: size;
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
+  align-items: center;
+  background: radial-gradient(ellipse at 50% 55%, #0d1014 0%, #030405 72%);
+  color: var(--opening-ink, #f5f3ec);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Cold haze in the dark, lit by the element once it arrives. */
+.draw-haze {
+  position: absolute;
+  inset: -10%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 45% 38% at 50% 50%, rgb(60 72 90 / .26), transparent 70%),
+    radial-gradient(ellipse 28% 20% at 32% 30%, rgb(110 130 160 / .08), transparent 70%);
+  filter: blur(10px);
+}
+
+/* The drawn element, filmed on black and screened over the stage so the black drops out. Placed from the card's
+   measured position. */
+.draw-plate {
+  position: absolute;
+  z-index: 1;
+  left: var(--plate-left, 50%);
+  top: var(--plate-top, 50%);
+  width: calc(var(--card-w) * 2.1);
+  height: calc(var(--card-w) * 3.75);
+  transform: translate(-50%, calc(-50% + var(--card-w) * var(--plate-y, 0))) scale(.9);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.4s var(--ease-out), transform 2.2s cubic-bezier(.2, .7, .2, 1);
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 80%, transparent 100%);
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 80%, transparent 100%);
+}
+.draw-plate video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.draw-stage.element-in .draw-plate { opacity: var(--plate-o, 1); transform: translate(-50%, calc(-50% + var(--card-w) * var(--plate-y, 0))); }
+.draw-stage.element-in .draw-plate.spent { opacity: 0; transition-duration: 2.4s; }
+
+/* Words over a dark band, so fire or water behind never washes them out. */
+.draw-words {
+  grid-row: 1;
+  z-index: 4;
+  width: 100%;
+  min-height: 7.5rem;
+  padding: max(var(--space-6), env(safe-area-inset-top)) var(--space-4) var(--space-6);
+  text-align: center;
+  background: linear-gradient(rgb(3 4 5 / .92), rgb(3 4 5 / .7) 60%, transparent);
+}
+.draw-words .opening-kicker { margin-bottom: var(--space-3); }
+.draw-title {
+  margin: 0;
+  padding-left: .16em;
+  min-height: 1.15em;
+  font: 700 clamp(1.5rem, 5vw, 2.6rem)/1.15 var(--font-family-display);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--nation);
+  text-shadow: 0 2px 12px rgb(0 0 0 / .8);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--duration-deliberate) var(--ease-out), transform var(--duration-deliberate) var(--ease-out), color 1s var(--ease-out);
+}
+.draw-stage.is-hush:not(.nation-set) .draw-title { color: var(--forge); }
+.draw-sub {
+  margin: var(--space-2) 0 0;
+  min-height: 1.5em;
+  font: var(--font-size-xs)/1.5 var(--font-family-body);
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--opening-secondary, #c2c0b8);
+  opacity: 0;
+  transition: opacity var(--duration-deliberate) var(--ease-out);
+}
+.draw-stage.words-in .draw-title { opacity: 1; transform: none; }
+.draw-stage.words-in .draw-sub { opacity: 1; }
+
+/* The card: a slab with real thickness, swaying in perspective. */
+.draw-anchor {
+  grid-row: 2;
+  z-index: 2;
+  position: relative;
+  width: var(--card-w);
+  aspect-ratio: 2 / 3;
+  perspective: 1600px;
+  opacity: 0;
+  transform: translateY(42svh) rotateX(24deg);
+  transition: opacity 1.1s var(--ease-out), transform 1.6s cubic-bezier(.16, .84, .3, 1);
+}
+.draw-stage.risen .draw-anchor { opacity: 1; transform: none; }
+.draw-card { position: absolute; inset: 0; transform-style: preserve-3d; will-change: transform; }
+.draw-slab {
+  position: absolute;
+  inset: 0;
+  border-radius: 3.5%;
+  background: url('/assets/ui/drawing/card-back.webp') center / cover;
+}
+.draw-slab.edge {
+  transform: translateZ(calc(var(--card-w) * -.06 * var(--z)));
+  filter: brightness(.32) saturate(.7) contrast(1.1);
+}
+.draw-slab.face { box-shadow: 0 30px 70px rgb(0 0 0 / .7), 0 0 0 1px rgb(0 0 0 / .6); }
+.draw-face-light {
+  position: absolute;
+  inset: 0;
+  border-radius: 3.5%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0;
+  background: radial-gradient(circle at var(--sx) var(--sy), color-mix(in srgb, var(--nation) 65%, transparent), color-mix(in srgb, var(--nation) 16%, transparent) 30%, transparent 62%);
+  transition: opacity 1.2s var(--ease-out);
+}
+.draw-stage.is-hush .draw-face-light { background: radial-gradient(circle at var(--sx) var(--sy), color-mix(in srgb, var(--forge) 65%, transparent), color-mix(in srgb, var(--forge) 16%, transparent) 30%, transparent 62%); }
+.draw-stage.glowing .draw-face-light { opacity: .5; }
+.draw-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 3.5%;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+  background: linear-gradient(var(--sheen, 120deg), transparent 30%, rgb(255 255 255 / .28) 48%, transparent 62%);
+}
+
+/* Tokens: cut from one sheet of four; the drawn one lights, the rest go dark. */
+.draw-token {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  background-image: url('/assets/ui/drawing/tokens.webp');
+  background-repeat: no-repeat;
+  box-shadow: 0 6px 14px rgb(0 0 0 / .65);
+  filter: brightness(.85);
+  transition: filter .9s var(--ease-out), box-shadow .9s var(--ease-out);
+}
+.draw-token.blur { filter: brightness(.8) blur(.6px); transition: none; }
+.draw-token.dim { filter: brightness(.25) saturate(.4); }
+.draw-token.lit {
+  filter: brightness(1.25);
+  box-shadow: 0 0 22px 4px var(--nation), 0 0 60px 10px color-mix(in srgb, var(--nation) 45%, transparent);
+}
+.draw-hush {
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 40% 35%, #3a3128, #16120e 70%);
+  box-shadow: inset 0 0 0 2px #6b5233, 0 6px 14px rgb(0 0 0 / .65);
+  opacity: 0;
+  filter: none;
+}
+.draw-hush svg { width: 92%; height: 92%; fill: #8a6a3e; transition: fill 1s var(--ease-out), filter 1s var(--ease-out); }
+.draw-stage.glowing .draw-hush { box-shadow: inset 0 0 0 2px #b8893f, 0 0 22px 4px var(--forge), 0 0 60px 10px color-mix(in srgb, var(--forge) 45%, transparent); }
+.draw-stage.glowing .draw-hush svg { fill: var(--forge); filter: drop-shadow(0 0 3px var(--forge)); }
+
+.draw-sparks { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
+
+/* The choice under the card, on a dark band like the words, so the element behind never washes it out. */
+.draw-after {
+  grid-row: 3;
+  z-index: 4;
+  width: 100%;
+  min-height: 7rem;
+  padding: var(--space-6) var(--space-4) max(var(--space-6), env(safe-area-inset-bottom));
+  display: grid;
+  place-items: center;
+  background: linear-gradient(transparent, rgb(3 4 5 / .78) 35%, rgb(3 4 5 / .94));
+}
+.draw-after:empty { background: none; }
+
+/* Who rises: two engraved choices under the card. */
+.rise-choice {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-4);
+  opacity: 0;
+  transform: translateY(8px);
+  animation: rise-choice-in var(--duration-deliberate) var(--ease-out) forwards;
+}
+.rise-choice .opening-kicker { margin: 0; }
+.rise-choice-buttons { display: flex; gap: var(--space-4); }
+.rise-choice .opening-button { min-width: min(9.5rem, 38vw); margin: 0; padding: 0 var(--space-4); white-space: nowrap; }
+@keyframes rise-choice-in { to { opacity: 1; transform: none; } }
+
+.draw-stage.leaving { opacity: 0; transition: opacity 1.4s var(--ease-out); }
+
+/* Reduced motion: no flight and no sway; the card stands with the drawn token seated. */
+.draw-stage.reduced .draw-anchor,
+.draw-stage.reduced .draw-plate,
+.draw-stage.reduced .draw-title { transition: opacity 600ms linear; transform: none; }
+.draw-stage.reduced .draw-plate { transform: translate(-50%, calc(-50% + var(--card-w) * var(--plate-y, 0))); }
+
+@container (max-height: 640px) {
+  .draw-words { min-height: 5.5rem; padding-bottom: var(--space-3); }
+  .draw-after { min-height: 5rem; }
+}

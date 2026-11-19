@@ -388,68 +388,6 @@ button.purse-coin:hover { filter: brightness(1.2); }
 }
 .fight-banner:empty { display: none; }
 
-/* Above every game screen (the opening flow is 1000) so it can always be answered; below the cover (1100) and the menu (2000). */
-#consent-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1050;
-  background: rgb(14 12 10 / 0.95);
-  border-bottom: 1px solid rgb(214 170 110 / 0.4);
-  padding: var(--space-2) var(--space-6);
-  font: var(--font-size-xs)/var(--line-height-normal) var(--font-family-body);
-  color: rgb(220 205 190);
-  backdrop-filter: blur(8px);
-}
-.consent-content {
-  max-width: 960px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-.consent-content p {
-  margin: 0;
-  flex: 1;
-  min-width: 260px;
-}
-.consent-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-.consent-actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  color: rgb(214 170 110);
-  text-decoration: none;
-}
-.consent-actions a:hover {
-  color: rgb(250 240 225);
-  text-decoration: underline;
-}
-.consent-btn {
-  min-height: 44px;
-  padding: var(--space-1) var(--space-4);
-  background: rgb(35 28 22 / 0.8);
-  border: 1px solid rgb(214 170 110 / 0.6);
-  border-radius: var(--radius-xs);
-  color: rgb(250 240 225);
-  font-family: var(--font-family-display);
-  font-size: var(--font-size-xs);
-  letter-spacing: var(--letter-spacing-wide);
-  cursor: pointer;
-  text-transform: uppercase;
-}
-.consent-btn:hover {
-  background: rgb(55 42 30);
-  border-color: rgb(240 195 130);
-}
-
 /* The context key's prompt, floating over the person or thing it acts on. */
 .context-prompt {
   position: fixed;

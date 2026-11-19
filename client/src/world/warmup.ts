@@ -6,6 +6,21 @@ export function nextFrame(): Promise<void> {
 }
 
 let turns: Promise<unknown> = Promise.resolve();
+let held: Promise<unknown> = Promise.resolve();
+let holds = 0;
+let compiling: Promise<unknown> = Promise.resolve();
+
+/** Settles once every shader compile already handed to the GPU has finished; those cannot be paused. */
+export function compilesSettled(): Promise<void> {
+  return compiling.then(() => undefined, () => undefined);
+}
+
+/** Keeps `inTurn` work and warming waiting until `until` settles, so a timed scene on screen (the Drawing) plays without them. */
+export function holdTurns(until: Promise<unknown>): void {
+  holds++;
+  const settled = until.catch(() => undefined).then(() => { holds--; });
+  held = Promise.all([held, settled]);
+}
 
 /**
  * Runs heavy work that arrives during play (building a body, baking a far body, readying a model to draw) one
@@ -13,7 +28,7 @@ let turns: Promise<unknown> = Promise.resolve();
  * A task must not wait on another `inTurn` task.
  */
 export function inTurn<T>(task: () => T | Promise<T>): Promise<T> {
-  const turn = turns.then(nextFrame).then(task);
+  const turn = turns.then(() => held).then(nextFrame).then(task);
   turns = turn.catch(() => undefined);
   return turn;
 }
@@ -21,6 +36,9 @@ export function inTurn<T>(task: () => T | Promise<T>): Promise<T> {
 /** Uploads textures, compiles materials and exercises the scene's depth and shadow passes before play. */
 export async function warm(renderer: WebGLRenderer, scene: Scene, camera: Camera, object: Object3D,
   target: WebGLRenderTarget | null, onProgress?: (fraction: number) => void): Promise<void> {
+  // Warming freezes the page for seconds at a time; it waits out a held scene like any `inTurn` work, between
+  // each of its steps.
+  if (holds > 0) await held;
   const textures = new Set<Texture>();
   const collect = (value: unknown): void => {
     if ((value as Texture | null)?.isTexture) {
@@ -45,9 +63,11 @@ export async function warm(renderer: WebGLRenderer, scene: Scene, camera: Camera
     onProgress?.(0.35 * (texIndex / Math.max(1, textures.size)));
     if (performance.now() - slice > 8) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (holds > 0) await held;
       slice = performance.now();
     }
   }
+  if (holds > 0) await held;
 
   const parent = object.parent;
   const index = parent?.children.indexOf(object) ?? -1;
@@ -61,10 +81,12 @@ export async function warm(renderer: WebGLRenderer, scene: Scene, camera: Camera
       renderer.setRenderTarget(target);
       // Compile the scene once so lights within the object are not counted twice.
       ready = renderer.compileAsync(attached ? scene : object, camera, scene);
+      compiling = Promise.all([compiling.catch(() => undefined), ready]);
     } finally {
       renderer.setRenderTarget(was, wasFace, wasMip);
     }
     await ready;
+    if (holds > 0) await held;
     onProgress?.(0.8);
     if (!attached) { scene.add(object); added = true; }
 

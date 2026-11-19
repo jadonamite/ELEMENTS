@@ -12,6 +12,7 @@ export const NATIONS = ['IGNIS', 'AQUES', 'TERRA', 'AURA'] as const;
  * Pure rising roll.
  * Determines whether an account awakens Lit (Shaper of IGNIS, AQUES, TERRA, or AURA)
  * or Dim (Hush). Lit is 85% with an even nation split (21.25% each), Dim is 15%.
+ * A Hush draws a second time for their nation, even across the four.
  */
 export function roll(
   rand: () => number = Math.random,
@@ -19,7 +20,7 @@ export function roll(
 ): RisingResult {
   const r = rand();
   if (r < HUSH_CHANCE) {
-    return { role: 'Hush' };
+    return { role: 'Hush', element: drawNation(rand) };
   }
   const shaperRoll = (r - HUSH_CHANCE) / SHAPER_CHANCE;
   const index = Math.min(3, Math.max(0, Math.floor(shaperRoll * 4)));
@@ -36,4 +37,9 @@ export function canAwaken(vaknaCount: number, population: number): boolean {
     return false;
   }
   return (vaknaCount + 1) / population <= VAKNA_CAP;
+}
+
+/** One even draw across the four nations. */
+export function drawNation(rand: () => number = Math.random): Element {
+  return NATIONS[Math.min(3, Math.max(0, Math.floor(rand() * 4)))] ?? 'IGNIS';
 }

@@ -170,5 +170,4 @@
 }
 
 /* Consent remains available as soon as the noninteractive loading page leaves. */
-body:has(#elements-loader) #consent-banner { visibility: hidden; pointer-events: none; }
 body:has(#elements-loader) #home-hud-button { display: none !important; }

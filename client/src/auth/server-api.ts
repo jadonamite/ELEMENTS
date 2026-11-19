@@ -1,6 +1,6 @@
 import { guestKey } from './guest-key.js';
 import type { DrawingResult } from '../opening.js';
-import { roll } from '../../../shared/src/rising/roll.js';
+import { drawNation, NATIONS, roll } from '../../../shared/src/rising/roll.js';
 
 const STORAGE_SESSION_TOKEN_KEY = 'elements_session_token';
 const STORAGE_ACCOUNT_ID_KEY = 'elements_account_id';
@@ -16,7 +16,7 @@ function localDrawing(): DrawingResult | null {
   try {
     const raw = localStorage.getItem(STORAGE_DRAWING_KEY);
     const result = raw ? JSON.parse(raw) as DrawingResult : null;
-    if (result?.role === 'Hush') return { role: 'Hush' };
+    if (result?.role === 'Hush') return { role: 'Hush', element: NATIONS.includes(result.element) ? result.element : drawNation() };
     if (result?.role === 'Shaper' && ['IGNIS', 'AQUES', 'TERRA', 'AURA'].includes(result.element)) return result;
   } catch { /* Storage may be unavailable. */ }
   return null;
@@ -176,7 +176,8 @@ export function clearGuestTicket(): void {
 }
 
 function toDrawing(item: { role: 'Shaper' | 'Hush'; element?: 'IGNIS' | 'AQUES' | 'TERRA' | 'AURA' | null }): DrawingResult {
-  return item.role === 'Shaper' && item.element ? { role: 'Shaper', element: item.element } : { role: 'Hush' };
+  if (item.role === 'Shaper' && item.element) return { role: 'Shaper', element: item.element };
+  return { role: 'Hush', element: item.element ?? drawNation() };
 }
 
 /** The Drawing before sign-in: the server rolls and keeps it; this browser keeps only the ticket and what to show. */
