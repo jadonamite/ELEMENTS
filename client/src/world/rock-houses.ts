@@ -352,8 +352,19 @@ export function buildRockGroupLOD(
     container.add(houseLod);
   }
 
+  // Merged detail 1 meshes across the whole group: 1 mesh per material bucket
+  const groupMesh1 = builder1.build(material);
+  groupMesh1.name = `rockhouses:${group.id}:detail1_merged`;
+  groupMesh1.visible = false;
+  container.add(groupMesh1);
+
+  // Per-frame LOD update: when all houses in the group are far, show the single merged detail-1 mesh
+  // and hide the individual unbatched house LODs to collapse draw calls down to 1 call per material.
   (container as unknown as { update: (cam: Camera) => void }).update = (cam: Camera): void => {
     for (const l of lods) l.update(cam);
+    const allFar = lods.every(l => l.levels[1]?.object.visible);
+    groupMesh1.visible = allFar;
+    for (const l of lods) l.visible = !allFar;
   };
 
   return { lod: container, lods, builder0, builder1 };

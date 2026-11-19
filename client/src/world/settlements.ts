@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Group, InstancedBufferGeometry, InstancedMesh, Mesh, Points, type Material, type LOD } from 'three';
+import { Group, InstancedBufferGeometry, InstancedMesh, Mesh, Points, type Camera, type Material, type LOD } from 'three';
 import { LEGACY_SINDR_ORIGIN as ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
 import { groundHeight } from '../../../shared/src/world/ignis/ground.js';
 import {
@@ -21,6 +21,7 @@ interface Resident {
   builder: WorldBuilder;
   lit: boolean;
   extraBuilders?: WorldBuilder[] | undefined;
+  lod?: { update: (cam: Camera) => void } | undefined;
 }
 
 type StreamOwner =
@@ -92,11 +93,18 @@ export class SettlementStream {
     }
   }
 
+  updateCamera(camera: Camera): void {
+    for (const res of this.resident.values()) {
+      if (res.lod) res.lod.update(camera);
+    }
+  }
+
   private load(place: SettlementPrecinct): void {
     const builder = new WorldBuilder({ low: this.low });
     const lit = this.shrineLit(place);
     let cinderpitLod: Group | null = null;
     let cinderpitRockBuilder: WorldBuilder | null = null;
+    let cinderpitLodObj: { update: (cam: Camera) => void } | undefined = undefined;
 
     if (place.id === 'ignis:settlement:cinderpit') {
       const cinderpitGroup = ROCK_HOUSE_GROUPS.find(g => g.id === 'cinderpit');
@@ -104,6 +112,7 @@ export class SettlementStream {
         const built = buildRockGroupLOD(cinderpitGroup, this.low, this.material);
         cinderpitLod = built.lod;
         cinderpitRockBuilder = built.builder0;
+        cinderpitLodObj = built.lod as unknown as { update: (cam: Camera) => void };
       }
     }
 
@@ -137,6 +146,7 @@ export class SettlementStream {
       builder,
       lit,
       extraBuilders: cinderpitRockBuilder ? [cinderpitRockBuilder] : undefined,
+      lod: cinderpitLodObj,
     });
   }
 
@@ -152,7 +162,13 @@ export class SettlementStream {
     ));
     colliders.push(...addShells(this.world, builder0.shells));
     this.group.add(container);
-    this.resident.set(group.id, { group: container, colliders, builder: builder0, lit: false });
+    this.resident.set(group.id, {
+      group: container,
+      colliders,
+      builder: builder0,
+      lit: false,
+      lod: lod as unknown as { update: (cam: Camera) => void },
+    });
   }
 
   private unload(id: string): void {
