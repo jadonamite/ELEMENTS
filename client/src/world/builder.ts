@@ -73,7 +73,7 @@ export interface HouseSpec {
 
 const GLOWS: Glow[] = ['window', 'forge', 'lava', 'ao', 'wet', 'water', 'fresh_water', 'paper'];
 /** Made surfaces that are flat films over other ground, drawn after it. */
-const FILMS: Glow[] = ['ao', 'wet'];
+export const FILMS: readonly Glow[] = ['ao', 'wet'];
 
 /** Seeded random numbers, so the town is the same on every load. */
 export function seeded(seed: number): () => number {
@@ -167,7 +167,7 @@ export function cellLods(items: Placement[], levels: Array<{ from: number; parts
 }
 
 /** Buckets that cast visible sun shadows (vertical architectural volumes and roofs). */
-const SHADOW_CASTERS = new Set<Bucket>([
+export const SHADOW_CASTERS = new Set<Bucket>([
   'ashlar_stone_blocks',
   'basalt_rock_face',
   'charred_timber_beams',
@@ -568,6 +568,14 @@ export class WorldBuilder {
     }
     this.buckets.clear();
     return group;
+  }
+
+  /** Frees visual geometries accumulated so far while leaving colliders, shells, emitters and treads intact. */
+  clearGeometries(): void {
+    for (const { list } of this.buckets.values()) {
+      for (const g of list) g.dispose();
+    }
+    this.buckets.clear();
   }
 }
 
