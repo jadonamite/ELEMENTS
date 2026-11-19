@@ -34,7 +34,6 @@ import { BendingEffects, type BendingType } from './bending-fx.js';
 import { OpeningFlow, getStoredDrawing, type DrawingResult } from './opening.js';
 import type { CharacterConfig } from './creator/index.js';
 import { saveProgressAtGate } from './auth/save-progress.js';
-import { ConsentBanner } from './consent.js';
 import type { Enemy } from './enemy.js';
 import { createCombatRules, ELEMENTS, isBendMove, NIGHT_FROM, sindrSentryDistance, sindrStreet, type BendMoveId, type CombatBalance, type Element, type Kit, type MoveId } from '../../shared/src/index.js';
 import { BendState, type BendRefusal } from './bend-state.js';
@@ -232,8 +231,6 @@ async function main(): Promise<void> {
     applyDrawing(forcedElement || forcedHush ? openingResult : lastFighter() ?? openingResult);
     if (!document.getElementById('elements-loader')) canvas.focus({ preventScroll: true });
   });
-  const consent = new ConsentBanner();
-  cleanup.push(() => consent.dispose());
   let lifeSystem: SindrLifeSystem | null = null;
   let townEconomy: TownEconomy | null = null;
   // Debug builds expose the live objects for frame sampling.

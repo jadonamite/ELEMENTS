@@ -7,7 +7,7 @@
   --opening-plate: rgb(11 9 8 / 0.72);
   --opening-alert: #f2a48c;
   position: fixed;
-  inset: 0 0 var(--consent-h, 0px);
+  inset: 0;
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -221,6 +221,47 @@
   background: #ffffff;
   box-shadow: 0 0 36px rgb(245 243 236 / 0.28);
 }
+
+/* The one agreement: a ruled box beside the line, the whole row is the target. */
+.opening-agree {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: min(100%, 26rem);
+  min-height: var(--target-min-height);
+  padding: var(--space-2) 0;
+  text-align: left;
+  font: var(--font-size-sm)/1.5 var(--font-family-body);
+  color: var(--opening-secondary);
+  cursor: pointer;
+}
+.opening-agree input {
+  appearance: none;
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: .15rem 0 0;
+  border: 1px solid var(--opening-guide);
+  border-radius: 2px;
+  background: transparent;
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+}
+.opening-agree input::after {
+  content: '';
+  width: .65rem;
+  height: .35rem;
+  border-left: 2px solid var(--opening-ink);
+  border-bottom: 2px solid var(--opening-ink);
+  transform: translateY(-2px) rotate(-45deg) scale(0);
+  transition: transform var(--duration-fast, 120ms) var(--ease-out);
+}
+.opening-agree input:checked { border-color: var(--opening-ink); }
+.opening-agree input:checked::after { transform: translateY(-2px) rotate(-45deg) scale(1); }
+.opening-agree input:focus-visible { outline: 1px solid var(--opening-ink); outline-offset: 3px; }
+.opening-agree input[aria-invalid="true"] { border-color: var(--opening-alert); }
+.opening-agree a { color: var(--opening-ink); text-underline-offset: 3px; }
 
 .opening-error {
   min-height: 1.4em;

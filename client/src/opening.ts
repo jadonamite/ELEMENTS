@@ -28,6 +28,8 @@ import { playDrawingReveal } from './opening/drawing-reveal.js';
 export type DrawingResult = RisingResult;
 
 const STORAGE_AGE_KEY = 'elements_age_gate';
+/** Set when the player agreed to the Terms and Privacy Policy at the age check. */
+const STORAGE_AGREED_KEY = 'elements_consent_accepted';
 const STORAGE_DRAWING_KEY = 'elements_drawing_result';
 
 export function getStoredDrawing(): DrawingResult | null {
@@ -205,6 +207,10 @@ export class OpeningFlow {
               <input id="dob-year" name="year" inputmode="numeric" autocomplete="bday-year" maxlength="4" placeholder="YYYY" required />
             </div>
           </fieldset>
+          <label class="opening-agree">
+            <input type="checkbox" id="age-agree" required />
+            <span>I agree to the <a href="/legal/terms.html" target="_blank" rel="noopener">Terms</a> and <a href="/legal/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>, and to ELEMENTS keeping what the game needs on this device.</span>
+          </label>
           <p id="age-error" class="opening-error" role="alert"></p>
           <button type="submit" class="opening-button primary">Continue</button>
         </form>
@@ -221,6 +227,8 @@ export class OpeningFlow {
     const month = this.container.querySelector<HTMLSelectElement>('#dob-month')!;
     const year = this.container.querySelector<HTMLInputElement>('#dob-year')!;
     const error = this.container.querySelector<HTMLParagraphElement>('#age-error')!;
+    const agree = this.container.querySelector<HTMLInputElement>('#age-agree')!;
+    agree.addEventListener('change', () => { if (agree.checked) { agree.setAttribute('aria-invalid', 'false'); error.textContent = ''; } });
     const digitsOnly = (input: HTMLInputElement): void => { input.value = input.value.replace(/\D/g, ''); };
     day.addEventListener('input', () => { digitsOnly(day); if (day.value.length === 2) month.focus(); });
     month.addEventListener('change', () => year.focus());
@@ -242,7 +250,12 @@ export class OpeningFlow {
       if (calculateAge(dob.iso) < 13) {
         localStorage.setItem(STORAGE_AGE_KEY, 'under');
         this.renderAgeBlocked();
+      } else if (!agree.checked) {
+        agree.setAttribute('aria-invalid', 'true');
+        error.textContent = 'Tick the box to agree before you continue.';
+        agree.focus();
       } else {
+        localStorage.setItem(STORAGE_AGREED_KEY, 'true');
         localStorage.setItem(STORAGE_AGE_KEY, 'over');
         this.afterAgeGate();
       }
