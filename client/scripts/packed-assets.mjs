@@ -34,7 +34,7 @@ export const PACKED_FOLDERS = [
   { dir: 'characters/people/far', ...glb('far') },
   { dir: 'characters/outfits', ...glb('body') },
   { dir: 'characters/creator/hd', from: 'characters/creator', ...glb('closeup') },
-  { dir: 'characters/people/hd', from: 'characters/people', ...glb('closeup'), source: /^hush_.*\.glb$/ },
+  { dir: 'characters/people/hd', from: 'characters/people', ...glb('closeup'), source: /^(hush|master)_.*\.glb$/ },
   { dir: 'characters/outfits/hd', from: 'characters/outfits', ...glb('closeup') },
   { dir: 'weapons', ...glb('weapon') },
   { dir: 'characters/creator', source: /^peasant_worn\.webp$/, out: ktx2, kind: 'image' },
