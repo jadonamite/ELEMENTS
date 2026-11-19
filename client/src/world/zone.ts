@@ -376,7 +376,7 @@ export async function createZone(canvas: HTMLCanvasElement): Promise<Zone> {
   composer.addPass(new ShaderPass(SANITIZE_SHADER));
   const bloom = new UnrealBloomPass(new Vector2(640, 360), 0.55, 0.6, 1.05);
   composer.addPass(bloom);
-  if (debug) Object.assign(win.elements!, { post: { bloom }, terrainMat });
+  if (debug) Object.assign(win.elements!, { post: { bloom, composer }, terrainMat });
   composer.addPass(new ShaderPass(GRADE_SHADER));
   composer.addPass(new OutputPass());
   const aa = low ? new FXAAPass() : new SMAAPass();
