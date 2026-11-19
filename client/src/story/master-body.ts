@@ -14,7 +14,8 @@ export async function buildMasterBody(loaders: Loaders, nation: string): Promise
   const config = sanitizeCharacterConfig({
     sex: 'male', skinToneId: 'bronze', hairStyleId: 'beard', hairColorId: 'silver', bodyPreset: 'broad',
   });
-  const outfit: OutfitId = nation === 'IGNIS' ? 'shaper_ignis' : 'rags';
+  // IGNIS has his own whole person (Brandr from his sheet); the other masters wear rags until theirs are built.
+  const outfit: OutfitId = nation === 'IGNIS' ? 'master_ignis' : 'rags';
   const kit = bodyKit(loaders, 'close');
   const model = await kit.build(config, 'hero', nation === 'AQUES' ? 0x667f86 : nation === 'TERRA' ? 0x77705e : nation === 'AURA' ? 0x9a8d9e : undefined, outfit);
   try {
