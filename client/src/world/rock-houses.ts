@@ -1,4 +1,4 @@
-import { Group, LOD, type Camera, type Material } from 'three';
+import { BatchedMesh, BufferGeometry, Group, Matrix4, Mesh, Quaternion, Vector3, type Camera, type Material } from 'three';
 import { LEGACY_SINDR_ORIGIN as ORIGIN, type Point3 } from '../../../shared/src/world/ignis/coordinates.js';
 import { groundHeight } from '../../../shared/src/world/ignis/ground.js';
 import {
@@ -12,7 +12,7 @@ import {
   type RockHouseGroup,
   type RockHouseSite,
 } from '../../../shared/src/world/ignis/rock-houses.js';
-import { WorldBuilder, seeded, type Bucket } from './builder.js';
+import { FILMS, SHADOW_CASTERS, WorldBuilder, seeded, type Bucket, type Glow } from './builder.js';
 import { roof } from './roofs.js';
 import { townHouse } from './style-kit.js';
 
@@ -295,10 +295,97 @@ export function rockHouse(
   b.at(0, 0, 0);
 }
 
+export interface RockGroupLOD extends Group {
+  readonly groupId: string;
+  readonly batches: readonly BatchedMesh[];
+  readonly low: boolean;
+  readonly drawCalls: number;
+  readonly drawCallCount: number;
+  update(camera: Camera): void;
+  dispose(): void;
+  houseLevel(siteId: string): 0 | 1;
+  isLevelVisible(siteId: string, level: 0 | 1): boolean;
+}
+
+export class RockHouseBatchGroup extends Group implements RockGroupLOD {
+  readonly groupId: string;
+  readonly batches: BatchedMesh[] = [];
+  readonly low: boolean;
+  readonly origin: Point3;
+  readonly houseInstances = new Map<
+    string,
+    { 0: Array<{ batch: BatchedMesh; instanceId: number }>; 1: Array<{ batch: BatchedMesh; instanceId: number }> }
+  >();
+  readonly houseCentres = new Map<string, Vector3>();
+  private readonly _camWorld = new Vector3();
+  private readonly _siteWorld = new Vector3();
+
+  constructor(groupId: string, low: boolean, origin: Point3 = ORIGIN) {
+    super();
+    this.name = `rockhouses:${groupId}`;
+    this.groupId = groupId;
+    this.low = low;
+    this.origin = origin;
+  }
+
+  get drawCalls(): number {
+    return this.batches.length;
+  }
+
+  get drawCallCount(): number {
+    return this.batches.length;
+  }
+
+  houseLevel(siteId: string): 0 | 1 {
+    const vis0 = this.isLevelVisible(siteId, 0);
+    const vis1 = this.isLevelVisible(siteId, 1);
+    if (vis0 && !vis1) return 0;
+    if (vis1 && !vis0) return 1;
+    throw new Error(`House ${siteId} does not have exactly one level visible (detail0=${vis0}, detail1=${vis1})`);
+  }
+
+  isLevelVisible(siteId: string, level: 0 | 1): boolean {
+    const instances = this.houseInstances.get(siteId)?.[level];
+    if (!instances || instances.length === 0) return false;
+    return instances.every(({ batch, instanceId }) => batch.getVisibleAt(instanceId));
+  }
+
+  update(camera: Camera): void {
+    camera.getWorldPosition(this._camWorld);
+    const switchDistance = this.low ? 110 : 160;
+
+    for (const [siteId, instances] of this.houseInstances) {
+      const centre = this.houseCentres.get(siteId);
+      if (!centre) continue;
+      this._siteWorld.copy(centre).applyMatrix4(this.matrixWorld);
+      const dist = this._camWorld.distanceTo(this._siteWorld);
+      const isFar = dist >= switchDistance;
+
+      for (const { batch, instanceId } of instances[0]) {
+        batch.setVisibleAt(instanceId, !isFar);
+      }
+      for (const { batch, instanceId } of instances[1]) {
+        batch.setVisibleAt(instanceId, isFar);
+      }
+    }
+  }
+
+  override dispose(): void {
+    for (const batch of this.batches) {
+      if ((batch as any)._matricesTexture) {
+        batch.dispose();
+      }
+    }
+    this.batches.length = 0;
+    this.clear();
+  }
+}
+
 /**
- * Builds each rock house in a group with its own THREE.LOD positioned at its own footprint centre,
- * so distance is measured per house rather than to the group centre.
+ * Batches each rock group's houses with BatchedMesh per material bucket and detail level.
+ * Distance from camera to each house footprint centre determines its level:
  * Detail 1 begins at 160 m (110 m when low).
+ * Each house shows exactly one level, while draw calls stay constant at (buckets x levels).
  */
 export function buildRockGroupLOD(
   group: RockHouseGroup,
@@ -306,66 +393,97 @@ export function buildRockGroupLOD(
   material: (bucket: Bucket) => Material,
   groundAt: (x: number, z: number) => number = groundHeight,
   origin: Point3 = ORIGIN,
-): { lod: Group; lods: LOD[]; builder0: WorldBuilder; builder1: WorldBuilder } {
+): { lod: RockHouseBatchGroup; builder0: WorldBuilder } {
   const sites = ROCK_HOUSE_SITES.filter(s => s.group === group.id);
   const builder0 = new WorldBuilder({ low });
-  const builder1 = new WorldBuilder({ low });
+  const lod = new RockHouseBatchGroup(group.id, low, origin);
 
-  const container = new Group();
-  container.name = `rockhouses:${group.id}`;
-  const lods: LOD[] = [];
-
-  const switchDistance = low ? 110 : 160;
+  // Group-wide builders collect physics colliders, emitters, shells and treads
+  for (const site of sites) {
+    const rand = seeded(site.x + site.z + site.sill);
+    rockHouse(builder0, site, 0, rand, groundAt, origin);
+  }
+  builder0.clearGeometries();
 
   for (const site of sites) {
-    const rand0 = seeded(site.x + site.z + site.sill);
-    const rand1 = seeded(site.x + site.z + site.sill);
-
-    // Group-wide builders collect physics colliders, emitters, and treads
-    rockHouse(builder0, site, 0, rand0, groundAt, origin);
-    rockHouse(builder1, site, 1, rand1, groundAt, origin);
-
-    // Each house gets its own builder output for each LOD level
-    const houseBuilder0 = new WorldBuilder({ low });
-    const houseBuilder1 = new WorldBuilder({ low });
-    rockHouse(houseBuilder0, site, 0, rand0, groundAt, origin);
-    rockHouse(houseBuilder1, site, 1, rand1, groundAt, origin);
-
-    const mesh0 = houseBuilder0.build(material);
-    const mesh1 = houseBuilder1.build(material);
-
-    const hx = site.x - origin.x;
-    const hy = site.sill - origin.y;
-    const hz = site.z - origin.z;
-
-    const houseLod = new LOD();
-    houseLod.name = `lod:${site.id}`;
-    houseLod.position.set(hx, hy, hz);
-
-    mesh0.position.set(-hx, -hy, -hz);
-    mesh1.position.set(-hx, -hy, -hz);
-
-    houseLod.addLevel(mesh0, 0);
-    houseLod.addLevel(mesh1, switchDistance);
-
-    lods.push(houseLod);
-    container.add(houseLod);
+    lod.houseInstances.set(site.id, { 0: [], 1: [] });
+    lod.houseCentres.set(
+      site.id,
+      new Vector3(site.x - origin.x, site.sill - origin.y, site.z - origin.z),
+    );
   }
 
-  // Merged detail 1 meshes across the whole group: 1 mesh per material bucket
-  const groupMesh1 = builder1.build(material);
-  groupMesh1.name = `rockhouses:${group.id}:detail1_merged`;
-  groupMesh1.visible = false;
-  container.add(groupMesh1);
+  for (const level of [0, 1] as const) {
+    const bucketGeoms = new Map<
+      Bucket,
+      Array<{ site: RockHouseSite; geom: BufferGeometry; siteMatrix: Matrix4 }>
+    >();
 
-  // Per-frame LOD update: when all houses in the group are far, show the single merged detail-1 mesh
-  // and hide the individual unbatched house LODs to collapse draw calls down to 1 call per material.
-  (container as unknown as { update: (cam: Camera) => void }).update = (cam: Camera): void => {
-    for (const l of lods) l.update(cam);
-    const allFar = lods.every(l => l.levels[1]?.object.visible);
-    groupMesh1.visible = allFar;
-    for (const l of lods) l.visible = !allFar;
-  };
+    for (const site of sites) {
+      const rand = seeded(site.x + site.z + site.sill);
+      const houseBuilder = new WorldBuilder({ low });
+      rockHouse(houseBuilder, site, level, rand, groundAt, origin);
+      const houseGroup = houseBuilder.build(material);
 
-  return { lod: container, lods, builder0, builder1 };
+      const siteMatrix = new Matrix4().compose(
+        new Vector3(site.x - origin.x, site.sill - origin.y, site.z - origin.z),
+        new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), site.yaw),
+        new Vector3(1, 1, 1),
+      );
+      const invSiteMatrix = siteMatrix.clone().invert();
+
+      for (const child of houseGroup.children) {
+        const bucket = child.name as Bucket;
+        const geom = (child as Mesh).geometry;
+        geom.applyMatrix4(invSiteMatrix);
+        geom.computeBoundingBox();
+        geom.computeBoundingSphere();
+
+        let list = bucketGeoms.get(bucket);
+        if (!list) {
+          list = [];
+          bucketGeoms.set(bucket, list);
+        }
+        list.push({ site, geom, siteMatrix });
+      }
+    }
+
+    for (const [bucket, entries] of bucketGeoms.entries()) {
+      const maxInstances = entries.length;
+      const maxVertices = entries.reduce(
+        (sum, e) => sum + (e.geom.getAttribute('position')?.count ?? 0),
+        0,
+      );
+      const maxIndices = entries.reduce(
+        (sum, e) => sum + (e.geom.index ? e.geom.index.count : 0),
+        0,
+      );
+      const mat = material(bucket);
+      const batch = new BatchedMesh(maxInstances, maxVertices, maxIndices, mat);
+      batch.name = `rockhouses:${group.id}:${bucket}:lod${level}`;
+      batch.castShadow = !low && SHADOW_CASTERS.has(bucket);
+      batch.receiveShadow = bucket !== 'ao';
+      batch.perObjectFrustumCulled = true;
+      if (FILMS.includes(bucket as Glow) || bucket === 'dirt_verge') {
+        batch.renderOrder = 1;
+      }
+
+      for (const entry of entries) {
+        const geomId = batch.addGeometry(entry.geom);
+        const instId = batch.addInstance(geomId);
+        batch.setMatrixAt(instId, entry.siteMatrix);
+        batch.setVisibleAt(instId, level === 0);
+        lod.houseInstances.get(entry.site.id)![level].push({ batch, instanceId: instId });
+        entry.geom.dispose();
+      }
+
+      batch.computeBoundingBox();
+      batch.computeBoundingSphere();
+
+      lod.add(batch);
+      lod.batches.push(batch);
+    }
+  }
+
+  return { lod, builder0 };
 }

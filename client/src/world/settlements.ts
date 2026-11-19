@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Group, InstancedBufferGeometry, InstancedMesh, Mesh, Points, type Camera, type Material, type LOD } from 'three';
+import { BatchedMesh, Group, InstancedBufferGeometry, InstancedMesh, Mesh, Points, type Camera, type Material, type LOD } from 'three';
 import { LEGACY_SINDR_ORIGIN as ORIGIN } from '../../../shared/src/world/ignis/coordinates.js';
 import { groundHeight } from '../../../shared/src/world/ignis/ground.js';
 import {
@@ -11,7 +11,7 @@ import { SETTLEMENT_PRECINCTS, settlementCells, type SettlementPrecinct } from '
 import { SETTLEMENT_SHRINE, shrineOfPrecinct } from '../../../shared/src/net/places.js';
 import { WorldBuilder, seeded, type Bucket, type Emitter } from './builder.js';
 import { createEmbers, createFires } from './effects.js';
-import { buildRockGroupLOD } from './rock-houses.js';
+import { buildRockGroupLOD, type RockGroupLOD } from './rock-houses.js';
 import { townHouse } from './style-kit.js';
 import { addShells } from './town-physics.js';
 
@@ -21,7 +21,7 @@ interface Resident {
   builder: WorldBuilder;
   lit: boolean;
   extraBuilders?: WorldBuilder[] | undefined;
-  lod?: { update: (cam: Camera) => void } | undefined;
+  lod?: RockGroupLOD | undefined;
 }
 
 type StreamOwner =
@@ -102,9 +102,8 @@ export class SettlementStream {
   private load(place: SettlementPrecinct): void {
     const builder = new WorldBuilder({ low: this.low });
     const lit = this.shrineLit(place);
-    let cinderpitLod: Group | null = null;
+    let cinderpitLod: RockGroupLOD | null = null;
     let cinderpitRockBuilder: WorldBuilder | null = null;
-    let cinderpitLodObj: { update: (cam: Camera) => void } | undefined = undefined;
 
     if (place.id === 'ignis:settlement:cinderpit') {
       const cinderpitGroup = ROCK_HOUSE_GROUPS.find(g => g.id === 'cinderpit');
@@ -112,7 +111,6 @@ export class SettlementStream {
         const built = buildRockGroupLOD(cinderpitGroup, this.low, this.material);
         cinderpitLod = built.lod;
         cinderpitRockBuilder = built.builder0;
-        cinderpitLodObj = built.lod as unknown as { update: (cam: Camera) => void };
       }
     }
 
@@ -146,7 +144,7 @@ export class SettlementStream {
       builder,
       lit,
       extraBuilders: cinderpitRockBuilder ? [cinderpitRockBuilder] : undefined,
-      lod: cinderpitLodObj,
+      lod: cinderpitLod ?? undefined,
     });
   }
 
@@ -167,7 +165,7 @@ export class SettlementStream {
       colliders,
       builder: builder0,
       lit: false,
-      lod: lod as unknown as { update: (cam: Camera) => void },
+      lod,
     });
   }
 
@@ -185,10 +183,15 @@ export class SettlementStream {
     props?.traverse(object => { if (object instanceof InstancedMesh) object.dispose(); });
     props?.removeFromParent();
     content.group.traverse(object => {
-      if (object instanceof Mesh || object instanceof Points) object.geometry.dispose();
+      if (object instanceof BatchedMesh) {
+        if ((object as unknown as { _matricesTexture?: unknown })._matricesTexture) object.dispose();
+      } else if (object instanceof Mesh || object instanceof Points) {
+        object.geometry.dispose();
+      }
       // Fire and ember materials are the settlement's own; surfaces belong to the zone's shared library.
       if ((object instanceof Mesh && object.geometry instanceof InstancedBufferGeometry) || object instanceof Points) (object.material as Material).dispose();
     });
+    content.lod?.dispose();
     // Materials belong to the zone's shared surface library.
     this.resident.delete(id);
   }
