@@ -45,7 +45,7 @@ const BODY_PATH: Record<Sex, string> = {
   female: '/assets/characters/creator/female.glb',
 };
 
-export type OutfitId = 'rags' | 'shaper_ignis' | 'shaper_aques' | 'shaper_aura' | 'hush_ignis' | 'hush_aques' | 'hush_aura' | 'hush_terra' | 'robber' | 'deserter' | 'warlord_ignis' | 'soldier';
+export type OutfitId = 'rags' | 'shaper_ignis' | 'shaper_aques' | 'shaper_aura' | 'hush_ignis' | 'hush_aques' | 'hush_aura' | 'hush_terra' | 'robber' | 'deserter' | 'warlord_ignis' | 'soldier' | 'master_ignis';
 
 interface Outfit {
   /** The outfit file per sex; a sex without one wears rags. */
@@ -91,6 +91,7 @@ const OUTFITS: Record<OutfitId, Outfit> = {
   deserter: { path: { male: '/assets/characters/people/deserter_male.glb' }, ...person() },
   warlord_ignis: { path: { female: '/assets/characters/people/warlord_ignis_female.glb' }, ...person() },
   soldier: { path: { male: '/assets/characters/people/soldier_male.glb' }, ...person() },
+  master_ignis: { path: { male: '/assets/characters/people/master_ignis_male.glb' }, ...person() },
 };
 const OUTFIT_FILES = new Set(Object.values(OUTFITS).flatMap(o => Object.values(o.path)));
 
@@ -100,7 +101,7 @@ export type BodyDetail = 'near' | 'far' | 'close';
 /** The file a kit loads for a body path: far bodies from far/, close-ups from hd/ (sharper textures; see packed-assets.mjs). */
 function detailFile(path: string, detail: BodyDetail): string {
   if (detail === 'far') return path.replace(/\/(creator|people)\//, '/$1/far/');
-  if (detail === 'close') return path.replace(/\/(creator|outfits)\//, '/$1/hd/').replace(/\/people\/(hush_)/, '/people/hd/$1');
+  if (detail === 'close') return path.replace(/\/(creator|outfits)\//, '/$1/hd/').replace(/\/people\/(hush_|master_)/, '/people/hd/$1');
   return path;
 }
 

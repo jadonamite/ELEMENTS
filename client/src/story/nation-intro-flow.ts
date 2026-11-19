@@ -1,7 +1,7 @@
 import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import type { Loaders } from '../assets/loaders.js';
 import { buildMasterBody, releaseMaster } from './master-body.js';
-import { AnimationPlayer } from '../anim/player.js';
+import type { AnimationPlayer } from '../anim/player.js';
 import type { HeroController } from '../controller.js';
 import type { ShoulderCamera } from '../camera.js';
 import type { GameInput } from '../input.js';
@@ -178,14 +178,14 @@ export class NationIntroFlow {
   }
 
   private async loadMaster(forward: Vector3): Promise<void> {
-    const { model, clips } = await buildMasterBody(this.opts.loaders, this.config.nation);
+    const { model, clips, anim } = await buildMasterBody(this.opts.loaders, this.config.nation);
     if (this.disposed) { releaseMaster(model); return; }
     model.position.copy(this.masterPosition).addScaledVector(forward, 5.5);
     model.rotation.y = Math.atan2(this.masterPosition.x - model.position.x, this.masterPosition.z - model.position.z);
     this.masterModel = model;
     this.opts.scene.add(model);
     this.masterClipNames = clips.map(c => c.name);
-    this.masterAnim = new AnimationPlayer(model, clips, { defaultFadeDuration: 0.25 });
+    this.masterAnim = anim;
     this.masterPose = '';
     this.playMasterPose('walk_sage', 'walk');
   }

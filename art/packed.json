@@ -234,6 +234,11 @@
     "recipe": "b64792e9e72a8d52",
     "output": "937ed3f0a9f8dfce"
   },
+  "client/public/assets/characters/people/far/master_ignis_male.glb": {
+    "source": "4c0d5c632e9a6dcb",
+    "recipe": "b64792e9e72a8d52",
+    "output": "80ea9f0222137a01"
+  },
   "client/public/assets/characters/people/far/robber_female.glb": {
     "source": "19c46400709c7793",
     "recipe": "b64792e9e72a8d52",
@@ -289,6 +294,11 @@
     "recipe": "dc46c9c805f3ca48",
     "output": "f7e0e0b99853548e"
   },
+  "client/public/assets/characters/people/hd/master_ignis_male.glb": {
+    "source": "638d046fe8e7a101",
+    "recipe": "dc46c9c805f3ca48",
+    "output": "524e1bb757fde41f"
+  },
   "client/public/assets/characters/people/hush_aques_female.glb": {
     "source": "efc16d2999a02ea6",
     "recipe": "d9aec5a0ce3a341f",
@@ -328,6 +338,11 @@
     "source": "97abae4ba466f689",
     "recipe": "d9aec5a0ce3a341f",
     "output": "9961ac2dd6730684"
+  },
+  "client/public/assets/characters/people/master_ignis_male.glb": {
+    "source": "638d046fe8e7a101",
+    "recipe": "d9aec5a0ce3a341f",
+    "output": "655de5a766701316"
   },
   "client/public/assets/characters/people/robber_female.glb": {
     "source": "284669c33e053468",
