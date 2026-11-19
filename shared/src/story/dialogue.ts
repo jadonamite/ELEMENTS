@@ -89,7 +89,9 @@ const CALLOUTS = new Set(['challenge_issued', 'challenge_accepted', 'challenge_r
 /** A Sentry stopping the player to fine a red flag, and closing the matter: orders, said at alert priority. */
 const ORDERS = new Set(['red_flag_fined', 'red_flag_fine_paid']);
 /** Lines said to the player dealing with the speaker (across a counter, or asking a master to train): part of that exchange, like a conversation. */
-const COUNTER = new Set(['sale_made', 'bought_from_player', 'accept_student', 'refuse_student', 'fee_rising']);
+const COUNTER = new Set(['sale_made', 'bought_from_player', 'fee_rising']);
+/** A master's answer to a fighter asking to climb: accept_<tier> or refuse_<reason>, and the generic accept_student / refuse_student. */
+const isCounter = (situation: string): boolean => COUNTER.has(situation) || /^(accept|refuse)_/.test(situation);
 
 /** Every situation in the dialogue table as a speech rule, conditioned on the speaker group. */
 export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
@@ -118,7 +120,7 @@ export function rulesFromDialogue(table: DialogueTable): SpeechRule[] {
         concept: talk ? 'talk' : situation,
         criteria: [{ fact: 'who', value: role }, ...(talk ?? [])],
         lines: lines as string[],
-        tier: talk || COUNTER.has(situation) ? 'conversation' : CALLOUTS.has(situation) || ORDERS.has(situation) ? 'alert' : 'ambient',
+        tier: talk || isCounter(situation) ? 'conversation' : CALLOUTS.has(situation) || ORDERS.has(situation) ? 'alert' : 'ambient',
       });
     }
   }

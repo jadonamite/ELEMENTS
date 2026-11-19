@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { CLIMB, climbStanding, masterFor, nextFeeMultiplier, trainingFee, type ClimbStanding } from '@elements/shared';
+import { CLIMB, climbStanding, masterFor, nextFeeMultiplier, trainingFee, type ClimbRefusal, type ClimbStanding } from '@elements/shared';
 import { getDatabase, getRising } from '../db.js';
 import { getAccountBalance, recordTransaction } from './ledgerService.js';
 
@@ -16,7 +16,7 @@ export interface ClimbTerms extends ClimbStanding {
 
 export type EnrolOutcome =
   | { outcome: 'accepted'; fee: number; next: number }
-  | { outcome: 'refused'; reason: 'no_master' | 'top' | 'not_qualified' | 'short' | 'no_trials'; fee: number };
+  | { outcome: 'refused'; reason: ClimbRefusal; fee: number };
 
 const weekOf = (now: number): number => Math.floor(now / (CLIMB.feeWeekHours * 60 * 60 * 1000));
 

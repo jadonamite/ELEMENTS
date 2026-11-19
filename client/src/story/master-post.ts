@@ -8,7 +8,7 @@ import type { ContextOffer } from '../ui/context-action.js';
 import type { SpeechMemory } from '../../../shared/src/story/speech.js';
 import type { NationMasterConfig } from '../../../shared/src/story/nation-intro.js';
 import type { ClimbTerms, EnrolOutcome } from '../economy/api.js';
-import { CLIMB } from '../../../shared/src/growth/climb.js';
+import { CLIMB, acceptSituation, refusalSituation, type ClimbRefusal } from '../../../shared/src/growth/climb.js';
 
 export interface MasterPostOptions {
   scene: Scene;
@@ -33,8 +33,8 @@ export interface MasterPostOptions {
 
 /**
  * A nation's master at their post in town, where a fighter climbs the tiers (LORE 7, 11): ask to train, and
- * the master tells you the fee rose if it did, then takes you on (the fee is paid) or turns you away (not
- * enough fights yet, or short of coin). Taken on, you fight the master's trial; win it and the tier is yours.
+ * the master tells you the fee rose if it did, then takes you on for the named tier (the fee is paid) or turns
+ * you away with the real reason. Taken on, you fight the master's trial; win it and the tier is yours.
  */
 export class MasterPost {
   private model: Group | null = null;
@@ -93,22 +93,19 @@ export class MasterPost {
     this.busy = true;
     try {
       const terms = await this.o.climb.terms();
-      if (terms.master !== this.o.master.id) {
-        this.o.notice(terms.master ? `${this.o.master.name} trains only the Shapers of ${this.o.nation}.` : 'A Hush climbs with a master smith, not a fighting master.');
+      const early: ClimbRefusal | null = terms.master !== this.o.master.id ? 'no_master' : terms.next === null ? 'top' : null;
+      if (early) {
+        await this.refuse(early, terms, 0, said);
         return said;
       }
-      if (terms.next === null) { this.o.notice('You stand at the top of the climb.'); return said; }
       if (terms.feeRose && !terms.paid) said.push(await this.say('fee_rising'));
       const r = await this.o.climb.enrol();
-      const name = this.o.tierNames[(terms.next ?? 1) - 1] ?? `tier ${terms.next}`;
       if (r.outcome === 'refused') {
-        said.push(await this.say('refuse_student'));
-        this.o.notice(r.reason === 'short' ? `The fee for ${name} is ${r.fee} CHROMA.`
-          : r.reason === 'no_trials' ? `${this.o.master.name} is not holding trials yet.`
-          : `Win ${terms.winsNeeded - terms.wins} more fights before the trial for ${name}.`);
+        await this.refuse(r.reason, terms, r.fee, said);
         return said;
       }
-      said.push(await this.say('accept_student'));
+      const name = this.tierName(r.next);
+      said.push(await this.say(acceptSituation(name), 'accept_student'));
       this.o.notice(`${r.fee > 0 ? `Paid ${r.fee} CHROMA. ` : ''}Trial for ${name}: defeat the master's challenger.`);
       const side = new Vector3(Math.sin(this.o.master.post.facing), 0, Math.cos(this.o.master.post.facing)).multiplyScalar(6).add(this.at);
       const enemy = this.o.spawnTrial({ x: side.x, z: side.z }, CLIMB.trialKind as VillainKind, CLIMB.trialHealth[String(r.next)] ?? 200);
@@ -122,14 +119,39 @@ export class MasterPost {
     }
   }
 
-  /** The master says a line of `concept` in their own voice and the sex of their body; resolves when it has played. */
-  private say(concept: string): Promise<string> {
+  /** The master turns the fighter away with the line for this reason; the notice carries the numbers. */
+  private async refuse(reason: ClimbRefusal, terms: ClimbTerms, fee: number, said: string[]): Promise<void> {
+    said.push(await this.say(refusalSituation(reason, terms.master !== null), 'refuse_student'));
+    const name = this.tierName(terms.next);
+    this.o.notice(
+      reason === 'no_master' ? (terms.master ? `${this.o.master.name} trains only the Shapers of ${this.o.nation}.` : 'A Hush climbs with a master smith, not a fighting master.')
+      : reason === 'top' ? 'You stand at the top of the climb.'
+      : reason === 'short' ? `The fee for ${name} is ${fee} CHROMA.`
+      : reason === 'no_trials' ? `${this.o.master.name} is not holding trials yet.`
+      : `Win ${Math.max(0, terms.winsNeeded - terms.wins)} more fights before the trial for ${name}.`);
+  }
+
+  private tierName(tier: number | null): string {
+    return this.o.tierNames[(tier ?? 1) - 1] ?? `tier ${tier}`;
+  }
+
+  /**
+   * The master says a line of the first of `concepts` they have lines for, in their own voice and the sex of their
+   * body; resolves with the line when it has played ('' when nothing was said).
+   */
+  private say(...concepts: string[]): Promise<string> {
     const m = this.o.master;
-    const r = this.o.voices.rules.speak({ concept, speakerId: m.id, facts: { who: m.id } }, this.o.memory, this.o.voices.now());
+    const now = this.o.voices.now();
+    let r = null;
+    for (const concept of concepts) {
+      r = this.o.voices.rules.speak({ concept, speakerId: m.id, facts: { who: m.id } }, this.o.memory, now);
+      if (r) break;
+    }
     if (!r || !this.model) return Promise.resolve('');
+    const line = r;
     return new Promise((done) => {
-      void this.o.voices.speak({ id: m.id, name: m.name, role: m.id, position: this.model!.position, body: this.model }, r.line, r.tier,
-        { subtitle: true, ended: () => done(r.line) }).then(spoken => { if (!spoken) done(r.line); });
+      void this.o.voices.speak({ id: m.id, name: m.name, role: m.id, position: this.model!.position, body: this.model }, line.line, line.tier,
+        { subtitle: true, ended: () => done(line.line) }).then(spoken => { if (!spoken) done(line.line); });
     });
   }
 
