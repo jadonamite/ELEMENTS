@@ -1,15 +1,14 @@
 /* The Drawing reveal: a heavy metal card centre stage, the drawn element behind it, words above, the choice below. */
 .draw-stage {
-  /* Sized against the stage, which ends above the consent banner while it is up. */
+  /* Sized against the stage itself. */
   --card-w: min(64cqw, 26rem, 38cqh);
   container-type: size;
   position: fixed;
-  inset: 0 0 var(--consent-h, 0px);
+  inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
   justify-items: center;
   align-items: center;
-  padding: 0 var(--space-4) max(var(--space-6), env(safe-area-inset-bottom));
   background: radial-gradient(ellipse at 50% 55%, #0d1014 0%, #030405 72%);
   color: var(--opening-ink, #f5f3ec);
   overflow: hidden;
@@ -53,9 +52,8 @@
 .draw-words {
   grid-row: 1;
   z-index: 4;
-  width: 100vw;
+  width: 100%;
   min-height: 7.5rem;
-  margin: 0 calc(var(--space-4) * -1);
   padding: max(var(--space-6), env(safe-area-inset-top)) var(--space-4) var(--space-6);
   text-align: center;
   background: linear-gradient(rgb(3 4 5 / .92), rgb(3 4 5 / .7) 60%, transparent);
@@ -166,11 +164,18 @@
 
 .draw-sparks { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
 
+/* The choice under the card, on a dark band like the words, so the element behind never washes it out. */
 .draw-after {
   grid-row: 3;
   z-index: 4;
+  width: 100%;
   min-height: 7rem;
+  padding: var(--space-6) var(--space-4) max(var(--space-6), env(safe-area-inset-bottom));
+  display: grid;
+  place-items: center;
+  background: linear-gradient(transparent, rgb(3 4 5 / .78) 35%, rgb(3 4 5 / .94));
 }
+.draw-after:empty { background: none; }
 
 /* Who rises: two engraved choices under the card. */
 .rise-choice {
