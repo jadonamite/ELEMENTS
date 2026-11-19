@@ -2,17 +2,18 @@ import type { AnimationClip, Group, Mesh, Object3D, SkinnedMesh } from 'three';
 import type { Loaders } from '../assets/loaders.js';
 import { bodyKit, markRest, type OutfitId } from '../body.js';
 import { sanitizeCharacterConfig } from '../creator/creator-types.js';
+import { getNationIntroConfig } from '../../../shared/src/story/nation-intro.js';
 
 /**
  * A nation's master as drawn: one body for the intro and for the master's post in town, built from the close-up
- * set. The body kit marks the model's sex, which is the voice the master speaks in.
+ * set, in the sex the nation's master config names. The body kit marks the model's sex, which is the voice the master speaks in.
  */
 export async function buildMasterBody(loaders: Loaders, nation: string): Promise<{ model: Group; clips: AnimationClip[] }> {
   const townSets = await Promise.all(
     ['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(name => loaders.model(`/assets/characters/${name}.glb`)),
   );
   const config = sanitizeCharacterConfig({
-    sex: 'male', skinToneId: 'bronze', hairStyleId: 'beard', hairColorId: 'silver', bodyPreset: 'broad',
+    sex: getNationIntroConfig(nation).master.sex, skinToneId: 'bronze', hairStyleId: 'beard', hairColorId: 'silver', bodyPreset: 'broad',
   });
   const outfit: OutfitId = nation === 'IGNIS' ? 'shaper_ignis' : 'rags';
   const kit = bodyKit(loaders, 'close');

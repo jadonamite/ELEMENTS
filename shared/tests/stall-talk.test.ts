@@ -63,20 +63,10 @@ test('A Sentry stops a flagged player at alert priority and closes the matter', 
   }
 });
 
-test('Every line a Sentry, a master in the intro or a stall keeper can say has a recording in both voices', () => {
-  const groups: Record<string, string[]> = {
-    sentry: ['greeting_local', 'red_flag_fined', 'red_flag_fine_paid'],
-    master_ignis: [], master_aques: [], master_terra: [], master_aura: [],
-  };
-  for (const m of ['master_ignis', 'master_aques', 'master_terra', 'master_aura']) groups[m] = Object.keys(table[m]).filter(k => k.startsWith('intro_'));
-  for (const [role, situations] of Object.entries(groups)) {
-    assert.ok(situations.length > 0, role);
-    for (const situationName of situations) {
-      for (const line of table[role][situationName] as string[]) {
-        for (const sex of ['male', 'female'] as const) {
-          assert.ok(manifest[voiceId(role, sex)]?.[lineKey(line)], `${role} ${sex} has no recording of "${line}"`);
-        }
-      }
+test('Every line a Sentry says has a recording in both voices', () => {
+  for (const situationName of ['greeting_local', 'red_flag_fined', 'red_flag_fine_paid']) {
+    for (const line of table.sentry[situationName] as string[]) {
+      for (const sex of ['male', 'female'] as const) assert.ok(manifest[voiceId('sentry', sex)]?.[lineKey(line)], `sentry ${sex} has no recording of "${line}"`);
     }
   }
 });

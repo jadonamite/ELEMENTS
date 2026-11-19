@@ -62,14 +62,12 @@ test('getNationIntroConfig: resolves case-insensitively and falls back to IGNIS'
   assert.equal(fallback.nation, 'IGNIS');
 });
 
-test('Every intro line is recorded in its master\'s own voice, man and woman', () => {
+test('Every intro line is recorded in its master\'s own voice, the sex their body is built as', () => {
   const manifest = JSON.parse(readFileSync(new URL('../../client/public/assets/voice/manifest.json', import.meta.url), 'utf8')) as Record<string, Record<string, number>>;
   for (const config of Object.values(NATION_INTROS)) {
-    for (const sex of ['male', 'female'] as const) {
-      const voice = voiceId(config.master.id, sex);
-      for (const [step, line] of Object.entries(config.dialogue)) {
-        assert.ok(manifest[voice]?.[lineKey(line)], `${voice} has no recording of ${step}: ${line}`);
-      }
+    const voice = voiceId(config.master.id, config.master.sex);
+    for (const [step, line] of Object.entries(config.dialogue)) {
+      assert.ok(manifest[voice]?.[lineKey(line)], `${voice} has no recording of ${step}: ${line}`);
     }
   }
 });

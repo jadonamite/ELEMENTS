@@ -335,63 +335,92 @@
     ]
   },
   "master_ignis": {
-    "_note": "IGNIS element master. Demanding, intense, unimpressed by effort alone. Respects results.",
-    "accept_student": [
-      "You want to learn. Let's see if that's true in a week. Show up, and show up ready.",
-      "Fine. I'll take you on. Don't make me regret it.",
-      "I've seen worse come through here. Pay the fee and we start.",
-      "You've got something to learn, and I'm willing to teach it. Don't waste the chance.",
-      "An IGNIS Novice. I can work with that. Pay the fee. First session starts now."
-    ],
-    "refuse_student": [
-      "Not today. Come back when you've earned the right to ask.",
-      "Your coin is short and so is your skill. Come back when both have grown.",
-      "I don't take students who aren't ready. You're not ready.",
-      "You can't cover the fee. This conversation is over.",
-      "I teach IGNIS masters, not everyone who walks through the door. Prove yourself elsewhere first."
-    ],
-    "fee_rising": [
-      "Demand is up. My time costs more when half the Crimson quarter is queuing for it.",
-      "The rate's gone up. The Adepts can afford it. If you can't, train on your own until you can.",
-      "Everyone wants the advanced techniques right now. That changes the price.",
-      "I set the fee based on demand. Demand is high.",
-      "It went up. The training didn't get worse. There's just more competition for a seat."
-    ],
+    "_note": "IGNIS element master, Brandr. Has taught hundreds of fighters and still watches where each puts their feet. Short sentences; spends few words on praise. Situations per rank (accept_<rank>) and per refusal reason (refuse_<reason>), picked by shared/src/growth/climb.ts.",
     "intro_greeting": [
-      "Easy. On your feet. You're through the Draw."
+      "Easy. Take my arm. On your feet, now. You're through the Draw."
     ],
     "intro_lore": [
-      "This is Sindr, forge-heart of IGNIS. If you seek a way back to where you came from, keep your head. Tales tell of the Allborn: one who commands all four primal elements and might open a passage between worlds. For now, it is only a whisper. You survive here first."
+      "This is Sindr, forge-heart of IGNIS. If it's home you're after, the old tales speak of the Allborn. One who can command all four elements. Some say they can open a way between worlds. So the tale goes. First, keep yourself alive."
     ],
     "intro_footing": [
-      "First, find your balance on this stone. Take three paces forward."
+      "Set your feet. Feel the stone under you. Three paces forward."
     ],
     "intro_sprint_jump": [
-      "Good. Now quicken your stride and spring clear of the ground."
+      "Good. Lengthen your stride. Get to a run. Then leap."
     ],
     "intro_weapon": [
-      "Take this. Worn iron from our forge. It will keep you whole until you earn finer steel."
+      "Here. Iron from our forge. The edge is worn. It'll serve till you earn better steel."
     ],
     "intro_attacks": [
-      "Feel the balance. Test a swift light cut, then drive your shoulder into a heavy strike."
+      "A quick cut first. Then put your shoulder into the next blow."
     ],
     "intro_defense": [
-      "Striking is simple; surviving is discipline. Raise your guard, then slip aside with a dodge."
+      "Guard up. Let the blade meet yours. Then step clear."
     ],
     "intro_shaper": [
-      "The Draw marked you with Crimson. But raw embers without disciplined bone will consume you before dusk. Keep your blade ready."
+      "The Draw marked you Crimson. Use it before you learn to master it and you'll burn hollow by dusk. Keep your blade ready."
     ],
     "intro_hush": [
-      "The Draw named you Hush. No Crimson runs in your veins. But without your hands to forge iron and shape relics, the Shapers are helpless. You fight with steel alone."
+      "The Draw left you Hush. Steel is your way. Look at any Shaper in Sindr. The blade at their hip, the relic in their hand. Hush hands made both."
     ],
     "intro_mission": [
-      "Down this paved road stands the West Gate of Sindr. Walk the road, hold your blade firm, and reach the gate. Reach it, and your true standing here begins."
+      "Follow the stone road to the West Gate. Keep your blade in hand. Once you're through, you can make a place for yourself here."
     ],
-    "_delivery": {
-      "intro_greeting": "Steady and calm, helping a stranger to their feet.",
-      "intro_lore": "Low and measured, telling an old tale.",
-      "intro_mission": "Firm, pointing the way."
-    }
+    "fee_rising": [
+      "My fee's gone up. More fighters rose in rank this week than last.",
+      "You'll owe me more this week. More fighters earned their next rank.",
+      "More climbed this week than last. My fee rose with them."
+    ],
+    "accept_ictus": [
+      "I have your coin. Face my challenger. Beat them, and you stand as Ictus.",
+      "Paid. Let's see what those wins taught you. Beat my challenger, and Ictus is yours."
+    ],
+    "accept_armiger": [
+      "Your fee is paid. Put my challenger down, and you leave this post an Armiger.",
+      "I have your coin. Win this trial, and you'll bear the rank of Armiger for the rest of your days."
+    ],
+    "accept_nexus": [
+      "Your fee is paid. You want Nexus? Take it from the fighter I put before you.",
+      "I have your coin. Your challenger is waiting. Win, and you rise to Nexus."
+    ],
+    "accept_signum": [
+      "Your coin buys the trial. Win it, and you bear Signum.",
+      "Paid. I've set a fighter before you. Beat them, and you walk out with Signum."
+    ],
+    "accept_profundus": [
+      "Few bring me coin for this trial. Yours is paid. Beat my challenger, and Profundus is yours.",
+      "I have your coin. This one will press you harder than the last. Win, and you rise to Profundus."
+    ],
+    "accept_primus": [
+      "Paid. One rank left. Beat the last fighter I can set before you, and you stand as Primus.",
+      "I have your coin. This is your last trial. Win it, and no fighter in Sindr will outrank you. Primus."
+    ],
+    "refuse_not_qualified": [
+      "You need more wins before I'll set you a trial. Go earn them.",
+      "Too few victories. Win more fights, then come see me.",
+      "I've counted your wins. You're short. Come back when you've won more."
+    ],
+    "refuse_short": [
+      "You've won enough fights. You're short on CHROMA. Bring the rest and I'll set the trial.",
+      "You've earned the trial. Come back with enough CHROMA to pay for it.",
+      "Your wins are in order. The fee's still due. Bring more CHROMA."
+    ],
+    "refuse_no_trials": [
+      "I've yet to open the trials. Keep fighting. Come see me when they begin.",
+      "I'm taking fighters for trials once they open. Till then, keep your hand in."
+    ],
+    "refuse_top": [
+      "You're Primus. You've fought the last trial I have to give.",
+      "You bear Primus. There's no rank above yours. My work with you is done."
+    ],
+    "refuse_hush": [
+      "You're Hush. My trials are for Shapers. Take your steel to a master smith. They'll see you through the ranks.",
+      "A master smith has charge of Hush fighters. Go see one. They'll tell you what it takes to rise."
+    ],
+    "refuse_foreign": [
+      "I hold trials for the Shapers of IGNIS. Seek the master of your own nation.",
+      "You carry another nation's mark. Go to your own master. They'll set your trial."
+    ]
   },
   "master_aques": {
     "_note": "AQUES element master. Calm, slow to judge, but clear about standards. Gives reasons.",
