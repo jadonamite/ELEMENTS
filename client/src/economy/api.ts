@@ -1,3 +1,4 @@
+import type { ClimbRefusal } from '../../../shared/src/growth/climb.js';
 import { getServerUrl, getStoredAuthToken, isOfflineMode, hasGameServer } from '../auth/server-api.js';
 
 // Calls to the economy server. Every call that moves coin or items is signed with the player's token;
@@ -175,7 +176,7 @@ export interface ClimbTerms {
 
 export type EnrolOutcome =
   | { outcome: 'accepted'; fee: number; next: number }
-  | { outcome: 'refused'; reason: 'no_master' | 'top' | 'not_qualified' | 'short' | 'no_trials'; fee: number };
+  | { outcome: 'refused'; reason: ClimbRefusal; fee: number };
 
 export async function fetchClimb(): Promise<ClimbTerms> {
   return call('/api/climb');
