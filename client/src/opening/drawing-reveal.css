@@ -1,224 +1,173 @@
-/* The Drawing reveal: one card centre stage, a glow behind it in the result's colour, words above, the choice below. */
+/* The Drawing reveal: a heavy metal card centre stage, the drawn element behind it, words above, the choice below. */
 .draw-stage {
-  --card-w: min(58vw, 17rem, 33svh);
-  --card-h: calc(var(--card-w) * 1.5);
+  /* Sized against the stage, which ends above the consent banner while it is up. */
+  --card-w: min(64cqw, 26rem, 38cqh);
+  container-type: size;
   position: fixed;
-  inset: 0;
+  inset: 0 0 var(--consent-h, 0px);
   display: grid;
-  grid-template-rows: 1fr auto auto 1fr;
+  grid-template-rows: auto 1fr auto;
   justify-items: center;
-  align-items: end;
-  gap: clamp(var(--space-4), 3svh, var(--space-8));
-  padding: max(var(--space-8), env(safe-area-inset-top)) var(--space-4) max(var(--space-8), env(safe-area-inset-bottom));
-  background: radial-gradient(ellipse at 50% 55%, #15110e 0%, #050403 70%);
+  align-items: center;
+  padding: 0 var(--space-4) max(var(--space-6), env(safe-area-inset-bottom));
+  background: radial-gradient(ellipse at 50% 55%, #0d1014 0%, #030405 72%);
   color: var(--opening-ink, #f5f3ec);
   overflow: hidden;
   isolation: isolate;
 }
 
-.draw-glow {
+/* Cold haze in the dark, lit by the element once it arrives. */
+.draw-haze {
   position: absolute;
-  left: 50%;
-  top: 55%;
-  width: calc(var(--card-w) * 3.2);
-  height: calc(var(--card-h) * 1.6);
-  transform: translate(-50%, -50%) scale(.6);
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--draw-colour) 55%, transparent), color-mix(in srgb, var(--draw-colour) 14%, transparent) 55%, transparent);
-  filter: blur(18px);
-  opacity: 0;
-  transition: opacity 2.4s var(--ease-out), transform 2.4s var(--ease-out), background 1.2s var(--ease-out);
+  inset: -10%;
   z-index: 0;
   pointer-events: none;
+  background:
+    radial-gradient(ellipse 45% 38% at 50% 50%, rgb(60 72 90 / .26), transparent 70%),
+    radial-gradient(ellipse 28% 20% at 32% 30%, rgb(110 130 160 / .08), transparent 70%);
+  filter: blur(10px);
 }
-.draw-stage.charging .draw-glow { opacity: .35; transform: translate(-50%, -50%) scale(.85); --draw-colour: #f5f3ec; }
-.draw-stage.revealed .draw-glow { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 
-.draw-layer { position: absolute; inset: 0; pointer-events: none; }
-.draw-layer-back { z-index: 1; }
-.draw-layer-front { z-index: 3; }
-
-.draw-words {
-  grid-row: 2;
-  z-index: 4;
-  min-height: 6.5rem;
-  text-align: center;
+/* The drawn element, filmed on black and screened over the stage so the black drops out. Placed from the card's
+   measured position. */
+.draw-plate {
+  position: absolute;
+  z-index: 1;
+  left: var(--plate-left, 50%);
+  top: var(--plate-top, 50%);
+  width: calc(var(--card-w) * 2.1);
+  height: calc(var(--card-w) * 3.75);
+  transform: translate(-50%, calc(-50% + var(--card-w) * var(--plate-y, 0))) scale(.9);
+  mix-blend-mode: screen;
+  pointer-events: none;
   opacity: 0;
-  transform: translateY(8px);
-  transition: opacity var(--duration-deliberate) var(--ease-out), transform var(--duration-deliberate) var(--ease-out);
+  transition: opacity 1.4s var(--ease-out), transform 2.2s cubic-bezier(.2, .7, .2, 1);
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 80%, transparent 100%);
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 80%, transparent 100%);
 }
-.draw-stage.words-in .draw-words { opacity: 1; transform: none; }
+.draw-plate video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.draw-stage.element-in .draw-plate { opacity: var(--plate-o, 1); transform: translate(-50%, calc(-50% + var(--card-w) * var(--plate-y, 0))); }
+.draw-stage.element-in .draw-plate.spent { opacity: 0; transition-duration: 2.4s; }
+
+/* Words over a dark band, so fire or water behind never washes them out. */
+.draw-words {
+  grid-row: 1;
+  z-index: 4;
+  width: 100vw;
+  min-height: 7.5rem;
+  margin: 0 calc(var(--space-4) * -1);
+  padding: max(var(--space-6), env(safe-area-inset-top)) var(--space-4) var(--space-6);
+  text-align: center;
+  background: linear-gradient(rgb(3 4 5 / .92), rgb(3 4 5 / .7) 60%, transparent);
+}
 .draw-words .opening-kicker { margin-bottom: var(--space-3); }
 .draw-title {
   margin: 0;
   padding-left: .16em;
-  font: 700 clamp(1.6rem, 5vw, 2.6rem)/1.15 var(--font-family-display);
+  min-height: 1.15em;
+  font: 700 clamp(1.5rem, 5vw, 2.6rem)/1.15 var(--font-family-display);
   letter-spacing: .16em;
   text-transform: uppercase;
-  color: var(--draw-colour);
-  text-shadow: 0 0 28px color-mix(in srgb, var(--draw-colour) 45%, transparent), 0 2px 12px rgb(0 0 0 / .8);
-  transition: color 1s var(--ease-out);
+  color: var(--nation);
+  text-shadow: 0 2px 12px rgb(0 0 0 / .8);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--duration-deliberate) var(--ease-out), transform var(--duration-deliberate) var(--ease-out), color 1s var(--ease-out);
 }
+.draw-stage.is-hush:not(.nation-set) .draw-title { color: var(--forge); }
 .draw-sub {
   margin: var(--space-2) 0 0;
+  min-height: 1.5em;
   font: var(--font-size-xs)/1.5 var(--font-family-body);
   letter-spacing: .24em;
   text-transform: uppercase;
   color: var(--opening-secondary, #c2c0b8);
-}
-
-.draw-card-wrap {
-  grid-row: 3;
-  z-index: 2;
-  width: var(--card-w);
-  height: var(--card-h);
-  perspective: 1400px;
   opacity: 0;
-  transform: translateY(40svh) rotateX(18deg);
-  transition: opacity 1.1s var(--ease-out), transform 1.4s cubic-bezier(.16, .84, .3, 1);
+  transition: opacity var(--duration-deliberate) var(--ease-out);
 }
-.draw-stage.risen .draw-card-wrap { opacity: 1; transform: none; }
+.draw-stage.words-in .draw-title { opacity: 1; transform: none; }
+.draw-stage.words-in .draw-sub { opacity: 1; }
 
-.draw-card {
+/* The card: a slab with real thickness, swaying in perspective. */
+.draw-anchor {
+  grid-row: 2;
+  z-index: 2;
   position: relative;
-  width: 100%;
-  height: 100%;
-  transform-style: preserve-3d;
-  transition: transform 800ms cubic-bezier(.3, 1.35, .45, 1);
-  animation: draw-hover 4.2s ease-in-out infinite;
-}
-.draw-card.flipped { transform: rotateY(180deg); animation: none; }
-.draw-card.trembling { animation: draw-tremble 90ms linear infinite; }
-
-@keyframes draw-hover {
-  0%, 100% { transform: translateY(0) rotateZ(-.4deg); }
-  50% { transform: translateY(-8px) rotateZ(.4deg); }
-}
-@keyframes draw-tremble {
-  0% { transform: translate(0, 0) rotate(0); }
-  25% { transform: translate(-1.5px, 1px) rotate(-.6deg); }
-  50% { transform: translate(1px, -1.5px) rotate(.5deg); }
-  75% { transform: translate(1.5px, 1px) rotate(-.3deg); }
-  100% { transform: translate(0, 0) rotate(0); }
-}
-
-.draw-face {
-  position: absolute;
-  inset: 0;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  border-radius: 6px;
-  overflow: hidden;
-  box-shadow: 0 30px 70px rgb(0 0 0 / .7), 0 0 0 1px rgb(245 243 236 / .18);
-}
-
-/* Back: black lacquer and ink-white rules, the four emblems in one ring. */
-.draw-back {
-  background:
-    radial-gradient(ellipse at 50% 40%, #241d17 0%, #0d0a08 75%),
-    #0d0a08;
-}
-.draw-back-art { width: 100%; height: 100%; display: block; fill: rgb(245 243 236 / .78); }
-.draw-back-rule { fill: none; stroke: rgb(245 243 236 / .45); stroke-width: .35; }
-.draw-back-rule.faint { stroke: rgb(245 243 236 / .18); }
-.draw-back-art text { font: 700 4.2px var(--font-family-display); letter-spacing: .9px; fill: rgb(245 243 236 / .7); }
-.draw-stage.charging .draw-back-art { filter: drop-shadow(0 0 3px rgb(245 243 236 / .5)); }
-
-/* Front: bone paper and the ink plate, like a printed card. */
-.draw-front {
-  transform: rotateY(180deg);
-  background:
-    radial-gradient(ellipse at 50% 45%, #f1ebde 0%, #ddd3c0 80%, #c9bda6 100%);
-  color: #16120e;
-}
-.draw-front-frame {
-  position: absolute;
-  inset: 7px;
-  border: 1px solid rgb(22 18 14 / .55);
-  box-shadow: inset 0 0 0 3px rgb(22 18 14 / .08), inset 0 0 0 4px rgb(22 18 14 / .25);
-  pointer-events: none;
-  z-index: 2;
-}
-.draw-plate {
-  position: absolute;
-  left: 50%;
-  bottom: 13%;
-  width: 92%;
-  height: auto;
-  transform: translateX(-50%);
-  filter: contrast(1.05);
-  mix-blend-mode: multiply;
-}
-.draw-hush-mark {
-  bottom: 27%;
-  width: 72%;
-  fill: #16120e;
-  mix-blend-mode: normal;
-}
-.draw-card.is-hush .draw-plate { filter: grayscale(1) opacity(.35); transition: filter 1.2s var(--ease-out); }
-.draw-front.nation-set .draw-plate { filter: contrast(1.05); }
-
-.draw-medallion {
-  position: absolute;
-  left: 50%;
-  top: 17%;
-  width: 26%;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(circle, #f6f0e4 0%, #e6dcc8 70%);
-  box-shadow: 0 0 0 1px rgb(22 18 14 / .4), 0 0 0 4px #ece4d4, 0 0 0 5px rgb(22 18 14 / .25);
-  z-index: 3;
-}
-.draw-emblem {
-  width: 100%;
-  height: 100%;
-  display: block;
-  fill: var(--nation-colour);
-  clip-path: circle(0% at 50% 50%);
-  filter: drop-shadow(0 0 0 transparent);
-  transition: clip-path 900ms cubic-bezier(.2, .8, .2, 1), filter 900ms var(--ease-out);
-}
-.draw-front.burned .draw-emblem {
-  clip-path: circle(75% at 50% 50%);
-  filter: drop-shadow(0 0 4px var(--nation-colour)) drop-shadow(0 0 1px rgb(22 18 14 / .6));
-}
-
-.draw-front-name {
-  position: absolute;
-  inset: auto 7px 7px;
-  z-index: 3;
-  display: grid;
-  gap: 2px;
-  padding: var(--space-2) var(--space-2) var(--space-3);
-  text-align: center;
-  background: linear-gradient(transparent, rgb(241 235 222 / .92) 30%);
-}
-.draw-front-name span {
-  font: 700 clamp(.72rem, 1.9vw, .95rem)/1.2 var(--font-family-display);
-  letter-spacing: .14em;
-  text-transform: uppercase;
-}
-.draw-front-name small {
-  font: clamp(.58rem, 1.4vw, .68rem)/1.3 var(--font-family-body);
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  color: rgb(22 18 14 / .7);
-}
-
-.draw-flash {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  background: #fbfaf6;
+  width: var(--card-w);
+  aspect-ratio: 2 / 3;
+  perspective: 1600px;
   opacity: 0;
-  pointer-events: none;
-  transition: opacity 650ms var(--ease-out);
+  transform: translateY(42svh) rotateX(24deg);
+  transition: opacity 1.1s var(--ease-out), transform 1.6s cubic-bezier(.16, .84, .3, 1);
 }
-.draw-flash.on { opacity: .85; transition: opacity 90ms linear; }
+.draw-stage.risen .draw-anchor { opacity: 1; transform: none; }
+.draw-card { position: absolute; inset: 0; transform-style: preserve-3d; will-change: transform; }
+.draw-slab {
+  position: absolute;
+  inset: 0;
+  border-radius: 3.5%;
+  background: url('/assets/ui/drawing/card-back.webp') center / cover;
+}
+.draw-slab.edge {
+  transform: translateZ(calc(var(--card-w) * -.06 * var(--z)));
+  filter: brightness(.32) saturate(.7) contrast(1.1);
+}
+.draw-slab.face { box-shadow: 0 30px 70px rgb(0 0 0 / .7), 0 0 0 1px rgb(0 0 0 / .6); }
+.draw-face-light {
+  position: absolute;
+  inset: 0;
+  border-radius: 3.5%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0;
+  background: radial-gradient(circle at var(--sx) var(--sy), color-mix(in srgb, var(--nation) 65%, transparent), color-mix(in srgb, var(--nation) 16%, transparent) 30%, transparent 62%);
+  transition: opacity 1.2s var(--ease-out);
+}
+.draw-stage.is-hush .draw-face-light { background: radial-gradient(circle at var(--sx) var(--sy), color-mix(in srgb, var(--forge) 65%, transparent), color-mix(in srgb, var(--forge) 16%, transparent) 30%, transparent 62%); }
+.draw-stage.glowing .draw-face-light { opacity: .5; }
+.draw-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 3.5%;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+  background: linear-gradient(var(--sheen, 120deg), transparent 30%, rgb(255 255 255 / .28) 48%, transparent 62%);
+}
+
+/* Tokens: cut from one sheet of four; the drawn one lights, the rest go dark. */
+.draw-token {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  background-image: url('/assets/ui/drawing/tokens.webp');
+  background-repeat: no-repeat;
+  box-shadow: 0 6px 14px rgb(0 0 0 / .65);
+  filter: brightness(.85);
+  transition: filter .9s var(--ease-out), box-shadow .9s var(--ease-out);
+}
+.draw-token.blur { filter: brightness(.8) blur(.6px); transition: none; }
+.draw-token.dim { filter: brightness(.25) saturate(.4); }
+.draw-token.lit {
+  filter: brightness(1.25);
+  box-shadow: 0 0 22px 4px var(--nation), 0 0 60px 10px color-mix(in srgb, var(--nation) 45%, transparent);
+}
+.draw-hush {
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 40% 35%, #3a3128, #16120e 70%);
+  box-shadow: inset 0 0 0 2px #6b5233, 0 6px 14px rgb(0 0 0 / .65);
+  opacity: 0;
+  filter: none;
+}
+.draw-hush svg { width: 92%; height: 92%; fill: #8a6a3e; transition: fill 1s var(--ease-out), filter 1s var(--ease-out); }
+.draw-stage.glowing .draw-hush { box-shadow: inset 0 0 0 2px #b8893f, 0 0 22px 4px var(--forge), 0 0 60px 10px color-mix(in srgb, var(--forge) 45%, transparent); }
+.draw-stage.glowing .draw-hush svg { fill: var(--forge); filter: drop-shadow(0 0 3px var(--forge)); }
+
+.draw-sparks { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
 
 .draw-after {
-  grid-row: 4;
-  align-self: start;
+  grid-row: 3;
   z-index: 4;
   min-height: 7rem;
 }
@@ -234,25 +183,18 @@
 }
 .rise-choice .opening-kicker { margin: 0; }
 .rise-choice-buttons { display: flex; gap: var(--space-4); }
-.rise-choice .opening-button { min-width: 9.5rem; margin: 0; padding: 0 var(--space-6); }
+.rise-choice .opening-button { min-width: min(9.5rem, 38vw); margin: 0; padding: 0 var(--space-4); white-space: nowrap; }
 @keyframes rise-choice-in { to { opacity: 1; transform: none; } }
 
 .draw-stage.leaving { opacity: 0; transition: opacity 1.4s var(--ease-out); }
 
-/* Reduced motion: no flight, no shake, no flash; the card simply turns to its face. */
-.draw-stage.reduced .draw-card-wrap,
-.draw-stage.reduced .draw-card,
-.draw-stage.reduced .draw-words,
-.draw-stage.reduced .draw-glow { transition: opacity 600ms linear; animation: none; transform: none; }
-.draw-stage.reduced .draw-glow { transform: translate(-50%, -50%); }
-.draw-stage.reduced .draw-card .draw-back { transition: opacity 600ms linear; }
-.draw-stage.reduced .draw-card.flipped { transform: none; }
-.draw-stage.reduced .draw-card.flipped .draw-back { opacity: 0; }
-.draw-stage.reduced .draw-front { transform: none; backface-visibility: visible; opacity: 0; transition: opacity 600ms linear; }
-.draw-stage.reduced .draw-card.flipped .draw-front { opacity: 1; }
-.draw-stage.reduced .draw-emblem { transition: none; }
+/* Reduced motion: no flight and no sway; the card stands with the drawn token seated. */
+.draw-stage.reduced .draw-anchor,
+.draw-stage.reduced .draw-plate,
+.draw-stage.reduced .draw-title { transition: opacity 600ms linear; transform: none; }
+.draw-stage.reduced .draw-plate { transform: translate(-50%, calc(-50% + var(--card-w) * var(--plate-y, 0))); }
 
-@media (max-height: 640px) {
-  .draw-stage { --card-w: min(40vw, 13rem, 30svh); gap: var(--space-3); }
-  .draw-words { min-height: 5rem; }
+@container (max-height: 640px) {
+  .draw-words { min-height: 5.5rem; padding-bottom: var(--space-3); }
+  .draw-after { min-height: 5rem; }
 }
