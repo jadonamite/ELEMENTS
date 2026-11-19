@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DepthTexture, Group, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, LOD, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry, PointLight, Scene, ShaderMaterial, Texture, Vector4, WebGLRenderTarget } from 'three';
-import { warm } from '../src/world/warmup.ts';
+import { holdTurns, warm } from '../src/world/warmup.ts';
 
 function renderer(onCompile = () => {}, onRender = () => {}) {
   return {
@@ -99,4 +99,18 @@ test('a detached object stays outside the live scene while compilation is pendin
   assert.equal(object.parent, parent);
   complete(); await result;
   assert.equal(object.parent, parent); assert.equal(scene.children.length, 0);
+});
+
+test('warming waits while a timed scene holds the turns, and starts when it ends', async () => {
+  const scene = new Scene(), object = new Group();
+  scene.add(object);
+  let compiled = 0, release;
+  const r = renderer(() => {}, () => {});
+  r.compileAsync = () => { compiled++; return Promise.resolve(); };
+  holdTurns(new Promise((resolve) => { release = resolve; }));
+  const result = warm(r, scene, new PerspectiveCamera(), object, null);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(compiled, 0);
+  release(); await result;
+  assert.equal(compiled, 1);
 });

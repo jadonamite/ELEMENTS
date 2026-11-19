@@ -17,7 +17,8 @@ import {
 } from './auth/index.js';
 import { drawNation, roll } from '../../shared/src/rising/roll.js';
 import type { RisingResult } from '../../shared/src/rising/types.js';
-import { playDrawingReveal } from './opening/drawing-reveal.js';
+import { playDrawingReveal, prepareDrawing, type DrawingKit } from './opening/drawing-reveal.js';
+import { compilesSettled, holdTurns } from './world/warmup.js';
 
 /**
  * Opening sequence, from Play Now: the age check, the opening film, the Drawing (85% Shaper across the four
@@ -87,6 +88,9 @@ export class OpeningFlow {
   private readonly onComplete: (result: DrawingResult) => void;
   private readonly onCharacter: (config: CharacterConfig) => void;
   private music: HTMLAudioElement | null = null;
+  private drawingKit: DrawingKit | null = null;
+  /** What the opening has on screen over the world: the film, the Drawing, or nothing the world must yield to. */
+  private showing: 'film' | 'drawing' | null = null;
   private rising: Promise<{ result: DrawingResult; offline: boolean }> | null = null;
   private activeLoginIsland: { unmount: () => void } | null = null;
   private authToken: string | null = null;
@@ -102,6 +106,11 @@ export class OpeningFlow {
     document.body.appendChild(this.container);
 
     this.start();
+  }
+
+  /** The world draws sparingly under the film and not at all under the Drawing, which keeps time to its score. */
+  get covering(): 'film' | 'drawing' | null {
+    return this.showing;
   }
 
   private cleanupSubviews(): void {
@@ -332,12 +341,24 @@ export class OpeningFlow {
         <button type="button" class="opening-button opening-film-begin" hidden>Begin</button>
       </div>`;
     this.container.classList.add('is-film');
+    this.showing = 'film';
     const video = this.container.querySelector<HTMLVideoElement>('video')!;
     const begin = this.container.querySelector<HTMLButtonElement>('.opening-film-begin')!;
+    // The Drawing's art, score and drawn clip load during the film: once the film has enough to play through, or
+    // in its last 30 seconds if it never does, so they never take its bandwidth at the start.
+    const rising = (this.rising ??= this.drawRising());
+    const prepare = (): void => {
+      if (this.drawingKit) return;
+      this.drawingKit = prepareDrawing(rising.then(r => r.result));
+      this.music = this.drawingKit.music;
+    };
+    video.addEventListener('canplaythrough', prepare, { once: true });
+    video.addEventListener('timeupdate', () => { if (video.duration - video.currentTime < 30) prepare(); });
     let handed = false;
     const handOver = (): void => {
       if (handed) return;
       handed = true;
+      prepare();
       this.container.classList.remove('is-film');
       void this.renderDrawing();
     };
@@ -359,17 +380,18 @@ export class OpeningFlow {
     this.cleanupSubviews();
     const { result, offline } = await (this.rising ?? this.drawRising());
     localStorage.setItem(STORAGE_DRAWING_KEY, JSON.stringify(result));
-    this.music = new Audio('/assets/audio/music/drawing.m4a');
-    this.music.volume = 0.8;
-    void this.music.play().catch(() => {});
-    await playDrawingReveal(this.container, result, {
+    const kit = this.drawingKit ?? prepareDrawing(result);
+    this.music = kit.music;
+    this.showing = 'drawing';
+    // The world's heavy work waits for the reveal, which starts once compiles already on the GPU are done.
+    let revealed: () => void = () => {};
+    holdTurns(new Promise<void>(resolve => { revealed = resolve; }));
+    const reveal = playDrawingReveal(this.container, result, {
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-      sound: (name, volume = 0.8) => {
-        const a = new Audio(`/assets/audio/${name}.ogg`);
-        a.volume = volume;
-        void a.play().catch(() => {});
-      },
-    });
+      kit,
+      quiet: compilesSettled(),
+    }).finally(revealed);
+    await reveal;
     this.renderRiseChoice(result, offline);
   }
 
@@ -393,6 +415,7 @@ export class OpeningFlow {
         saveStoredCharacter(config);
         this.onCharacter(config);
         this.container.querySelector('.draw-stage')?.classList.add('leaving');
+        this.showing = null;
         this.fadeMusic(3000);
         setTimeout(() => this.close(result), 1200);
       }, { once: true });

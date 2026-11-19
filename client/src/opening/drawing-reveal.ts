@@ -65,21 +65,111 @@ const clamp01 = (t: number): number => Math.max(0, Math.min(1, t));
 /** Eased progress from `from` to `to`, fast at first and slowing to rest. */
 const spinK = (t: number, from: number, to: number): number => 1 - Math.pow(1 - clamp01((t - from) / (to - from)), 3);
 
-export interface RevealOptions {
-  reducedMotion: boolean;
-  /** Plays a one-shot sound from the game's audio folder. */
-  sound: (name: string, volume?: number) => void;
+const SCORE = '/assets/audio/music/drawing.m4a';
+const SOUNDS = ['fire_burst_02', 'ground_pound_02', 'ambient_forge_hammer'] as const;
+type SoundName = (typeof SOUNDS)[number];
+/** The longest the Drawing waits for its art, score and clip before it plays with whatever has arrived. */
+const READY_WAIT_MS = 6000;
+
+/** Everything the reveal shows or plays, fetched ahead so it starts whole and in time with its score. */
+export interface DrawingKit {
+  /** The score. The reveal's clock is its playback position. */
+  readonly music: HTMLAudioElement;
+  /** Resolves once the art is decoded and the score and the drawn element's clip can play through. */
+  readonly ready: Promise<void>;
+  readonly clip: Promise<HTMLVideoElement>;
+  play(name: SoundName, volume: number): void;
 }
 
-/** Plays the reveal inside `host`; resolves when the result is on screen and the player can go on. */
-export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts: RevealOptions): Promise<void> {
+const loaded = (media: HTMLMediaElement): Promise<void> => new Promise(resolve => {
+  if (media.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) return resolve();
+  media.addEventListener('canplaythrough', () => resolve(), { once: true });
+  media.addEventListener('error', () => resolve(), { once: true });
+});
+/** Resolves once the page shows a few frames in a row on time: a GPU still busy with earlier work holds frames back. */
+const framesFlowing = (): Promise<void> => new Promise(resolve => {
+  let last = performance.now(), smooth = 0;
+  const tick = (now: number): void => {
+    smooth = now - last < 50 ? smooth + 1 : 0;
+    last = now;
+    if (smooth >= 4) resolve();
+    else requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+});
+const decoded = (src: string): Promise<void> => {
+  const img = new Image();
+  img.src = src;
+  return img.decode().catch(() => {});
+};
+
+/** Starts fetching the Drawing; call it as early as the result is asked for (the opening does it as the film starts). */
+export function prepareDrawing(result: Promise<RisingResult> | RisingResult): DrawingKit {
+  const music = new Audio(SCORE);
+  music.preload = 'auto';
+  const sounds = new Map(SOUNDS.map(name => {
+    const a = new Audio(`/assets/audio/${name}.ogg`);
+    a.preload = 'auto';
+    return [name, a] as const;
+  }));
+  const clip = Promise.resolve(result).then(r => {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.src = PLATE[r.element].src;
+    video.load();
+    return video;
+  });
+  const ready = Promise.all([
+    decoded(`${ART}/card-back.webp`),
+    decoded(`${ART}/tokens.webp`),
+    loaded(music),
+    clip.then(loaded),
+  ]).then(() => {});
+  return {
+    music,
+    ready,
+    clip,
+    play(name, volume) {
+      const a = sounds.get(name)!;
+      a.volume = volume;
+      a.currentTime = 0;
+      void a.play().catch(() => {});
+    },
+  };
+}
+
+export interface RevealOptions {
+  reducedMotion: boolean;
+  /** From `prepareDrawing`; the reveal prepares its own when none is given. */
+  kit?: DrawingKit;
+  /** Other work the reveal waits out before it starts, such as GPU compiles; then it waits for frames to flow. */
+  quiet?: Promise<unknown>;
+}
+
+/**
+ * Plays the reveal inside `host`, starting once its kit is ready (or after READY_WAIT_MS); resolves when the result
+ * is on screen and the player can go on. The score starts with it and keeps time for it.
+ */
+export async function playDrawingReveal(host: HTMLElement, result: RisingResult, opts: RevealOptions): Promise<void> {
+  const kit = opts.kit ?? prepareDrawing(result);
+  host.innerHTML = '<div class="draw-stage"><div class="draw-haze"></div></div>';
+  const waiting = host.firstElementChild!;
+  await Promise.race([
+    Promise.all([kit.ready, opts.quiet]).then(framesFlowing),
+    new Promise(r => setTimeout(r, READY_WAIT_MS)),
+  ]);
+  const video = await kit.clip;
+  // Left, or another reveal took the host, while this one waited.
+  if (!waiting.isConnected) return;
   const nation = result.element;
   const hush = result.role === 'Hush';
   const plate = PLATE[nation];
   host.innerHTML = `
     <div class="draw-stage ${hush ? 'is-hush' : 'is-shaper'}" style="--nation:${NATION_COLOUR[nation]};--forge:${FORGE_GOLD}">
       <div class="draw-haze"></div>
-      <div class="draw-plate"><video muted playsinline preload="auto" src="${plate.src}"></video></div>
+      <div class="draw-plate"></div>
       <header class="draw-words" aria-live="polite">
         <p class="opening-kicker">The Lord's Drawing</p>
         <h2 class="draw-title"></h2>
@@ -95,7 +185,7 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
   const title = stage.querySelector<HTMLElement>('.draw-title')!;
   const sub = stage.querySelector<HTMLElement>('.draw-sub')!;
   const plateBox = stage.querySelector<HTMLElement>('.draw-plate')!;
-  const video = plateBox.querySelector('video')!;
+  plateBox.appendChild(video);
   const sparks = stage.querySelector<HTMLCanvasElement>('.draw-sparks')!;
   plateBox.style.setProperty('--plate-y', String(plate.y));
   plateBox.style.setProperty('--plate-o', String(plate.opacity));
@@ -179,10 +269,11 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
       t.el.classList.toggle('dim', i !== chosen);
     });
     if (hush) { place(hushToken, cx(), cy(), 6, SOCKET.seat); hushToken.style.opacity = '1'; }
+    void kit.music.play().catch(() => {});
     void video.play().catch(() => {});
     finalWords();
     window.removeEventListener('resize', measure);
-    return Promise.resolve();
+    return;
   }
 
   // Forge sparks off the Hush mark, on one canvas in front of the card.
@@ -209,9 +300,27 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
   const firstRef = hush ? (chosen + 2) % 4 : chosen;
   const handover = (firstRef - chosen) * Math.PI / 2;
 
+  // The score keeps time: its hit lands on the glow however late it started or stalled. Without sound (blocked or
+  // failed) the reveal runs on the wall clock from where the score left off.
+  const music = kit.music;
+  music.currentTime = 0;
+  const scored = await Promise.race([
+    music.play().then(() => true, () => false),
+    new Promise<boolean>(r => setTimeout(() => r(false), 1500)),
+  ]);
+  let wallFrom = performance.now(), wallAt = 0;
+  let onScore = scored;
+  const dropScore = (): void => {
+    if (!onScore) return;
+    onScore = false;
+    wallAt = music.currentTime; wallFrom = performance.now();
+  };
+  music.addEventListener('error', dropScore, { once: true });
+  music.addEventListener('ended', dropScore, { once: true });
+  const clock = (now: number): number => (onScore ? music.currentTime : wallAt + (now - wallFrom) / 1000);
+
   return new Promise(resolve => {
-    const start = performance.now();
-    let last = start, resolved = false;
+    let last = performance.now(), resolved = false;
     const fired = new Set<string>();
     const once = (key: string, at: number, t: number, fn: () => void): void => {
       if (t >= at && !fired.has(key)) { fired.add(key); fn(); }
@@ -224,7 +333,7 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
         window.removeEventListener('resize', measure);
         return;
       }
-      const t = (now - start) / 1000, dt = Math.min(0.05, (now - last) / 1000);
+      const t = clock(now), dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       tiltX += (goalX - tiltX) * 0.05; tiltY += (goalY - tiltY) * 0.05;
 
@@ -265,14 +374,14 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
       once('glow', T.glow, t, () => {
         stage.classList.add('glowing');
         if (hush) {
-          opts.sound('ambient_forge_hammer', 0.9);
+          kit.play('ambient_forge_hammer', 0.9);
           const r = hushToken.getBoundingClientRect();
           burst(r.left + r.width / 2, r.top + r.height / 2, 120, 1);
           showWords('The Hush', 'You forge from raw shards. No one else can.');
         } else {
           stage.classList.add('element-in');
           void video.play().catch(() => {});
-          opts.sound(nation === 'TERRA' ? 'ground_pound_02' : 'fire_burst_02', nation === 'IGNIS' ? 0.7 : 0.35);
+          kit.play(nation === 'TERRA' ? 'ground_pound_02' : 'fire_burst_02', nation === 'IGNIS' ? 0.7 : 0.35);
         }
       });
       if (!hush) once('words', T.words, t, finalWords);
@@ -280,7 +389,7 @@ export function playDrawingReveal(host: HTMLElement, result: RisingResult, opts:
         once('nation', T.nationStop, t, () => {
           stage.classList.add('element-in', 'nation-set');
           void video.play().catch(() => {});
-          opts.sound(nation === 'TERRA' ? 'ground_pound_02' : 'fire_burst_02', 0.35);
+          kit.play(nation === 'TERRA' ? 'ground_pound_02' : 'fire_burst_02', 0.35);
         });
         once('nationWords', T.nationWords, t, finalWords);
         if (t > T.glow && Math.random() < 0.35) {

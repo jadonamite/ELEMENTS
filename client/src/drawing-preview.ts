@@ -2,7 +2,7 @@ import './ui/tokens.css';
 import './opening.css';
 import './opening/drawing-reveal.css';
 import type { RisingResult } from '../../shared/src/rising/types.js';
-import { playDrawingReveal } from './opening/drawing-reveal.js';
+import { playDrawingReveal, prepareDrawing, type DrawingKit } from './opening/drawing-reveal.js';
 
 /** Plays the Drawing reveal for any result: drawing.html?result=IGNIS|AQUES|TERRA|AURA|hush-AQUES, with the score. */
 const RESULTS: Record<string, RisingResult> = {
@@ -20,16 +20,15 @@ document.body.appendChild(host);
 const menu = document.createElement('nav');
 menu.style.cssText = 'position:fixed;z-index:10;top:8px;left:8px;display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100% - 16px)';
 document.body.appendChild(menu);
-let music: HTMLAudioElement | null = null;
+let kit: DrawingKit | null = null;
 
 function play(key: string): void {
   const result = RESULTS[key] ?? RESULTS.IGNIS!;
-  music?.pause();
-  music = new Audio('/assets/audio/music/drawing.m4a');
-  void music.play().catch(() => {});
+  kit?.music.pause();
+  kit = prepareDrawing(result);
   void playDrawingReveal(host, result, {
     reducedMotion: new URLSearchParams(location.search).has('reduced') || matchMedia('(prefers-reduced-motion: reduce)').matches,
-    sound: (name, volume = 0.8) => { const a = new Audio(`/assets/audio/${name}.ogg`); a.volume = volume; void a.play().catch(() => {}); },
+    kit,
   });
 }
 

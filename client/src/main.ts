@@ -98,14 +98,16 @@ async function main(): Promise<void> {
   let onOpeningCharacter: ((character: CharacterConfig) => void) | null = null;
   /** Settles when the opening (the Draw) has closed, or at once when there is none. */
   let openingClosed: Promise<void> = Promise.resolve();
+  let opening: OpeningFlow | null = null;
   if (!params.has('skipIntro')) {
     openingClosed = new Promise(resolve => {
-      const opening = new OpeningFlow((res) => { openingResult = res; resolve(); }, (character) => {
+      opening = new OpeningFlow((res) => { openingResult = res; resolve(); }, (character) => {
         chosenCharacter = character;
         onOpeningCharacter?.(character);
       });
-      cleanup.push(() => opening.dispose());
+      cleanup.push(() => opening?.dispose());
     });
+    void openingClosed.then(() => { opening = null; });
   }
 
   const panel = document.createElement('section');
@@ -1388,6 +1390,7 @@ async function main(): Promise<void> {
     });
   }
 
+  let lastCoveredRender = 0;
   renderer.setAnimationLoop(() => {
     const now = performance.now();
     const rawDelta = Math.min((now - lastTime) / 1000, balance.controller.maxFrameDelta);
@@ -1782,7 +1785,12 @@ async function main(): Promise<void> {
       } : {}),
     });
     fps?.tick();
-    arena.render();
+    // Under the opening nobody sees the world: twice a second keeps it warm under the film, never under the Drawing.
+    const covering = (opening as OpeningFlow | null)?.covering ?? null;
+    if (!covering || (covering === 'film' && now - lastCoveredRender >= 500)) {
+      if (covering) lastCoveredRender = now;
+      arena.render();
+    }
   });
 }
 
