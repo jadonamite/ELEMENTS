@@ -1,3 +1,4 @@
+import type { ClimbRefusal } from '../../../shared/src/growth/climb.js';
 import { getServerUrl, getStoredAuthToken, isOfflineMode, hasGameServer } from '../auth/server-api.js';
 
 // Calls to the economy server. Every call that moves coin or items is signed with the player's token;
@@ -157,6 +158,50 @@ export async function fetchStanding(): Promise<Standing> {
 /** The town watch saw the player brawling in the street: one red flag on the server. */
 export async function reportBrawlSeen(): Promise<Standing & { convertedToBounty: boolean }> {
   return call('/api/economy/crime/brawl-seen', { method: 'POST', body: '{}' });
+}
+
+/** Where the player stands on the climb to their next tier, and their master's terms. */
+export interface ClimbTerms {
+  tier: number;
+  next: number | null;
+  wins: number;
+  winsNeeded: number;
+  qualified: boolean;
+  master: string | null;
+  fee: number;
+  paid: boolean;
+  feeRose: boolean;
+  purse: number;
+}
+
+export type EnrolOutcome =
+  | { outcome: 'accepted'; fee: number; next: number }
+  | { outcome: 'refused'; reason: ClimbRefusal; fee: number };
+
+export async function fetchClimb(): Promise<ClimbTerms> {
+  return call('/api/climb');
+}
+
+/** Asks the master to take the player on for the next tier; the fee is paid if they do. */
+export async function enrolClimb(): Promise<EnrolOutcome> {
+  return call('/api/climb/enrol', { method: 'POST', body: '{}' });
+}
+
+/** The player won the trial they paid for; the server raises their tier. */
+export async function reportTrialWon(): Promise<{ tier: number }> {
+  return call('/api/climb/trial-won', { method: 'POST', body: '{}' });
+}
+
+/** What a Sentry did on seeing the player: fined each unfined red flag once, or nothing. */
+export interface SentryFine {
+  action: 'ignore' | 'fine' | 'arrest';
+  amount: number;
+  flags: number;
+}
+
+/** A Sentry at a post sees the player at (x, z); the server fines what is due. */
+export async function reportSentrySaw(zone: string, x: number, z: number): Promise<SentryFine & Standing> {
+  return call('/api/economy/crime/sentry-fine', { method: 'POST', body: JSON.stringify({ zone, x, z }) });
 }
 
 export async function reportDeath(

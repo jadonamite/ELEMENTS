@@ -7,6 +7,10 @@ export interface NationMasterConfig {
   title: string;
   greetingBark: string;
   look: string;
+  /** The sex the master's body is built as, which is also the voice they speak in. */
+  sex: 'male' | 'female';
+  /** Where the master keeps their post in the nation's town after the intro, town metres; none where the town is not built. */
+  post?: { x: number; z: number; facing: number };
 }
 
 export interface NationFirstMission {
@@ -74,10 +78,12 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
     arrivalLandmark: 'Shrine of Embers',
     master: {
       id: 'master_ignis',
+      sex: 'male',
       name: 'Master Brandr',
       title: 'Master of IGNIS',
       greetingBark: 'Easy. On your feet.',
       look: 'master-ignis',
+      post: { x: 11, z: 3.5, facing: Math.PI },
     },
     starterWeapon: 'sword',
     dialogue: introLines('master_ignis'),
@@ -104,6 +110,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
     arrivalLandmark: 'Tidal Pier',
     master: {
       id: 'master_aques',
+      sex: 'male',
       name: 'Master Lynne',
       title: 'Master of AQUES',
       greetingBark: 'Breathe. The current has settled.',
@@ -134,6 +141,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
     arrivalLandmark: 'Basalt Altar',
     master: {
       id: 'master_terra',
+      sex: 'male',
       name: 'Master Orik',
       title: 'Master of TERRA',
       greetingBark: 'Firm ground under you now.',
@@ -164,6 +172,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
     arrivalLandmark: 'Wind Terrace',
     master: {
       id: 'master_aura',
+      sex: 'male',
       name: 'Master Zephyr',
       title: 'Master of AURA',
       greetingBark: 'Stand tall. The gale has passed.',

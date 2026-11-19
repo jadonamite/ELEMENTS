@@ -35,6 +35,7 @@ export const CLOTH: Record<TownsfolkRole, readonly number[]> = {
   trader: [0xc9a27e, 0xb88a6a, 0xd8c3a5, 0xa8937a, 0x9c6b4e],
   innkeeper: [0xc4a88a, 0xb5927a],
   guard: [0x8f8f94, 0x9c948c],
+  sentry: [0x8f8f94],
   worshipper: [0xb5654a, 0xa8473a, 0xc08a6a, 0x8e3a2c],
   porter: [0xb3a48c, 0xa39478, 0xc2b296, 0x8c7c64],
   child: [0xd0b490, 0xc29a78, 0xb87a5a],
@@ -42,6 +43,8 @@ export const CLOTH: Record<TownsfolkRole, readonly number[]> = {
 
 /** Hush as drawn on the character sheets: Sindr's own and visitors from the other nations. Children and guards have no sheet yet. */
 const SHEET_TOWNSFOLK: readonly OutfitId[] = ['hush_ignis', 'hush_aques', 'hush_aura', 'hush_terra'];
+/** The Lord's Sentries wear the soldiers' uniform (one uniform, marked with the ear seal). */
+const SHEET_BY_ROLE: Partial<Record<TownsfolkRole, readonly OutfitId[]>> = { sentry: ['soldier'] };
 
 /** The sheet person the player is: nobody in town is drawn as their double. */
 export interface PlayerPerson { outfit: OutfitId; sex: 'male' | 'female' }
@@ -57,7 +60,7 @@ export function playerPerson(config: CharacterConfig): PlayerPerson | undefined 
  */
 function sheetPerson(role: TownsfolkRole, sex: 'male' | 'female', r: () => number, player?: PlayerPerson): OutfitId | undefined {
   if (role === 'child' || role === 'guard') return undefined;
-  const fits = SHEET_TOWNSFOLK.filter(o => outfitFits(o, sex));
+  const fits = (SHEET_BY_ROLE[role] ?? SHEET_TOWNSFOLK).filter(o => outfitFits(o, sex));
   const others = player && player.sex === sex ? fits.filter(o => o !== player.outfit) : fits;
   const from = others.length ? others : fits;
   return from.length ? pick(r, from) : undefined;
@@ -109,7 +112,7 @@ const CROWD_ROLES: readonly [TownsfolkRole, number][] = [
 
 const DIALOGUE: Record<TownsfolkRole, string> = {
   smith: 'smith_sindr', trader: 'trader_sindr', innkeeper: 'innkeeper_sindr', guard: 'guard_sindr',
-  worshipper: 'worshipper_sindr', porter: 'porter_sindr', child: 'child_sindr',
+  worshipper: 'worshipper_sindr', porter: 'porter_sindr', child: 'child_sindr', sentry: 'sentry',
 };
 
 export interface Crowd {
@@ -161,26 +164,34 @@ export function makeCrowd(count: number, lookCount: number, seed = 7, player?: P
 /** The trade of whoever keeps each kind of post. */
 const POST_ROLE: Record<Post['kind'], readonly TownsfolkRole[]> = {
   keeper: ['trader'], smith: ['smith'], household: ['porter', 'worshipper', 'trader', 'smith', 'child'],
-  guard: ['guard'], sentry: ['guard'], porter: ['porter'], crew: ['porter'],
+  guard: ['guard'], sentry: ['sentry'], porter: ['porter'], crew: ['porter'],
 };
 
 /**
- * Someone for every post the town was built with, wearing the crowd's looks. A post already kept by a named
- * townsperson (their work spot within reach) is left to them. Keepers go home to the nearest door after hours.
+ * Someone for every post the town was built with. Trades the crowd has wear the crowd's looks; a trade the crowd
+ * does not walk in (the Sentries) gets a look of its own, in a sex its sheet is drawn for. A post whose trade has
+ * no sheet at all stays empty. A post already kept by a named townsperson (their work spot within reach) is
+ * left to them. Keepers go home to the nearest door after hours. Returns the people and the looks they added.
  */
-export function staffPosts(posts: readonly Post[], crowd: Crowd, named: readonly Townsperson[], seed = 11): Townsperson[] {
+export function staffPosts(posts: readonly Post[], crowd: Crowd, named: readonly Townsperson[], seed = 11): Crowd {
   const r = seeded(seed);
   const used = new Set(crowd.people.map(p => p.name).concat(named.map(p => p.name)));
   const doors = posts.filter(p => p.kind === 'household');
   const lookRole = new Map(crowd.people.map(p => [p.look!, p.role]));
   const out: Townsperson[] = [];
+  const added: Look[] = [];
   for (const [i, post] of posts.entries()) {
     if (named.some(n => Math.hypot(n.schedule.work.x - post.x, n.schedule.work.z - post.z) < 2.5)) continue;
-    // Only trades the crowd has looks for; a post no one can keep stays empty.
-    const roles = POST_ROLE[post.kind].filter(ro => crowd.looks.some(l => lookRole.get(l.id) === ro));
-    if (!roles.length) continue;
-    const role = pick(r, roles);
-    const look = pick(r, crowd.looks.filter(l => lookRole.get(l.id) === role));
+    const role = pick(r, POST_ROLE[post.kind]);
+    let looks = crowd.looks.filter(l => lookRole.get(l.id) === role);
+    if (!looks.length) {
+      const sexes = (['male', 'female'] as const).filter(sx => sheetPerson(role, sx, () => 0) !== undefined);
+      if (!sexes.length) continue;
+      const look = rollLook(`post_look_${i}`, role, pick(r, sexes), r);
+      added.push(look);
+      looks = [look];
+    }
+    const look = pick(r, looks);
     const sex = look.config.sex;
     let name = '';
     for (let tries = 0; tries < 40 && (!name || used.has(name)); tries++) {
@@ -201,5 +212,5 @@ export function staffPosts(posts: readonly Post[], crowd: Crowd, named: readonly
       schedule: { work: at, market: at, inn: home, home },
     });
   }
-  return out;
+  return { people: out, looks: added };
 }

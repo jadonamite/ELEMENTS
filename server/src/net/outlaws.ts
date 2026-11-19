@@ -230,7 +230,7 @@ export class ServerRobberGang {
 
       const carry = economy.carried(targetPlayer);
       const zoneType = sindrStreet(targetPlayer.x, targetPlayer.z);
-      const sentryDistance = sindrSentryDistance(targetPlayer.x);
+      const sentryDistance = sindrSentryDistance(targetPlayer.x, targetPlayer.z);
       const sentriesNear = sentryDistance < this.limits.sentrySafeDistance;
 
       const senses: OutlawSenses = {

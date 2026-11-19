@@ -5,6 +5,9 @@ import { setupApi } from './api.js';
 import { setTokenVerifier } from './auth.js';
 import { startChainSettlement } from './chain/index.js';
 import { startEconomyLoop } from './economy/index.js';
+import { recordWin } from './economy/climbService.js';
+import { onKill } from './net/kill-hook.js';
+import { isGuest } from './net/money.js';
 import { EmptyRoom } from './rooms/EmptyRoom.js';
 import { ZoneRoom } from './rooms/ZoneRoom.js';
 
@@ -35,6 +38,8 @@ export function buildServer(): { server: Server; transport: WebSocketTransport }
   const transport = new WebSocketTransport();
   const app = transport.getExpressApp();
   setupApi(app);
+  // Every kill the game server judges counts toward the killer's next tier.
+  onKill((k) => { if (!isGuest(k.killerAccountId)) recordWin(k.killerAccountId); });
 
   const server = new Server({
     greet: false,

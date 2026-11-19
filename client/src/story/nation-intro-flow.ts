@@ -1,7 +1,6 @@
-import { Group, PerspectiveCamera, Quaternion, Vector3, type Mesh, type Object3D, type SkinnedMesh } from 'three';
+import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import type { Loaders } from '../assets/loaders.js';
-import { bodyKit, markRest, type OutfitId } from '../body.js';
-import { sanitizeCharacterConfig } from '../creator/creator-types.js';
+import { buildMasterBody, releaseMaster } from './master-body.js';
 import { AnimationPlayer } from '../anim/player.js';
 import type { HeroController } from '../controller.js';
 import type { ShoulderCamera } from '../camera.js';
@@ -179,37 +178,16 @@ export class NationIntroFlow {
   }
 
   private async loadMaster(forward: Vector3): Promise<void> {
-    const townSets = await Promise.all(
-      ['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(name => this.opts.loaders.model(`/assets/characters/${name}.glb`)),
-    );
-    let model: Group | null = null;
-    try {
-      if (this.disposed) return;
-      const config = sanitizeCharacterConfig({
-        sex: 'male', skinToneId: 'bronze', hairStyleId: 'beard', hairColorId: 'silver', bodyPreset: 'broad',
-      });
-      const outfit: OutfitId = this.config.nation === 'IGNIS' ? 'shaper_ignis' : 'rags';
-      const kit = bodyKit(this.opts.loaders, 'close');
-      model = await kit.build(config, 'hero', this.config.nation === 'AQUES' ? 0x667f86 : this.config.nation === 'TERRA' ? 0x77705e : this.config.nation === 'AURA' ? 0x9a8d9e : undefined, outfit);
-      if (this.disposed) return;
-      const clips = await kit.fitClips(config.sex, townSets.flatMap(markRest), 'townsfolk', outfit);
-      if (this.disposed) return;
-      model.name = `NationMaster-${this.config.nation}`;
-      model.position.copy(this.masterPosition).addScaledVector(forward, 5.5);
-      model.rotation.y = Math.atan2(this.masterPosition.x - model.position.x, this.masterPosition.z - model.position.z);
-      model.traverse(node => {
-        if ('isMesh' in node && node.isMesh) { node.castShadow = true; node.receiveShadow = true; }
-      });
-      this.masterModel = model;
-      this.opts.scene.add(model);
-      this.masterClipNames = clips.map(c => c.name);
-      this.masterAnim = new AnimationPlayer(model, clips, { defaultFadeDuration: 0.25 });
-      this.masterPose = '';
-      this.playMasterPose('walk_sage', 'walk');
-      model = null;
-    } finally {
-      if (model) releaseMaster(model);
-    }
+    const { model, clips } = await buildMasterBody(this.opts.loaders, this.config.nation);
+    if (this.disposed) { releaseMaster(model); return; }
+    model.position.copy(this.masterPosition).addScaledVector(forward, 5.5);
+    model.rotation.y = Math.atan2(this.masterPosition.x - model.position.x, this.masterPosition.z - model.position.z);
+    this.masterModel = model;
+    this.opts.scene.add(model);
+    this.masterClipNames = clips.map(c => c.name);
+    this.masterAnim = new AnimationPlayer(model, clips, { defaultFadeDuration: 0.25 });
+    this.masterPose = '';
+    this.playMasterPose('walk_sage', 'walk');
   }
 
   private schedule(callback: () => void, delayMs: number): void {
@@ -266,6 +244,7 @@ export class NationIntroFlow {
     });
     return seconds;
   }
+
 
   /**
    * Directs the cinematic camera and smoothly blends into shoulderCamera when training begins.
@@ -592,12 +571,3 @@ export class NationIntroFlow {
   }
 }
 
-/** The master's own materials and skeletons go; geometry and textures belong to the shared body files the crowd also draws. */
-function releaseMaster(model: Object3D): void {
-  model.traverse((node) => {
-    const mesh = node as Mesh;
-    if (!mesh.isMesh) return;
-    if ((mesh as SkinnedMesh).isSkinnedMesh) (mesh as SkinnedMesh).skeleton.dispose();
-    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) material.dispose();
-  });
-}

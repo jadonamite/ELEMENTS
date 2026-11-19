@@ -61,8 +61,8 @@ test('Nothing worn means rags and no armour; an unknown item is treated as nothi
 
 test('An armed foe carries at most one piece, only as often as its dropChance', () => {
   const piece = catalogue.pieces['armour_shaper_ignis']!;
-  assert.deepEqual(rollArmourDrop(catalogue, () => 0), { armour_shaper_ignis: 1 });
-  assert.deepEqual(rollArmourDrop(catalogue, () => piece.dropChance + 0.01), {});
+  assert.deepEqual(rollArmourDrop(catalogue, "IGNIS", () => 0), { armour_shaper_ignis: 1 });
+  assert.deepEqual(rollArmourDrop(catalogue, "IGNIS", () => piece.dropChance + 0.01), {});
 
   let drops = 0;
   const rolls = 20_000;
@@ -71,7 +71,7 @@ test('An armed foe carries at most one piece, only as often as its dropChance', 
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return seed / 4294967296;
   };
-  for (let i = 0; i < rolls; i++) if (Object.keys(rollArmourDrop(catalogue, rng)).length > 0) drops++;
+  for (let i = 0; i < rolls; i++) if (Object.keys(rollArmourDrop(catalogue, "IGNIS", rng)).length > 0) drops++;
   const rate = drops / rolls;
   assert.ok(Math.abs(rate - piece.dropChance) < 0.01, `drop rate ${rate} is not near ${piece.dropChance}`);
 });
@@ -91,4 +91,18 @@ test('The Sindr smith stocks the IGNIS Shaper set as a real item, not a generic 
   assert.ok(shelf);
   assert.ok(shelf.stock > 0 && shelf.maxStock >= shelf.stock);
   assert.ok(shelf.basePrice > 0);
+});
+
+test('A foe carries only its own nation\'s armour', () => {
+  for (const nation of ['IGNIS', 'AQUES', 'AURA']) {
+    const drop = rollArmourDrop(catalogue, nation, () => 0);
+    const [id] = Object.keys(drop);
+    assert.equal(catalogue.pieces[id!]!.nation, nation);
+  }
+  assert.deepEqual(rollArmourDrop(catalogue, 'TERRA', () => 0), {}, 'no TERRA piece exists yet');
+});
+
+test('Every armour piece draws an outfit the body kit has a model for', async () => {
+  const body = await readFile(new URL('../../client/src/body.ts', import.meta.url), 'utf8');
+  for (const piece of Object.values(catalogue.pieces)) assert.match(body, new RegExp(`\\b${piece.outfit}: `), `${piece.id} draws ${piece.outfit}`);
 });

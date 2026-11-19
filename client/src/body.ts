@@ -45,7 +45,7 @@ const BODY_PATH: Record<Sex, string> = {
   female: '/assets/characters/creator/female.glb',
 };
 
-export type OutfitId = 'rags' | 'shaper_ignis' | 'hush_ignis' | 'hush_aques' | 'hush_aura' | 'hush_terra' | 'robber' | 'deserter' | 'warlord_ignis' | 'soldier';
+export type OutfitId = 'rags' | 'shaper_ignis' | 'shaper_aques' | 'shaper_aura' | 'hush_ignis' | 'hush_aques' | 'hush_aura' | 'hush_terra' | 'robber' | 'deserter' | 'warlord_ignis' | 'soldier';
 
 interface Outfit {
   /** The outfit file per sex; a sex without one wears rags. */
@@ -68,6 +68,11 @@ function person(): Pick<Outfit, 'bareBones' | 'dyeable' | 'skin' | 'whole'> {
   return { bareBones: new Set(), dyeable: () => false, skin: () => false, whole: true };
 }
 
+/** A Shaper's armour: worn over the creator body, which supplies head, hands and tinted skin. */
+function shaper(path: Outfit['path']): Outfit {
+  return { path, bareBones: new Set([...HEAD, ...HANDS]), dyeable: () => false, skin: name => name === 'MI_Shaper_Skin' };
+}
+
 const OUTFITS: Record<OutfitId, Outfit> = {
   rags: {
     path: { male: '/assets/characters/creator/peasant_male.glb', female: '/assets/characters/creator/peasant_female.glb' },
@@ -75,12 +80,9 @@ const OUTFITS: Record<OutfitId, Outfit> = {
     dyeable: name => name.toLowerCase().includes('peasant'),
     skin: name => !name.toLowerCase().includes('peasant'),
   },
-  shaper_ignis: {
-    path: { male: '/assets/characters/outfits/shaper_ignis_male.glb' },
-    bareBones: new Set([...HEAD, ...HANDS]),
-    dyeable: () => false,
-    skin: name => name === 'MI_Shaper_Skin',
-  },
+  shaper_ignis: shaper({ male: '/assets/characters/outfits/shaper_ignis_male.glb' }),
+  shaper_aques: shaper({ female: '/assets/characters/outfits/shaper_aques_female.glb' }),
+  shaper_aura: shaper({ female: '/assets/characters/outfits/shaper_aura_female.glb' }),
   hush_ignis: { path: { male: '/assets/characters/people/hush_ignis_male.glb', female: '/assets/characters/people/hush_ignis_female.glb' }, ...person() },
   hush_aques: { path: { male: '/assets/characters/people/hush_aques_male.glb', female: '/assets/characters/people/hush_aques_female.glb' }, ...person() },
   hush_aura: { path: { male: '/assets/characters/people/hush_aura_male.glb', female: '/assets/characters/people/hush_aura_female.glb' }, ...person() },
@@ -296,11 +298,11 @@ export class BodyKit {
         applySkinShader(mat, uniforms);
       }
     });
+    group.userData.sex = config.sex;
     const rigMesh = rig as SkinnedMesh | null;
     if (!rigMesh) return group;
     if (outfit.whole) {
       cullAsOneBody(group, rigMesh);
-      group.userData.sex = config.sex;
       return group;
     }
 
@@ -343,7 +345,6 @@ export class BodyKit {
     const preset = BODY_PRESET_OPTIONS.find(b => b.id === config.bodyPreset) ?? BODY_PRESET_OPTIONS[1]!;
     group.scale.set(...preset.scale);
     cullAsOneBody(group, rigMesh);
-    group.userData.sex = config.sex;
     return group;
   }
 

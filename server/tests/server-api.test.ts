@@ -1,3 +1,4 @@
+import { CLIMB } from '@elements/shared';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -204,11 +205,8 @@ test('HTTP API: first /api/rising stores a result, second call returns same resu
 
     assert.equal(data1.accountId, 'did:privy:user_roll_test');
     assert.ok(data1.role === 'Shaper' || data1.role === 'Hush');
-    if (data1.role === 'Shaper') {
-      assert.ok(['IGNIS', 'AQUES', 'TERRA', 'AURA'].includes(data1.element!));
-    } else {
-      assert.equal(data1.element, null);
-    }
+    // Shaper or Hush, every rising carries a nation.
+    assert.ok(['IGNIS', 'AQUES', 'TERRA', 'AURA'].includes(data1.element!));
 
     // Second call: must return the exact same result
     const res2 = await fetch(`${ts.baseUrl}/api/rising`, {
@@ -387,9 +385,9 @@ test('Character controls: authenticated, per-character, bounded, merged across d
     assert.deepEqual(await write.json(), { progress: { strike: { uses: 3, shown: 1 } } });
     const stale = await call('learner-a', { strike: { uses: 0, shown: 2 } });
     assert.deepEqual(await stale.json(), { progress: { strike: { uses: 3, shown: 2 } } });
-    assert.deepEqual(await (await call('learner-b')).json(), { progress: {}, tier: 5 });
+    assert.deepEqual(await (await call('learner-b')).json(), { progress: {}, tier: CLIMB.startTier });
     migrateDatabase(db);
-    assert.deepEqual(await (await call('learner-a')).json(), { progress: { strike: { uses: 3, shown: 2 } }, tier: 5 });
+    assert.deepEqual(await (await call('learner-a')).json(), { progress: { strike: { uses: 3, shown: 2 } }, tier: CLIMB.startTier });
   } finally { setTokenVerifier(null); await ts.close(); db.close(); }
 });
 

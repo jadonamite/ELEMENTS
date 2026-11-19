@@ -51,7 +51,7 @@ test('Minds come from the world data: fifteen keepers in Sindr, everyone a perso
   const folk = townsfolkIn('sindr');
   assert.equal(folk.length, SINDR_TOWNSFOLK.length - 15);
   for (const f of folk) assert.ok(people.has(f.id));
-  assert.equal(crowdMindsIn('sindr').length, 7, 'one mind per trade for the crowd');
+  assert.equal(crowdMindsIn('sindr').length, 8, 'one mind per trade for the crowd');
   const names = [...keepers, ...folk].map((m) => m.name).join(' ');
   for (const invented of ['Boris', 'Martha', 'Orin', 'Darius', 'Althea', 'Theresa']) assert.ok(!names.includes(invented), `${invented} is gone`);
   assert.deepEqual(keepersIn('arena'), [], 'a zone without shops has no keepers');

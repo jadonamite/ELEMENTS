@@ -76,6 +76,7 @@ const CROWD_CHARACTER: Record<TownsfolkRole, string> = {
   worshipper: 'Walks between the shrine and the market, quiet and observant.',
   porter: 'Hauls crates for whoever pays; knows who buys what.',
   child: 'A child of the town who runs everywhere and notices everything.',
+  sentry: "One of the Lord's Sentries posted in the town; enforces the Edict and fines red flags on sight, formal and a little cold.",
 };
 
 export const crowdMindId = (place: string, role: TownsfolkRole): string => `crowd:${place}:${role}`;

@@ -9,6 +9,8 @@ import {
   TREASURY_ACCOUNT_ID,
   calculateJailSeizure,
   evaluateRedFlagThreshold,
+  evaluateSentryAction,
+  sindrSentryDistance,
 } from '@elements/shared';
 import { getDatabase } from '../db.js';
 import { getAccountBalance, recordTransaction } from './ledgerService.js';
@@ -327,4 +329,41 @@ export function processJailSentence(
   );
 
   return seizure;
+}
+
+export interface SentryFine {
+  /** 'fine': the Sentry took `amount`; 'ignore': nothing to fine here; 'arrest': a bounty, which a fine cannot settle. */
+  action: 'ignore' | 'fine' | 'arrest';
+  amount: number;
+  /** Red flags this fine settled. */
+  flags: number;
+}
+
+/**
+ * A Sentry at one of Sindr's posts sees the player at (x, z). Each live red flag not yet fined is fined once,
+ * at the rule's rate per flag, paid to the treasury from what the player holds (all of it if that is less).
+ * The flags stay until they fade. A bounty is the jailer's business, not a fine's.
+ */
+export function fineOnSight(
+  accountId: string,
+  zone: string,
+  x: number,
+  z: number,
+  db: DatabaseSync = getDatabase(),
+  now = Date.now(),
+): SentryFine {
+  if (zone !== 'sindr' || !(sindrSentryDistance(x, z) <= CRIME_CONFIG.sentrySightMetres)) return { action: 'ignore', amount: 0, flags: 0 };
+  const unfined = (db
+    .prepare('SELECT id FROM red_flags WHERE account_id = ? AND active = 1 AND expires_at > ? AND fined_at IS NULL')
+    .all(accountId, now) as Array<{ id: string }>);
+  const verdict = evaluateSentryAction({ hasActiveBounty: hasActiveBounty(accountId, db), activeRedFlagsCount: unfined.length, inProtectedZone: true });
+  if (verdict.action === 'arrest') return { action: 'arrest', amount: 0, flags: 0 };
+  if (verdict.action !== 'fine') return { action: 'ignore', amount: 0, flags: 0 };
+  const amount = Math.min(verdict.fineAmount, getAccountBalance(accountId, db));
+  if (amount > 0) {
+    recordTransaction({ from: accountId, to: TREASURY_ACCOUNT_ID, amount, reason: 'edict_fine', metadata: { action: 'sentry_fine', flags: unfined.length } }, db);
+  }
+  const mark = db.prepare('UPDATE red_flags SET fined_at = ? WHERE id = ?');
+  for (const f of unfined) mark.run(now, f.id);
+  return { action: 'fine', amount, flags: unfined.length };
 }

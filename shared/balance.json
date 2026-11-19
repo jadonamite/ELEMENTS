@@ -803,6 +803,15 @@
       "bendScale": {
         "6": 1.25,
         "7": 1.5
+      },
+      "climb": {
+        "startTier": 1,
+        "winsToQualify": { "2": 5, "3": 10, "4": 20, "5": 35, "6": 55, "7": 80 },
+        "fee": { "2": 60, "3": 150, "4": 350, "5": 700, "6": 1400, "7": 2800 },
+        "feeWeeklyStep": 0.1,
+        "feeWeekHours": 168,
+        "trialKind": "bender",
+        "trialHealth": { "2": 160, "3": 200, "4": 240, "5": 280, "6": 320, "7": 360 }
       }
     },
     "situationalCounters": {
@@ -1183,7 +1192,9 @@
       "flagsToBounty": 3,
       "jailSeizureRate": 0.4,
       "jailBaseFine": 50,
-      "baseRobberyFlag": true
+      "baseRobberyFlag": true,
+      "sentryFinePerFlag": 25,
+      "sentrySightMetres": 10
     },
     "death": {
       "ownerlessMinutes": 5,
@@ -1205,6 +1216,22 @@
           "outfit": "shaper_ignis",
           "armour": 40,
           "nation": "IGNIS",
+          "set": "shaper",
+          "dropChance": 0.04
+        },
+        "armour_shaper_aques": {
+          "name": "AQUES Shaper armour",
+          "outfit": "shaper_aques",
+          "armour": 40,
+          "nation": "AQUES",
+          "set": "shaper",
+          "dropChance": 0.04
+        },
+        "armour_shaper_aura": {
+          "name": "AURA Shaper armour",
+          "outfit": "shaper_aura",
+          "armour": 40,
+          "nation": "AURA",
           "set": "shaper",
           "dropChance": 0.04
         }
@@ -1469,6 +1496,16 @@
               "stock": 8,
               "maxStock": 16,
               "basePrice": 60
+            },
+            "armour_shaper_aques": {
+              "stock": 4,
+              "maxStock": 8,
+              "basePrice": 90
+            },
+            "armour_shaper_aura": {
+              "stock": 4,
+              "maxStock": 8,
+              "basePrice": 90
             }
           }
         }
@@ -2154,6 +2191,7 @@
       "minFacingDot": 0.35,
       "leaveDistance": 5.5,
       "noTalkNearFoeMetres": 12
-    }
+    },
+    "stall": { "priceMoved": 0.1, "keeperReach": 3 }
   }
 }

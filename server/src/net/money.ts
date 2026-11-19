@@ -77,7 +77,7 @@ export function dropForKill(kill: KillReport, rng: () => number = Math.random, d
   const odds = calculateVillainDrop(LOOT_KIND[kill.kind] ?? kill.kind);
   const shards: Record<string, number> = rng() < odds.shardChance ? { [nation]: 1 } : {};
   // A defeated foe may be carrying armour: it is won, not given.
-  const gear = rollArmourDrop(armour, rng);
+  const gear = rollArmourDrop(armour, nation, rng);
   return createLootPileFromFight(
     { x: position.x, z: position.z, zone: kill.zone, source: 'villain', nation, carried: { chroma: odds.chroma, shards, gear }, winnerId: kill.killerAccountId, rng },
     db,

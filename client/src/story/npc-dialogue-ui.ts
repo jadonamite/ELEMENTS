@@ -267,7 +267,7 @@ export class NpcDialogueUI {
   }
 
   close(): void {
-    if (this.currentNpc) this.voices.end(this.currentNpc);
+    if (this.currentNpc) this.voices.end(this.currentNpc.data.id);
     this.closeSay();
     this.thinking = false;
     this.el.classList.remove('thinking');

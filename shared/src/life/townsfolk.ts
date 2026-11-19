@@ -13,9 +13,10 @@ export type TownsfolkRole =
   | 'guard'
   | 'worshipper'
   | 'porter'
-  | 'child';
+  | 'child'
+  | 'sentry';
 
-export const TOWNSFOLK_ROLES: readonly TownsfolkRole[] = ['smith', 'trader', 'innkeeper', 'guard', 'worshipper', 'porter', 'child'];
+export const TOWNSFOLK_ROLES: readonly TownsfolkRole[] = ['smith', 'trader', 'innkeeper', 'guard', 'worshipper', 'porter', 'child', 'sentry'];
 
 export type RoutineActivity = 'work' | 'market' | 'inn' | 'home';
 

@@ -95,7 +95,21 @@ export function ensureSindrMerchants(
           quantity: stock.stock,
         }, 'opening_stock', `init:${config.id}`, now);
       }
+      continue;
     }
+    // A shelf added to a trading merchant's config opens once, with its opening stock ledgered like a new shop's.
+    const added = Object.entries(config.inventory).filter(([category]) => !(category in existing.inventory));
+    if (!added.length) continue;
+    for (const [category, stock] of added) {
+      existing.inventory[category] = { ...stock };
+      if (stock.stock > 0) {
+        recordItemMove(db, 'world', config.id, {
+          itemId: category === 'shard' ? shardItemId(config.nation) : category,
+          quantity: stock.stock,
+        }, 'opening_stock', `init:${config.id}:${category}`, now);
+      }
+    }
+    saveMerchant(existing, db);
   }
 }
 

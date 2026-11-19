@@ -163,8 +163,12 @@ export function sindrStreet(x: number, z: number): StreetKind {
   return 'open_street';
 }
 
-/** Sentries stand by Sindr's shrine, west of x 48. */
-export const sindrSentryDistance = (x: number): number => (x < 48 ? 12 : 60);
+/** Where Sindr's small watch of the Lord's Sentries stand, from the market's posts. */
+export const SINDR_SENTRY_POSTS: Place[] = MARKET_SLICE.posts.filter(p => p.role === 'sentry').map(p => ({ id: p.id, x: p.x, z: p.z }));
+
+/** Metres from (x, z) to the nearest Sentry post in Sindr. */
+export const sindrSentryDistance = (x: number, z: number): number =>
+  Math.min(...SINDR_SENTRY_POSTS.map(p => Math.hypot(p.x - x, p.z - z)));
 
 export interface CollisionBox {
   id: string;

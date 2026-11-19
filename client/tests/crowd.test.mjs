@@ -28,7 +28,14 @@ test('only sheet people are drawn in town; posts no sheet person can keep stay e
   assert.ok(!people.some(p => p.role === 'child' || p.role === 'guard'), 'no sheet yet for children or guards');
   const at = (kind) => ({ kind, x: 0, y: 0, z: 0, facing: 0, hours: 'day' });
   const keepers = staffPosts([at('sentry'), at('keeper'), at('guard')], { looks, people }, []);
-  assert.ok(keepers.every(k => k.role !== 'guard'), 'no guard post staffed without a guard sheet');
+  assert.ok(keepers.people.every(k => k.role !== 'guard'), 'no guard post staffed without a guard sheet');
+  // A Sentry is not in the crowd: the post gets a look of its own, in the soldiers' uniform, in a sex it is drawn for.
+  const sentry = keepers.people.find(k => k.role === 'sentry');
+  assert.ok(sentry, 'the sentry post is kept');
+  assert.equal(sentry.dialogueRole, 'sentry');
+  const look = keepers.looks.find(l => l.id === sentry.look);
+  assert.equal(look?.outfit, 'soldier');
+  assert.equal(look?.config.sex, 'male', 'the uniform is drawn for men only so far');
 });
 
 test('wanderers stand and walk only on open street, and step aside for the hero', async () => {
