@@ -1,11 +1,11 @@
 import { groundHeight } from './ground.js';
 import { mineAt } from './mine-road.js';
-import { ROCK_HOUSE_GROUPS, ROCK_HOUSE_SITES, rockGroupCells, siteToWorld } from './rock-sites.js';
+import { ROCK_HOUSE_GROUPS, ROCK_HOUSE_SITES, rockGroupCells, siteToWorld, worldToSite } from './rock-sites.js';
 import type { RockGroupId, RockHouseGroup, RockHouseSite } from './rock-sites.js';
 import { rockHouseClear } from './rock-bank.js';
 
 export type { RockGroupId, RockHouseGroup, RockHouseSite };
-export { ROCK_HOUSE_SITES, ROCK_HOUSE_GROUPS, siteToWorld, rockGroupCells, rockHouseClear };
+export { ROCK_HOUSE_SITES, ROCK_HOUSE_GROUPS, siteToWorld, worldToSite, rockGroupCells, rockHouseClear };
 
 /** The one set of placement rules for both groups. */
 export const ROCK_HOUSE_RULES: { maxFoundation: 8; maxBuried: 3.4; stepRise: 0.16; maxSteps: 6; maxRampGrade: 0.25 } =
