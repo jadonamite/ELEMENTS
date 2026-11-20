@@ -115,7 +115,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
         name: 'West Gate',
         locationName: 'West Gate of Sindr',
       },
-      rewardChroma: 25,
+      rewardChroma: 0,
     },
   },
 
@@ -147,7 +147,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
         name: 'Harbor Arch',
         locationName: 'Varda Harbor',
       },
-      rewardChroma: 25,
+      rewardChroma: 0,
     },
   },
 
@@ -179,7 +179,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
         name: 'High Bastion Gate',
         locationName: 'Halda Crags',
       },
-      rewardChroma: 25,
+      rewardChroma: 0,
     },
   },
 
@@ -211,7 +211,7 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
         name: 'Sky Arch',
         locationName: 'Naust Spires',
       },
-      rewardChroma: 25,
+      rewardChroma: 0,
     },
   },
 };

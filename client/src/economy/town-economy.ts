@@ -2,9 +2,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { type Scene, Vector3 } from 'three';
 import type { ContextOffer } from '../ui/context-action.js';
 import {
-  claimStartingPurse,
   economyAvailable,
-  EconomyError,
   fetchBalance,
   fetchSatchel,
   fetchOpenBounties,
@@ -118,29 +116,9 @@ export class TownEconomy {
       picked: (text) => events.notice(text),
       satchelChanged: () => void this.refresh(),
       claim: async (pileId, x, z) => {
-        try {
-          const res = await this.door.claim(pileId, x, z);
-          this.events.lootClaimed?.(pileId);
-          return res;
-        } catch (err) {
-          if (err instanceof EconomyError && (err.status === 403 || /reserved for fight victor/.test(err.message))) {
-            throw err;
-          }
-          const pile = this.loot?.getPile(pileId);
-          if (pile) {
-            this.coin += pile.contents.chroma;
-            for (const [k, v] of Object.entries(pile.contents.shards ?? {})) {
-              this.items[`shard_${k.toLowerCase()}`] = (this.items[`shard_${k.toLowerCase()}`] ?? 0) + v;
-            }
-            for (const [k, v] of Object.entries(pile.contents.materials ?? {})) {
-              this.items[k] = (this.items[k] ?? 0) + v;
-            }
-            this.known = true;
-            this.events.lootClaimed?.(pileId);
-            return pile.contents;
-          }
-          throw err;
-        }
+        const res = await this.door.claim(pileId, x, z);
+        this.events.lootClaimed?.(pileId);
+        return res;
       },
     });
     this.shop = new ShopWindow({
@@ -513,11 +491,6 @@ export class TownEconomy {
       return;
     }
     try {
-      await claimStartingPurse();
-    } catch {
-      // Already granted, or the server is down; refresh shows what we have.
-    }
-    try {
       const initialWorn = await fetchWornArmour();
       this.worn = initialWorn;
       if (this.worn.outfit !== 'rags') this.events.wornChanged?.(this.worn);
@@ -527,7 +500,7 @@ export class TownEconomy {
     await this.refresh();
   }
 
-  private async refresh(): Promise<void> {
+  async refresh(): Promise<void> {
     if (isGuestSession()) return;
     if (this.door instanceof RoomDoor) {
       // The room pushes the purse after every change; standing still comes from HTTP.

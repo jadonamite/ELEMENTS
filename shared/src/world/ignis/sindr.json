@@ -468,6 +468,18 @@
       "z": 0,
       "yaw": 1.5708,
       "reach": 30
+    },
+    {
+      "id": "stall_food",
+      "kind": "food_stall",
+      "name": "Home meal stall",
+      "x": 116,
+      "y": 0,
+      "z": 9,
+      "yaw": 3.1416,
+      "reach": 3.6,
+      "seat": { "x": 117, "y": 0, "z": 6 },
+      "keeper": { "x": 116, "y": 0, "z": 8.8, "facing": 3.1416 }
     }
   ],
   "spawn": {

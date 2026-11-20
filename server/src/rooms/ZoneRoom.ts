@@ -1,3 +1,5 @@
+import { roomPosition } from '../story/missionEncounter.js';
+import { missionGateCheckpoint, missionSnapshot } from '../story/missionService.js';
 import { Room, type Client } from '@colyseus/core';
 import { randomUUID } from 'node:crypto';
 import { cycleMinutes, ELEMENTS, type Element } from '@elements/shared';
@@ -60,7 +62,7 @@ export async function identify(options: Record<string, unknown> | undefined, tok
     if (!rising) throw new Error('This account has not risen yet');
     // The character's armour comes from the account's stored look, not from a message.
     return {
-      accountId: userId, role: rising.role, element: (rising.element ?? 'IGNIS') as Element, tier: rising.tier ?? OPEN_TIER, forcedCarry,
+      accountId: userId, role: rising.role, element: (rising.element ?? 'IGNIS') as Element, tier: missionSnapshot(userId).tier, forcedCarry,
       worn: wornLook(userId).item,
     };
   }
@@ -126,6 +128,7 @@ export class ZoneRoom extends Room {
       this.clockMinute = (this.clockMinute + (dt / 60) * this.clockSpeed) % cycleMinutes(dayNight);
       this.deliver(this.world.step(dt, this.now()));
       this.pay(this.economy.drain());
+      this.economy.missionEncounter.reap();
       if (this.outlaws) {
         const notices = this.outlaws.update(dt, this.now(), this.world, this.economy, this.clockMinute);
         for (const text of notices) {
@@ -286,6 +289,7 @@ export class ZoneRoom extends Room {
     this.onMessage('trade_accept', (client: Client) => this.pay(this.economy.accept(client.sessionId)));
     this.onMessage('trade_cancel', (client: Client) => this.pay(this.economy.cancelTrade(client.sessionId)));
     // The browser is listening: the zone's piles and its purse, as at join.
+    this.onMessage('mission', (client: Client, message: unknown) => this.pay(this.economy.story(client.sessionId, message)));
     this.onMessage('econ_sync', (client: Client) => this.pay(this.economy.join(client.sessionId)));
 
     this.onMessage('ping', (client: Client, message: unknown) => {
@@ -352,6 +356,16 @@ export class ZoneRoom extends Room {
       } else {
         player = this.world.join(client.sessionId, who, this.now());
       }
+      const gate = !isGuest(who.accountId) ? missionGateCheckpoint(who.accountId) : null;
+      if (gate && (region || this.world.zone === 'sindr')) {
+        const checkpoint = roomPosition(this.world.zone, gate);
+        if (region) player.enterRegion(region, checkpoint, this.now());
+        else {
+          player.x = checkpoint.x; player.y = checkpoint.y; player.z = checkpoint.z;
+          player.history.clear(); player.history.push(this.now(), player.x, player.z, player.facing);
+          player.allowWarp(0);
+        }
+      }
       position = { x: player.x, y: player.y, z: player.z };
       if (region) {
         nationalAccounts.set(who.accountId, player);
@@ -360,7 +374,8 @@ export class ZoneRoom extends Room {
       }
       if (!isGuest(who.accountId)) enterRoom(who.accountId);
     }
-    client.send('welcome', { you: client.sessionId, t: this.now(), zone: this.world.zone, element: player.element, role: player.role, tier: player.tier, outfit: player.outfit, ...(region ? { origin: region.origin, overlap: REGION_OVERLAP, position } : {}) });
+    if (!isGuest(player.accountId)) player.arrivalRegistered = missionSnapshot(player.accountId).state.flags.mission_1_complete;
+    client.send('welcome', { you: client.sessionId, t: this.now(), zone: this.world.zone, element: player.element, role: player.role, tier: player.tier, outfit: player.outfit, position, ...(region ? { origin: region.origin, overlap: REGION_OVERLAP } : {}) });
     if (region) client.send('shrines', { lit: [...player.lit] });
     client.send('clock', { minute: this.clockMinute, speed: this.clockSpeed });
     if (!this.incoming.has(client.sessionId)) {

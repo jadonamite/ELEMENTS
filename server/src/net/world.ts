@@ -1,3 +1,4 @@
+import { townPosition } from '../story/missionEncounter.js';
 import { FIRST_SHRINE, wakeShrine, withinLocalBounds } from '@elements/shared';
 import type { ActionState, Element, Weapon } from '@elements/shared';
 import { armourOf, outfitOf, standClear, Stamina, actStaminaCost, moveStaminaCost, MOVE_IDS, type MoveId, type StaminaTuning } from '@elements/shared';
@@ -44,7 +45,8 @@ export class ServerPlayer implements Attacker {
   readonly element: Element;
   readonly weapon: Weapon;
   readonly hush: boolean;
-  readonly tier: number;
+  tier: number;
+  arrivalRegistered = true;
   readonly forcedCarry?: number | undefined;
   /** The armour piece worn; the outfit others draw and the armour blows must beat. */
   worn: string | null;
@@ -215,6 +217,8 @@ export class ServerPlayer implements Attacker {
     if (!nums.every(n => typeof n === 'number' && Number.isFinite(n))) return false;
     const [x, y, z, vx, vz, f, t, r] = nums as number[];
     const position = { x: x!, y: y!, z: z! };
+    const town = this.region ? townPosition(this.region.id, position) : position;
+    if (!this.arrivalRegistered && town.x > 51) return false;
     if (this.region ? !regionContains(this.region, position) : !withinLocalBounds(position)) return false;
     const elapsed = Math.max(0, now - this.movedAt);
     const moved = Math.hypot(x! - this.x, z! - this.z, this.region ? y! - this.y : 0);
@@ -334,6 +338,9 @@ export class ZoneWorld {
     const claim = parseHit(raw);
     if (!p || p.transferUntil > now || !claim) return [{ type: 'hit_result', to: id, e: '', sw: -1, ok: false, reason: 'invalid_input' }];
     const enemy = this.enemies.get(claim.e);
+    if (enemy?.storyOwner && (enemy.storyOwner !== p.accountId || (enemy.storyY !== null && Math.abs(p.y - enemy.storyY) > 3))) {
+      return [{ type: 'hit_result', to: id, e: claim.e, sw: claim.sw, ok: false, reason: 'story_reserved' }];
+    }
     // A heavy the player had no stamina for never lands.
     if ((MOVE_IDS as readonly string[]).includes(claim.m) && !p.payFor(claim.sw, claim.m)) {
       return [{ type: 'hit_result', to: id, e: claim.e, sw: claim.sw, ok: false, reason: 'winded' }];
@@ -397,7 +404,7 @@ export class ZoneWorld {
     const quarry = [...this.players.values()].map(p => ({ id: p.id, x: p.x, z: p.z, alive: p.alive }));
     for (const e of this.enemies.values()) {
       const wasAlive = e.alive;
-      for (const s of e.step(dt, now, quarry)) {
+      for (const s of e.step(dt, now, e.storyOwner ? quarry.filter(q => this.players.get(q.id)?.accountId === e.storyOwner && (e.storyY === null || Math.abs(this.players.get(q.id)!.y - e.storyY) <= 3)) : quarry)) {
         const p = this.players.get(s.target);
         if (!p) continue;
         const wasUp = p.alive;

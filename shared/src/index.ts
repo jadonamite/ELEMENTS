@@ -17,3 +17,4 @@ export * from './controls/index.js';
 export * from "./sessionGrant.js";
 export * from './market.js';
 export * from './growth/climb.js';
+export * from './story/missions.js';

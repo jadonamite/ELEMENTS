@@ -47,7 +47,7 @@ export class ControlLearning {
       if (revision !== this.revision || this.disposed) return;
       this.version++;
       this.progress = mergeControlProgress(this.progress, normalizeControlProgress(data.progress));
-      if (typeof data.tier === 'number' && Number.isInteger(data.tier) && data.tier >= 1 && data.tier <= 7) this.onTier(data.tier);
+      if (typeof data.tier === 'number' && Number.isInteger(data.tier) && data.tier >= 0 && data.tier <= 7) this.onTier(data.tier);
       this.syncError = false; this.cache(); this.pending = true; this.schedule();
     } catch {
       if (revision === this.revision) this.syncError = true;

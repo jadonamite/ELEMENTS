@@ -437,18 +437,14 @@ test('HTTP API: handles economy endpoints end-to-end', async () => {
   const server = await startTestServer();
 
   try {
-    // 1. Grant starting purse
+    // Arrival rewards now require the registrar; the old public grant cannot pay.
     const grantRes = await fetch(`${server.baseUrl}/api/economy/grant-starting-purse`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer valid_alice',
-      },
+      method: 'POST', headers: { Authorization: 'Bearer valid_alice' },
     });
-    assert.equal(grantRes.status, 200);
-    const grantData = (await grantRes.json()) as { balance: number; granted: boolean };
-    assert.equal(grantData.balance, 100);
-    assert.equal(grantData.granted, true);
+    assert.equal(grantRes.status, 410);
+    assert.equal(getAccountBalance('alice_1', db), 0);
+    // Seed this economy-only fixture through the internal service.
+    grantPlayerStartingPurse('alice_1', db);
 
     // 2. Query balance
     const balRes = await fetch(`${server.baseUrl}/api/economy/balance/alice_1`, { headers: { Authorization: 'Bearer valid_alice' } });

@@ -1,4 +1,5 @@
 import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import { MISSION_COPY } from '../../../shared/src/story/missions.js';
 import type { Loaders } from '../assets/loaders.js';
 import { buildMasterBody, releaseMaster } from './master-body.js';
 import type { AnimationPlayer } from '../anim/player.js';
@@ -31,6 +32,7 @@ export type IntroStep =
   | 'heard'
   | 'lore_and_mission'
   | 'active_mission'
+  | 'awaiting_gate'
   | 'completed';
 
 export interface NationIntroOptions {
@@ -50,6 +52,7 @@ export interface NationIntroOptions {
   waypointMarker: WaypointMarker;
   applyTier: (tier: number) => void;
   onEquipStarterWeapon: (weapon: 'sword' | 'staff') => void;
+  onTrainingComplete?: () => void;
   onMissionComplete?: (missionLead: Lead) => void;
   /** Runs at the gate before the level is granted: the sign-in that keeps the player's progress. */
   beforeUnlock?: () => Promise<void>;
@@ -437,7 +440,7 @@ export class NationIntroFlow {
     const roleLine = this.opts.isDim() ? this.config.dialogue.hushRole : this.config.dialogue.shaperRole;
     this.showDialogue(roleLine, () => {
       this.schedule(() => {
-        this.dispatchFirstMission();
+        this.offerHomeChoice();
       }, 1000);
     }, 4500);
   }
@@ -484,17 +487,47 @@ export class NationIntroFlow {
       case 'active_mission': {
         // Check if player has reached the gateway landmark
         if (this.activeMissionLead) {
-          const reached = this.opts.leadManager.checkTargetReached(heroPos.x, heroPos.z);
-          if (reached && reached.id === this.activeMissionLead.id) {
-            this.completeFirstMission(reached);
-          }
+          const lead = this.activeMissionLead;
+          if (Math.hypot(heroPos.x - lead.target.x, heroPos.z - lead.target.z) <= lead.target.radius) this.completeFirstMission(lead);
         }
         break;
       }
     }
   }
 
+  private offerHomeChoice(): void {
+    this.showDialogue('You have your footing. The town gate is ahead.');
+    const choices = document.createElement('div');
+    choices.className = 'mission-choices';
+    const add = (label: string, run: () => void) => {
+      const button = document.createElement('button');
+      button.className = 'mission-choice'; button.textContent = label;
+      button.addEventListener('click', () => { choices.remove(); run(); });
+      choices.appendChild(button);
+    };
+    add('How can I return home?', () => {
+      this.showDialogue(MISSION_COPY.allborn, () => this.dispatchFirstMission(), 6000);
+    });
+    add('I will find the gate', () => this.dispatchFirstMission());
+    this.dialogueBox.appendChild(choices);
+    this.cleanupFns.push(() => choices.remove());
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+
+  resumeAtGate(): void {
+    this.beginCameraBlend();
+    this.opts.onEquipStarterWeapon(this.config.starterWeapon);
+    this.dispatchFirstMission();
+  }
+
+  retryGate(): void {
+    if (this.activeMissionLead && this.currentStep !== 'completed') {
+      this.setStep('active_mission'); this.completeFirstMission(this.activeMissionLead);
+    }
+  }
+
   private dispatchFirstMission(): void {
+    this.opts.onTrainingComplete?.();
     this.masterDispatched = true;
     this.playMasterPose('point', 'gesture', 'talk', 'idle');
     this.setStep('active_mission');
@@ -516,7 +549,7 @@ export class NationIntroFlow {
       title: mission.title,
       description: mission.description,
       cost: 0,
-      rewardChroma: mission.rewardChroma,
+      rewardChroma: 0,
       target: mission.target,
       purchased: true,
       completed: false,
@@ -532,11 +565,26 @@ export class NationIntroFlow {
   }
 
   private completeFirstMission(lead: Lead): void {
-    this.setStep('completed');
-    this.opts.waypointMarker.setLead(null);
-    const unlock = (): void => { if (!this.disposed) this.grantFirstLevel(lead); };
-    if (this.opts.beforeUnlock) void this.opts.beforeUnlock().catch(() => undefined).then(unlock);
-    else unlock();
+    if (this.currentStep === 'awaiting_gate' || this.currentStep === 'completed') return;
+    this.setStep('awaiting_gate');
+    this.hideStepPrompt();
+    this.dialogueBox.style.display = 'none';
+    if (!this.opts.beforeUnlock) return;
+    void this.opts.beforeUnlock().then(() => {
+      if (this.disposed) return;
+      lead.completed = true;
+      this.setStep('completed');
+      this.opts.waypointMarker.setLead(null);
+      this.grantFirstLevel(lead);
+    }).catch(() => {
+      if (this.disposed) return;
+      this.showStepPrompt('Registration required', 'Speak with the registrar to try again.');
+      const retry = document.createElement('button');
+      retry.className = 'mission-choice';
+      retry.textContent = 'Speak with the registrar';
+      retry.addEventListener('click', () => { retry.remove(); this.setStep('active_mission'); this.completeFirstMission(lead); });
+      this.stepPrompt.appendChild(retry);
+    });
   }
 
   private grantFirstLevel(lead: Lead): void {

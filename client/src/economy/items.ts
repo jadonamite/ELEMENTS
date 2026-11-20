@@ -13,6 +13,8 @@ const SHARD_NAMES: Record<string, string> = {
   shard_aura: 'White shard',
 };
 
+const STORY_NAMES: Record<string, string> = { arena_ticket: 'Arena invitation', home_meal: 'Home meal' };
+
 const SHELF_NAMES: Record<string, string> = {
   shard: 'Shards',
   material: 'Raw materials',
@@ -29,6 +31,7 @@ function capitalise(word: string): string {
 export function itemName(itemId: string, count = 1): string {
   if (armourPieces[itemId]) return armourPieces[itemId].name;
   const base =
+    STORY_NAMES[itemId] ??
     SHARD_NAMES[itemId] ??
     SHELF_NAMES[itemId] ??
     (itemId.startsWith('material_') ? capitalise(itemId.slice('material_'.length).replace(/_/g, ' ')) : capitalise(itemId.replace(/_/g, ' ')));

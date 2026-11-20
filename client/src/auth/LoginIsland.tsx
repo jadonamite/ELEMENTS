@@ -67,7 +67,7 @@ function LoginCard({ onSuccess, onOffline, copy }: LoginIslandProps) {
     } catch {
       sessionStarted.current = false;
       setError(hasGameServer()
-        ? 'Unable to reach authentication server. You can continue offline.'
+        ? (copy ? 'Sign-in could not be verified. Try again or return to the gate.' : 'Unable to reach authentication server. You can continue offline.')
         : 'Sign-in could not be completed. Try again or continue offline.');
       setIsVerifying(false);
     }
@@ -146,12 +146,12 @@ function LoginCard({ onSuccess, onOffline, copy }: LoginIslandProps) {
   );
 }
 
-function MissingConfigCard({ onOffline }: { onOffline: () => void }) {
+function MissingConfigCard({ onOffline, copy }: { onOffline: () => void; copy?: LoginIslandProps['copy'] }) {
   return (
     <div className="opening-modal login-modal">
       <h2>Enter ELEMENTS</h2>
       <p className="opening-subtitle">
-        Authentication configuration is not set. You can continue in offline mode.
+        {copy ? 'Sign-in is unavailable. Return to the gate and try again later.' : 'Authentication configuration is not set. You can continue in offline mode.'}
       </p>
       <div className="login-actions">
         <button
@@ -159,7 +159,7 @@ function MissingConfigCard({ onOffline }: { onOffline: () => void }) {
           className="opening-button primary"
           onClick={onOffline}
         >
-          Continue Offline
+          {copy?.offline ?? 'Continue Offline'}
         </button>
       </div>
     </div>
@@ -190,7 +190,7 @@ export function mountLoginIsland(
           <LoginCard {...props} />
         </PrivyProvider>
       ) : (
-        <MissingConfigCard onOffline={props.onOffline} />
+        <MissingConfigCard onOffline={props.onOffline} copy={props.copy} />
       )}
     </StrictMode>,
   );

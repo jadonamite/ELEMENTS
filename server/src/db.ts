@@ -1,3 +1,5 @@
+import { migrateMissionEncounters } from './story/missionEncounter.js';
+import { migrateMissions } from './story/missionService.js';
 import { CLIMB, normalizeControlProgress, mergeControlProgress, type ControlProgress } from '@elements/shared';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
@@ -326,6 +328,9 @@ export function migrateDatabase(database: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_director_events ON world_director_events(nation, active, expires_at);
   `);
 
+  migrateMissions(database);
+  migrateMissionEncounters(database);
+
   const ledgerCount = database
     .prepare('SELECT count(*) as count FROM ledger_entries')
     .get() as { count: number };
@@ -525,6 +530,7 @@ export function createOrGetRising(
     );
     return {
       account_id: accountId,
+      tier: 0,
       role: rolled.role,
       element: rolled.element ?? null,
       created_at: now,

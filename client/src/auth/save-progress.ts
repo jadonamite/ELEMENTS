@@ -7,25 +7,33 @@ import {
   hasGameServer,
   isOfflineMode,
   postRising,
+  postSession,
+  setStoredAuthToken,
+  setStoredAccountId,
 } from './server-api.js';
 
 const STORAGE_DRAWING_KEY = 'elements_drawing_result';
 
 const GATE_COPY = {
-  title: 'Keep your rising',
-  subtitle: 'You made it to Sindr. Sign in to keep your rising, your look and everything you earn from here on.',
-  offline: 'Play without saving',
-  offlineNotice: 'Trading needs an account. Without one, nothing you do here is kept.',
+  title: 'Register at the gate',
+  subtitle: 'Sign in or create an account to enter town and keep your character.',
+  offline: 'Return to the gate',
+  offlineNotice: 'You can return later. The gate stays closed until you sign in.',
 };
 
-/**
- * The sign-in asked at Sindr's gate. A guest signs in and the server makes the Drawing it held
- * for this browser the account's own; an account that already rose keeps its first result.
- * Resolves with the account's Drawing, or null when nothing changed (already signed in, no
- * server, or the player chose to go on without saving).
- */
-export function saveProgressAtGate(): Promise<DrawingResult | null> {
-  if (!hasGameServer() || isOfflineMode() || getStoredAuthToken()) return Promise.resolve(null);
+/** Verifies every existing token too. Cancelling leaves the gate closed. */
+export async function saveProgressAtGate(): Promise<DrawingResult | null> {
+  if (!hasGameServer() || isOfflineMode()) throw new Error('A connection to the game server is required to enter town.');
+  const token = getStoredAuthToken();
+  if (token) {
+    try {
+      const session = await postSession(token);
+      setStoredAccountId(session.accountId);
+      return await postRising(token, getGuestTicket());
+    } catch {
+      setStoredAuthToken(null);
+    }
+  }
   if (document.pointerLockElement) document.exitPointerLock();
 
   return new Promise((resolve) => {

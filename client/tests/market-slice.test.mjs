@@ -5,6 +5,7 @@ import balance from '../../shared/balance.json' with { type: 'json' };
 import { MARKET_SLICE as M, MARKET_RACE, waterAt } from '../../shared/src/world/ignis/market-slice.ts';
 import { validateWater } from '../../shared/src/world/ignis/validate.ts';
 import { SINDR_ANCHORS } from '../../shared/src/world/ignis/sindr.ts';
+import { IGNIS_MISSION } from '../../shared/src/story/missions.ts';
 import { SINDR_COLLISION_BOXES, SINDR_HIDEOUT, isColliding } from '../../shared/src/net/places.ts';
 import { townWorld } from './town-world.mjs';
 
@@ -109,6 +110,28 @@ test('every approved post is staffed by a built post of its kind, standing clear
     const route = town.map.route(street, v(q));
     assert.ok(arrives(route, v(q), 1.8), `${q.kind} post at ${q.x.toFixed(1)}, ${q.y}, ${q.z.toFixed(1)} is reachable from the street`);
   }
+});
+
+test('the home meal stall is part of the market build and its seat stays reachable', () => {
+  const stall = SINDR_ANCHORS.find(anchor => anchor.id === 'stall_food');
+  assert.ok(stall?.seat && stall.keeper, 'the stall manifest includes its keeper and seat');
+  assert.deepEqual(IGNIS_MISSION.stall, { x: stall.x, y: stall.y, z: stall.z });
+  assert.deepEqual(IGNIS_MISSION.stallKeeper, stall.keeper);
+  assert.deepEqual(IGNIS_MISSION.seat, stall.seat);
+
+  const browse = town.builder.browse.find(point => Math.hypot(point.x - stall.x, point.z - (stall.z - 2.65)) < 0.2);
+  assert.ok(browse, 'the market crowd and player face the food counter from the street');
+  assert.equal(town.builder.posts.filter(point => point.kind === 'keeper' && Math.abs(point.z - stall.z) < 1 && Math.abs(point.x - stall.x) < 3.2).length, 0, 'goods-table keepers do not overlap the food stall');
+  assert.equal(town.builder.browse.filter(point => Math.abs(point.z - (stall.z - 2.65)) < 0.3 && Math.abs(point.x - stall.x) < 0.3).length, 1, 'the food stall has one customer position');
+  assert.ok(town.builder.steam.some(point => Math.hypot(point.x - stall.x, point.z - stall.z) < 1.5), 'the cooking pot vents steam');
+  const counter = town.builder.colliders.filter(box => Math.abs(box.z - (stall.z - 1.2)) < 0.2 && Math.abs(box.x - stall.x) < 2 && Math.abs(box.hx - 0.8) < 0.01);
+  assert.equal(counter.length, 2, 'only the two counter wings are solid');
+  assert.ok(town.space.clear(new Vector3(stall.x, 1, stall.z - 2.65), new Vector3(stall.keeper.x, 1, stall.keeper.z), balance.controller.radius), 'the player can pass through the counter opening to the cook');
+  assert.ok(arrives(town.map.route(new Vector3(stall.x, 0, stall.z - 2.65), new Vector3(stall.keeper.x, 0, stall.keeper.z)), new Vector3(stall.keeper.x, 0, stall.keeper.z), 1.2), 'the cook is reachable from the street');
+
+  const seat = new Vector3(stall.seat.x, stall.seat.y, stall.seat.z);
+  const route = town.map.route(street, seat);
+  assert.ok(arrives(route, seat, 1.5), `the bench is reachable from the market street (route ends ${route.at(-1)?.toArray().map(n => n.toFixed(1))})`);
 });
 
 test('the 5 m fight centre is clear from end to end', () => {
