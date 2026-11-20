@@ -210,11 +210,11 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
     intro.update(0.016);
     assert.equal(intro.step, 'down', 'landed: the master walks in');
 
-    t.mock.timers.tick(4000);
+    t.mock.timers.tick(1500);
     for (let k = 0; k < 6; k++) await Promise.resolve();
-    assert.equal(arrived.state.standing, false, 'the hero stays down a few seconds after landing');
-    t.mock.timers.tick(1100);
-    assert.equal(arrived.state.standing, true, 'then gets up without waiting for the master');
+    assert.equal(arrived.state.standing, false, 'the hero stays down a moment after landing');
+    t.mock.timers.tick(600);
+    assert.equal(arrived.state.standing, true, 'then gets up two seconds in, without waiting for the master');
     await windUntil(t, intro, 'step_move');
     for (let k = 0; k < 6; k++) await Promise.resolve();
     assert.equal(lesson.allowed('move'), true, 'footing teaches moving');

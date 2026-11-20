@@ -95,8 +95,10 @@ interface TrainingStep {
   done: () => boolean;
 }
 
-/** Seconds after the landing before the hero starts to rise, in milliseconds. */
-const RISE_AFTER_LANDING_MS = 5000;
+/** Time after the landing before the hero starts to rise, in milliseconds. */
+const RISE_AFTER_LANDING_MS = 2000;
+/** How far up the road the master waits, metres: near enough to arrive as the hero finishes rising. */
+const MASTER_WAITS_AT = 5;
 /** The master's walking pace, m/s: slower and more measured than the town crowd's. */
 const MASTER_WALK_SPEED = 1.05;
 /** A turn about the grip's across axis, so a weapon held in a hanging hand points at the ground. */
@@ -136,8 +138,7 @@ export class NationIntroFlow {
   private propPresented = false;
   /** Holding the weapon out to the hero. */
   private handing = false;
-  /** The master has set off toward the hero after the landing. */
-  private walkedIn = false;
+
   /** Controls the master has taught so far; nothing else answers during the lesson. */
   private readonly taught = new Set<ControlAction>();
   private masterDispatched = false;
@@ -292,21 +293,29 @@ export class NationIntroFlow {
     this.opts.arrival.drop();
   }
 
-  /** Down on the ground: the hero gathers themself and starts to rise a few seconds after the landing. */
+  /** Down on the ground: the hero gathers themself and rises; the master sets off up the road as they do. */
   private arrived(): void {
     this.setStep('down');
-    this.schedule(() => this.opts.arrival.standUp(), RISE_AFTER_LANDING_MS);
+    this.schedule(() => {
+      this.opts.arrival.standUp();
+      this.walkIn();
+    }, RISE_AFTER_LANDING_MS);
   }
 
-  /** On their feet: the master walks in from up the road; the greeting waits for him to arrive. */
+  /** The master walks in from up the road; the greeting waits for him to arrive and the hero to be up. */
   private walkIn(): void {
-    this.walkedIn = true;
     void this.masterReady.then(() => {
       if (this.disposed) return;
-      if (!this.masterModel) { this.greet(); return; }
+      if (!this.masterModel) { this.greetWhenStanding(); return; }
       this.masterModel.visible = true;
       this.masterApproaching = true;
     });
+  }
+
+  /** He has arrived: the greeting starts as soon as the hero is on their feet. */
+  private greetWhenStanding(): void {
+    if (this.opts.arrival.standing()) this.greet();
+    else this.schedule(() => this.greetWhenStanding(), 150);
   }
 
   /** The master's greeting, then the lore; the lesson follows. */
@@ -405,7 +414,7 @@ export class NationIntroFlow {
     const { model, clips, anim } = await buildMasterBody(this.opts.loaders, this.config.nation);
     if (this.disposed) { releaseMaster(model); return; }
     // He waits out of sight until the hero is down, then walks in from up the road.
-    model.position.copy(this.masterPosition).addScaledVector(forward, 9);
+    model.position.copy(this.masterPosition).addScaledVector(forward, MASTER_WAITS_AT);
     model.rotation.y = Math.atan2(this.masterPosition.x - model.position.x, this.masterPosition.z - model.position.z);
     model.visible = this.currentStep !== 'arriving';
     this.masterModel = model;
@@ -646,7 +655,6 @@ export class NationIntroFlow {
     const heroPos = this.opts.controller.position;
     this.masterAnim?.update(delta);
     this.holdProp();
-    if (this.currentStep === 'down' && !this.walkedIn && this.opts.arrival.standing()) this.walkIn();
     if (this.masterModel) {
       if (this.masterApproaching) {
         const distance = this.masterModel.position.distanceTo(this.masterPosition);
@@ -663,7 +671,7 @@ export class NationIntroFlow {
           const arrived = this.onMasterArrived;
           this.onMasterArrived = null;
           arrived?.();
-          if (this.currentStep === 'down') this.greet();
+          if (this.currentStep === 'down') this.greetWhenStanding();
         }
       } else {
         this.masterModel.rotation.y = Math.atan2(heroPos.x - this.masterModel.position.x, heroPos.z - this.masterModel.position.z);

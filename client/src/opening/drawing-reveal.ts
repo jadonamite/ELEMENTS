@@ -67,8 +67,11 @@ const clamp01 = (t: number): number => Math.max(0, Math.min(1, t));
 const spinK = (t: number, from: number, to: number): number => 1 - Math.pow(1 - clamp01((t - from) / (to - from)), 3);
 
 const SCORE = '/assets/audio/music/drawing.m4a';
-/** How long the score takes to rise from silence when the Drawing begins. */
-const SCORE_FADE_IN_MS = 2500;
+/**
+ * The film's last 23 s already carry the score's run-up (the source track 0:26.67-0:50), so the Drawing picks it up
+ * mid-flow at 0:50: the score comes in at once, with a blend only long enough to avoid a click at the join.
+ */
+const SCORE_FADE_IN_MS = 150;
 const SOUNDS = ['fire_burst_02', 'ground_pound_02', 'ambient_forge_hammer'] as const;
 type SoundName = (typeof SOUNDS)[number];
 /** The longest the Drawing waits for its art, score and clip before it plays with whatever has arrived. */
@@ -308,7 +311,7 @@ export async function playDrawingReveal(host: HTMLElement, result: RisingResult,
   // failed) the reveal runs on the wall clock from where the score left off.
   const music = kit.music;
   music.currentTime = 0;
-  // The score rises out of silence as the player enters the dark; its hit at 12 s is long past the fade.
+  // The score carries on from the film's music; its hit at 12 s keeps time with the card.
   music.volume = 0;
   const scored = await Promise.race([
     music.play().then(() => { void fadeVolume(music, 1, SCORE_FADE_IN_MS); return true; }, () => false),

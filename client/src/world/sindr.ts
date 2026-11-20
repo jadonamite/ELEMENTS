@@ -71,10 +71,17 @@ export const PEAKS: Peak[] = [
   { x: KEEP.x, z: KEEP.z - 8, radius: 48, height: 46 },
 ];
 
+/** The shrine's stone floor: its radius, and the height of its top, metres. */
+const SHRINE_R = 16;
+const SHRINE_FLOOR_TOP = 0.01;
+
 /** Ground people walk on that is not built by the town itself: the shrine, the roads, the outer zones. */
 const BUILT_GROUND: Area[] = [
   circleArea('shrine', 0, 0, 22),
-  rectArea('shrine-road', { x0: 10, x1: 60, z0: -8, z1: 8 }),
+  // The shrine's stone floor is a slab: feet stand on its top, the land lies under it and never shows through.
+  { ...circleArea('shrine-floor', 0, 0, SHRINE_R, SHRINE_FLOOR_TOP), ground: -0.25 },
+  // The road's ground starts at the shrine's edge, so its dirt never covers the shrine's stone floor.
+  rectArea('shrine-road', { x0: SHRINE_R, x1: 60, z0: -8, z1: 8 }),
   rectArea('cinder-row', { x0: 48, x1: 228, z0: -STREET.half, z1: STREET.half }),
   rectArea('north-plots', { x0: 48, x1: 228, z0: -21, z1: -STREET.half }),
   rectArea('south-quarter', { x0: 48, x1: 228, z0: STREET.half, z1: 56 }),
@@ -99,7 +106,6 @@ export function sindrGround(townAreas: Area[], legacyEast = false): Levels {
 const EAST = Math.PI / 2, WEST = -Math.PI / 2;
 /** The lane from Cinder Row south to the Great Forge, between the west houses and the market's first shop. */
 const FORGE_LANE = { x0: 79, x1: MARKET_SLICE.street.x0 };
-const SHRINE_R = 16;
 
 /**
  * Builds the town and returns the walkable ground it adds (terraces, flights, the keep road).
@@ -452,6 +458,13 @@ function shrine(b: WorldBuilder): void {
   // Base floor discs
   b.add('pale_stone', new CylinderGeometry(SHRINE_R, SHRINE_R, 0.2, 48), new Matrix4().makeTranslation(0, -0.09, 0));
   b.add('basalt_cobblestone', new CylinderGeometry(4.2, 4.2, 0.2, 32), new Matrix4().makeTranslation(0, -0.08, 0));
+  // The land lies under the floor (BUILT_GROUND 'shrine-floor'), so feet stand on the stone: eight crossed slabs
+  // cover the disc, their corners hidden under the terraces.
+  for (let k = 0; k < 8; k++) {
+    b.at(0, 0, (k * Math.PI) / 8);
+    b.solid(0, SHRINE_FLOOR_TOP - 0.1, 0, SHRINE_R * 2, 0.2, SHRINE_R * 2 * Math.sin(Math.PI / 8));
+  }
+  b.at(0, 0, 0);
 
   // Sunken: three basalt terraces ring the floor, open to the east where the road leaves.
   const segments = 40;
