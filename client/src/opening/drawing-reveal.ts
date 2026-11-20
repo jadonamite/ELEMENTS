@@ -1,3 +1,4 @@
+import { fadeVolume } from './fade.js';
 import type { Element } from '../../../shared/src/index.js';
 import type { RisingResult } from '../../../shared/src/rising/types.js';
 import { EMBLEM_RING, HUSH_EMBLEM_PATH } from '../ui/loader-turn.js';
@@ -66,6 +67,8 @@ const clamp01 = (t: number): number => Math.max(0, Math.min(1, t));
 const spinK = (t: number, from: number, to: number): number => 1 - Math.pow(1 - clamp01((t - from) / (to - from)), 3);
 
 const SCORE = '/assets/audio/music/drawing.m4a';
+/** How long the score takes to rise from silence when the Drawing begins. */
+const SCORE_FADE_IN_MS = 2500;
 const SOUNDS = ['fire_burst_02', 'ground_pound_02', 'ambient_forge_hammer'] as const;
 type SoundName = (typeof SOUNDS)[number];
 /** The longest the Drawing waits for its art, score and clip before it plays with whatever has arrived. */
@@ -269,7 +272,8 @@ export async function playDrawingReveal(host: HTMLElement, result: RisingResult,
       t.el.classList.toggle('dim', i !== chosen);
     });
     if (hush) { place(hushToken, cx(), cy(), 6, SOCKET.seat); hushToken.style.opacity = '1'; }
-    void kit.music.play().catch(() => {});
+    kit.music.volume = 0;
+    void kit.music.play().then(() => fadeVolume(kit.music, 1, SCORE_FADE_IN_MS)).catch(() => {});
     void video.play().catch(() => {});
     finalWords();
     window.removeEventListener('resize', measure);
@@ -304,8 +308,10 @@ export async function playDrawingReveal(host: HTMLElement, result: RisingResult,
   // failed) the reveal runs on the wall clock from where the score left off.
   const music = kit.music;
   music.currentTime = 0;
+  // The score rises out of silence as the player enters the dark; its hit at 12 s is long past the fade.
+  music.volume = 0;
   const scored = await Promise.race([
-    music.play().then(() => true, () => false),
+    music.play().then(() => { void fadeVolume(music, 1, SCORE_FADE_IN_MS); return true; }, () => false),
     new Promise<boolean>(r => setTimeout(() => r(false), 1500)),
   ]);
   let wallFrom = performance.now(), wallAt = 0;

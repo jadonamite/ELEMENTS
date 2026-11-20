@@ -19,6 +19,10 @@ import { drawNation, roll } from '../../shared/src/rising/roll.js';
 import type { RisingResult } from '../../shared/src/rising/types.js';
 import { playDrawingReveal, prepareDrawing, type DrawingKit } from './opening/drawing-reveal.js';
 import { compilesSettled, holdTurns } from './world/warmup.js';
+import { fadeVolume } from './opening/fade.js';
+
+/** How long the Drawing's score takes to fall silent after the player chooses who rises. */
+const MUSIC_FADE_OUT_MS = 1800;
 
 /**
  * Opening sequence, from Play Now: the age check, the opening film, the Drawing (85% Shaper across the four
@@ -416,23 +420,12 @@ export class OpeningFlow {
         this.onCharacter(config);
         this.container.querySelector('.draw-stage')?.classList.add('leaving');
         this.showing = null;
-        this.fadeMusic(3000);
-        setTimeout(() => this.close(result), 1200);
+        // The score is gone before the world opens: the game starts in its own sound, never under the music.
+        const music = this.music;
+        if (!music) { setTimeout(() => this.close(result), 1200); return; }
+        void fadeVolume(music, 0, MUSIC_FADE_OUT_MS).then(() => { music.pause(); this.close(result); });
       }, { once: true });
     });
-  }
-
-  private fadeMusic(ms: number): void {
-    const music = this.music;
-    if (!music) return;
-    const from = music.volume, start = performance.now();
-    const step = (now: number): void => {
-      const k = Math.min(1, (now - start) / ms);
-      music.volume = from * (1 - k);
-      if (k < 1) requestAnimationFrame(step);
-      else music.pause();
-    };
-    requestAnimationFrame(step);
   }
 
   private close(result: DrawingResult): void {
