@@ -87,6 +87,30 @@ export function parseBirthDate(day: string, month: string, year: string, today =
   return { ok: true, iso };
 }
 
+/** The film's sizes, smallest first, with the screen width in device pixels each is made for and its bitrate. */
+const FILM_TIERS = [
+  { src: '/assets/film/opening-960.mp4', width: 960, mbps: 0.7 },
+  { src: '/assets/film/opening-1080p.mp4', width: 1920, mbps: 2.4 },
+  { src: '/assets/film/opening-1440p.mp4', width: 2560, mbps: 4.0 },
+] as const;
+
+/**
+ * The film size for this screen and connection. A phone-sized screen takes the smallest whatever its pixel density;
+ * a larger one takes the size its pixels can show. The film streams while the world downloads, so a connection that
+ * reports less than about twice a size's bitrate (or asks to save data) steps down until one fits.
+ */
+export function filmSource(
+  screen = { cssWidth: window.innerWidth, pixelRatio: window.devicePixelRatio || 1 },
+  link = (navigator as Navigator & { connection?: { downlink?: number; saveData?: boolean } }).connection,
+): string {
+  if (screen.cssWidth <= 900 || link?.saveData) return FILM_TIERS[0].src;
+  const pixels = screen.cssWidth * screen.pixelRatio;
+  let tier: 0 | 1 | 2 = pixels > 1920 ? 2 : 1;
+  const downlink = link?.downlink;
+  while (tier > 0 && downlink !== undefined && downlink > 0 && downlink < FILM_TIERS[tier].mbps * 2) tier = tier === 2 ? 1 : 0;
+  return FILM_TIERS[tier].src;
+}
+
 export class OpeningFlow {
   private readonly container: HTMLDivElement;
   private readonly onComplete: (result: DrawingResult) => void;
@@ -338,10 +362,9 @@ export class OpeningFlow {
   /** The opening film, start to finish. It hands over to the Drawing as the elements surge. */
   private renderFilm(): void {
     this.cleanupSubviews();
-    const small = window.matchMedia('(max-width: 900px)').matches;
     this.container.innerHTML = `
       <div class="opening-film">
-        <video class="opening-film-video" playsinline preload="auto" src="/assets/film/opening-${small ? 960 : 1470}.mp4" aria-label="The opening film"></video>
+        <video class="opening-film-video" playsinline preload="auto" src="${filmSource()}" aria-label="The opening film"></video>
         <button type="button" class="opening-button opening-film-begin" hidden>Begin</button>
       </div>`;
     this.container.classList.add('is-film');
