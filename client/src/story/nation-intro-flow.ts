@@ -1,4 +1,4 @@
-import { Group, PerspectiveCamera, Quaternion, Vector3, type Object3D } from 'three';
+import { Group, Matrix4, PerspectiveCamera, Quaternion, Vector3, type Mesh, type Object3D } from 'three';
 import type { Loaders } from '../assets/loaders.js';
 import { buildMasterBody, releaseMaster } from './master-body.js';
 import type { AnimationPlayer } from '../anim/player.js';
@@ -67,9 +67,13 @@ export interface NationIntroOptions {
   };
   /** Narrows the player's controls to those taught so far; null gives every control back. */
   restrictControls: (taught: ReadonlySet<ControlAction> | null) => void;
-  /** The starter weapon the master carries in and hands over. */
-  weaponAsset: string;
-  /** The hero takes the master's weapon: it shows on them from now on and goes to their back. */
+  /** The starter weapon the master carries in, sheathed, and hands over: the blade and the sheath it rides in. */
+  weapon: { assetPath: string; carry?: { assetPath: string } };
+  /** The hero's right palm, where the weapon is held for the moment it is taken. */
+  heroPalm: () => Object3D | null;
+  /** The hero reaches out to take something. */
+  heroReach: () => void;
+  /** The weapon is the hero's: it rides sheathed on their back from now on. */
   receiveWeapon: () => void;
   onTrainingComplete?: () => void;
   onMissionComplete?: (missionLead: Lead) => void;
@@ -90,6 +94,15 @@ interface TrainingStep {
   /** Reads this frame's play; true once the step is done. May update the prompt card on partial progress. */
   done: () => boolean;
 }
+
+/** Seconds after the landing before the hero starts to rise, in milliseconds. */
+const RISE_AFTER_LANDING_MS = 5000;
+/** The master's walking pace, m/s: slower and more measured than the town crowd's. */
+const MASTER_WALK_SPEED = 1.05;
+/** A turn about the grip's across axis, so a weapon held in a hanging hand points at the ground. */
+const POINT_DOWN = new Matrix4().makeRotationX(Math.PI);
+/** How far each finger joint closes round a grip, radians. */
+const FINGER_CURL = 1.1;
 
 const key = (label: string): string => `<span class="nation-intro-key">${label}</span>`;
 
@@ -116,10 +129,15 @@ export class NationIntroFlow {
   private masterApproaching = false;
   /** Called once when the master reaches where he was walking to. */
   private onMasterArrived: (() => void) | null = null;
-  /** The weapon in the master's hand, until it is handed over. */
+  /** The sheathed weapon in the master's hand, then briefly in the hero's, until it goes to the hero's back. */
   private masterProp: Object3D | null = null;
+  /** The palm holding the weapon now, and whether it is held out hilt first (else carried point down). */
+  private propPalm: Object3D | null = null;
+  private propPresented = false;
   /** Holding the weapon out to the hero. */
   private handing = false;
+  /** The master has set off toward the hero after the landing. */
+  private walkedIn = false;
   /** Controls the master has taught so far; nothing else answers during the lesson. */
   private readonly taught = new Set<ControlAction>();
   private masterDispatched = false;
@@ -274,28 +292,31 @@ export class NationIntroFlow {
     this.opts.arrival.drop();
   }
 
-  /** Down on the ground: after a breath the master walks in; the greeting waits for him to arrive. */
+  /** Down on the ground: the hero gathers themself and starts to rise a few seconds after the landing. */
   private arrived(): void {
     this.setStep('down');
-    this.schedule(() => {
-      void this.masterReady.then(() => {
-        if (this.disposed) return;
-        if (!this.masterModel) { this.greet(); return; }
-        this.masterModel.visible = true;
-        this.masterApproaching = true;
-      });
-    }, 900);
+    this.schedule(() => this.opts.arrival.standUp(), RISE_AFTER_LANDING_MS);
   }
 
-  /** "Take my arm": the hero rises as he says it, and the lore follows once they are up. */
+  /** On their feet: the master walks in from up the road; the greeting waits for him to arrive. */
+  private walkIn(): void {
+    this.walkedIn = true;
+    void this.masterReady.then(() => {
+      if (this.disposed) return;
+      if (!this.masterModel) { this.greet(); return; }
+      this.masterModel.visible = true;
+      this.masterApproaching = true;
+    });
+  }
+
+  /** The master's greeting, then the lore; the lesson follows. */
   private greet(): void {
     this.setStep('approach');
-    this.playMasterPose('point', 'talk', 'idle');
+    this.playMasterPose('talk', 'idle');
     this.showDialogue(this.config.dialogue.greeting, () => {
       this.setStep('greeting');
       this.showDialogue(this.config.dialogue.loreTeaser, () => this.startTraining(), 6000);
     }, 3500);
-    this.schedule(() => this.opts.arrival.standUp(), 900);
   }
 
   /** Only the menu answers until the master teaches something. */
@@ -333,15 +354,51 @@ export class NationIntroFlow {
     this.masterApproaching = true;
     await new Promise<void>(arrived => { this.onMasterArrived = arrived; });
     if (this.disposed) return;
+    // He holds it out hilt first; the hero reaches and takes it, sheath and all, then slings it on their back. The
+    // camera takes the side-on two-shot for the moment the weapon passes, then eases back behind the hero.
+    this.cameraMode = 'cinematic';
     this.handing = true;
+    this.propPresented = true;
     this.playMasterPose('point', 'gesture', 'talk');
     await new Promise<void>(resolve => this.schedule(resolve, 1100));
     if (this.disposed) return;
+    this.opts.heroReach();
+    await new Promise<void>(resolve => this.schedule(resolve, 450));
+    if (this.disposed) return;
+    this.propPalm = this.opts.heroPalm();
+    this.playMasterPose('talk', 'idle');
+    await new Promise<void>(resolve => this.schedule(resolve, 900));
+    if (this.disposed) return;
     prop.removeFromParent();
     this.masterProp = null;
+    this.propPalm = null;
     this.opts.receiveWeapon();
-    await new Promise<void>(resolve => this.schedule(resolve, 900));
     this.handing = false;
+    this.beginCameraBlend();
+  }
+
+  /**
+   * The weapon follows the palm holding it, after this frame's animation: carried point down at the master's side,
+   * or held out hilt first. The holding hand's fingers close round the grip, which the walking and talking clips,
+   * made for empty hands, leave open.
+   */
+  private holdProp(): void {
+    const prop = this.masterProp, palm = this.propPalm;
+    if (!prop || !palm) return;
+    snapToSocket(prop, palm);
+    if (!this.propPresented) {
+      prop.matrix.multiply(POINT_DOWN);
+      prop.matrix.decompose(prop.position, prop.quaternion, prop.scale);
+      prop.updateMatrixWorld(true);
+    }
+    const hand = palm.parent;
+    if (!hand) return;
+    for (const finger of ['index', 'middle', 'ring', 'pinky']) {
+      for (const joint of ['01', '02', '03']) {
+        const bone = hand.getObjectByName(`${finger}_${joint}_r`);
+        if (bone) bone.rotation.z = FINGER_CURL;
+      }
+    }
   }
 
   private async loadMaster(forward: Vector3): Promise<void> {
@@ -353,12 +410,22 @@ export class NationIntroFlow {
     model.visible = this.currentStep !== 'arriving';
     this.masterModel = model;
     this.opts.scene.add(model);
-    // He carries the starter weapon in his right hand until he hands it over.
+    // He carries the starter weapon sheathed in his right hand until he hands it over. Blade and sheath are joined
+    // at the grip, the way the hero's back carry joins them.
     try {
-      const weapon = gripAligned((await this.opts.loaders.model(this.opts.weaponAsset)).scene.clone(true));
+      const { weapon } = this.opts;
+      const [blade, sheath] = await Promise.all([
+        this.opts.loaders.model(weapon.assetPath),
+        weapon.carry ? this.opts.loaders.model(weapon.carry.assetPath) : Promise.resolve(null),
+      ]);
       if (this.disposed) return;
-      snapToSocket(weapon, palmSocket(model));
-      this.masterProp = weapon;
+      const prop = new Group();
+      prop.name = 'MasterWeapon';
+      prop.add(gripAligned(blade.scene.clone(true)));
+      if (sheath) prop.add(gripAligned(sheath.scene.clone(true)));
+      prop.traverse(node => { const mesh = node as Mesh; if (mesh.isMesh) mesh.castShadow = true; });
+      this.masterProp = prop;
+      this.propPalm = palmSocket(model);
     } catch (error) {
       console.error('The master\'s weapon failed to load:', error);
     }
@@ -578,14 +645,18 @@ export class NationIntroFlow {
 
     const heroPos = this.opts.controller.position;
     this.masterAnim?.update(delta);
+    this.holdProp();
+    if (this.currentStep === 'down' && !this.walkedIn && this.opts.arrival.standing()) this.walkIn();
     if (this.masterModel) {
       if (this.masterApproaching) {
         const distance = this.masterModel.position.distanceTo(this.masterPosition);
         if (distance > 0.15) {
-          const step = Math.min(distance, delta * WALK_SPEED);
+          // A slow, measured walk: the stride clip is slowed to the same pace, so the feet keep the ground.
+          const step = Math.min(distance, delta * MASTER_WALK_SPEED);
           this.masterModel.position.lerp(this.masterPosition, step / distance);
           this.masterModel.rotation.y = Math.atan2(this.masterPosition.x - this.masterModel.position.x, this.masterPosition.z - this.masterModel.position.z);
           this.playMasterPose('walk_sage', 'walk');
+          this.masterAnim?.setSpeed(this.masterPose, MASTER_WALK_SPEED / WALK_SPEED);
         } else {
           this.masterApproaching = false;
           this.playMasterPose('talk', 'idle');
@@ -736,6 +807,7 @@ export class NationIntroFlow {
     this.disposed = true;
     this.unlockControls();
     this.masterProp?.removeFromParent();
+    this.propPalm = null;
     for (const t of this.pendingTimers) clearTimeout(t);
     this.pendingTimers = [];
     for (const fn of this.cleanupFns) fn();

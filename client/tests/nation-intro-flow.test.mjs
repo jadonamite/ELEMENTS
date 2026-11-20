@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { Vector3 } from 'three';
 import { NationIntroFlow } from '../src/story/nation-intro-flow.ts';
 import { LeadManager } from '../../shared/src/story/leads.ts';
+import { IGNIS_MISSION } from '../../shared/src/story/missions.ts';
+
+const GATE = IGNIS_MISSION.gate;
 
 function setupDom() {
   const originals = {
@@ -126,6 +129,7 @@ function controlLesson() {
 async function windUntil(t, intro, step) {
   for (let i = 0; i < 200 && intro.step !== step; i++) {
     t.mock.timers.tick(500);
+    intro.update(0.016);
     for (let k = 0; k < 6; k++) await Promise.resolve();
   }
   assert.equal(intro.step, step);
@@ -186,7 +190,7 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
       leadManager: mockLeadManager,
       waypointMarker: mockWaypointMarker,
       applyTier: (t) => { currentTier = t; mockFight.tier = t; },
-      arrival: arrived, restrictControls: lesson.restrict, weaponAsset: '/assets/weapons/sword.glb',
+      arrival: arrived, restrictControls: lesson.restrict, weapon: { assetPath: '' }, heroPalm: () => null, heroReach: () => {},
       receiveWeapon: () => { weaponReceived = true; },
       beforeUnlock: async () => {},
       onMissionComplete: () => { missionCompletedCalled = true; },
@@ -206,8 +210,12 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
     intro.update(0.016);
     assert.equal(intro.step, 'down', 'landed: the master walks in');
 
+    t.mock.timers.tick(4000);
+    for (let k = 0; k < 6; k++) await Promise.resolve();
+    assert.equal(arrived.state.standing, false, 'the hero stays down a few seconds after landing');
+    t.mock.timers.tick(1100);
+    assert.equal(arrived.state.standing, true, 'then gets up without waiting for the master');
     await windUntil(t, intro, 'step_move');
-    assert.equal(arrived.state.standing, true, 'the hero is up before the lesson starts');
     for (let k = 0; k < 6; k++) await Promise.resolve();
     assert.equal(lesson.allowed('move'), true, 'footing teaches moving');
     assert.equal(lesson.allowed('jump'), false, 'jumping waits for its own lesson');
@@ -262,7 +270,7 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
     assert.equal(currentTier, 0, 'Player remains tier 0 during the mission');
 
     // 9. Reaching target completes mission & promotes player to Level 1
-    mockController.position.set(52, 0, 0); // West Gate coordinates
+    mockController.position.set(GATE.x, GATE.y, GATE.z); // in front of the registrar's desk
     intro.update(0.016);
 
     for (let k = 0; k < 12; k++) await Promise.resolve();
@@ -306,7 +314,7 @@ test('NationIntroFlow: modular across AURA and HUSH role', async (t) => {
       leadManager: mockLeadManager,
       waypointMarker: mockWaypointMarker,
       applyTier: (t) => { currentTier = t; mockFight.tier = t; },
-      arrival: arrival(), restrictControls: () => {}, weaponAsset: '/assets/weapons/staff.glb',
+      arrival: arrival(), restrictControls: () => {}, weapon: { assetPath: '' }, heroPalm: () => null, heroReach: () => {},
       receiveWeapon: () => { weaponReceived = true; },
       beforeUnlock: async () => {},
     });
@@ -342,8 +350,8 @@ test('NationIntroFlow: modular across AURA and HUSH role', async (t) => {
     assert.equal(intro.step, 'active_mission');
     assert.equal(mockWaypointMarker.activeLead.id, 'first_mission_aura_arch');
 
-    // Reach Sky Arch target (x: 48, z: -8)
-    mockController.position.set(48, 0, -8);
+    // Every nation lands in Sindr: the first mission ends at the registrar's desk.
+    mockController.position.set(GATE.x, GATE.y, GATE.z);
     intro.update(0.016);
 
     for (let k = 0; k < 12; k++) await Promise.resolve();
@@ -376,7 +384,7 @@ test('NationIntroFlow: the gate sign-in runs before the level is granted, and th
       leadManager: new LeadManager([]),
       waypointMarker: mockWaypointMarker,
       applyTier: (t) => { currentTier = t; mockFight.tier = t; },
-      arrival: arrival(), restrictControls: () => {}, weaponAsset: '', receiveWeapon: () => {},
+      arrival: arrival(), restrictControls: () => {}, weapon: { assetPath: '' }, heroPalm: () => null, heroReach: () => {}, receiveWeapon: () => {},
       beforeUnlock: () => new Promise((resolve) => { releaseSignIn = () => { dim = true; resolve(); }; }),
     });
     intro['dispatchFirstMission']();
@@ -406,10 +414,10 @@ test('NationIntroFlow: failed registration leaves the mission and tier locked, w
     const marker = { activeLead: null, setLead(lead) { this.activeLead = lead; } };
     intro = new NationIntroFlow({
       nation: 'IGNIS', isDim: () => false,
-      controller: { position: new Vector3(49, 0, 0), facing: 0, grounded: true },
+      controller: { position: new Vector3(GATE.x, GATE.y, GATE.z), facing: 0, grounded: true },
       shoulderCamera: {}, input: { read: () => ({ running: false }) }, combat: {}, fight: {}, sound: {},
       leadManager: new LeadManager([]), waypointMarker: marker,
-      applyTier: value => { tier = value; }, arrival: arrival(), restrictControls: () => {}, weaponAsset: '', receiveWeapon: () => {},
+      applyTier: value => { tier = value; }, arrival: arrival(), restrictControls: () => {}, weapon: { assetPath: '' }, heroPalm: () => null, heroReach: () => {}, receiveWeapon: () => {},
       beforeUnlock: async () => { if (fail) throw new Error('cancelled'); },
     });
     intro['dispatchFirstMission']();
@@ -440,7 +448,7 @@ test('NationIntroFlow: saved training resumes the gate objective without replayi
       controller: { position: new Vector3(8, 0, 0), facing: 0, grounded: true },
       shoulderCamera: {}, input: { read: () => ({ running: false }) }, combat: {}, fight: {}, sound: {},
       leadManager: new LeadManager([]), waypointMarker: marker,
-      applyTier: value => { tier = value; }, arrival: arrival(), restrictControls: () => {}, weaponAsset: '', receiveWeapon: () => { weapon = 'received'; },
+      applyTier: value => { tier = value; }, arrival: arrival(), restrictControls: () => {}, weapon: { assetPath: '' }, heroPalm: () => null, heroReach: () => {}, receiveWeapon: () => { weapon = 'received'; },
       onTrainingComplete: () => { trained = true; }, beforeUnlock: async () => {},
     });
     intro.resumeAtGate();

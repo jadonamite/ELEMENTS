@@ -1,10 +1,35 @@
-/** The hero's clips for leaving the ground, falling, touching down, and getting up after a hard landing. */
+import type { AnimationClip, VectorKeyframeTrack } from 'three';
+
+/**
+ * The hero's jump, cut from Mixamo's Jumping In Place and Forward Running Jump at the frames the feet leave the ground,
+ * reach the top and touch down: a set for a standing jump and one for a running jump. Getting up follows a hard landing.
+ */
 export const AIR_CLIPS = {
   rise: 'air_rise',
   fall: 'air_fall',
   land: 'air_land',
+  runRise: 'air_run_rise',
+  runFall: 'air_run_fall',
+  runLand: 'air_run_land',
   getUp: 'get_up',
 } as const;
+
+/**
+ * The game lifts the body itself, so the rising and falling pieces keep their legs and arms but hold the hips at the
+ * height they start at; otherwise the jump would climb twice. Touchdowns keep the dip that absorbs the landing.
+ */
+export function levelAirborneHips(clips: readonly AnimationClip[]): AnimationClip[] {
+  return clips.map(clip => {
+    if (!/^air_(run_)?(rise|fall)$/.test(clip.name)) return clip;
+    const rise = clips.find(c => c.name === clip.name.replace('fall', 'rise')) ?? clip;
+    const start = (rise.tracks.find(t => t.name === 'pelvis.position') as VectorKeyframeTrack | undefined)?.values[1];
+    if (start === undefined) return clip;
+    const copy = clip.clone();
+    const hips = copy.tracks.find(t => t.name === 'pelvis.position');
+    if (hips) for (let i = 1; i < hips.values.length; i += 3) hips.values[i] = start;
+    return copy;
+  });
+}
 
 export type AirPhase = 'ground' | 'rise' | 'fall' | 'land' | 'down' | 'getting_up';
 
@@ -15,6 +40,8 @@ export interface AirReading {
   rising: number;
   /** Moving along the ground: a touchdown gives way to the stride at once. */
   moving: boolean;
+  /** Speed along the ground, m/s. */
+  speed: number;
 }
 
 /** What the phase asks the animation to do this frame. */
@@ -32,10 +59,12 @@ export interface AirTiming {
   landSeconds: number;
   /** Seconds of the get-up clip. */
   getUpSeconds: number;
-  /** Seconds the take-off clip covers; it is played to fit the actual rise. */
-  riseSeconds: number;
-  /** m/s², to know how long a rise will last from its upward speed. */
+  /** Seconds each piece covers at its authored speed; rise and fall are played to fit the actual flight. */
+  duration(clip: string): number;
+  /** m/s², to know how long a rise and its fall will last from the upward speed. */
   gravity: number;
+  /** Moving faster than this along the ground at take-off (m/s) is a running jump. */
+  runSpeed: number;
 }
 
 /**
@@ -49,6 +78,9 @@ export class Airborne {
   private hardFall = false;
   private changed = true;
   private riseSpeed = 1;
+  private fallSpeed = 1;
+  /** This jump uses the running set. */
+  private running = false;
 
   constructor(private readonly timing: AirTiming) {}
 
@@ -75,7 +107,10 @@ export class Airborne {
     switch (this.phase) {
       case 'ground':
       case 'land':
-        if (airborne) this.enter(reading.rising > 0 ? 'rise' : 'fall', reading.rising);
+        if (airborne) {
+          this.running = reading.speed > this.timing.runSpeed;
+          this.enter(reading.rising > 0 ? 'rise' : 'fall', reading.rising);
+        }
         else if (this.phase === 'land' && (reading.moving || this.timer >= this.timing.landSeconds)) this.enter('ground');
         break;
       case 'rise':
@@ -96,9 +131,10 @@ export class Airborne {
     this.changed = false;
     switch (this.phase) {
       case 'ground': return null;
-      case 'rise': return { name: AIR_CLIPS.rise, loop: false, restart, speed: this.riseSpeed };
-      case 'fall': return { name: AIR_CLIPS.fall, loop: true, restart, speed: 1 };
-      case 'land': return { name: AIR_CLIPS.land, loop: false, restart, speed: 1 };
+      // A fall longer than the jump's own holds its last frame, legs ready for the ground.
+      case 'rise': return { name: this.clip('rise'), loop: false, restart, speed: this.riseSpeed };
+      case 'fall': return { name: this.clip('fall'), loop: false, restart, speed: this.fallSpeed };
+      case 'land': return { name: this.clip('land'), loop: false, restart, speed: 1 };
       case 'down': return { name: AIR_CLIPS.getUp, loop: false, restart, speed: 0 };
       case 'getting_up': return { name: AIR_CLIPS.getUp, loop: false, restart, speed: 1 };
     }
@@ -111,8 +147,18 @@ export class Airborne {
     } else this.enter('land');
   }
 
+  private clip(piece: 'rise' | 'fall' | 'land'): string {
+    if (!this.running) return AIR_CLIPS[piece];
+    return piece === 'rise' ? AIR_CLIPS.runRise : piece === 'fall' ? AIR_CLIPS.runFall : AIR_CLIPS.runLand;
+  }
+
+  /** On take-off both halves are timed to the flight: up to the top, and back down from it. */
   private enter(phase: AirPhase, rising = 0): void {
-    if (phase === 'rise') this.riseSpeed = this.timing.riseSeconds / Math.max(0.2, rising / this.timing.gravity);
+    if (phase === 'rise') {
+      const half = Math.max(0.15, rising / this.timing.gravity);
+      this.riseSpeed = this.timing.duration(this.clip('rise')) / half;
+      this.fallSpeed = this.timing.duration(this.clip('fall')) / half;
+    } else if (phase === 'fall' && this.phase !== 'rise') this.fallSpeed = 1;
     this.phase = phase;
     this.timer = 0;
     this.changed = true;

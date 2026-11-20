@@ -52,6 +52,7 @@ import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
 import { NationIntroFlow } from './story/nation-intro-flow.js';
 import { Airborne, AIR_CLIPS } from './anim/airborne.js';
+import { palmSocket } from './weapon-mount.js';
 import { MissionTracker } from './story/mission-tracker.js';
 import { playerPerson } from './life/crowd.js';
 import { MasterPost } from './story/master-post.js';
@@ -538,7 +539,10 @@ async function main(): Promise<void> {
   /** The hero reaches out with a hand (taking something) until then. */
   let reachUntil = 0;
   // Take-off, fall and touchdown follow the body; a hard fall leaves the hero down until told to rise.
-  const airborne = new Airborne({ landSeconds: 0.35, getUpSeconds: hero.anim.duration(AIR_CLIPS.getUp) || 1, riseSeconds: hero.anim.duration(AIR_CLIPS.rise), gravity: balance.controller.gravity });
+  const airborne = new Airborne({
+    landSeconds: 0.35, getUpSeconds: hero.anim.duration(AIR_CLIPS.getUp) || 1,
+    duration: clip => hero.anim.duration(clip), gravity: balance.controller.gravity, runSpeed: balance.controller.runSpeedThreshold,
+  });
   input.onJump = () => {
     if (!fight.heroAlive || combat.current || combat.blocking) return;
     const now = performance.now() / 1000;
@@ -912,14 +916,13 @@ async function main(): Promise<void> {
         standing: () => airborne.phase === 'ground',
       },
       restrictControls: taught => controls?.setLesson(taught),
-      weaponAsset: starter.assetPath,
-      // Taken from the master's hand, then put on the back: drawing it is the next lesson.
+      weapon: starter,
+      heroPalm: () => palmSocket(hero.model),
+      heroReach: () => { reachUntil = performance.now() + 900; },
+      // The sheathed weapon goes from the hero's hand to their back: drawing it is the next lesson.
       receiveWeapon: () => {
         applyKit();
         hero.setCarrying(true);
-        reachUntil = performance.now() + 900;
-        sword.forceArm();
-        sword.sheathe();
       },
       onTrainingComplete: () => { mission.trainingReady = true; },
       beforeUnlock: () => mission.gate(),
@@ -1644,7 +1647,7 @@ async function main(): Promise<void> {
 
     const animDelta = delta;
     const airClip = bend.windskiffActive ? null
-      : airborne.update({ grounded: controller.grounded, rising: controller.rising, moving: controller.speed > 0.5 }, delta);
+      : airborne.update({ grounded: controller.grounded, rising: controller.rising, moving: controller.speed > 0.5, speed: controller.speed }, delta);
     drawn.lerpVectors(controller.previous, controller.position, alpha);
     if (bend.windskiffActive) drawn.y += 0.45;
     hero.model.position.copy(drawn);
@@ -1707,8 +1710,11 @@ async function main(): Promise<void> {
             turnReadyAt = now + 0.25;
           }
         } else {
-          // Standing still: the guard with a weapon drawn, the relaxed stand otherwise.
-          let clip: string = pace === 'idle' ? (sword.engaged ? 'idle_armed' : 'idle_relaxed') : pace;
+          // Standing still: the guard with a weapon drawn, the element's fighting stance while bending (the element
+          // is alight in the hands, so the body readies itself), the relaxed stand otherwise.
+          const stance = isLit && !isDim ? `stance_${kitElement.toLowerCase()}` : null;
+          let clip: string = pace === 'idle'
+            ? (sword.engaged ? 'idle_armed' : stance && hero.anim.duration(stance) > 0 ? stance : 'idle_relaxed') : pace;
           let clipSpeed = controller.speed;
           if (locked && pace === 'walk') {
             // Track relative to the chest: a sidestep gets the strafe walk, a backpedal runs the walk backwards.

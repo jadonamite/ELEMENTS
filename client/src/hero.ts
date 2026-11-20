@@ -26,7 +26,7 @@ import { AnimationPlayer } from './anim/index.js';
 import { StrikeLimbs, type StrikeLimb } from './anim/strike-limb.js';
 import { STAFF_WEAPON, SWORD_WEAPON, heroWeaponFor, type WeaponSlotData } from './weapon.js';
 import { fitBaldric, removeBaldric } from './baldric.js';
-import { AIR_CLIPS } from './anim/airborne.js';
+import { AIR_CLIPS, levelAirborneHips } from './anim/airborne.js';
 import { fitTorso } from './torso-fit.js';
 import { carrySockets, gripAligned, hitSegment, palmSocket, snapToSocket } from './weapon-mount.js';
 import { fetchWornArmour } from './economy/api.js';
@@ -84,9 +84,8 @@ export interface HeroInstance {
 }
 
 /** The clips with the run keeping only part of its hip bounce, measured up from its lowest (planted) point. The pack's own clips are left as loaded. */
-/** The clip under another name, or itself when there is none. */
-function renamed(clip: AnimationClip, name: string | undefined): AnimationClip {
-  if (!name) return clip;
+/** The clip under another name. */
+function renamed(clip: AnimationClip, name: string): AnimationClip {
   const copy = clip.clone();
   copy.name = name;
   return copy;
@@ -316,13 +315,13 @@ export async function loadHero(loaders: Loaders, initialOutfit?: OutfitId): Prom
   const heroClips = calmRunBounce(markRest(heroGltf));
   // Locomotion is the retargeted Mixamo pack: idle, weapon-drawn idle, walk, strafe and turn in place, jump.
   const locomotionClips = markRest(await loaders.model('/assets/characters/locomotion.glb'));
-  // The mannequin's own relaxed idle and walk are replaced by the pack. Its three jump clips are the airborne
-  // phases (anim/airborne.ts): take-off, the fall held for as long as it lasts, and the touchdown.
-  const REPLACED = new Set(['idle_relaxed', 'walk', 'jump']);
-  const PHASES: Record<string, string> = { jump_start: AIR_CLIPS.rise, jump_land: AIR_CLIPS.land };
-  const bodyClips = heroClips.filter(clip => !REPLACED.has(clip.name)).map(clip => renamed(clip, PHASES[clip.name]));
-  const fall = heroClips.find(clip => clip.name === 'jump');
-  if (fall) bodyClips.push(renamed(fall, AIR_CLIPS.fall));
+  // The mannequin's own relaxed idle, walk and jump are replaced by the pack; its start/land jump clips are unused.
+  const REPLACED = new Set(['idle_relaxed', 'walk', 'jump', 'jump_start', 'jump_land']);
+  const bodyClips = heroClips.filter(clip => !REPLACED.has(clip.name));
+  // The airborne phases (anim/airborne.ts), Mixamo's jump set: take-off, the fall looped, the touchdown.
+  bodyClips.push(...levelAirborneHips(markRest(await loaders.model('/assets/characters/airborne.glb'))));
+  // Each element's fighting stance, the stand while bending is on.
+  bodyClips.push(...markRest(await loaders.model('/assets/characters/bending-stance.glb')));
   // Getting up off the ground, after a hard landing.
   const standing = markRest(await loaders.model('/assets/characters/mixamo.glb')).find(clip => clip.name === 'standing');
   if (standing) bodyClips.push(renamed(standing, AIR_CLIPS.getUp));
