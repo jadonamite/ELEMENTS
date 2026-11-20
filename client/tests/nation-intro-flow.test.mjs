@@ -101,6 +101,27 @@ function setupDom() {
   };
 }
 
+/** The hero's arrival as the intro sees it: dropped, down on landing, up when raised. */
+function arrival() {
+  const state = { dropped: false, standing: false };
+  return {
+    state,
+    drop() { state.dropped = true; },
+    down: () => state.dropped && !state.standing,
+    standUp() { state.standing = true; },
+    standing: () => state.standing,
+  };
+}
+
+/** The controls as the intro narrows them: a control answers when no lesson runs or the lesson has taught it. */
+function controlLesson() {
+  let taught = null;
+  return {
+    restrict: (set) => { taught = set; },
+    allowed: (action) => action === 'menu' || taught === null || taught.has(action),
+  };
+}
+
 /** Winds the line timers forward until the intro reaches `step` (the greeting and lore lines play out). */
 async function windUntil(t, intro, step) {
   for (let i = 0; i < 200 && intro.step !== step; i++) {
@@ -131,8 +152,10 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
   const restoreDom = setupDom();
   try {
     let currentTier = -1;
-    let starterWeaponEquipped = '';
+    let weaponReceived = false;
     let missionCompletedCalled = false;
+    const arrived = arrival();
+    const lesson = controlLesson();
 
     const mockController = { position: new Vector3(8, 0, 0), facing: 0, grounded: true };
     const mockShoulderCamera = { yaw: 0, pitch: 0, distance: 3.5 };
@@ -163,7 +186,8 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
       leadManager: mockLeadManager,
       waypointMarker: mockWaypointMarker,
       applyTier: (t) => { currentTier = t; mockFight.tier = t; },
-      onEquipStarterWeapon: (w) => { starterWeaponEquipped = w; },
+      arrival: arrived, restrictControls: lesson.restrict, weaponAsset: '/assets/weapons/sword.glb',
+      receiveWeapon: () => { weaponReceived = true; },
       beforeUnlock: async () => {},
       onMissionComplete: () => { missionCompletedCalled = true; },
     });
@@ -173,11 +197,21 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
     assert.equal(intro.step, 'idle');
 
     // 2. Start intro -> approach -> greeting
+    // 2. The hero falls in; nothing answers but the menu until the master teaches it.
     intro.start();
-    assert.equal(intro.step, 'approach');
+    assert.equal(intro.step, 'arriving');
+    assert.equal(arrived.state.dropped, true, 'the hero is dropped into the arrival ground');
+    assert.equal(lesson.allowed('move'), false, 'no walking before the lesson');
+    assert.equal(lesson.allowed('menu'), true);
+    intro.update(0.016);
+    assert.equal(intro.step, 'down', 'landed: the master walks in');
 
     await windUntil(t, intro, 'step_move');
-    assert.equal(intro.step, 'step_move');
+    assert.equal(arrived.state.standing, true, 'the hero is up before the lesson starts');
+    for (let k = 0; k < 6; k++) await Promise.resolve();
+    assert.equal(lesson.allowed('move'), true, 'footing teaches moving');
+    assert.equal(lesson.allowed('jump'), false, 'jumping waits for its own lesson');
+    assert.equal(lesson.allowed('strike'), false);
 
     // 3. Movement test: Player moves 2.5 meters
     mockController.position.set(11, 0, 0);
@@ -195,7 +229,11 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
     mockController.grounded = false;
     intro.update(0.016);
     await heardThen(t, intro, 1, 'step_weapon');
-    assert.equal(starterWeaponEquipped, 'sword', 'IGNIS starter weapon must be sword');
+    for (let k = 0; k < 6; k++) await Promise.resolve();
+    assert.equal(weaponReceived, true, 'the master hands the weapon over');
+    assert.equal(intro.config.starterWeapon, 'sword', 'IGNIS starter weapon must be sword');
+    assert.equal(lesson.allowed('weapon'), true, 'drawing is taught once the weapon is in hand');
+    assert.equal(lesson.allowed('strike'), false, 'striking waits for its lesson');
 
     // 5. Draw Weapon test
     mockCombat.fightingStyle = 'weapon';
@@ -214,6 +252,7 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
     mockCombat.current = 'dodge';
     intro.update(0.016);
     await heardThen(t, intro, 4, 'lore_and_mission');
+    assert.equal(lesson.allowed('bending'), true, 'every control answers once the lesson is done');
 
     // 8. Dispatch first mission
     intro['dispatchFirstMission']();
@@ -226,7 +265,7 @@ test('NationIntroFlow: initializes at level 0 and steps through interactive trai
     mockController.position.set(52, 0, 0); // West Gate coordinates
     intro.update(0.016);
 
-    await new Promise((r) => setTimeout(r, 0));
+    for (let k = 0; k < 12; k++) await Promise.resolve();
     assert.equal(intro.step, 'completed');
     assert.equal(currentTier, 1, 'Reaching first mission target transfers player to Level 1');
     assert.equal(missionCompletedCalled, true, 'onMissionComplete must be called');
@@ -243,7 +282,7 @@ test('NationIntroFlow: modular across AURA and HUSH role', async (t) => {
   const restoreDom = setupDom();
   try {
     let currentTier = -1;
-    let starterWeaponEquipped = '';
+    let weaponReceived = false;
 
     const mockController = { position: new Vector3(0, 0, 0), facing: 0, grounded: false };
     const mockShoulderCamera = { yaw: 0, pitch: 0, distance: 3.5 };
@@ -267,7 +306,8 @@ test('NationIntroFlow: modular across AURA and HUSH role', async (t) => {
       leadManager: mockLeadManager,
       waypointMarker: mockWaypointMarker,
       applyTier: (t) => { currentTier = t; mockFight.tier = t; },
-      onEquipStarterWeapon: (w) => { starterWeaponEquipped = w; },
+      arrival: arrival(), restrictControls: () => {}, weaponAsset: '/assets/weapons/staff.glb',
+      receiveWeapon: () => { weaponReceived = true; },
       beforeUnlock: async () => {},
     });
 
@@ -275,6 +315,7 @@ test('NationIntroFlow: modular across AURA and HUSH role', async (t) => {
     assert.equal(intro.config.master.name, 'Master Zephyr');
 
     intro.start();
+    intro.update(0.016);
     await windUntil(t, intro, 'step_move');
 
     // Trigger step moves
@@ -283,7 +324,8 @@ test('NationIntroFlow: modular across AURA and HUSH role', async (t) => {
     await heardThen(t, intro, 0, 'step_sprint_jump');
     intro.update(0.016);
     await heardThen(t, intro, 1, 'step_weapon');
-    assert.equal(starterWeaponEquipped, 'staff', 'AURA equips staff');
+    for (let k = 0; k < 6; k++) await Promise.resolve();
+    assert.equal(weaponReceived, true, 'AURA is handed the staff');
 
     intro.update(0.016);
     await heardThen(t, intro, 2, 'step_attacks');
@@ -304,7 +346,7 @@ test('NationIntroFlow: modular across AURA and HUSH role', async (t) => {
     mockController.position.set(48, 0, -8);
     intro.update(0.016);
 
-    await new Promise((r) => setTimeout(r, 0));
+    for (let k = 0; k < 12; k++) await Promise.resolve();
     assert.equal(intro.step, 'completed');
     assert.equal(currentTier, 1, 'Hush promoted to Level 1 Wayfarer upon reaching goal');
 
@@ -334,18 +376,18 @@ test('NationIntroFlow: the gate sign-in runs before the level is granted, and th
       leadManager: new LeadManager([]),
       waypointMarker: mockWaypointMarker,
       applyTier: (t) => { currentTier = t; mockFight.tier = t; },
-      onEquipStarterWeapon: () => {},
+      arrival: arrival(), restrictControls: () => {}, weaponAsset: '', receiveWeapon: () => {},
       beforeUnlock: () => new Promise((resolve) => { releaseSignIn = () => { dim = true; resolve(); }; }),
     });
     intro['dispatchFirstMission']();
     const lead = mockWaypointMarker.activeLead;
     intro['completeFirstMission'](lead);
-    await new Promise((r) => setTimeout(r, 0));
+    for (let k = 0; k < 12; k++) await Promise.resolve();
     assert.equal(intro.step, 'awaiting_gate');
     assert.equal(currentTier, 0, 'no level while the sign-in is open');
 
     releaseSignIn();
-    await new Promise((r) => setTimeout(r, 0));
+    for (let k = 0; k < 12; k++) await Promise.resolve();
     assert.equal(currentTier, 1, 'the level is granted once the sign-in step ends');
     const banner = document.body.children.filter((c) => c.className === 'nation-mission-banner').at(-1);
     assert.match(banner?.innerHTML ?? '', /Rank Attained/, 'the banner follows the Drawing the account came back with');
@@ -367,7 +409,7 @@ test('NationIntroFlow: failed registration leaves the mission and tier locked, w
       controller: { position: new Vector3(49, 0, 0), facing: 0, grounded: true },
       shoulderCamera: {}, input: { read: () => ({ running: false }) }, combat: {}, fight: {}, sound: {},
       leadManager: new LeadManager([]), waypointMarker: marker,
-      applyTier: value => { tier = value; }, onEquipStarterWeapon: () => {},
+      applyTier: value => { tier = value; }, arrival: arrival(), restrictControls: () => {}, weaponAsset: '', receiveWeapon: () => {},
       beforeUnlock: async () => { if (fail) throw new Error('cancelled'); },
     });
     intro['dispatchFirstMission']();
@@ -398,13 +440,13 @@ test('NationIntroFlow: saved training resumes the gate objective without replayi
       controller: { position: new Vector3(8, 0, 0), facing: 0, grounded: true },
       shoulderCamera: {}, input: { read: () => ({ running: false }) }, combat: {}, fight: {}, sound: {},
       leadManager: new LeadManager([]), waypointMarker: marker,
-      applyTier: value => { tier = value; }, onEquipStarterWeapon: value => { weapon = value; },
+      applyTier: value => { tier = value; }, arrival: arrival(), restrictControls: () => {}, weaponAsset: '', receiveWeapon: () => { weapon = 'received'; },
       onTrainingComplete: () => { trained = true; }, beforeUnlock: async () => {},
     });
     intro.resumeAtGate();
     assert.equal(intro.step, 'active_mission');
     assert.equal(tier, 0);
-    assert.equal(weapon, 'sword');
+    assert.equal(weapon, 'received', 'a hero trained before already has the weapon');
     assert.equal(trained, true);
     assert.equal(marker.lead.id, 'first_mission_ignis_gate');
   } finally { intro?.dispose(); restoreDom(); }

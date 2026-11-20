@@ -530,7 +530,6 @@ export function createOrGetRising(
     );
     return {
       account_id: accountId,
-      tier: 0,
       role: rolled.role,
       element: rolled.element ?? null,
       created_at: now,

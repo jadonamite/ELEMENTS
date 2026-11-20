@@ -296,9 +296,14 @@ function paveLane(b: WorldBuilder, zSouth: number, zNorth: number, y: number, ra
 function houseAlong(b: WorldBuilder, front: number, side: -1 | 1, za: number, zb: number, y: number, rank: Rank, rand: () => number): void {
   const w = Math.abs(zb - za), d = 7;
   if (w < 4) return;
-  const shop = rank !== 'common' && rand() < 0.6;
+  const x = front + side * d / 2, z = (za + zb) / 2, yaw = side < 0 ? EAST : WEST;
+  // A shop counter in the town's anchors makes this house that shop, its keeper standing at the counter.
+  const counter = SINDR_ANCHORS.find(a => a.kind === 'counter' && Math.abs(a.y - y) < 0.6
+    && Math.abs(a.x - x) < d / 2 && a.z > Math.min(za, zb) && a.z < Math.max(za, zb));
+  const shop = (rank !== 'common' && rand() < 0.6) || counter !== undefined;
+  const keeper = counter ? (counter.x - x) * Math.cos(yaw) - (counter.z - z) * Math.sin(yaw) : undefined;
   townHouse(b, {
-    x: front + side * d / 2, z: (za + zb) / 2, y, yaw: side < 0 ? EAST : WEST, w: w - 0.1, d, floors: 2, rank, shop,
+    x, z, y, yaw, w: w - 0.1, d, floors: 2, rank, shop, ...(keeper !== undefined ? { keeper } : {}),
     balcony: rand() < 0.6, sign: rand() < 0.7 ? 2 + Math.floor(rand() * 3) : 0, awning: shop, lantern: rank !== 'common' || rand() < 0.4,
     footing: 3.2,
   }, rand);

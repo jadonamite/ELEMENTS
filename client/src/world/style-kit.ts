@@ -27,6 +27,8 @@ export interface TownHouseSpec {
   rank: Rank;
   /** Open shop front with a counter and a cloth over the door. */
   shop?: boolean;
+  /** Where along the front the shop's keeper stands, house metres from its centre; unset, anywhere behind the counter. */
+  keeper?: number;
   /** A lantern by the door (lit at dusk). */
   lantern?: boolean;
   /** Door offset along the front; random if missing. */
@@ -110,7 +112,8 @@ export function townHouse(b: WorldBuilder, h: TownHouseSpec, rand: () => number)
       b.box(frontTimber, -ow / 2 + (k + 0.5) * (ow / 4), P + G - 0.6, front + 0.02, ow / 4 - 0.06, 0.75, 0.02);
     }
     b.light(0, P + 2, front - 0.8, 0xffa060, 4, 6, 0.1);
-    b.post('keeper', (rand() - 0.5) * (ow - 1.2), front - 1.2, 0, P);
+    const anywhere = (rand() - 0.5) * (ow - 1.2);
+    b.post('keeper', h.keeper ?? anywhere, front - 1.2, 0, P);
     if (!h.wares) b.browseAt((rand() - 0.5) * (ow - 1.6), front + 0.9, Math.PI);
     if (h.rank !== 'common') merchantFront(b, 0, ow, Math.min(2.6, w - 1.6), P + G, front);
   } else {

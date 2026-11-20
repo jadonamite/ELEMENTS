@@ -8,7 +8,7 @@ import { ZoneRoom } from '../src/rooms/ZoneRoom.js';
 import { ZoneEconomy } from '../src/net/zone-economy.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDatabase, saveAccount, setDatabase } from '../src/db.js';
+import { createDatabase, saveAccount, setDatabase, getRising } from '../src/db.js';
 import { getMission, missionChoice, missionSnapshot, missionGateCheckpoint, saveMission } from '../src/story/missionService.js';
 import { MissionEncounter } from '../src/story/missionEncounter.js';
 import { advanceMission, IGNIS_MISSION as M, MEAL_ITEM, ARENA_TICKET } from '@elements/shared';
@@ -92,15 +92,17 @@ test('public choices reject forged victories while every Drawing starts the Sind
     ] as const) {
       saveAccount(id, role, element, db);
       const state = getMission(id, db);
+      // A Hush draws a nation of their own, so the mission keeps whatever the rising holds.
+      const drawn = getRising(id, db)?.element ?? 'IGNIS';
       assert.equal(state.zone, 'sindr', `${id} starts in Sindr`);
-      assert.equal(state.nation, element ?? 'IGNIS', `${id} keeps the Drawing`);
+      assert.equal(state.nation, drawn, `${id} keeps the Drawing`);
       missionChoice(id, 'training_complete', `${id}:training_complete`, { ...M.gate, zone: 'sindr' }, db);
       assert.deepEqual(missionGateCheckpoint(id, db), M.gate, `${id} resumes at the Sindr registrar`);
       for (const event of ['register', 'take_pouch'] as const) {
         missionChoice(id, event, `${id}:${event}`, { ...M.gate, zone: 'sindr' }, db);
       }
       assert.equal(getMission(id, db).flags.mission_1_complete, true);
-      assert.equal(getMission(id, db).nation, element ?? 'IGNIS');
+      assert.equal(getMission(id, db).nation, drawn);
       assert.equal(getMission(id, db).zone, 'sindr');
     }
   } finally { db.close(); }
