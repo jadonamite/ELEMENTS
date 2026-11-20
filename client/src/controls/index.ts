@@ -35,6 +35,8 @@ export class Controls {
   private help: HTMLElement | null = null;
   private helpKey = '';
   private state: ControlSituation;
+  /** While a master teaches, only what he has taught so far answers (and is hinted); null when no lesson runs. */
+  private lesson: ReadonlySet<ControlAction> | null = null;
   constructor(private readonly input: GameInput, canvas: HTMLCanvasElement, initial: ControlSituation,
     onTier: (tier: number) => void = () => {}) {
     this.state = initial; this.setAvailable();
@@ -42,7 +44,7 @@ export class Controls {
     this.prompt.className = 'control-lesson'; this.prompt.hidden = true;
     this.prompt.setAttribute('role', 'status'); this.prompt.setAttribute('aria-live', 'polite');
     document.body.append(this.prompt);
-    input.allowed = action => this.available.has(action);
+    input.allowed = action => this.allows(action);
     input.onAction = action => {
       if (!COMBAT_ACTIONS.has(action) && action !== 'jump' && action !== 'block') this.used(action);
     };
@@ -50,6 +52,12 @@ export class Controls {
     this.touch = new TouchControls(canvas, input);
   }
   get actions(): readonly ActionDefinition[] { return this.choices; }
+  /** Narrows the controls to those taught so far (read live, so it grows as the lesson goes); null lifts it. */
+  setLesson(taught: ReadonlySet<ControlAction> | null): void { this.lesson = taught; }
+  /** Usable now: the tier offers it, and any lesson under way has taught it. The menu always answers. */
+  private allows(action: ControlAction): boolean {
+    return this.available.has(action) && (action === 'menu' || !this.lesson || this.lesson.has(action));
+  }
   private setAvailable(): void {
     this.choices = availableActions(this.state.tier, this.state.hush, this.state.online);
     this.available = new Set(this.choices.map(a => a.id));
@@ -103,13 +111,13 @@ export class Controls {
     if (Math.abs(move.forward) + Math.abs(move.right) > .2) {
       this.used('move'); if (move.running) this.used('run');
     }
-    if (this.active && now < this.until && this.available.has(this.active)) {
+    if (this.active && now < this.until && this.allows(this.active)) {
       if (this.lastDevice !== this.input.device) this.draw(this.active);
       this.prompt.hidden = false; return;
     }
     if (this.active) {
       if (!this.leavingAt) { this.leavingAt = now; this.prompt.dataset.leaving = 'true'; }
-      if (this.available.has(this.active) && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && now - this.leavingAt < 150) return;
+      if (this.allows(this.active) && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && now - this.leavingAt < 150) return;
       this.active = null; this.leavingAt = 0; delete this.prompt.dataset.leaving;
       this.prompt.hidden = true; this.gapUntil = now + 1200;
     }
@@ -125,7 +133,7 @@ export class Controls {
       useful.push('bending'); if (state.bending) useful.push('rise', 'ground', 'bend_move');
       if (state.hush) useful.push('spark');
     }
-    const action = useful.find(a => this.available.has(a) && this.learning.needs(a) &&
+    const action = useful.find(a => this.allows(a) && this.learning.needs(a) &&
       now - (this.lastShown.get(a) ?? -Infinity) >= 60000 && !(state.interact && a === 'ground'));
     if (!action) return;
     this.active = action; this.until = now + 4200; this.lastShown.set(action, now);

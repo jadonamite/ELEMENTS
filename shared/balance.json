@@ -2180,6 +2180,9 @@
     },
     "bannedNameWords": []
   },
+  "story": {
+    "arrivalDrop": 14
+  },
   "speech": {
     "traffic": {
       "maxAmbient": 2,

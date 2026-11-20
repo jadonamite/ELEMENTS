@@ -25,6 +25,7 @@ export class GameInput {
   private disposed = false;
   private touchMove = { forward: 0, right: 0 };
   private currentDevice: InputDevice = 'desktop';
+  /** Which actions the player may use now; the master's lesson opens them one at a time. */
   allowed: (action: ControlAction) => boolean = () => true;
   onDeviceChange?: (device: InputDevice) => void;
   onAction?: (action: ControlAction) => void;
@@ -180,13 +181,13 @@ export class GameInput {
     const queued = this.actions.splice(0);
     return this.paused ? [] : queued;
   }
-  get blocking(): boolean { return !this.paused && (this.held.get('block')?.size ?? 0) > 0; }
+  get blocking(): boolean { return !this.paused && this.allowed('block') && (this.held.get('block')?.size ?? 0) > 0; }
   read(): MoveInput {
-    if (this.paused) return { forward: 0, right: 0, running: false };
+    if (this.paused || !this.allowed('move')) return { forward: 0, right: 0, running: false };
     return {
       forward: Math.max(-1, Math.min(1, Number(this.keys.has('KeyW')) - Number(this.keys.has('KeyS')) + this.touchMove.forward)),
       right: Math.max(-1, Math.min(1, Number(this.keys.has('KeyD')) - Number(this.keys.has('KeyA')) + this.touchMove.right)),
-      running: (this.held.get('run')?.size ?? 0) > 0,
+      running: this.allowed('run') && (this.held.get('run')?.size ?? 0) > 0,
     };
   }
   clear(): void { this.keys.clear(); this.held.clear(); this.actions.length = 0; this.move(0, 0); }

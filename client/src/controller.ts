@@ -39,6 +39,8 @@ export class HeroController {
   /** True while the feet are on something; false in a jump or a fall. */
   grounded = true;
   private verticalVelocity = 0;
+  /** Upward speed in m/s; negative while falling. */
+  get rising(): number { return this.verticalVelocity; }
 
   /** Enemies pass their own spawn point and speeds; the hero starts at the centre. Open zones pass bounded = false. */
   constructor(private readonly world: RAPIER.World, spawn: { x: number; z: number; y?: number } = { x: 0, z: 0 },

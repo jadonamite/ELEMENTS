@@ -58,7 +58,8 @@ export class HomeMenu {
         </div>
 
         <nav class="home-menu-nav" aria-label="Menu tabs">
-          <button type="button" class="home-nav-tab active" data-tab="map">Map</button>
+          <button type="button" class="home-nav-tab active" data-tab="missions">Missions</button>
+          <button type="button" class="home-nav-tab" data-tab="map">Map</button>
           <button type="button" class="home-nav-tab" data-tab="abilities">Abilities</button>
           <button type="button" class="home-nav-tab" data-tab="modes">World & Modes</button>
           <button type="button" class="home-nav-tab" data-tab="fighter">Fighter & Character</button>
@@ -67,7 +68,8 @@ export class HomeMenu {
         </nav>
 
         <div class="home-menu-body">
-          <div class="home-tab-pane active" id="pane-map">${globalMapMarkup(options.inTown)}</div>
+          <div class="home-tab-pane active" id="pane-missions"><div class="mission-journal"></div></div>
+          <div class="home-tab-pane" id="pane-map">${globalMapMarkup(options.inTown)}</div>
           <div class="home-tab-pane" id="pane-abilities">${abilitiesMarkup(character.element, character.isDim, character.tier)}</div>
           <div class="home-tab-pane" id="pane-help"><div class="controls-help"></div></div>
           <div class="home-tab-pane" id="pane-modes">
@@ -286,6 +288,8 @@ export class HomeMenu {
   }
 
   mountControls(controls: Controls): void { controls.mountHelp(this.overlay.querySelector('.controls-help')!); }
+  /** The Missions pane, which the tracker fills with the journal. */
+  get journal(): HTMLElement { return this.overlay.querySelector<HTMLElement>('.mission-journal')!; }
   toggle(): void { if (this.isOpen) this.close(); else this.open(); }
 
   private refreshAbilities(): void {

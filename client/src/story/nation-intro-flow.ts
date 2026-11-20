@@ -1,5 +1,4 @@
-import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
-import { MISSION_COPY } from '../../../shared/src/story/missions.js';
+import { Group, PerspectiveCamera, Quaternion, Vector3, type Object3D } from 'three';
 import type { Loaders } from '../assets/loaders.js';
 import { buildMasterBody, releaseMaster } from './master-body.js';
 import type { AnimationPlayer } from '../anim/player.js';
@@ -13,6 +12,8 @@ import type { LeadManager, Lead } from '../../../shared/src/story/leads.js';
 import type { WaypointMarker } from './waypoint-marker.js';
 import { voiceId } from '../../../shared/src/story/voice.js';
 import { WALK_SPEED } from '../life/town-manager.js';
+import { gripAligned, palmSocket, snapToSocket } from '../weapon-mount.js';
+import type { ControlAction } from '../controls/actions.js';
 import {
   getNationIntroConfig,
   type NationIntroConfig,
@@ -21,6 +22,10 @@ import {
 
 export type IntroStep =
   | 'idle'
+  /** The hero falls into the arrival ground and lies where they landed. */
+  | 'arriving'
+  /** Down on the ground; the master walks in. */
+  | 'down'
   | 'approach'
   | 'greeting'
   | 'step_move'
@@ -51,7 +56,21 @@ export interface NationIntroOptions {
   leadManager: LeadManager;
   waypointMarker: WaypointMarker;
   applyTier: (tier: number) => void;
-  onEquipStarterWeapon: (weapon: 'sword' | 'staff') => void;
+  /** The hero's arrival: dropped from above, down on landing, raised when the master offers an arm. */
+  arrival: {
+    drop(): void;
+    /** True once the hero lies on the ground after the fall. */
+    down(): boolean;
+    standUp(): void;
+    /** True once the hero is on their feet again. */
+    standing(): boolean;
+  };
+  /** Narrows the player's controls to those taught so far; null gives every control back. */
+  restrictControls: (taught: ReadonlySet<ControlAction> | null) => void;
+  /** The starter weapon the master carries in and hands over. */
+  weaponAsset: string;
+  /** The hero takes the master's weapon: it shows on them from now on and goes to their back. */
+  receiveWeapon: () => void;
   onTrainingComplete?: () => void;
   onMissionComplete?: (missionLead: Lead) => void;
   /** Runs at the gate before the level is granted: the sign-in that keeps the player's progress. */
@@ -64,8 +83,10 @@ interface TrainingStep {
   line: keyof NationIntroDialogue;
   kicker: string;
   prompt: string;
-  /** Runs as the instruction starts. */
-  begin?: () => void;
+  /** The controls this step teaches; the player can use them from the moment it is taught. */
+  teaches: ControlAction[];
+  /** Runs as the instruction starts; the prompt and the controls wait for what it returns. */
+  begin?: () => Promise<void> | void;
   /** Reads this frame's play; true once the step is done. May update the prompt card on partial progress. */
   done: () => boolean;
 }
@@ -93,6 +114,14 @@ export class NationIntroFlow {
   /** Settles when the master's body has loaded or failed to; lines wait on it for a voice. */
   private masterReady!: Promise<void>;
   private masterApproaching = false;
+  /** Called once when the master reaches where he was walking to. */
+  private onMasterArrived: (() => void) | null = null;
+  /** The weapon in the master's hand, until it is handed over. */
+  private masterProp: Object3D | null = null;
+  /** Holding the weapon out to the hero. */
+  private handing = false;
+  /** Controls the master has taught so far; nothing else answers during the lesson. */
+  private readonly taught = new Set<ControlAction>();
   private masterDispatched = false;
   private disposed = false;
   private pendingTimers: any[] = [];
@@ -165,12 +194,12 @@ export class NationIntroFlow {
     const { controller, input, combat } = this.opts;
     return [
       {
-        step: 'step_move', line: 'stepFooting', kicker: 'Footing',
+        step: 'step_move', line: 'stepFooting', kicker: 'Footing', teaches: ['move', 'look'],
         prompt: `${key('W')} ${key('A')} ${key('S')} ${key('D')} Move · Move mouse to look`,
         done: () => (this.hasMoved ||= controller.position.distanceTo(this.startPosition) >= 2.2),
       },
       {
-        step: 'step_sprint_jump', line: 'stepSprintJump', kicker: 'Mobility',
+        step: 'step_sprint_jump', line: 'stepSprintJump', kicker: 'Mobility', teaches: ['run', 'jump'],
         prompt: `${key('Shift')} Sprint · ${key('Space')} Jump`,
         done: () => {
           if (input.read().running) this.hasSprinted = true;
@@ -179,13 +208,13 @@ export class NationIntroFlow {
         },
       },
       {
-        step: 'step_weapon', line: 'weaponHandoff', kicker: 'Armament',
+        step: 'step_weapon', line: 'weaponHandoff', kicker: 'Armament', teaches: ['weapon'],
         prompt: `${key('1')} Draw Weapon`,
-        begin: () => this.opts.onEquipStarterWeapon(this.config.starterWeapon),
+        begin: () => this.handOverWeapon(),
         done: () => (this.hasEquippedWeapon ||= combat.fightingStyle === 'weapon'),
       },
       {
-        step: 'step_attacks', line: 'stepAttacks', kicker: 'Striking',
+        step: 'step_attacks', line: 'stepAttacks', kicker: 'Striking', teaches: ['strike', 'heavy'],
         prompt: `${key('Left Click')} Light Attack · ${key('Right Click')} Heavy Attack`,
         done: () => {
           const cur = combat.current;
@@ -200,7 +229,7 @@ export class NationIntroFlow {
         },
       },
       {
-        step: 'step_defense', line: 'stepDefense', kicker: 'Defense',
+        step: 'step_defense', line: 'stepDefense', kicker: 'Defense', teaches: ['block', 'parry', 'dodge'],
         prompt: `${key('Hold R')} Guard · ${key('Left Alt')} Dodge`,
         done: () => {
           if (combat.blocking) this.hasGuarded = true;
@@ -224,46 +253,115 @@ export class NationIntroFlow {
     return this.currentStep !== 'idle' && this.currentStep !== 'completed';
   }
 
+  /**
+   * The arrival: the hero falls into the ground ahead of the master's post and lies where they land. Nothing
+   * answers the keys yet. Once they are down the master walks in, offers an arm with his first line, and the
+   * hero gets up; his lesson then opens the controls one at a time.
+   */
   start(): void {
     this.startPosition.copy(this.opts.controller.position);
     const forward = new Vector3(Math.sin(this.opts.controller.facing), 0, Math.cos(this.opts.controller.facing));
     const right = new Vector3(-forward.z, 0, forward.x);
     // Ahead and off to one side: straight ahead, the hero's own body hides him from the camera behind.
     this.masterPosition.copy(this.startPosition).addScaledVector(forward, 2.6).addScaledVector(right, 1.4);
-    this.masterApproaching = true;
+    this.lockControls();
     this.masterReady = this.opts.scene
       ? this.loadMaster(forward).catch(error => {
         if (!this.disposed) console.error('Nation Master failed to load:', error);
       })
       : Promise.resolve();
+    this.setStep('arriving');
+    this.opts.arrival.drop();
+  }
 
-    // Begin approach
+  /** Down on the ground: after a breath the master walks in; the greeting waits for him to arrive. */
+  private arrived(): void {
+    this.setStep('down');
+    this.schedule(() => {
+      void this.masterReady.then(() => {
+        if (this.disposed) return;
+        if (!this.masterModel) { this.greet(); return; }
+        this.masterModel.visible = true;
+        this.masterApproaching = true;
+      });
+    }, 900);
+  }
+
+  /** "Take my arm": the hero rises as he says it, and the lore follows once they are up. */
+  private greet(): void {
     this.setStep('approach');
-    this.showDialogue(
-      this.config.dialogue.greeting,
-      () => {
-        this.schedule(() => {
-          this.setStep('greeting');
-          this.showDialogue(
-            this.config.dialogue.loreTeaser,
-            () => {
-              this.startTraining();
-            },
-            6000,
-          );
-        }, 1200);
-      },
-      3500,
-    );
+    this.playMasterPose('point', 'talk', 'idle');
+    this.showDialogue(this.config.dialogue.greeting, () => {
+      this.setStep('greeting');
+      this.showDialogue(this.config.dialogue.loreTeaser, () => this.startTraining(), 6000);
+    }, 3500);
+    this.schedule(() => this.opts.arrival.standUp(), 900);
+  }
+
+  /** Only the menu answers until the master teaches something. */
+  private lockControls(): void {
+    this.opts.restrictControls(this.taught);
+  }
+
+  /** Every control answers again: the lesson is over, or the intro has gone. */
+  private unlockControls(): void {
+    this.opts.restrictControls(null);
+  }
+
+  /**
+   * The master walks up to the hero with the weapon and holds it out while he speaks; the hero reaches for it
+   * and it goes to their back. Resolves once it is theirs.
+   */
+  private async handOverWeapon(): Promise<void> {
+    const model = this.masterModel;
+    const prop = this.masterProp;
+    if (!model || !prop) { this.opts.receiveWeapon(); return; }
+    // He comes to stand in front of the hero, where the player's camera sees the weapon pass; from behind he walks
+    // round the hero's side rather than through them.
+    const hero = this.opts.controller.position;
+    const facing = this.opts.controller.facing;
+    const ahead = new Vector3(Math.sin(facing), 0, Math.cos(facing));
+    const side = new Vector3(-ahead.z, 0, ahead.x);
+    const from = new Vector3().subVectors(model.position, hero).setY(0);
+    if (from.dot(ahead) < 0.5) {
+      this.masterPosition.copy(hero).addScaledVector(side, from.dot(side) >= 0 ? 1.6 : -1.6).addScaledVector(ahead, 0.8);
+      this.masterApproaching = true;
+      await new Promise<void>(arrived => { this.onMasterArrived = arrived; });
+      if (this.disposed) return;
+    }
+    this.masterPosition.copy(hero).addScaledVector(ahead, 1.3);
+    this.masterApproaching = true;
+    await new Promise<void>(arrived => { this.onMasterArrived = arrived; });
+    if (this.disposed) return;
+    this.handing = true;
+    this.playMasterPose('point', 'gesture', 'talk');
+    await new Promise<void>(resolve => this.schedule(resolve, 1100));
+    if (this.disposed) return;
+    prop.removeFromParent();
+    this.masterProp = null;
+    this.opts.receiveWeapon();
+    await new Promise<void>(resolve => this.schedule(resolve, 900));
+    this.handing = false;
   }
 
   private async loadMaster(forward: Vector3): Promise<void> {
     const { model, clips, anim } = await buildMasterBody(this.opts.loaders, this.config.nation);
     if (this.disposed) { releaseMaster(model); return; }
-    model.position.copy(this.masterPosition).addScaledVector(forward, 5.5);
+    // He waits out of sight until the hero is down, then walks in from up the road.
+    model.position.copy(this.masterPosition).addScaledVector(forward, 9);
     model.rotation.y = Math.atan2(this.masterPosition.x - model.position.x, this.masterPosition.z - model.position.z);
+    model.visible = this.currentStep !== 'arriving';
     this.masterModel = model;
     this.opts.scene.add(model);
+    // He carries the starter weapon in his right hand until he hands it over.
+    try {
+      const weapon = gripAligned((await this.opts.loaders.model(this.opts.weaponAsset)).scene.clone(true));
+      if (this.disposed) return;
+      snapToSocket(weapon, palmSocket(model));
+      this.masterProp = weapon;
+    } catch (error) {
+      console.error('The master\'s weapon failed to load:', error);
+    }
     this.masterClipNames = clips.map(c => c.name);
     this.masterAnim = anim;
     this.masterPose = '';
@@ -340,6 +438,18 @@ export class NationIntroFlow {
 
     const heroPos = this.opts.controller.position;
 
+    // The arrival: low behind the landing spot and a little to its right, following the hero down out of the open
+    // sky, with the road the master walks in on beyond them.
+    if (this.cameraMode === 'cinematic' && (this.currentStep === 'arriving' || this.currentStep === 'down')) {
+      const fx = Math.sin(this.opts.controller.facing), fz = Math.cos(this.opts.controller.facing);
+      const ground = this.startPosition;
+      this.cinematicPos.set(ground.x - fx * 4.5 - fz * 1.6, ground.y + 1.4, ground.z - fz * 4.5 + fx * 1.6);
+      this.cinematicLookAt.set(heroPos.x + fx * 1.5, heroPos.y + 0.9, heroPos.z + fz * 1.5);
+      camera.position.copy(this.cinematicPos);
+      camera.lookAt(this.cinematicLookAt);
+      return true;
+    }
+
     if (this.cameraMode === 'cinematic') {
       const midX = (heroPos.x + this.masterPosition.x) / 2;
       const midY = (heroPos.y + this.masterPosition.y) / 2 + 1.25;
@@ -393,19 +503,26 @@ export class NationIntroFlow {
   }
 
   private startTraining(): void {
+    // The lesson starts with the hero on their feet.
+    if (!this.opts.arrival.standing()) { this.schedule(() => this.startTraining(), 200); return; }
     this.beginCameraBlend();
     this.beginStep(0);
   }
 
+  /** The master gives the instruction; its controls answer, and its card shows, once anything it begins is done. */
   private beginStep(index: number): void {
     const step = this.training[index];
     if (!step) return;
     this.trainingIndex = index;
     this.setStep(step.step);
-    step.begin?.();
     this.playMasterPose('fold_arms', 'idle');
     this.showDialogue(this.config.dialogue[step.line]);
-    this.showStepPrompt(step.kicker, step.prompt);
+    void Promise.resolve(step.begin?.()).then(() => {
+      if (this.disposed || this.trainingIndex !== index) return;
+      for (const action of step.teaches) this.taught.add(action);
+      if (index === 0) this.startPosition.copy(this.opts.controller.position);
+      this.showStepPrompt(step.kicker, step.prompt);
+    });
   }
 
   /**
@@ -435,12 +552,13 @@ export class NationIntroFlow {
   }
 
   private finishTraining(): void {
+    this.unlockControls();
     this.setStep('lore_and_mission');
     this.hideStepPrompt();
     const roleLine = this.opts.isDim() ? this.config.dialogue.hushRole : this.config.dialogue.shaperRole;
     this.showDialogue(roleLine, () => {
       this.schedule(() => {
-        this.offerHomeChoice();
+        this.dispatchFirstMission();
       }, 1000);
     }, 4500);
   }
@@ -471,16 +589,22 @@ export class NationIntroFlow {
         } else {
           this.masterApproaching = false;
           this.playMasterPose('talk', 'idle');
+          const arrived = this.onMasterArrived;
+          this.onMasterArrived = null;
+          arrived?.();
+          if (this.currentStep === 'down') this.greet();
         }
       } else {
         this.masterModel.rotation.y = Math.atan2(heroPos.x - this.masterModel.position.x, heroPos.z - this.masterModel.position.z);
-        if (this.masterDispatched) this.playMasterPose('point', 'gesture', 'talk', 'idle');
+        if (this.handing || this.currentStep === 'approach') { /* holding the weapon or an arm out */ }
+        else if (this.masterDispatched) this.playMasterPose('point', 'gesture', 'talk', 'idle');
         else if (this.currentStep === 'heard') { /* the acknowledgement's nod plays out */ }
         else if (this.currentStep.startsWith('step_')) this.playMasterPose('fold_arms', 'idle');
         else if (this.dialogueBox.style.display !== 'none') this.playMasterPose('talk', 'gesture', 'idle');
       }
     }
 
+    if (this.currentStep === 'arriving' && this.opts.arrival.down()) this.arrived();
     if (this.currentStep.startsWith('step_') && this.training[this.trainingIndex]?.done()) this.stepHeard();
 
     switch (this.currentStep) {
@@ -495,28 +619,11 @@ export class NationIntroFlow {
     }
   }
 
-  private offerHomeChoice(): void {
-    this.showDialogue('You have your footing. The town gate is ahead.');
-    const choices = document.createElement('div');
-    choices.className = 'mission-choices';
-    const add = (label: string, run: () => void) => {
-      const button = document.createElement('button');
-      button.className = 'mission-choice'; button.textContent = label;
-      button.addEventListener('click', () => { choices.remove(); run(); });
-      choices.appendChild(button);
-    };
-    add('How can I return home?', () => {
-      this.showDialogue(MISSION_COPY.allborn, () => this.dispatchFirstMission(), 6000);
-    });
-    add('I will find the gate', () => this.dispatchFirstMission());
-    this.dialogueBox.appendChild(choices);
-    this.cleanupFns.push(() => choices.remove());
-    if (document.pointerLockElement) document.exitPointerLock();
-  }
-
+  /** Training was done on an earlier visit: the hero has the weapon and every control, and goes to the gate. */
   resumeAtGate(): void {
+    this.unlockControls();
     this.beginCameraBlend();
-    this.opts.onEquipStarterWeapon(this.config.starterWeapon);
+    this.opts.receiveWeapon();
     this.dispatchFirstMission();
   }
 
@@ -627,6 +734,8 @@ export class NationIntroFlow {
 
   dispose(): void {
     this.disposed = true;
+    this.unlockControls();
+    this.masterProp?.removeFromParent();
     for (const t of this.pendingTimers) clearTimeout(t);
     this.pendingTimers = [];
     for (const fn of this.cleanupFns) fn();

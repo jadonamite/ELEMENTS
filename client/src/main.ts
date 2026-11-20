@@ -51,6 +51,8 @@ import { NationalEncounterManager } from './world/national-encounters.js';
 import { HomeMenu } from './ui/home-menu.js';
 import { SindrLifeSystem } from './life/index.js';
 import { NationIntroFlow } from './story/nation-intro-flow.js';
+import { Airborne, AIR_CLIPS } from './anim/airborne.js';
+import { MissionTracker } from './story/mission-tracker.js';
 import { playerPerson } from './life/crowd.js';
 import { MasterPost } from './story/master-post.js';
 import { getNationIntroConfig } from '../../shared/src/story/nation-intro.js';
@@ -62,7 +64,7 @@ import { ClientDeserterBand } from './agents/outlaws/deserterBand.js';
 import type { OutlawSenses } from '../../shared/src/agents/types.js';
 import type { Quarry } from './enemy.js';
 import { CombatSpace } from './attacks/space.js';
-import { hasGameServer } from './auth/server-api.js';
+import { getStoredAuthToken, hasGameServer, isOfflineMode } from './auth/server-api.js';
 import type { OnlineSession } from './net/online.js';
 import { ShrineState } from './shrine-state.js';
 import type { WaypointDropTarget } from './story/waypoint-marker.js';
@@ -213,7 +215,9 @@ async function main(): Promise<void> {
   let refreshStyle: (() => void) | null = null;
   // Test flags: ?element=AQUES picks the element, ?dim (or ?hush) plays a Dim, ?tier=N sets the tier (default 5: every move open, no extra strength).
   // Online, the server owns every enemy: no local spawns that other players can't see.
-  const playingOnline = hasGameServer() && params.has('online');
+  // A signed-in player plays the town on the game server: it judges every kill and drops the loot. A guest walks the
+  // arrival on their own until they sign in with the registrar, which reconnects them online.
+  const playingOnline = hasGameServer() && !isOfflineMode() && (params.has('online') || getStoredAuthToken() !== null);
   const tier = Math.max(1, Math.min(7, Number(params.get('tier')) || 5));
   /** The element a Hush's shards carry; a Shaper's own element otherwise. */
   let kitElement: Element = 'IGNIS';
@@ -531,6 +535,10 @@ async function main(): Promise<void> {
   if (lifeSystem) input.conversation = lifeSystem.conversation;
   // Space jumps; a second tap while still rising or falling from it is the super jump.
   let jumpedAt = -Infinity, superJumped = false;
+  /** The hero reaches out with a hand (taking something) until then. */
+  let reachUntil = 0;
+  // Take-off, fall and touchdown follow the body; a hard fall leaves the hero down until told to rise.
+  const airborne = new Airborne({ landSeconds: 0.35, getUpSeconds: hero.anim.duration(AIR_CLIPS.getUp) || 1, riseSeconds: hero.anim.duration(AIR_CLIPS.rise), gravity: balance.controller.gravity });
   input.onJump = () => {
     if (!fight.heroAlive || combat.current || combat.blocking) return;
     const now = performance.now() / 1000;
@@ -881,13 +889,37 @@ async function main(): Promise<void> {
       applyTier(mission.api.snapshot!.tier);
       return;
     }
+    // A new arrival has no weapon until the master hands it over, and fights bare-handed until told to draw it.
+    if (!mission.trainingReady) {
+      armedWith = 'hands';
+      applyStyle();
+      hero.setCarrying(false);
+    }
+    const starter = heroWeaponFor({ element: kitElement, hush: isDim }) === 'staff' ? STAFF_WEAPON : SWORD_WEAPON;
     nationIntro = new NationIntroFlow({
       scene, loaders: assets, nation: kitElement, isDim: () => isDim,
       controller, shoulderCamera, input, combat, fight, sound,
       leadManager: life.leadManager, waypointMarker: life.waypointMarker,
       applyTier: t => applyTier(mission.api.snapshot?.tier ?? t),
-      onEquipStarterWeapon: () => {
-        applyKit(); setFightingStyle('weapon'); sword.draw(true);
+      arrival: {
+        drop: () => {
+          const at = controller.position;
+          controller.place(at.x, at.y + balance.story.arrivalDrop, at.z);
+          airborne.fallHard();
+        },
+        down: () => airborne.phase === 'down',
+        standUp: () => airborne.getUp(),
+        standing: () => airborne.phase === 'ground',
+      },
+      restrictControls: taught => controls?.setLesson(taught),
+      weaponAsset: starter.assetPath,
+      // Taken from the master's hand, then put on the back: drawing it is the next lesson.
+      receiveWeapon: () => {
+        applyKit();
+        hero.setCarrying(true);
+        reachUntil = performance.now() + 900;
+        sword.forceArm();
+        sword.sheathe();
       },
       onTrainingComplete: () => { mission.trainingReady = true; },
       beforeUnlock: () => mission.gate(),
@@ -1256,7 +1288,7 @@ async function main(): Promise<void> {
   // --- Online: ?online joins this zone's room on the game server. ---
   if (playingOnline) {
     const online = await import('./net/online.js');
-    const { getServerUrl, getStoredAuthToken, getStoredAccountId } = await import('./auth/server-api.js');
+    const { getServerUrl, getStoredAccountId } = await import('./auth/server-api.js');
     const roomIdentity = { accountId: getStoredAccountId(), token: getStoredAuthToken() };
     const { loadHoundTemplate } = await import('./monsters/hound.js');
     const lagMs = Number(new URLSearchParams(window.location.search).get('lag')) || 0;
@@ -1402,6 +1434,17 @@ async function main(): Promise<void> {
 
   void startNationIntro();
 
+  // The mission under way, on screen and in the menu's journal.
+  const missionTracker = new MissionTracker({
+    state: () => storyMission?.api.snapshot?.state ?? null,
+    arrival: () => ({ masterName: getNationIntroConfig(kitElement).master.name, trained: storyMission?.trainingReady ?? false }),
+    hidden: () => !!document.getElementById('opening-overlay') || !zone
+      || ((nationIntro?.isRunning ?? false) && nationIntro?.step !== 'active_mission'),
+  });
+  missionTracker.mountJournal(homeMenu.journal);
+  cleanup.push(() => missionTracker.dispose());
+  let trackerIn = 0;
+
   let lastCoveredRender = 0;
   renderer.setAnimationLoop(() => {
     const now = performance.now();
@@ -1426,6 +1469,7 @@ async function main(): Promise<void> {
 
     const alive = fight.heroAlive;
     storyMission?.update(rawDelta, alive);
+    if ((trackerIn -= rawDelta) <= 0) { trackerIn = 0.25; missionTracker.update(); }
     nationIntro?.update(rawDelta);
     townEconomy?.update(rawDelta, controller.position);
     for (const action of alive ? input.takeActions() : []) {
@@ -1567,7 +1611,7 @@ async function main(): Promise<void> {
     hero.getLimbWorldPosition('knee_r', kneeR);
     hero.getLimbWorldPosition('knee_l', kneeL);
     heroView.facing = controller.facing;
-    const rooted = combat.current !== null || combat.blocking;
+    const rooted = combat.current !== null || combat.blocking || airborne.holding;
     // Running needs stamina; out of it the hero walks.
     const wish = rooted ? { forward: 0, right: 0, running: false } : input.read();
     if (!sustain.canRun) wish.running = false;
@@ -1599,6 +1643,8 @@ async function main(): Promise<void> {
     }
 
     const animDelta = delta;
+    const airClip = bend.windskiffActive ? null
+      : airborne.update({ grounded: controller.grounded, rising: controller.rising, moving: controller.speed > 0.5 }, delta);
     drawn.lerpVectors(controller.previous, controller.position, alpha);
     if (bend.windskiffActive) drawn.y += 0.45;
     hero.model.position.copy(drawn);
@@ -1621,11 +1667,12 @@ async function main(): Promise<void> {
       }
       if (combat.blocking) {
         hero.anim.play('block', balance.combat.fade);
-      } else if (!combat.current && !controller.grounded) {
+      } else if (!combat.current && airClip) {
         turnStep = null;
-        hero.anim.play('jump', 0.12);
-        hero.anim.setSpeed('jump', 1.0);
-      } else if (storyMission?.acting) {
+        if (airClip.restart) hero.anim.playOnce(airClip.name, 0.12);
+        else hero.anim.play(airClip.name, 0.12, airClip.loop);
+        hero.anim.setSpeed(airClip.name, airClip.speed);
+      } else if (storyMission?.acting || performance.now() < reachUntil) {
         hero.anim.play('cast', 0.2, false);
       } else if (!combat.current && performance.now() > techniqueClipUntil) {
         const now = performance.now() / 1000;
@@ -1708,7 +1755,7 @@ async function main(): Promise<void> {
         if (spine) { spine.rotation.x = -0.15; }
       }
     } else {
-      hero.sword.visible = true;
+      hero.sword.visible = hero.carrying;
       if (wasWindskiffActive) {
         wasWindskiffActive = false;
         hero.anim.setSpeed('jump', 1.0);

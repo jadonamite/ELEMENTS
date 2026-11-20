@@ -1,0 +1,65 @@
+/* The mission under way, top left under the menu button; and the journal in the menu's Missions pane. */
+
+.mission-tracker {
+  position: fixed;
+  top: calc(max(var(--space-4), env(safe-area-inset-top)) + var(--target-min-height) + var(--space-3));
+  left: max(var(--space-4), env(safe-area-inset-left));
+  z-index: 80;
+  max-width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-3) var(--space-4);
+  border-left: 2px solid #dfaa52;
+  background: linear-gradient(90deg, rgb(12 14 18 / 0.78), rgb(12 14 18 / 0));
+  color: #f7f2ea;
+  font-family: var(--font-family-body);
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
+}
+.mission-tracker[hidden] { display: none; }
+.mission-tracker p { margin: 0; }
+.mission-tracker-kicker {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #dfaa52;
+}
+.mission-tracker-title {
+  margin-top: var(--space-1);
+  font: 600 var(--font-size-lg)/var(--line-height-tight) var(--font-family-display);
+}
+.mission-tracker-step {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-snug);
+  color: rgb(247 242 234 / 0.86);
+}
+body.home-open .mission-tracker,
+body.mission-open .mission-tracker,
+body.shop-open .mission-tracker { display: none; }
+
+@media (max-width: 600px) {
+  .mission-tracker { max-width: 60vw; }
+  .mission-tracker-title { font-size: var(--font-size-base); }
+}
+
+/* Journal */
+.mission-journal { display: flex; flex-direction: column; gap: var(--space-4); }
+.mission-entry {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+}
+.mission-entry.is-current { border-color: #dfaa52; }
+.mission-entry.is-ahead { opacity: 0.6; }
+.mission-entry header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.mission-entry h3 { margin: 0; font: 600 var(--font-size-lg)/var(--line-height-tight) var(--font-family-display); }
+.mission-entry-status {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+.mission-entry.is-current .mission-entry-status { color: #dfaa52; }
+.mission-entry ol { margin: var(--space-3) 0 0; padding-left: var(--space-6); }
+.mission-entry li { margin-top: var(--space-1); line-height: var(--line-height-snug); }
+.mission-entry li.is-done { color: var(--color-text-secondary); text-decoration: line-through; }
+.mission-entry li.is-next { font-weight: 600; }

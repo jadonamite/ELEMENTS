@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { advanceMission, freshMission, normalizeMission, MISSION_FLAGS, IGNIS_MISSION, MISSION_COPY } from '../src/story/missions.js';
+import { advanceMission, currentObjective, freshMission, missionJournal, normalizeMission, MISSION_FLAGS, IGNIS_MISSION, MISSION_COPY } from '../src/story/missions.js';
 import { SINDR_ANCHORS } from '../src/world/ignis/sindr.js';
 
 test('the meal stall cook and seat follow the shared Sindr world anchor', () => {
@@ -86,4 +86,18 @@ test('inspection, Hall and supervised spar precede Kellan identification', () =>
   assert.equal(state.flags.invitation_identified, true);
   assert.equal(state.attempt, 2);
   assert.throws(() => advanceMission(state, 'start_spar', false), /already completed/);
+});
+
+test('the journal ticks steps from saved flags and names one current mission', () => {
+  const arrival = { masterName: 'Master Brandr', trained: false };
+  const fresh = missionJournal(null, arrival);
+  assert.deepEqual(fresh.map(m => m.status), ['current', 'ahead', 'ahead']);
+  assert.equal(currentObjective(fresh)?.step, 'Learn to fight from Master Brandr');
+  const trained = missionJournal(null, { ...arrival, trained: true });
+  assert.equal(currentObjective(trained)?.step, 'Follow the stone road to the West Gate');
+  let state = freshMission('IGNIS');
+  for (const event of ['training_complete', 'register', 'take_pouch'] as const) state = advanceMission(state, event, false);
+  const arrived = missionJournal(state, arrival);
+  assert.deepEqual(arrived.map(m => m.status), ['done', 'current', 'ahead']);
+  assert.equal(currentObjective(arrived)?.step, 'Find the stall with a bowl above it and buy a meal');
 });

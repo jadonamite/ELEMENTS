@@ -115,3 +115,62 @@ export const MISSION_COPY = {
   identified: "This is an Arena invitation. It invites its bearer to compete there. I don't know Tarin, and this doesn't tell us whether he ever held it. Keep it while you look for more evidence.",
   allborn: 'Some people believe the Allborn can open a way between worlds. I have no proof. It is only a rumour.',
 };
+
+/** One mission as the player's journal shows it. */
+export interface JournalMission {
+  title: string;
+  /** Finished, the one under way, or not reached yet (shown only as a title). */
+  status: 'done' | 'current' | 'ahead';
+  steps: Array<{ text: string; done: boolean }>;
+}
+
+/** Where a player stands before the server holds a mission for them: the arrival and the master's lesson. */
+export interface ArrivalProgress {
+  masterName: string;
+  /** The master's lesson is finished. */
+  trained: boolean;
+}
+
+/**
+ * The journal: every mission in story order with its steps ticked off from the saved flags. A guest has no saved
+ * mission yet, so their first mission reads from the arrival instead. Clue steps never name a waypoint.
+ */
+export function missionJournal(state: MissionState | null, arrival: ArrivalProgress): JournalMission[] {
+  const f = state?.flags;
+  const trained = arrival.trained || !!f?.training_complete;
+  const missions: Array<Omit<JournalMission, 'status'>> = [
+    { title: 'First steps', steps: [
+      { text: `Learn to fight from ${arrival.masterName}`, done: trained },
+      { text: 'Follow the stone road to the West Gate', done: !!f?.nation_arrival_registered },
+      { text: 'Sign in with the registrar and take your pouch', done: !!f?.arrival_grant_paid },
+    ] },
+    { title: 'The meal and the search', steps: [
+      { text: 'Find the stall with a bowl above it and buy a meal', done: !!f?.meal_purchased },
+      { text: 'Sit and eat', done: !!f?.meal_eaten },
+      { text: 'Talk with Neri', done: !!f?.neri_met },
+      { text: 'Help Neri look for Tarin on the east road', done: !!f?.neri_search_accepted },
+      { text: 'Survive the ambush', done: !!f?.ambush_survived },
+      { text: 'Search what the robbers dropped', done: !!f?.arena_ticket_collected },
+      { text: 'Look at the invitation, then talk with Neri', done: !!f?.mission_1a_complete },
+    ] },
+    { title: 'The invitation', steps: [
+      { text: "Go to the Master's Hall, up the Rise", done: !!f?.hall_briefed },
+      { text: "Spar with Kellan's disciples", done: !!f?.spar_completed },
+      { text: 'Show Kellan the invitation', done: !!f?.invitation_identified },
+    ] },
+  ];
+  let current = false;
+  return missions.map(mission => {
+    const finished = mission.steps.every(step => step.done);
+    const status: JournalMission['status'] = finished ? 'done' : current ? 'ahead' : 'current';
+    if (!finished) current = true;
+    return { ...mission, status };
+  });
+}
+
+/** The mission under way and its next step, for the tracker; null once every mission is done. */
+export function currentObjective(journal: JournalMission[]): { title: string; step: string } | null {
+  const mission = journal.find(m => m.status === 'current');
+  const step = mission?.steps.find(s => !s.done);
+  return mission && step ? { title: mission.title, step: step.text } : null;
+}
