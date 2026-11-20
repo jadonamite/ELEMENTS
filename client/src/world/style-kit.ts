@@ -548,3 +548,41 @@ export function compoundWall(b: WorldBuilder, x0: number, z0: number, x1: number
   b.solid(0, (h + 0.4) / 2, 0, T + 0.2, h + 0.4, L);
   b.at(0, 0, 0);
 }
+
+/**
+ * The registrar's post at the gate: a writing desk with an open register, a quill in its inkpot and a lamp, his stool
+ * behind it, and a cloth awning on two posts with the town's lacquer board. The frame's +z is the desk's front, where
+ * a traveller stands; the registrar sits on the stool behind.
+ */
+export function registrarDesk(b: WorldBuilder, x: number, z: number, y: number, yaw: number): void {
+  b.at(x, z, yaw, y);
+  const W = 1.6, D = 0.78, H = 0.78;
+  // Desk: top, a front board facing the traveller, four legs and a shelf.
+  b.box('raw_timber', 0, H - 0.03, 0, W, 0.06, D);
+  b.box('charred_timber_beams', 0, H / 2, D / 2 - 0.03, W - 0.04, H - 0.1, 0.04);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box('charred_timber_beams', sx * (W / 2 - 0.05), (H - 0.06) / 2, sz * (D / 2 - 0.05), 0.07, H - 0.06, 0.07);
+  b.box('raw_timber', 0, 0.18, -0.05, W - 0.12, 0.03, D - 0.2);
+  b.solid(0, H / 2, 0, W, H, D);
+  // The register, open toward the registrar: a leather cover under two pages, the right one curled up a little.
+  b.box('red_lacquer', -0.05, H + 0.012, -0.05, 0.62, 0.025, 0.44);
+  b.box('lime_plaster', -0.2, H + 0.03, -0.05, 0.29, 0.012, 0.4, { z: 0.03 });
+  b.box('lime_plaster', 0.1, H + 0.03, -0.05, 0.29, 0.012, 0.4, { z: -0.05 });
+  // A closed ledger and a stack of papers at his left; the quill in its inkpot at his right.
+  b.box('charred_timber_beams', 0.55, H + 0.05, -0.1, 0.32, 0.1, 0.24);
+  b.box('lime_plaster', -0.56, H + 0.02, 0.05, 0.26, 0.04, 0.34, { y: 0.15 });
+  b.cylinder('blackened_rusted_iron', -0.48, H + 0.045, -0.22, 0.045, 0.055, 0.09, 10);
+  b.box('lime_plaster', -0.47, H + 0.2, -0.24, 0.012, 0.26, 0.03, { x: -0.35, z: 0.2 });
+  // A small oil lamp at the desk's back corner.
+  b.cylinder('terracotta', 0.68, H + 0.04, -0.3, 0.06, 0.07, 0.06, 10);
+  b.light(0.68, H + 0.25, -0.3, 0xffb066, 1.6, 3.5, 0.15);
+  // His stool behind the desk.
+  b.cylinder('raw_timber', 0, 0.44, -0.85, 0.2, 0.2, 0.05, 12);
+  for (const a of [0.4, 2.5, 4.6]) b.box('charred_timber_beams', Math.cos(a) * 0.13, 0.21, -0.85 + Math.sin(a) * 0.13, 0.04, 0.42, 0.04);
+  // Awning: two posts behind, a cloth sloping out over the desk, and the lacquer board naming the post.
+  for (const sx of [-1, 1]) b.box('charred_timber_beams', sx * 1.0, 1.25, -1.45, 0.1, 2.5, 0.1);
+  b.box('charred_timber_beams', 0, 2.48, -1.45, 2.2, 0.1, 0.1);
+  b.box('indigo_cloth', 0, 2.3, -0.4, 2.3, 0.04, 2.2, { x: -0.18 });
+  b.box('red_lacquer', 0, 2.05, -1.42, 1.0, 0.36, 0.05);
+  b.box('gold_trim', 0, 2.05, -1.39, 0.86, 0.04, 0.02);
+  b.at(0, 0, 0);
+}

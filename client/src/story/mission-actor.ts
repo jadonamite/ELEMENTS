@@ -22,15 +22,17 @@ export class MissionActor {
   private sitting = false;
   private peekBase: number | null = null;
   readonly ready: Promise<void>;
-  constructor(private readonly scene: Scene, loaders: Loaders, name: string, at: { x: number; y: number; z: number }, female = false) {
+  constructor(private readonly scene: Scene, loaders: Loaders, name: string, at: { x: number; y: number; z: number }, female = false,
+    private readonly dress?: OutfitId) {
     this.position = new Vector3(at.x, at.y, at.z);
     this.ready = this.load(loaders, name, female);
   }
   private async load(loaders: Loaders, name: string, female: boolean): Promise<void> {
     const master = name === 'Master Brandr';
-    const outfit: OutfitId = master ? 'shaper_ignis' : 'rags';
+    const outfit: OutfitId = this.dress ?? (master ? 'shaper_ignis' : 'rags');
     const config = sanitizeCharacterConfig({ sex: female ? 'female' : 'male', skinToneId: 'bronze', hairStyleId: female ? 'short' : 'beard', hairColorId: master ? 'silver' : 'brown', bodyPreset: master ? 'broad' : 'average' });
-    const sets = await Promise.all(['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo'].map(n => loaders.model(`/assets/characters/${n}.glb`)));
+    // Seated clips (writing at a desk, hands on the table, talking) for people who work sitting down.
+    const sets = await Promise.all(['townsfolk_a', 'townsfolk_b', 'townsfolk_mixamo', 'seated'].map(n => loaders.model(`/assets/characters/${n}.glb`)));
     const kit = bodyKit(loaders, 'close');
     const model = await kit.build(config, 'hero', undefined, outfit);
     const clips = await kit.fitClips(config.sex, sets.flatMap(markRest), 'townsfolk', outfit);

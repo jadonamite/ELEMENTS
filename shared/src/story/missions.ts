@@ -78,6 +78,14 @@ export function normalizeMission(saved: MissionState): MissionState {
 }
 
 const FOOD_STALL = SINDR_ANCHORS.find(anchor => anchor.id === 'stall_food');
+const REGISTRAR_DESK = SINDR_ANCHORS.find(anchor => anchor.id === 'registrar_desk');
+if (!REGISTRAR_DESK?.keeper) throw new Error('Sindr needs a registrar desk with its keeper in its world manifest');
+/** Where a traveller stands to speak with the registrar: in front of the desk, the way he faces. */
+const REGISTRAR_FRONT = {
+  x: REGISTRAR_DESK.x + Math.sin(REGISTRAR_DESK.yaw) * 1.25,
+  y: REGISTRAR_DESK.y,
+  z: REGISTRAR_DESK.z + Math.cos(REGISTRAR_DESK.yaw) * 1.25,
+};
 if (!FOOD_STALL?.seat || !FOOD_STALL.keeper) throw new Error('Sindr food stall needs a stall, keeper and seat in its world manifest');
 
 /** IGNIS locations use the town frame, shared by the visible scene and server checks. */
@@ -86,7 +94,10 @@ export const IGNIS_MISSION = {
   kellan: { x: 129, y: 11, z: -106 },
   yard: { x: 125, y: 11, z: -103 },
   seat: { ...FOOD_STALL.seat },
-  gate: { x: 49, y: 0, z: 2 },
+  /** In front of the registrar's desk, where the gate's sign-in happens and a resumed arrival stands. */
+  gate: REGISTRAR_FRONT,
+  /** The registrar on his stool behind the desk. */
+  registrar: { ...REGISTRAR_DESK.keeper },
   stall: { x: FOOD_STALL.x, y: FOOD_STALL.y, z: FOOD_STALL.z },
   stallKeeper: { ...FOOD_STALL.keeper },
   neri: { x: 119, y: 0, z: 5 },

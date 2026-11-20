@@ -9,7 +9,7 @@ import { SINDR_ANCHORS, type SindrAnchor } from '../../../shared/src/world/ignis
 import { MARKET_SLICE } from '../../../shared/src/world/ignis/market-slice.js';
 import { buildMarket } from './market.js';
 import { stairRun, stairs } from './stairs.js';
-import { compoundWall, hall, roofedGate, stall, townHouse, well, type Rank } from './style-kit.js';
+import { compoundWall, hall, registrarDesk, roofedGate, stall, townHouse, well, type Rank } from './style-kit.js';
 import { awning, clutter, handCart, lampPost, lanternString, paperLantern, parkedCart, paveStreet, runnel, streetMarket, timberStack, wetPatch, type Strip } from './street.js';
 import { dressTerrace, planter, retainingWall, terraceTop } from './walls.js';
 
@@ -110,6 +110,8 @@ export function buildSindr(b: WorldBuilder): Area[] {
   const areas: Area[] = [];
   shrine(b);
   road(b);
+  const desk = anchor('registrar_desk');
+  registrarDesk(b, desk.x, desk.z, desk.y, desk.yaw);
   cinderRow(b, rand);
   areas.push(...buildMarket(b, rand));
   rise(b, rand, areas);

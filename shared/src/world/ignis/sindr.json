@@ -470,6 +470,18 @@
       "reach": 30
     },
     {
+      "id": "registrar_desk",
+      "kind": "registrar",
+      "name": "Registrar's desk at the West Gate",
+      "x": 47.5,
+      "y": 0,
+      "z": 4.6,
+      "yaw": 3.1416,
+      "reach": 3.6,
+      "seat": { "x": 47.5, "y": 0, "z": 5.45 },
+      "keeper": { "x": 47.5, "y": 0, "z": 5.45, "facing": 3.1416 }
+    },
+    {
       "id": "stall_food",
       "kind": "food_stall",
       "name": "Home meal stall",

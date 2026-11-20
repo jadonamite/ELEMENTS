@@ -1,5 +1,12 @@
 import type { Element } from '../combat/types.js';
 import dialogue from '../../dialogue.json' with { type: 'json' };
+import { IGNIS_MISSION } from './missions.js';
+
+/**
+ * Every nation lands in Sindr, the only town built, so every first mission ends at the registrar's desk by its West
+ * Gate; how close a traveller must come, metres.
+ */
+const REGISTRAR_REACH = 2.5;
 
 export interface NationMasterConfig {
   id: string;
@@ -108,10 +115,10 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
       description: 'Journey down the paved road from the Shrine of Embers to the West Gate of Sindr.',
       objective: 'Reach the West Gate of Sindr',
       target: {
-        x: 52,
-        y: 0,
-        z: 0,
-        radius: 6,
+        x: IGNIS_MISSION.gate.x,
+        y: IGNIS_MISSION.gate.y,
+        z: IGNIS_MISSION.gate.z,
+        radius: REGISTRAR_REACH,
         name: 'West Gate',
         locationName: 'West Gate of Sindr',
       },
@@ -140,10 +147,10 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
       description: 'Follow the canal path to the Harbor Arch of Varda.',
       objective: 'Reach the Harbor Arch',
       target: {
-        x: 60,
-        y: 0,
-        z: 10,
-        radius: 6,
+        x: IGNIS_MISSION.gate.x,
+        y: IGNIS_MISSION.gate.y,
+        z: IGNIS_MISSION.gate.z,
+        radius: REGISTRAR_REACH,
         name: 'Harbor Arch',
         locationName: 'Varda Harbor',
       },
@@ -172,10 +179,10 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
       description: 'Climb the approach to the High Bastion Gate.',
       objective: 'Reach the High Bastion Gate',
       target: {
-        x: 50,
-        y: 4,
-        z: 0,
-        radius: 6,
+        x: IGNIS_MISSION.gate.x,
+        y: IGNIS_MISSION.gate.y,
+        z: IGNIS_MISSION.gate.z,
+        radius: REGISTRAR_REACH,
         name: 'High Bastion Gate',
         locationName: 'Halda Crags',
       },
@@ -204,10 +211,10 @@ export const NATION_INTROS: Record<Element, NationIntroConfig> = {
       description: 'Cross the high terrace path to the Sky Arch.',
       objective: 'Reach the Sky Arch',
       target: {
-        x: 48,
-        y: 0,
-        z: -8,
-        radius: 6,
+        x: IGNIS_MISSION.gate.x,
+        y: IGNIS_MISSION.gate.y,
+        z: IGNIS_MISSION.gate.z,
+        radius: REGISTRAR_REACH,
         name: 'Sky Arch',
         locationName: 'Naust Spires',
       },

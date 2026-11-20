@@ -53,10 +53,15 @@ export class MissionFlow {
   private readonly offerAt = new Vector3();
   private readonly routeTarget = new Vector3();
   private readonly cookFacing = new Vector3();
+  private readonly registrarFacing = new Vector3();
+  /** Who the open dialogue is with, so they can act it. */
+  private speaking = '';
   trainingReady = false;
 
   constructor(private readonly opts: Options) {
-    this.registrar = new MissionActor(opts.scene, opts.loaders, 'Registrar', M.gate);
+    // He sits at his desk by the gate, in a workman's clothes rather than a beggar's rags.
+    this.registrar = new MissionActor(opts.scene, opts.loaders, 'Registrar', M.registrar, false, 'hush_ignis');
+    this.registrarFacing.set(M.registrar.x + Math.sin(M.registrar.facing), M.registrar.y, M.registrar.z + Math.cos(M.registrar.facing));
     this.neri = new MissionActor(opts.scene, opts.loaders, 'Neri', M.neri, true);
     this.cook = new MissionActor(opts.scene, opts.loaders, 'Cook', M.stallKeeper, true);
     this.master = new MissionActor(opts.scene, opts.loaders, 'Master Brandr', M.hall);
@@ -317,7 +322,10 @@ export class MissionFlow {
     this.cookFacing.set(M.stallKeeper.x + Math.sin(M.stallKeeper.facing), M.stallKeeper.y, M.stallKeeper.z + Math.cos(M.stallKeeper.facing));
     this.cook.tick(dt, this.cookFacing);
     this.master.tick(dt, hero); this.kellan.tick(dt, hero);
-    this.registrar.tick(dt, hero);
+    // At his desk he writes; he looks up when a traveller comes to the front, and talks while they speak.
+    const atDesk = Math.hypot(hero.x - M.gate.x, hero.z - M.gate.z) < 3.5;
+    this.registrar.pose(this.panel && this.speaking === 'Registrar' ? 'sit_talk' : atDesk ? 'sit_table' : 'sit_write');
+    this.registrar.tick(dt, this.registrarFacing);
     this.neri.tick(dt, escort && this.routePoint < M.route.length ? this.routeTarget : hero, this.ambushing && !f?.ambush_survived);
     if (f?.neri_search_accepted && !f.invitation_identified && performance.now() > this.nextPoll && !this.polling) {
       this.nextPoll = performance.now() + 2000; this.polling = true;
@@ -340,6 +348,7 @@ export class MissionFlow {
 
   private show(name: string, text: string, replies: Reply[]): void {
     this.close();
+    this.speaking = name;
     this.lastFocus = document.activeElement as HTMLElement | null;
     if (document.pointerLockElement) document.exitPointerLock();
     const panel = document.createElement('section');
